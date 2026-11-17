@@ -6,13 +6,19 @@ import 'robot_binding.dart';
 /// The side of a trade this device's robot is on, fixed at the take from the type of the public order: taking a sell order makes a buyer.
 enum TradeRole { buyer, seller }
 
-/// How a trade came to be recorded on this device: taken here, or taken over after recovery found it (design note `docs/design/phase-2-taking-an-order.md` § 3.3, § 3.5).
+/// How a trade came to be recorded on this device: taken here, made here, or taken over after recovery found it (design note `docs/design/phase-2-taking-an-order.md` § 3.3, § 3.5; `docs/design/phase-3-making-an-order.md` § 3.2).
 enum TradeOrigin {
   /// Written as a pending take by the path of the take, before its request leaves, for a robot the robot layer reserved for a new trade.
   ///
   /// Only `TradeRecordRepository.recordPendingTake` writes it, and only the take use case calls that (#87).
   /// It is a fact about the trade: a robot of a pasted key may finish an order it already holds, as a `recovered` trade, but never starts one (#79).
   takenHere,
+
+  /// Written as a pending make by the path of the make, before its request leaves, for a robot the robot layer reserved for a new trade (schema 8, #176).
+  ///
+  /// Only `TradeRecordRepository.recordPendingMake` writes it, and only the make use case is to call that (#179); no file calls it yet.
+  /// A make is a [TradeRecord] only once confirmed with its order id (`TradeRecordRepository.confirmMake`): until then it is a [PendingMake], so that no user of a [TradeRecord] meets a trade without an order.
+  madeHere,
 
   /// Written when the user explicitly took over a trade that recovery found holding an order: this device did not take it.
   ///
@@ -39,7 +45,7 @@ final class TradeRecord {
   /// The onion origin of the coordinator's instance on [network], as the robot's binding recorded it.
   final String coordinatorOnion;
 
-  /// The id of the order on that coordinator.
+  /// The id of the order on that coordinator: always known, a make whose order id is not known yet being a [PendingMake] instead.
   final int orderId;
 
   final TradeRole role;
@@ -114,7 +120,73 @@ final class TradeRecord {
       }})';
 }
 
-/// A robot that the repository of the trade records has just bound to a coordinator for a new trade, in one statement that found its index free: the proof a pending take needs (`TradeRecordRepository.recordPendingTake`).
+/// An order this device asked a coordinator to make, recorded before the make's request leaves, whose order id is not known yet (schema 8, #176; design note `docs/design/phase-3-making-an-order.md` § 3.4): a row of `trades` of origin `madeHere` with no order id.
+///
+/// The read that shows its robot as the maker of an order confirms it with that order's id (`TradeRecordRepository.confirmMake`), which turns it into a [TradeRecord]; a make that turned out not to have happened is closed (`TradeRecordRepository.closePendingMake`).
+/// Only the repository of the trade records makes one, from a row it has just read: `test/trade_record_test.dart` pins that no other library of the feature calls this constructor, as for [TradeRecord].
+/// It holds no token and no key, but the fingerprint of the robot's key, which is never printed.
+@immutable
+final class PendingMake {
+  /// The robot of the make: its key's fingerprint, its index, and the network, which is the network of the robot's binding and of the coordinator.
+  final RobotSlot robot;
+
+  /// The short alias of the coordinator, as the robot's binding recorded it.
+  final String coordinatorAlias;
+
+  /// The onion origin of the coordinator's instance, as the robot's binding recorded it.
+  final String coordinatorOnion;
+
+  /// The side the order makes: the maker of a buy order buys.
+  final TradeRole role;
+
+  /// When the pending make was written, before the make's request.
+  final DateTime writtenAt;
+
+  /// When the make turned out not to have happened, or `null` while it is pending.
+  final DateTime? closedAt;
+
+  const PendingMake({
+    required this.robot,
+    required this.coordinatorAlias,
+    required this.coordinatorOnion,
+    required this.role,
+    required this.writtenAt,
+    required this.closedAt,
+  });
+
+  /// The network of the make: the network of the robot's binding, never chosen apart from it.
+  RobosatsNetwork get network => robot.network;
+
+  /// Whether the make is still pending: not closed.
+  bool get isActive => closedAt == null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PendingMake &&
+      other.robot == robot &&
+      other.coordinatorAlias == coordinatorAlias &&
+      other.coordinatorOnion == coordinatorOnion &&
+      other.role == role &&
+      other.writtenAt == writtenAt &&
+      other.closedAt == closedAt;
+
+  @override
+  int get hashCode => Object.hash(
+    robot,
+    coordinatorAlias,
+    coordinatorOnion,
+    role,
+    writtenAt,
+    closedAt,
+  );
+
+  /// The robot without its key's fingerprint, the coordinator's alias, the side and the state.
+  @override
+  String toString() =>
+      'PendingMake($robot, $coordinatorAlias, ${role.name}, ${closedAt == null ? 'pending' : 'closed'})';
+}
+
+/// A robot that the repository of the trade records has just bound to a coordinator for a new trade, in one statement that found its index free: the proof a pending take, or a pending make, needs (`TradeRecordRepository.recordPendingTake`, `TradeRecordRepository.recordPendingMake`).
 ///
 /// Only that repository makes one, when its reservation wrote the binding: `test/trade_record_test.dart` pins that no other library of the feature calls this constructor, and nothing extends or implements it.
 /// So a robot that the Garage bound, or that a reservation lost to another call, never takes a pending take.

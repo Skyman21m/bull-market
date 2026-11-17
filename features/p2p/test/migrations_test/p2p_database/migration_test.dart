@@ -25,6 +25,7 @@ import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
+import 'generated/schema_v7.dart' as v7;
 
 /// The schema of `p2p.sqlite` against its snapshots (`lib/src/data/schemas/`, written by `make drift-migrations`), and the step from each version to the next over a file that holds rows.
 ///
@@ -710,12 +711,12 @@ void main() {
       await database.close();
     });
 
-    /// The schema 3 objects of [database] as SQLite stores them, by name: drift writes the table's names in quotes when it creates a file and as declared when it migrates one, so the text is compared without quotes and white space.
+    /// The schema 3 objects of [database] as SQLite stores them, by name, the triggers later schemas add to the trades left out: drift writes the table's names in quotes when it creates a file and as declared when it migrates one, so the text is compared without quotes and white space.
     Future<Map<String, String>> objectsOf(GeneratedDatabase database) async => {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name <> 'trades_one_open_per_order'",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name NOT IN ('trades_one_open_per_order', 'trades_one_open_per_order_update', 'trades_made_pending')",
               )
               .get())
         row.read<String>('name'): row
@@ -1183,14 +1184,14 @@ void main() {
 
     // Schema 5 (#100): the payments of a trade's invoices asked of the wallet.
 
-    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them.
+    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them: the trigger schema 8 adds to the payments is not one.
     Future<Map<String, String>> paymentObjectsOf(
       GeneratedDatabase database,
     ) async => {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments'",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments' AND name <> 'trade_payments_hash_once'",
               )
               .get())
         row.read<String>('name'): row
@@ -1635,7 +1636,7 @@ void main() {
 
     // Schema 7 (#97): the payments of the trades gain the seller's escrow, the table rebuilt with its rows and its triggers.
 
-    /// A file of schema 6, made by the generated schema 6 itself, with two payments of the bond (not tied to any trade: the foreign keys are off outside the app's connection, and the trigger that asks for an open trade is set aside while they are written, then made again from its own text).
+    /// A file of schema 6, made by the generated schema 6 itself, with two payments of the bond, of an open trade and of a closed one (whose trails are not written: the trigger that asks for an open trade whose trail is recorded is set aside while they are written, then made again from its own text). Since schema 8 checks the foreign keys of the file before it ends, the payments' trades and their robots' bindings are written too.
     Future<Directory> writeSchema6WithPayments() async {
       final own = await Directory.systemTemp.createTemp('p2p-schema6-');
       addTearDown(() async {
@@ -1645,6 +1646,16 @@ void main() {
         NativeDatabase(File('${own.path}/${P2pDatabase.fileName}')),
       );
       expect(await versionOf(old), 6);
+      for (final (index, closed) in [(1, null), (2, 30)]) {
+        await old.customStatement(
+          "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('testnet', ?, ?, 'temple', 'http://temple.onion', '', 'nostr', 10, 'generated')",
+          [_payer, index],
+        );
+        await old.customStatement(
+          "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('testnet', ?, ?, 'temple', 'http://temple.onion', ?, 'buyer', 'takenHere', 15, 20, ?)",
+          [_payer, index, 40 + index, closed],
+        );
+      }
       final trigger = await old
           .customSelect(
             "SELECT sql FROM sqlite_master WHERE name = 'trade_payments_of_their_trade'",
@@ -1673,12 +1684,15 @@ void main() {
       return own;
     }
 
+    /// The payments of [database], the columns of schema 6 only: the contract schema 8 adds, 0 for every payment of an older file, is the schema 8 tests' (`schema8_migration_test.dart`).
     Future<List<Map<String, Object?>>> paymentsOf(
       GeneratedDatabase database,
     ) async => [
       for (final row
           in await database
-              .customSelect('SELECT * FROM trade_payments ORDER BY robot_index')
+              .customSelect(
+                'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments ORDER BY robot_index',
+              )
               .get())
         row.data,
     ];
@@ -1707,7 +1721,7 @@ void main() {
         expect(before, hasLength(2));
 
         final migrated = P2pDatabase.open(() async => own);
-        expect(await versionOf(migrated), 7);
+        expect(await versionOf(migrated), P2pDatabase.schema);
         await migrated.validateDatabaseSchema();
         expect(await paymentObjectsOf(migrated), expected);
         expect(await paymentsOf(migrated), before);
@@ -1768,14 +1782,17 @@ void main() {
         addTearDown(() => freshDirectory.delete(recursive: true));
         final fresh = P2pDatabase.open(() async => freshDirectory);
         final expected = await paymentObjectsOf(fresh);
+        await fresh.close();
+        // The table the step from 6 makes is schema 7's, which the step to 8 then rebuilds.
+        final seven = v7.DatabaseAtV7(NativeDatabase.memory());
         final newTable =
-            (await fresh
+            (await seven
                     .customSelect(
                       "SELECT sql FROM sqlite_master WHERE name = 'trade_payments'",
                     )
                     .getSingle())
                 .read<String>('sql');
-        await fresh.close();
+        await seven.close();
 
         // What the file holds after each statement of the step, in order.
         const copied = [
@@ -1804,7 +1821,11 @@ void main() {
           await half.close();
 
           final database = P2pDatabase.open(() async => own);
-          expect(await versionOf(database), 7, reason: '$turn');
+          expect(
+            await versionOf(database),
+            P2pDatabase.schema,
+            reason: '$turn',
+          );
           await database.validateDatabaseSchema();
           expect(await paymentObjectsOf(database), expected, reason: '$turn');
           expect(await paymentsOf(database), rows, reason: '$turn');
@@ -1833,7 +1854,7 @@ void main() {
         await migrated.close();
 
         final database = P2pDatabase.open(() async => own);
-        expect(await versionOf(database), 7);
+        expect(await versionOf(database), P2pDatabase.schema);
         await database.validateDatabaseSchema();
         expect(await paymentObjectsOf(database), objects);
         expect(await paymentsOf(database), rows);

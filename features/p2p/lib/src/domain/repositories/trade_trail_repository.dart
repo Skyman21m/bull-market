@@ -9,7 +9,7 @@ import '../trade_record.dart';
 
 /// The terms and the trail of each trade of this device's robots, kept so that a trade resumes after the app was killed from what it was taken with and what it last saw, never from a fresh trail (#87, design note `docs/design/phase-2-taking-an-order.md` § 3.5, § 4.5).
 ///
-/// The terms are written once, with the pending take, and never again; the trail is written with the pending take too, then after each read, and only moves forward.
+/// The terms are written once, with the pending take, and never again (a make's terms, once, with the pending make, apart from a take's: schema 8); the trail is written with the pending take too, or from the make's first read, then after each read, and only moves forward.
 /// The database keeps both itself, whatever the code that writes (the triggers of `trade_trails.drift`); the position of a trail moves only along the edges of the trade, which [TradeTrailRecord.whyNotReplace] alone says, and [storeTrail] asks it before every write.
 /// Every write is one statement, synced to disk before its future completes, and never runs inside a database transaction (nothing in the feature opens one).
 /// It holds no secret: the public order's figures, positions, times, payment hashes (public: they are in the invoices) and flags.
@@ -22,6 +22,21 @@ abstract interface class TradeTrailRepository {
     TradeRecord trade,
     TradeTermsRecord terms,
   );
+
+  /// Records [terms], what the maker asked, for the pending make [make], once, before the make's request leaves (schema 8, #176; design note `docs/design/phase-3-making-an-order.md` § 3.4).
+  ///
+  /// They must be of the make's network, coordinator and role, and the make still pending (no order id, not closed), or the database refuses them ([P2pStorageFailure]); terms already recorded for the make are a [TradeAlreadyRecordedFailure], or a [P2pStorageFailure] once the make is confirmed, and nothing is written. Only the make use case is to call it (#179); no file calls it yet.
+  @useResult
+  Future<Result<void, P2pFailure>> recordMakerTerms(
+    PendingMake make,
+    MakerTermsRecord terms,
+  );
+
+  /// The terms recorded for the make of [robot], `null` when none were written.
+  ///
+  /// A database that cannot be read, or a row this code never writes, is a [P2pStorageFailure].
+  @useResult
+  Future<Result<MakerTermsRecord?, P2pFailure>> makerTermsOf(RobotSlot robot);
 
   /// Stores [trail] as the trail of [trade]: the first one, or one that replaces the stored one.
   ///

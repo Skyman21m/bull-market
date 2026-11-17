@@ -1,4 +1,4 @@
--- The rules of the trade records that the database keeps itself (schema 3, #85): see `Trades` in `p2p_tables.dart`.
+-- The rules of the trade records that the database keeps itself (schema 3, #85; the order id of a make, schema 8, #176): see `Trades` in `p2p_tables.dart`.
 import 'p2p_tables.dart';
 
 -- The parent key of the foreign key of `trades`: a trade's robot is bound on the trade's network.
@@ -13,6 +13,7 @@ BEGIN
 END;
 
 -- A trade record changes only by setting confirmed_at or closed_at once, and a closed record never changes.
+-- A pending make gains its order id once (schema 8): in the update that confirms it, and only once its maker's terms are recorded; every comparison is true or false, never NULL, which would let the update pass.
 CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades
 WHEN OLD.closed_at IS NOT NULL
   OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)
@@ -21,12 +22,19 @@ WHEN OLD.closed_at IS NOT NULL
   OR NEW.robot_index IS NOT OLD.robot_index
   OR NEW.coordinator_alias IS NOT OLD.coordinator_alias
   OR NEW.coordinator_onion IS NOT OLD.coordinator_onion
-  OR NEW.order_id IS NOT OLD.order_id
+  OR (NEW.order_id IS NOT OLD.order_id AND NOT (OLD.origin IS 'madeHere' AND OLD.order_id IS NULL AND OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index)))
   OR NEW.role IS NOT OLD.role
   OR NEW.origin IS NOT OLD.origin
   OR NEW.taken_at IS NOT OLD.taken_at
 BEGIN
   SELECT RAISE(ABORT, 'a trade record only gains its times');
+END;
+
+-- A make is recorded pending (schema 8): with no order id, which only its confirmation writes, once its terms are recorded, and open.
+CREATE TRIGGER IF NOT EXISTS trades_made_pending BEFORE INSERT ON trades
+WHEN NEW.origin IS 'madeHere' AND (NEW.order_id IS NOT NULL OR NEW.closed_at IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'a make is recorded pending');
 END;
 
 -- A trade record is written once: a second insert of the same robot, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.

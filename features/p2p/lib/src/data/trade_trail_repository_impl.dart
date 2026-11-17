@@ -12,11 +12,11 @@ import '../domain/trade/trade_storable.dart';
 import '../domain/trade_record.dart';
 import 'p2p_database.dart';
 
-/// The terms and the trail of each trade, in the feature's database (schema 4, #87).
+/// The terms and the trail of each trade, in the feature's database (schema 4, #87), and the terms of each make (schema 8, #176).
 ///
 /// Each write is one statement, which SQLite runs atomically: the terms are inserted once; a first trail is inserted once; a later trail replaces the stored one only while it is still the one [TradeTrailRecord.whyNotReplace] was asked about, every column compared in the statement's `WHERE`, so a write that lost a race to another writes nothing.
 /// The triggers of `trade_trails.drift` refuse, whatever the code, any update or delete of the terms, a second insert of either, terms or a trail of no open trade or of another trade, any delete of a trail, and any update of a trail that goes back (its trade, version, read, breach, history, pinned hashes, pre-take, or an end left); an update of the trail of a closed trade is ignored.
-/// This class is the only writer of both tables (`robot_bindings_architecture_test.dart`), and opens no transaction.
+/// This class is the only writer of the three tables (`robot_bindings_architecture_test.dart`), and opens no transaction.
 /// It returns no row of the database: the records only, and a [P2pStorageFailure] for any [Exception] the database or the directory the shell gave throws; an [Error] is a bug (AGENTS.md, rule 11) and is not caught.
 final class TradeTrailRepositoryImpl implements TradeTrailRepository {
   /// The terms of one trade, written once: a second insert writes nothing (the trigger `trade_terms_inserted_once`), so the row comes back only when this call wrote it.
@@ -29,13 +29,33 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING robot_index';
 
+  /// The terms of one make, written once: a second insert writes nothing (the trigger `maker_terms_inserted_once`), so the row comes back only when this call wrote it (schema 8).
+  static const String _recordMakerTermsSql =
+      'INSERT INTO maker_terms (key_fingerprint, robot_index, version, '
+      'network, coordinator_alias, role, order_type, currency_id, amount, '
+      'min_amount, max_amount, premium_percent, payment_method, '
+      'bond_size_percent, public_seconds, escrow_seconds, description, '
+      'has_password, latitude, longitude, created_price, maker_fee) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+      'RETURNING robot_index';
+
+  /// The terms of one make.
+  static const String _makerTermsSql =
+      'SELECT version, network, coordinator_alias, role, order_type, '
+      'currency_id, amount, min_amount, max_amount, premium_percent, '
+      'payment_method, bond_size_percent, public_seconds, escrow_seconds, '
+      'description, has_password, latitude, longitude, created_price, '
+      'maker_fee FROM maker_terms WHERE key_fingerprint = ? AND robot_index = ?';
+
   /// The first trail of one trade: a second insert writes nothing (the trigger `trade_trails_inserted_once`), so the row comes back only when this call wrote it.
   static const String _insertTrailSql =
       'INSERT INTO trade_trails (key_fingerprint, robot_index, version, '
       'network, coordinator_alias, order_id, role, position, read_at, '
       'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
-      'bond_step_deadline, breached, history_unknown) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+      'bond_step_deadline, breached, history_unknown, take, take_deadline, '
+      'taker_hash_id, taken_amount) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING robot_index';
 
@@ -45,12 +65,15 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
   static const String _replaceTrailSql =
       'UPDATE trade_trails SET version = ?, position = ?, read_at = ?, '
       'bond_hash = ?, escrow_hash = ?, deadline = ?, bond_step_seen_at = ?, '
-      'bond_step_deadline = ?, breached = ?, history_unknown = ? '
+      'bond_step_deadline = ?, breached = ?, history_unknown = ?, take = ?, '
+      'take_deadline = ?, taker_hash_id = ?, taken_amount = ? '
       'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
       'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
       'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
       'AND escrow_hash IS ? AND deadline IS ? AND bond_step_seen_at IS ? '
       'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
+      'AND take IS ? AND take_deadline IS ? AND taker_hash_id IS ? '
+      'AND taken_amount IS ? '
       'RETURNING robot_index';
 
   /// The columns of the terms and of the trail, each named after its table.
@@ -86,7 +109,11 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'trade_trails.bond_step_seen_at AS trail_bond_step_seen_at, '
       'trade_trails.bond_step_deadline AS trail_bond_step_deadline, '
       'trade_trails.breached AS trail_breached, '
-      'trade_trails.history_unknown AS trail_history_unknown';
+      'trade_trails.history_unknown AS trail_history_unknown, '
+      'trade_trails.take AS trail_take, '
+      'trade_trails.take_deadline AS trail_take_deadline, '
+      'trade_trails.taker_hash_id AS trail_taker_hash_id, '
+      'trade_trails.taken_amount AS trail_taken_amount';
 
   /// The terms and the trail of one robot's trade, in one statement that always gives one row: the columns of each absent when there is none.
   static const String _historySql =
@@ -145,6 +172,73 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
     return written.isEmpty
         ? const Err(TradeAlreadyRecordedFailure())
         : const Ok(null);
+  }
+
+  @override
+  Future<Result<void, P2pFailure>> recordMakerTerms(
+    PendingMake make,
+    MakerTermsRecord terms,
+  ) async {
+    final List<QueryRow> written;
+    try {
+      written = await _database.customWriteReturning(
+        _recordMakerTermsSql,
+        variables: [
+          ..._robotVariables(make.robot),
+          Variable.withInt(terms.version),
+          Variable.withString(terms.network),
+          Variable.withString(terms.coordinatorAlias),
+          Variable.withString(terms.role),
+          Variable.withInt(terms.type),
+          Variable.withInt(terms.currencyId),
+          Variable<double>(terms.amount),
+          Variable<double>(terms.minAmount),
+          Variable<double>(terms.maxAmount),
+          Variable.withReal(terms.premiumPercent),
+          Variable.withString(terms.paymentMethod),
+          Variable.withReal(terms.bondSizePercent),
+          Variable.withInt(terms.publicSeconds),
+          Variable.withInt(terms.escrowSeconds),
+          Variable<String>(terms.description),
+          Variable.withBool(terms.hasPassword),
+          Variable<double>(terms.latitude),
+          Variable<double>(terms.longitude),
+          Variable.withReal(terms.createdPrice),
+          Variable.withReal(terms.makerFee),
+        ],
+        updates: {_database.storedMakerTerms},
+        updateKind: UpdateKind.insert,
+      );
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    // Written by this call, or already there: the terms are set once.
+    return written.isEmpty
+        ? const Err(TradeAlreadyRecordedFailure())
+        : const Ok(null);
+  }
+
+  @override
+  Future<Result<MakerTermsRecord?, P2pFailure>> makerTermsOf(
+    RobotSlot robot,
+  ) async {
+    final List<QueryRow> rows;
+    try {
+      rows = await _database
+          .customSelect(
+            _makerTermsSql,
+            variables: _robotVariables(robot),
+            readsFrom: {_database.storedMakerTerms},
+          )
+          .get();
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    if (rows.isEmpty) return const Ok(null);
+    return switch (_makerTermsFrom(rows.single.data)) {
+      final terms? => Ok(terms),
+      null => const Err(P2pStorageFailure()),
+    };
   }
 
   @override
@@ -298,6 +392,10 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
     Variable<int>(trail.bondStepDeadlineMicros),
     Variable.withBool(trail.breached),
     Variable.withBool(trail.historyUnknown),
+    Variable.withInt(trail.take),
+    Variable<int>(trail.takeDeadlineMicros),
+    Variable<String>(trail.takerHashId),
+    Variable<double>(trail.takenAmount),
   ];
 
   /// What the columns of [data] hold of a trade's terms and trail, named `terms_` and `trail_` then their column.
@@ -390,6 +488,10 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
           column('bond_step_deadline'),
           _boolFrom(column('breached')),
           _boolFrom(column('history_unknown')),
+          column('take'),
+          column('take_deadline'),
+          column('taker_hash_id'),
+          column('taken_amount'),
         )
         case (
           final int version,
@@ -406,6 +508,10 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
           final int? bondStepDeadline,
           final bool breached,
           final bool historyUnknown,
+          final int take,
+          final int? takeDeadline,
+          final String? takerHashId,
+          final double? takenAmount,
         )) {
       return TradeTrailRecord(
         version: version,
@@ -422,6 +528,82 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
         bondStepDeadlineMicros: bondStepDeadline,
         breached: breached,
         historyUnknown: historyUnknown,
+        take: take,
+        takeDeadlineMicros: takeDeadline,
+        takerHashId: takerHashId,
+        takenAmount: takenAmount,
+      );
+    }
+    return null;
+  }
+
+  /// The maker's terms the columns of [data] hold, or `null` for values of another type than this code writes.
+  static MakerTermsRecord? _makerTermsFrom(Map<String, Object?> data) {
+    if ((
+          data['version'],
+          data['network'],
+          data['coordinator_alias'],
+          data['role'],
+          data['order_type'],
+          data['currency_id'],
+          data['amount'],
+          data['min_amount'],
+          data['max_amount'],
+          data['premium_percent'],
+          data['payment_method'],
+          data['bond_size_percent'],
+          data['public_seconds'],
+          data['escrow_seconds'],
+          data['description'],
+          _boolFrom(data['has_password']),
+          data['latitude'],
+          data['longitude'],
+          data['created_price'],
+          data['maker_fee'],
+        )
+        case (
+          final int version,
+          final String network,
+          final String alias,
+          final String role,
+          final int type,
+          final int currencyId,
+          final double? amount,
+          final double? minAmount,
+          final double? maxAmount,
+          final double premium,
+          final String paymentMethod,
+          final double bondSize,
+          final int publicSeconds,
+          final int escrowSeconds,
+          final String? description,
+          final bool hasPassword,
+          final double? latitude,
+          final double? longitude,
+          final double createdPrice,
+          final double makerFee,
+        )) {
+      return MakerTermsRecord(
+        version: version,
+        network: network,
+        coordinatorAlias: alias,
+        role: role,
+        type: type,
+        currencyId: currencyId,
+        amount: amount,
+        minAmount: minAmount,
+        maxAmount: maxAmount,
+        premiumPercent: premium,
+        paymentMethod: paymentMethod,
+        bondSizePercent: bondSize,
+        publicSeconds: publicSeconds,
+        escrowSeconds: escrowSeconds,
+        description: description,
+        hasPassword: hasPassword,
+        latitude: latitude,
+        longitude: longitude,
+        createdPrice: createdPrice,
+        makerFee: makerFee,
       );
     }
     return null;

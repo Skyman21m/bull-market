@@ -10,7 +10,7 @@ import '../trade_record.dart';
 /// The trades of this device's robots, kept so that a trade survives the app being killed, and the binding that reserves a fresh robot for a new trade (design note `docs/design/phase-2-taking-an-order.md` § 3.3, § 3.5, § 4.5).
 ///
 /// A robot has at most one trade record, ever, and only a robot bound to a coordinator, on the trade's network, has one: the database refuses anything else.
-/// A record is never deleted; a pending take is confirmed or closed, a taken trade is closed, a closed record never changes: the database's triggers refuse anything else.
+/// A record is never deleted; a pending take is confirmed or closed, a pending make is confirmed with its order id or closed, a taken or made trade is closed, a closed record never changes: the database's triggers refuse anything else.
 /// Every write is synced to disk before its future completes, as the bindings are.
 /// It holds no secret: networks, key fingerprints, robot indexes, coordinators, order ids, sides, origins and times.
 ///
@@ -51,6 +51,39 @@ abstract interface class TradeRecordRepository {
     required TradeRole role,
   });
 
+  /// Records the pending make of an order of side [role] by the robot of [reservation] on its coordinator, of origin `madeHere`, with no order id: written before the make's request leaves, so that a lost answer is recoverable (schema 8, #176; design note `docs/design/phase-3-making-an-order.md` § 3.4).
+  ///
+  /// It is the only write of a trade made here, and only the make use case is to call it (#179), with the reservation the robot layer has just given; no file calls it yet.
+  /// It writes under the very conditions of [recordPendingTake], in one statement, and refuses as it does: a robot that already has a record is a [TradeAlreadyRecordedFailure], a key pasted in since the reservation a [GarageKeyNotForTradesFailure], a binding that no longer names that coordinator the failure of `RobotBinding.admits`, any other refusal a [RobotNotForNewTradeFailure].
+  @useResult
+  Future<Result<PendingMake, P2pFailure>> recordPendingMake(
+    TradeReservation reservation, {
+    required TradeRole role,
+  });
+
+  /// Confirms [make] with the id of its order, [orderId]: a read of that order showed its robot as the maker.
+  ///
+  /// The order id and the confirmation are written together, once; the database refuses them unless the make's terms are recorded (`TradeTrailRepository.recordMakerTerms`) and no other open trade of the coordinator holds the order ([P2pStorageFailure], nothing written).
+  /// A make already confirmed with [orderId] and still open is returned as it is; one closed is a [TradeClosedFailure]; one confirmed with another order, or a make the database does not hold as given, a [P2pStorageFailure].
+  @useResult
+  Future<Result<TradeRecord, P2pFailure>> confirmMake(
+    PendingMake make, {
+    required int orderId,
+  });
+
+  /// Closes [make]: its make turned out not to have happened, and it never will be confirmed.
+  ///
+  /// A make already closed stays as it is, with its first time of closing; one confirmed meanwhile is not closed by this call, which gives a [P2pStorageFailure] (its trade is closed as any other, with [closeTrade]).
+  @useResult
+  Future<Result<PendingMake, P2pFailure>> closePendingMake(PendingMake make);
+
+  /// The pending makes of [network], oldest first: a new list after each write of the records, never a confirmed or closed one.
+  ///
+  /// A database that cannot be read, or a row this code never writes, gives a [P2pStorageFailure] in place of the list.
+  Stream<Result<List<PendingMake>, P2pFailure>> watchPendingMakes(
+    RobosatsNetwork network,
+  );
+
   /// Records the trade of order [orderId] on [coordinator] that [robot] holds, as [role], of origin `recovered`, confirmed at once: only on the user's explicit take-over of a trade that recovery found.
   ///
   /// It writes only when [robot] has no trade record and is bound to [coordinator] on the robot's network, whatever the provenance of its binding: a robot of a pasted key may finish the order it holds.
@@ -76,7 +109,7 @@ abstract interface class TradeRecordRepository {
   @useResult
   Future<Result<TradeRecord, P2pFailure>> closeTrade(TradeRecord record);
 
-  /// The active trades of [network], pending takes included, oldest first: a new list after each write of the records, never a closed trade.
+  /// The active trades of [network], pending takes included, oldest first: a new list after each write of the records, never a closed trade nor a pending make, which has no order yet ([watchPendingMakes]).
   ///
   /// A database that cannot be read, or a row this code never writes, gives a [P2pStorageFailure] in place of the list.
   Stream<Result<List<TradeRecord>, P2pFailure>> watchActiveTrades(

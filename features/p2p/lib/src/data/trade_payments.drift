@@ -1,4 +1,4 @@
--- The rules of the payments of a trade's invoices that the database keeps itself (schema 5, #100): see `StoredTradePayments` in `p2p_tables.dart`.
+-- The rules of the payments of a trade's invoices that the database keeps itself (schema 5, #100; the contract and the hash paid once, schema 8, #176): see `StoredTradePayments` in `p2p_tables.dart`.
 import 'p2p_tables.dart';
 
 -- A payment is never deleted: it is how a restart finds a payment that may have moved funds.
@@ -7,27 +7,37 @@ BEGIN
   SELECT RAISE(ABORT, 'the payment of a trade is kept');
 END;
 
--- A payment is written once per trade and step, then only updated: a second insert, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
+-- A payment is written once per trade, step and contract (schema 8), then only updated: a second insert, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
 CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments
-WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step)
+WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take)
 BEGIN
   SELECT RAISE(IGNORE);
 END;
 
 -- A payment belongs to an open trade whose trail is recorded: a closed trade, or one never read, is paid from nowhere.
+-- Since schema 8, at the contract the trail is at, and a contract after the first only for a trade made here.
 CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments
-WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL)
+WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trade_trails.take = NEW.take AND (NEW.take = 0 OR trades.origin = 'madeHere'))
 BEGIN
   SELECT RAISE(ABORT, 'a payment of no open trade');
 END;
 
--- A payment only moves forward: its trade, its step and its payment hash never change, and its start never goes back.
+-- A payment only moves forward: its trade, its step, its contract (schema 8) and its payment hash never change, and its start never goes back.
 CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments
 WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint
   OR NEW.robot_index IS NOT OLD.robot_index
   OR NEW.step IS NOT OLD.step
   OR NEW.payment_hash IS NOT OLD.payment_hash
   OR NEW.started_at < OLD.started_at
+  OR NEW.take IS NOT OLD.take
 BEGIN
   SELECT RAISE(ABORT, 'a payment only moves forward');
+END;
+
+-- An invoice is paid once (schema 8): a payment hash that another payment holds, of any trade, step or contract, is refused, after any restart and whatever a coordinator serves again.
+-- A trigger rather than a unique index, so that the step from schema 7 never fails on a file that holds one hash twice: it keeps them, and only a new one is refused.
+CREATE TRIGGER IF NOT EXISTS trade_payments_hash_once BEFORE INSERT ON trade_payments
+WHEN EXISTS (SELECT 1 FROM trade_payments WHERE payment_hash = NEW.payment_hash AND NOT (key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take))
+BEGIN
+  SELECT RAISE(ABORT, 'an invoice is paid once');
 END;

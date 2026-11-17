@@ -587,7 +587,8 @@ void main() {
         "INSERT OR REPLACE INTO trade_trails SELECT key_fingerprint, robot_index, "
         "version, network, coordinator_alias, order_id, role, 'bondStep', "
         'read_at + 1, bond_hash, escrow_hash, deadline, bond_step_seen_at, '
-        'bond_step_deadline, breached, history_unknown FROM trade_trails',
+        'bond_step_deadline, breached, history_unknown, take, take_deadline, '
+        'taker_hash_id, taken_amount FROM trade_trails',
       );
       expect(await row('trade_trails'), before);
     });
@@ -686,7 +687,7 @@ void main() {
         await expectLater(
           database.customStatement(
             "INSERT INTO trade_trails VALUES (?, 0, 1, 'testnet', 'temple', 7, "
-            "'buyer', $values)",
+            "'buyer', $values, 0, NULL, NULL, NULL)",
             [trade.robot.keyFingerprint.hex],
           ),
           refusedBy(check),
@@ -701,7 +702,7 @@ void main() {
       await expectLater(
         database.customStatement(
           "INSERT INTO trade_trails VALUES (?, 0, 1, 'testnet', 'temple', 8, "
-          "'buyer', 'start', 0, NULL, NULL, NULL, NULL, NULL, 0, 0)",
+          "'buyer', 'start', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, NULL, NULL)",
           [trade.robot.keyFingerprint.hex],
         ),
         refusedBy(trigger),
