@@ -1166,7 +1166,10 @@ sealed class TradeStatus {
       case RangeOrderAmount():
         final taken = order.takenAmount;
         if (taken == null) {
-          return _Contract(take: trail.take, refusal: const TradeTermsChanged());
+          return _Contract(
+            take: trail.take,
+            refusal: const TradeTermsChanged(),
+          );
         }
         amount = taken.value;
     }
@@ -1231,7 +1234,8 @@ sealed class TradeStatus {
       warnings.add(const TradeTermsChanged());
     }
     // The maker bond, made at the maker's first read seconds after the make, at the coordinator's price then (`api/logics.py:1266-1268`).
-    if (order.bondInvoice case final bond? when to == TradePosition.makerBondStep) {
+    if (order.bondInvoice case final bond?
+        when to == TradePosition.makerBondStep) {
       if (!maker.bondAgrees(bond.satoshis)) {
         warnings.add(const BondAmountOutsideOrder());
       }
@@ -1386,21 +1390,33 @@ sealed class TradeStatus {
       _ => null,
     };
 
-    TradeTrail nextTrail({StepInvoice? bond, StepInvoice? escrow}) =>
-        trail._next(
-          position: to,
-          readAt: now,
-          bondHash: hashOf(bond),
-          escrowHash: hashOf(escrow),
-          deadline: deadline,
-          // The invoice's own checks count too: a changed payment hash, or an escrow not of this contract, is a breach.
-          breached: breached || _breaches(warningsWith(bond ?? escrow)),
-          contract: contract,
-        );
+    TradeTrail nextTrail({
+      StepInvoice? bond,
+      StepInvoice? escrow,
+    }) => trail._next(
+      position: to,
+      readAt: now,
+      bondHash: hashOf(bond),
+      escrowHash: hashOf(escrow),
+      deadline: deadline,
+      // The invoice's own checks count too: a changed payment hash, or an escrow not of this contract, is a breach.
+      breached: breached || _breaches(warningsWith(bond ?? escrow)),
+      contract: contract,
+    );
 
     StepInvoice? escrowForSeller() => role == TradeRole.seller
         ? invoiceOf(order.escrowInvoice, InvoiceStep.escrow)
         : null;
+
+    // The contract's sats are the order's `last_satoshis` (`satoshis_now`, `api/views.py:324`), bounded by `package:robosats`; its amount, the fixed one or the range's amount kept with the contract.
+    final kept = contract?.amount ?? trail.takenAmount;
+    final rateGap = switch (order.satoshisNow) {
+      final last? => maker.rateGap(
+        rangeAmount: kept == null ? null : FiatAmount.tryCreate(kept),
+        tradeSatoshis: last,
+      ),
+      null => null,
+    };
 
     switch (to) {
       case TradePosition.makerBondStep:
@@ -1439,6 +1455,7 @@ sealed class TradeStatus {
           deadline: deadline,
           currency: terms.currency,
           escrowDuration: terms.escrowDuration,
+          rateGap: rateGap,
         );
       case TradePosition.waitingForEscrow:
         final escrow = escrowForSeller();
@@ -1452,6 +1469,7 @@ sealed class TradeStatus {
           deadline: deadline,
           currency: terms.currency,
           escrowDuration: terms.escrowDuration,
+          rateGap: rateGap,
         );
       case TradePosition.waitingForPayout:
         return WaitingForPayout._(
@@ -1462,6 +1480,7 @@ sealed class TradeStatus {
           payoutAmount: order.payoutInvoiceAmount,
           tradeSatoshis: order.tradeSatoshis,
           deadline: deadline,
+          rateGap: rateGap,
         );
       case TradePosition.chatting || TradePosition.fiatSent:
         final next = nextTrail();
@@ -1486,6 +1505,7 @@ sealed class TradeStatus {
           deadline: deadline,
           amount: amount,
           currency: terms.currency,
+          rateGap: rateGap,
         );
       case TradePosition.inDispute:
         return InDispute._(
@@ -1692,6 +1712,9 @@ final class WaitingForBoth extends TradeStatus {
   final RobosatsCurrency currency;
   final Duration escrowDuration;
 
+  /// For a maker, how far the rate the coordinator fixed for the contract is from the rate when the order was made ([MakerTerms.rateGap], computed from the order's `satoshis_now`, bounded by `package:robosats`, and the contract's amount): information said before the steps that commit money, worded by side ([TradeRateGap.effectFor]); `null` for a taker, and when the read gives no figure for it (design note `docs/design/phase-3-making-an-order.md` § 3.3).
+  final TradeRateGap? rateGap;
+
   const WaitingForBoth._(
     super.seenAt,
     super.warnings,
@@ -1703,6 +1726,7 @@ final class WaitingForBoth extends TradeStatus {
     required this.deadline,
     required this.currency,
     required this.escrowDuration,
+    this.rateGap,
   }) : super._();
 
   @override
@@ -1724,6 +1748,7 @@ final class WaitingForBoth extends TradeStatus {
         deadline: deadline,
         currency: currency,
         escrowDuration: escrowDuration,
+        rateGap: rateGap,
       );
 }
 
@@ -1738,6 +1763,9 @@ final class WaitingForEscrow extends TradeStatus {
   final RobosatsCurrency currency;
   final Duration escrowDuration;
 
+  /// As [WaitingForBoth.rateGap].
+  final TradeRateGap? rateGap;
+
   const WaitingForEscrow._(
     super.seenAt,
     super.warnings,
@@ -1748,6 +1776,7 @@ final class WaitingForEscrow extends TradeStatus {
     required this.deadline,
     required this.currency,
     required this.escrowDuration,
+    this.rateGap,
   }) : super._();
 
   @override
@@ -1768,6 +1797,7 @@ final class WaitingForEscrow extends TradeStatus {
         deadline: deadline,
         currency: currency,
         escrowDuration: escrowDuration,
+        rateGap: rateGap,
       );
 }
 
@@ -1778,6 +1808,9 @@ final class WaitingForPayout extends TradeStatus {
   final Sats? tradeSatoshis;
   final DateTime deadline;
 
+  /// As [WaitingForBoth.rateGap].
+  final TradeRateGap? rateGap;
+
   const WaitingForPayout._(
     super.seenAt,
     super.warnings,
@@ -1786,6 +1819,7 @@ final class WaitingForPayout extends TradeStatus {
     required this.payoutAmount,
     required this.tradeSatoshis,
     required this.deadline,
+    this.rateGap,
   }) : super._();
 
   @override
@@ -1801,6 +1835,7 @@ final class WaitingForPayout extends TradeStatus {
         payoutAmount: payoutAmount,
         tradeSatoshis: tradeSatoshis,
         deadline: deadline,
+        rateGap: rateGap,
       );
 }
 
@@ -1823,6 +1858,9 @@ final class Chatting extends TradeStatus {
   final FiatAmount amount;
   final RobosatsCurrency currency;
 
+  /// As [WaitingForBoth.rateGap]: said before « Confirm … sent » of a maker buyer.
+  final TradeRateGap? rateGap;
+
   const Chatting._(
     super.seenAt,
     super.warnings,
@@ -1835,6 +1873,7 @@ final class Chatting extends TradeStatus {
     required this.deadline,
     required this.amount,
     required this.currency,
+    this.rateGap,
   }) : super._();
 
   @override
@@ -1855,6 +1894,7 @@ final class Chatting extends TradeStatus {
         deadline: deadline,
         amount: amount,
         currency: currency,
+        rateGap: rateGap,
       );
 }
 

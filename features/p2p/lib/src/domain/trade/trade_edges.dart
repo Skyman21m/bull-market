@@ -340,11 +340,7 @@ abstract final class TradeEdges {
   /// Whether a trade of a maker of [role] may be at [to] at a read after a read at [from]: the same position, or one reachable through [makerSteps], the order going back to the book and being taken again included.
   ///
   /// From [TradePosition.start], only the single steps listed: the first read of the order after the make is the one that makes its bond.
-  static bool allowsMade(
-    TradeRole role,
-    TradePosition from,
-    TradePosition to,
-  ) {
+  static bool allowsMade(TradeRole role, TradePosition from, TradePosition to) {
     if (from == to) return true;
     if (from == TradePosition.start) {
       return makerSteps[from]?[to]?.contains(role) ?? false;

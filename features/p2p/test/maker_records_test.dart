@@ -1632,7 +1632,7 @@ void main() {
             takeDeadline: deadline + 1,
             takerHashId: takerTwo,
             takenAmount: 80,
-          ).whyNotReplace(stored),
+          ).whyNotReplace(stored, madeHere: true),
           isNot(TrailReplacementRefusal.contractMoved),
           reason: position,
         );
@@ -1645,7 +1645,7 @@ void main() {
           takeDeadline: deadline + 1,
           takerHashId: takerTwo,
           takenAmount: 80,
-        ).whyNotReplace(stored),
+        ).whyNotReplace(stored, madeHere: true),
         isNull,
       );
       // Within a contract, a deadline, taker or amount written for the first time.
@@ -1653,7 +1653,7 @@ void main() {
         trailOf(
           readAt: 2000,
           position: 'waitingForEscrow',
-        ).whyNotReplace(trailOf(position: 'waitingForEscrow')),
+        ).whyNotReplace(trailOf(position: 'waitingForEscrow'), madeHere: true),
         isNull,
       );
       expect(
@@ -1661,7 +1661,7 @@ void main() {
           readAt: 2000,
           position: 'waitingForEscrow',
           takeDeadline: deadline,
-        ).whyNotReplace(trailOf(position: 'waitingForEscrow')),
+        ).whyNotReplace(trailOf(position: 'waitingForEscrow'), madeHere: true),
         isNull,
       );
     });
@@ -1784,7 +1784,7 @@ void main() {
         ),
       ]) {
         expect(
-          trail.whyNotReplace(stored),
+          trail.whyNotReplace(stored, madeHere: true),
           TrailReplacementRefusal.contractMoved,
           reason: label,
         );
@@ -1796,7 +1796,7 @@ void main() {
           position: 'waitingForEscrow',
           take: 1,
           takeDeadline: deadline,
-        ).whyNotReplace(trailOf(position: 'public')),
+        ).whyNotReplace(trailOf(position: 'public'), madeHere: true),
         TrailReplacementRefusal.contractMoved,
       );
       // At the next, a taker or an amount written for the first time.
@@ -1809,6 +1809,7 @@ void main() {
           takerHashId: takerTwo,
         ).whyNotReplace(
           trailOf(position: 'waitingForEscrow', takeDeadline: deadline),
+          madeHere: true,
         ),
         TrailReplacementRefusal.contractMoved,
       );
@@ -1824,6 +1825,18 @@ void main() {
         ).whyNotReplace(before),
         isNull,
       );
+      // A trade not made here never has a contract (#178), as the trigger says.
+      for (final trail in [
+        trailOf(orderId: 7, readAt: 2000, takeDeadline: deadline),
+        trailOf(orderId: 7, readAt: 2000, takerHashId: takerOne),
+        trailOf(orderId: 7, readAt: 2000, takenAmount: 80),
+      ]) {
+        expect(
+          trail.whyNotReplace(before),
+          TrailReplacementRefusal.contractMoved,
+        );
+        expect(trail.whyNotReplace(before, madeHere: true), isNull);
+      }
     });
   });
 }

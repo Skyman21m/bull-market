@@ -1061,7 +1061,7 @@ void main() {
     });
 
     test(
-      'the state machine refuses every answer about a maker\'s trade until #178, and leaves its trail',
+      'the state machine refuses a taker\'s answer, and error 1044, about a maker\'s trade, and leaves its trail (#178 follows the rest)',
       () async {
         final made42 = _some(
           TradeTerms.made(switch (create(
@@ -1076,11 +1076,15 @@ void main() {
         final before = TradeStatus.beforeFirstRead(
           TradeTrail.recovered(made42, tradeNow),
         );
-        for (final answer in <TradeAnswer>[
-          const TradeOrderCancelled(),
-          const TradeOrderNotAvailable(),
-          await readAnswer(orderJson(6, role: TradeRole.buyer)),
-          await readAnswer(orderJson(1)),
+        for (final (answer, Type refusal) in <(TradeAnswer, Type)>[
+          // Error 1044 goes only to a robot that is no participant (`api/views.py:269-275`): never to a maker.
+          (const TradeOrderNotAvailable(), TradeStatusUnexpected),
+          // A taker's answers: this robot is not the maker the terms say.
+          (
+            await readAnswer(orderJson(6, role: TradeRole.buyer)),
+            TradeRoleMismatch,
+          ),
+          (await readAnswer(orderJson(1)), TradeRoleMismatch),
         ]) {
           final after = TradeStatus.from(
             previous: before,
@@ -1090,9 +1094,14 @@ void main() {
             reader: reader,
           );
           expect(after.position, before.position, reason: '$answer');
-          expect(after.trail.record, before.trail.record, reason: '$answer');
-          expect(after.has<TradeRoleMismatch>(), isTrue, reason: '$answer');
-          expect(after.warnings.whereType<TradeRoleMismatch>(), hasLength(1));
+          // The trail is left where it was, the breach recorded.
+          expect(after.trail.position, before.trail.position);
+          expect(after.trail.breached, isTrue);
+          expect(
+            after.warnings.where((w) => w.runtimeType == refusal),
+            hasLength(1),
+            reason: '$answer',
+          );
           expect(after.invoice, isNull);
           // Refused again: the warning is not added twice.
           final again = TradeStatus.from(
@@ -1102,7 +1111,10 @@ void main() {
             now: tradeNow,
             reader: reader,
           );
-          expect(again.warnings.whereType<TradeRoleMismatch>(), hasLength(1));
+          expect(
+            again.warnings.where((w) => w.runtimeType == refusal),
+            hasLength(1),
+          );
         }
       },
     );
