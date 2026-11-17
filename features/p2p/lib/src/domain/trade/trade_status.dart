@@ -1020,10 +1020,19 @@ sealed class TradeStatus {
           reason,
       ], trail._breach(now));
     }
+    // Within one contract the steps only move forward, as a taker's (6 to 7 or 8): the way back to 6, or from 7 to 8, goes through the book, and so through a next contract.
+    final backWithinContract =
+        contract != null &&
+        !contract.isNext &&
+        from != to &&
+        from != TradePosition.waitingForBoth &&
+        _contractSteps.contains(from) &&
+        _contractSteps.contains(to);
     final readWarnings = <TradeWarning>[
       if (trail.historyUnknown) const TradeHistoryUnknown(),
       if (trail.breached) const CoordinatorInconsistent(),
-      if (!_allowsMade(terms.role, trail, to)) const TradeStatusUnexpected(),
+      if (!_allowsMade(terms.role, trail, to) || backWithinContract)
+        const TradeStatusUnexpected(),
     ];
     switch (answer) {
       case TradeOrderRead(:final order):
@@ -1145,7 +1154,7 @@ sealed class TradeStatus {
 
   /// What a maker's read of [order] at [to] says of its contract against the one [trail] keeps (design note `docs/design/phase-3-making-an-order.md` § 3.2), or `null` for a read that names none: 0, 1, 2, and 5, which may name a contract the trail never saw (one that expired at 6, 7 or 8 after a return to the book) and says nothing of the current one.
   ///
-  /// At 6, 7 or 8, against the kept contract's deadline: none kept yet, this read opens one (its deadline, taker and amount kept, `take` unchanged); the same deadline and the same taker, the same contract; a later deadline, the next contract (`take` + 1, its deadline, taker and amount), whatever the positions read before, the taker possibly the same robot (a taker whose bond was settled may take again, `api/logics.py:471-483`), but only from the positions a next contract is read from, the chat never going back to the book; the same or an earlier deadline with another taker, [TradeTakerChanged]; an earlier one with the same taker, the same contract, its deadline moved back ([DeadlineMovedBack]); after a return to the book, a deadline that is not later, refused ([TradeStatusUnexpected]): the book never gives back a contract it ended.
+  /// At 6, 7 or 8, against the kept contract's deadline: none kept yet, this read opens one (its deadline, taker and amount kept, `take` unchanged); the same deadline and the same taker, the same contract; a later deadline, the next contract (`take` + 1, its deadline, taker and amount), whatever the positions read before, the taker possibly the same robot (a taker whose bond was settled may take again, `api/logics.py:471-483`), but only from the positions a next contract is read from and from which the order can go back to the book (not the chat, nor a maker buyer's 8, `api/logics.py:423-443`); the same or an earlier deadline with another taker, [TradeTakerChanged]; an earlier one with the same taker, the same contract, its deadline moved back ([DeadlineMovedBack]); after a return to the book, a deadline that is not later, refused ([TradeStatusUnexpected]): the book never gives back a contract it ended.
   /// From 9 on: the kept taker, or [TradeTakerChanged]; with none kept (the maker's step done elsewhere, with the Garage Key), this read's taker and amount kept, and no deadline.
   /// A range's order that names no amount taken at 6 or later is refused ([TradeTermsChanged]): the reference always gives it (`api/logics.py:1329-1330`), and the contract cannot be told without it.
   static _Contract? _contractOf(
@@ -1188,8 +1197,14 @@ sealed class TradeStatus {
     }
     final deadline = order.expiresAt;
     if (deadline.isAfter(kept)) {
-      if (!_beforeNextContract.contains(trail.position)) {
-        // From the chat on, no contract comes back to a step: the edge says it ([TradeStatusUnexpected]), and nothing of the contract is written.
+      // A next contract follows a return to the book: from where the order can go back to it (not a maker buyer's 8, nor the chat).
+      if (!_beforeNextContract.contains(trail.position) ||
+          !TradeEdges.allowsMade(
+            maker.role,
+            trail.position,
+            TradePosition.public,
+          )) {
+        // The edge says it ([TradeStatusUnexpected]), and nothing of the contract is written.
         return _Contract(take: trail.take);
       }
       return _Contract(
