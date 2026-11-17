@@ -313,6 +313,28 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a payment of the maker bond sent: the panel says it, and the line of after the bond\'s step is not added at 0',
+    (tester) async {
+      final (_, payments, _) = await _show(tester);
+      payments.follows.last.add(
+        const BondPaymentFollowed(
+          P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash),
+          P2pWalletPaymentSent(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Payment sent. Waiting for Temple of Sats to see your bond locked.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Your swap is in progress.'), findsNothing);
+    },
+  );
+
   testWidgets('the « Order » tab at 0: the bond\'s countdown, 300 s', (
     tester,
   ) async {

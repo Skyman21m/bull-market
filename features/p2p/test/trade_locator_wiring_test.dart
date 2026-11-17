@@ -23,6 +23,22 @@ void main() {
     }
   });
 
+  test(
+    'the bond\'s cubit is given the comparison with the wallet\'s price, the escrow\'s none (#180)',
+    () {
+      // Without it, the maker bond's confirmation would show no comparison and no warning, and no screen test would see it, since they give the cubit their own.
+      final bond = RegExp(
+        r'registerFactoryParam<BondPaymentCubit, TradeRecord, void>\(([\s\S]*?)\}\);',
+      ).firstMatch(locator);
+      final escrow = RegExp(
+        r'registerFactoryParam<EscrowPaymentCubit, TradeRecord, void>\(([\s\S]*?)\}\);',
+      ).firstMatch(locator);
+      expect(bond?.group(1), contains('rate: payments.rateOfBond,'));
+      expect(escrow?.group(1), isNotNull);
+      expect(escrow?.group(1), isNot(contains('rate:')));
+    },
+  );
+
   test('the cancel is wired to the cancel use case', () {
     expect(
       RegExp(r'locator<CancelTradeUsecase>\(\)\.execute').hasMatch(locator),
