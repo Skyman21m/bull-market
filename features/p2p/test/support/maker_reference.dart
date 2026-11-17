@@ -11,11 +11,14 @@ import 'trade_orders.dart';
 
 /// One order made here, as the reference coordinator lives it (`api/logics.py`, `api/views.py`, `follow_invoices.py`, `clean_orders.py`, commit ff1998c), moved by random events of the coordinator, the takers and the maker, and read by this app now and then (design note `docs/design/phase-3-making-an-order.md` § 1.1 to § 1.10).
 ///
-/// The maker acts only on what this app showed it: it locks its bond after a read at 0, its escrow after a read of the current contract at 6 or 7, gives its payout after a read of the current contract at 6 or 8, cancels alone after a read at 6 or 7, says « fiat sent » or « received » after a read in the chat. Everything else (takes, the takers' steps, cancels and timeouts, returns to the book, expiries, disputes) happens whether the app reads or not, so that the reads have the gaps of an app left closed.
+/// With [secondClient], the maker also acts from another client with the same Garage Key (the official app, as the owner's trials do), so its own steps happen whether this app read them or not, and each take is by a robot that never took the order before (a take by the very same robot, read from 6, 7 or 8 at 9 or later, is not told from the same contract: a known limit, tested apart).
+///
+/// Otherwise the maker acts only on what this app showed it: it locks its bond after a read at 0, its escrow after a read of the current contract at 6 or 7, gives its payout after a read of the current contract at 6 or 8, cancels alone after a read at 6 or 7, says « fiat sent » or « received » after a read in the chat. Everything else (takes, the takers' steps, cancels and timeouts, returns to the book, expiries, disputes) happens whether the app reads or not, so that the reads have the gaps of an app left closed.
 final class MakerReference {
   final TradeRole role;
   final bool range;
   final Random random;
+  final bool secondClient;
 
   /// What the reference's order is at: its status (1043 for a cancel), the number of takes so far, the current contract's taker, amount, sats and deadline, and whether a taker is still named at 5.
   int status = 0;
@@ -31,14 +34,24 @@ final class MakerReference {
   int? seenStatus;
   int? seenTake;
 
-  MakerReference(this.role, {required this.range, required this.random});
+  MakerReference(
+    this.role, {
+    required this.range,
+    required this.random,
+    this.secondClient = false,
+  });
+
+  static final Map<int, RobotIdentity> _freshRobots = {};
+
+  static RobotIdentity _fresh(int take) =>
+      _freshRobots.putIfAbsent(take, () => robotOfTests(10 + take));
 
   bool get ended => const [5, 14, 17, 18, 1043].contains(status);
 
   bool get _makerBuys => role == TradeRole.buyer;
 
   bool _seenAt(List<int> statuses) =>
-      seenTake == takes && statuses.contains(seenStatus);
+      secondClient || (seenTake == takes && statuses.contains(seenStatus));
 
   static final _takers = [peer, third, robotOfTests(3)];
 
@@ -59,7 +72,10 @@ final class MakerReference {
         weighted(weight, () => status = next);
     void take() => weighted(8, () {
       takes++;
-      taker = _takers[random.nextInt(_takers.length)];
+      // With a second client, a robot that never took this order before.
+      taker = secondClient
+          ? _fresh(takes)
+          : _takers[random.nextInt(_takers.length)];
       taken = range ? 50.0 + random.nextInt(151) : 120;
       last = 40000 + random.nextInt(200000);
       escrowLocked = false;
@@ -79,7 +95,7 @@ final class MakerReference {
     });
     switch (status) {
       case 0:
-        if (seenStatus == 0) to(1);
+        if (seenStatus == 0 || secondClient) to(1);
         to(5, 1);
         to(1043, 1);
       case 1:

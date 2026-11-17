@@ -504,7 +504,7 @@ void main() {
                             step.$2 == to.name &&
                             step.$3.contains(role),
                       )
-                    : reachable[from]!.contains(to));
+                    : (reachable[from] ?? const {}).contains(to));
             expect(
               TradeEdges.allowsMade(role, from, to),
               expected,
@@ -583,17 +583,18 @@ void main() {
             final nextContract =
                 (row == _Row.publicBack || row == _Row.pausedBack) &&
                 answerKind.isStep;
-            final TradeAnswer answer = switch (answerKind) {
-              _Answer.cancelled => const TradeOrderCancelled(),
-              _Answer.notAvailable => const TradeOrderNotAvailable(),
-              _ => await made(
-                answerKind.wire!,
-                role: role,
-                taker: nextContract ? third : null,
-                deadline: nextContract ? deadline1 : null,
-                take: nextContract ? 1 : 0,
-              ),
-            };
+            final wire = answerKind.wire;
+            final TradeAnswer answer = wire == null
+                ? (answerKind == _Answer.cancelled
+                      ? const TradeOrderCancelled()
+                      : const TradeOrderNotAvailable())
+                : await made(
+                    wire,
+                    role: role,
+                    taker: nextContract ? third : null,
+                    deadline: nextContract ? deadline1 : null,
+                    take: nextContract ? 1 : 0,
+                  );
             final after = from == null
                 ? first(answer, terms: terms)
                 : next(from, answer, terms: terms);
@@ -610,11 +611,16 @@ void main() {
                   fromPosition != TradePosition.waitingForBoth,
               nextContractUnreachable:
                   nextContract &&
-                  !_closure(
-                    role,
-                  )[fromPosition]!.contains(TradePosition.public) &&
+                  !(_closure(role)[fromPosition] ?? const {}).contains(
+                    TradePosition.public,
+                  ) &&
                   fromPosition != TradePosition.public &&
                   fromPosition != TradePosition.paused,
+              // After a return to the book, a read from 9 on is a contract the app did not see at its steps (the maker's step done from another client).
+              seenLate:
+                  (row == _Row.publicBack || row == _Row.pausedBack) &&
+                  (answerKind.wire ?? 0) >= 9 &&
+                  answerKind != _Answer.w12,
             );
             final label =
                 '$role $row ${answerKind.name}: $expected, got $after';
@@ -623,6 +629,13 @@ void main() {
               case _Outcome.passes:
                 expect(after.position, answerKind.position, reason: label);
                 expect(after.warnings, isEmpty, reason: label);
+                expect(after.trail.breached, isFalse, reason: label);
+              case _Outcome.seenLate:
+                expect(after.position, answerKind.position, reason: label);
+                expect(after.warnings, [
+                  isA<ContractSeenLate>(),
+                ], reason: label);
+                expect(after.trail.take, 1, reason: label);
                 expect(after.trail.breached, isFalse, reason: label);
               case _Outcome.warns:
                 expect(after.position, answerKind.position, reason: label);
@@ -740,6 +753,7 @@ enum _Answer {
 
 enum _Outcome {
   passes,
+  seenLate,
   warns,
   refusedUnexpected,
   refusedRegressed,
@@ -747,13 +761,18 @@ enum _Outcome {
   refreshed,
 }
 
-/// The outcome of [answer] read at [from] by a maker of [role], from the table written out below, apart from the state machine: an end is never left (but refreshed by an order of its status); error 1044 is refused (a maker is always a participant); 4 and 12 in an order are refused as never shown; the maker bond step after it is refused; an edge of the table passes; one that is not, to an end, is refused, and to a status that goes on, warned. Within a contract, a step back ([contractStepBack]) is warned; a next contract read where the order cannot have gone back to the book ([nextContractUnreachable]) too.
+/// The outcome of [answer] read at [from] by a maker of [role], from the table written out below, apart from the state machine.
+///
+/// Said plainly (functional review of #178): this is a second writing of the same rules, from the same reading of the reference (the list of steps below, and the contract rules again as [contractStepBack], [nextContractUnreachable] and [seenLate]); it shows that the code follows that writing at every pair, not that the rules are the reference's. That was checked by the review's own table, made from the reference alone, which agrees with [TradeEdges.makerSteps] step by step.
+///
+/// The rules: an end is never left (but refreshed by an order of its status); error 1044 is refused (a maker is always a participant); 4 and 12 in an order are refused as never shown; the maker bond step after it is refused; an edge of the table passes; one that is not, to an end, is refused, and to a status that goes on, warned. Within a contract, a step back ([contractStepBack]) is warned; a next contract read where the order cannot have gone back to the book ([nextContractUnreachable]) too.
 _Outcome _expected(
   TradeRole role,
   TradePosition from,
   _Answer answer, {
   required bool contractStepBack,
   required bool nextContractUnreachable,
+  required bool seenLate,
 }) {
   final to = answer.position;
   if (_terminal.contains(from)) {
@@ -777,11 +796,12 @@ _Outcome _expected(
                   step.$2 == to.name &&
                   step.$3.contains(role),
             )
-          : _closure(role)[from]!.contains(to));
+          : (_closure(role)[from] ?? const {}).contains(to));
   if (!allowed) {
     return _terminal.contains(to) ? _Outcome.refusedUnexpected : _Outcome.warns;
   }
   if (contractStepBack || nextContractUnreachable) return _Outcome.warns;
+  if (seenLate) return _Outcome.seenLate;
   return _Outcome.passes;
 }
 

@@ -1863,7 +1863,7 @@ void main() {
           orderId: 7,
           readAt: 2000,
           position: 'waitingForEscrow',
-        ).whyNotReplace(before),
+        ).whyNotReplace(before, madeHere: false),
         isNull,
       );
       // A trade not made here never has a contract (#178), as the trigger says.
@@ -1873,7 +1873,7 @@ void main() {
         trailOf(orderId: 7, readAt: 2000, takenAmount: 80),
       ]) {
         expect(
-          trail.whyNotReplace(before),
+          trail.whyNotReplace(before, madeHere: false),
           TrailReplacementRefusal.contractMoved,
         );
         expect(trail.whyNotReplace(before, madeHere: true), isNull);

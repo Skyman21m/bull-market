@@ -323,6 +323,9 @@ final class _Contract {
   final String? taker;
   final double? amount;
   final bool isNext;
+
+  /// Whether the next contract is first read from 9 on, its steps gone through while the app did not read.
+  final bool seenLate;
   final bool movedBack;
   final TradeWarning? refusal;
 
@@ -332,6 +335,7 @@ final class _Contract {
     this.taker,
     this.amount,
     this.isNext = false,
+    this.seenLate = false,
     this.movedBack = false,
     this.refusal,
   });
@@ -1033,6 +1037,7 @@ sealed class TradeStatus {
       if (trail.breached) const CoordinatorInconsistent(),
       if (!_allowsMade(terms.role, trail, to) || backWithinContract)
         const TradeStatusUnexpected(),
+      if (contract?.seenLate ?? false) const ContractSeenLate(),
     ];
     switch (answer) {
       case TradeOrderRead(:final order):
@@ -1059,7 +1064,11 @@ sealed class TradeStatus {
             deadline: null,
             breached: _breaches(readWarnings),
           ),
-          bondMayHaveBeenLost: _bondMayHaveBeenLost(trail, terms, now),
+          // For a maker, also from the book: the order may have been taken and this maker have cancelled alone at 6 or 7 from another client with the same Garage Key, its bond then settled (`api/logics.py:1083-1106`).
+          bondMayHaveBeenLost:
+              _bondMayHaveBeenLost(trail, terms, now) ||
+              trail.position == TradePosition.public ||
+              trail.position == TradePosition.paused,
         );
       case TradeOrderNotAvailable():
         // Refused above: a maker is never given error 1044.
@@ -1152,10 +1161,18 @@ sealed class TradeStatus {
     TradePosition.waitingForPayout,
   };
 
+  /// Whether the order of [trail]'s trade can have gone back to the book since its last read, for a maker of [role]: from `public` and `paused` it is there, from 6 and 7 a taker's cancel or default sends it back for both roles, from 8 only a maker seller's (`api/logics.py:404-421`, `:445-458`, `:1108-1130`); never from the chat on, and never before the bond locked. The positions a next contract is read from, as the trigger `trade_trails_forward` lets `take` move from (schema 8).
+  static bool _mayGoBackToBook(TradeTrail trail, TradeRole role) =>
+      _beforeNextContract.contains(trail.position) &&
+      (trail.position == TradePosition.public ||
+          trail.position == TradePosition.paused ||
+          TradeEdges.allowsMade(role, trail.position, TradePosition.public));
+
   /// What a maker's read of [order] at [to] says of its contract against the one [trail] keeps (design note `docs/design/phase-3-making-an-order.md` § 3.2), or `null` for a read that names none: 0, 1, 2, and 5, which may name a contract the trail never saw (one that expired at 6, 7 or 8 after a return to the book) and says nothing of the current one.
   ///
   /// At 6, 7 or 8, against the kept contract's deadline: none kept yet, this read opens one (its deadline, taker and amount kept, `take` unchanged); the same deadline and the same taker, the same contract; a later deadline, the next contract (`take` + 1, its deadline, taker and amount), whatever the positions read before, the taker possibly the same robot (a taker whose bond was settled may take again, `api/logics.py:471-483`), but only from the positions a next contract is read from and from which the order can go back to the book (not the chat, nor a maker buyer's 8, `api/logics.py:423-443`); the same or an earlier deadline with another taker, [TradeTakerChanged]; an earlier one with the same taker, the same contract, its deadline moved back ([DeadlineMovedBack]); after a return to the book, a deadline that is not later, refused ([TradeStatusUnexpected]): the book never gives back a contract it ended.
-  /// From 9 on: the kept taker, or [TradeTakerChanged]; with none kept (the maker's step done elsewhere, with the Garage Key), this read's taker and amount kept, and no deadline.
+  /// From 9 on: a next contract seen late ([ContractSeenLate], information, no breach) when the trail is where the order can have gone back to the book (`public`, `paused`, 6, 7, and a maker seller's 8) and the read names another taker, or any taker from `public` or `paused`: `take` + 1, the taker and amount read, the contract's deadline kept as the last one read (its own is no longer readable); otherwise the kept taker, or [TradeTakerChanged] (another taker when the trail is in the chat, or at a maker buyer's 8); with none kept (the maker's step done elsewhere, with the Garage Key), this read's taker and amount kept, and no deadline. A next contract taken by the very robot of the contract before, read from 6, 7 or 8 at 9 or later, is not told from the same contract.
+  /// The coordinator's clock is taken not to go back: a next contract's deadline is later than the one before only because its take is later (`api/logics.py:1338-1340`); a clock stepped back by more than the time between two takes would make a real next contract look as the same one, or refused.
   /// A range's order that names no amount taken at 6 or later is refused ([TradeTermsChanged]): the reference always gives it (`api/logics.py:1329-1330`), and the contract cannot be told without it.
   static _Contract? _contractOf(
     CoordinatorOrder order,
@@ -1184,6 +1201,23 @@ sealed class TradeStatus {
     }
     final keptTaker = trail.takerHashId;
     final kept = trail.takeDeadline;
+    final backToBook = _mayGoBackToBook(trail, maker.role);
+    // A next contract seen late (#178, after its functional review): from 9 on, a contract that went through its steps while the app did not read, the maker's own step done from another client with the same Garage Key, as the owner's trials do. From a position where the order can go back to the book, another taker is one; from the book itself any is, the book never giving back the contract it ended. Its deadline at the steps is no longer readable: the trail keeps the last one it read, a lower bound of the new one's.
+    if (afterStep &&
+        kept != null &&
+        backToBook &&
+        (keptTaker != taker ||
+            trail.position == TradePosition.public ||
+            trail.position == TradePosition.paused)) {
+      return _Contract(
+        take: trail.take + 1,
+        deadline: kept,
+        taker: taker,
+        amount: amount,
+        isNext: true,
+        seenLate: true,
+      );
+    }
     if (afterStep || kept == null) {
       if (keptTaker != null && keptTaker != taker) {
         return _Contract(take: trail.take, refusal: const TradeTakerChanged());
@@ -1198,12 +1232,7 @@ sealed class TradeStatus {
     final deadline = order.expiresAt;
     if (deadline.isAfter(kept)) {
       // A next contract follows a return to the book: from where the order can go back to it (not a maker buyer's 8, nor the chat).
-      if (!_beforeNextContract.contains(trail.position) ||
-          !TradeEdges.allowsMade(
-            maker.role,
-            trail.position,
-            TradePosition.public,
-          )) {
+      if (!backToBook) {
         // The edge says it ([TradeStatusUnexpected]), and nothing of the contract is written.
         return _Contract(take: trail.take);
       }

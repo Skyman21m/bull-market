@@ -325,17 +325,17 @@ final class TradeTrailRecord {
   ];
 
   /// Whether this record may replace [stored] as the trade's trail: see [whyNotReplace].
-  bool mayReplace(TradeTrailRecord stored, {bool madeHere = false}) =>
+  bool mayReplace(TradeTrailRecord stored, {required bool madeHere}) =>
       whyNotReplace(stored, madeHere: madeHere) == null;
 
-  /// Why this record may not replace [stored] as the trade's trail, or `null` when it may (#87 asks before every write of a trail); [madeHere] says whether the trade is a maker's, which the record does not hold (the trade's origin, `madeHere`): `false` gives a taker's rule, which refuses every move of a maker's that differs.
+  /// Why this record may not replace [stored] as the trade's trail, or `null` when it may (#87 asks before every write of a trail); [madeHere] says whether the trade is a maker's, which the record does not hold (the trade's origin, `madeHere`), required so that no caller applies a taker's rule to a maker's trail by forgetting it.
   ///
   /// The rule, which every trail `TradeStatus.from` writes after [stored] meets, and which a trail of an earlier read never meets:
   /// - the version does not go down, and the trade (order, coordinator, network, role) is the same;
   /// - the read is not earlier than the stored one's;
   /// - a breach of trust stays recorded, and whether the history is known never changes;
   /// - a pinned payment hash (bond, escrow) stays set and the same, but the escrow's in the write that moves a maker's contract to the next, where it is cleared or replaced by another hash, never kept, as the trigger `trade_trails_forward` says (design note `docs/design/phase-3-making-an-order.md` § 3.5);
-  /// - a maker's contract moves only forward, as the same trigger says (schema 8): `take` stays, or moves by one from `public`, `paused`, `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a contract deadline to `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a later one; the contract's deadline, taker and amount taken are written from nothing with `take` unchanged, changed only when it moves, never cleared; a trade not made here never has a contract;
+  /// - a maker's contract moves only forward, as the same trigger says (schema 8, as amended by #178): `take` stays, or moves by one from `public`, `paused`, `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a contract deadline, either to `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a later one, or to a position from the chat on (a next contract seen late) with the same deadline and a taker; the contract's deadline, taker and amount taken are written from nothing with `take` unchanged, changed only when it moves, never cleared; a trade not made here never has a contract;
   /// - the pre-take's last read stays set and does not move back, and its deadline stays set (the coordinator may move it either way);
   /// - the position stays, or moves along the edges of the trade ([TradeEdges.allows] for a taker, [TradeEdges.allowsMade] for a maker), or anywhere from the start of a trade whose history is unknown, or anywhere but out of an end when the new record records a breach (an unexpected edge is a breach the trail remembers); an end is never left.
   TrailReplacementRefusal? whyNotReplace(
@@ -420,6 +420,19 @@ final class TradeTrailRecord {
     'waitingForPayout',
   };
 
+  /// The positions a maker's next contract is first read at when it is seen late, from the chat on (#178): its deadline at the steps is no longer readable.
+  static const _atLateContract = {
+    'chatting',
+    'fiatSent',
+    'inDispute',
+    'sendingSats',
+    'succeeded',
+    'routingFailed',
+    'waitingDisputeResolution',
+    'makerLostDispute',
+    'takerLostDispute',
+  };
+
   /// Whether this record moves the contract of [stored] other than forward: see [whyNotReplace].
   bool _contractMoved(TradeTrailRecord stored) {
     if (take == stored.take) {
@@ -430,12 +443,18 @@ final class TradeTrailRecord {
     }
     final from = stored.takeDeadlineMicros;
     final to = takeDeadlineMicros;
+    final atStep =
+        _atNextContract.contains(position) &&
+        to != null &&
+        from != null &&
+        to > from;
+    final late =
+        _atLateContract.contains(position) && to == from && takerHashId != null;
     return take != stored.take + 1 ||
         from == null ||
         to == null ||
-        to <= from ||
+        !(atStep || late) ||
         !_beforeNextContract.contains(stored.position) ||
-        !_atNextContract.contains(position) ||
         (takerHashId == null) != (stored.takerHashId == null) ||
         (takenAmount == null) != (stored.takenAmount == null);
   }

@@ -174,6 +174,14 @@ final class EscrowNotOfThisContract extends TradeWarning {
   bool get isBreachOfTrust => true;
 }
 
+/// A maker's next contract first read from 9 on: the order went back to the book, was taken again and went through its steps while the app did not read, the maker's own step done from another client with the same Garage Key (design note `docs/design/phase-3-making-an-order.md` § 3.2). Information, not a breach: « the trade moved on from another app », which a screen says so that a maker who did not act elsewhere does not send or confirm anything for it.
+final class ContractSeenLate extends TradeWarning {
+  const ContractSeenLate();
+
+  @override
+  TradeWarningEffect get effect => TradeWarningEffect.shown;
+}
+
 /// The coordinator moved the deadline of the current status earlier than it said before, or for a maker the deadline of its contract at 6, 7 or 8, which the coordinator sets once at the take (`api/logics.py:1338-1340`): shown as it is, since the coordinator decides (design note § 3.2).
 final class DeadlineMovedBack extends TradeWarning {
   const DeadlineMovedBack();

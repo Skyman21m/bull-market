@@ -79,11 +79,12 @@ void main() {
     TradeStatus previous,
     TradeAnswer answer, {
     bool range = false,
+    DateTime? now,
   }) => TradeStatus.from(
     previous: previous,
     answer: answer,
     terms: madeTerms(role: previous.trail.role, range: range),
-    now: tradeNow,
+    now: now ?? tradeNow,
     reader: reader,
   );
 
@@ -273,6 +274,164 @@ void main() {
         );
         expect((chat as Chatting).amount.value, 80);
         expect(chat.warnings, isEmpty);
+      },
+    );
+  });
+
+  group('a next contract seen late: the maker acting from another client too', () {
+    const after = [9, 10, 11, 13, 14, 15, 16, 17, 18];
+
+    test(
+      'from where the order can go back to the book, another taker from 9 on is a next contract, said as information',
+      () async {
+        for (final (role, wires) in [
+          (b, [1, 6, 1]), // the book seen: 0 6 1 14
+          (b, [1, 6, 1, 2]),
+          (b, [1, 6]),
+          (b, [1, 6, 7]),
+          (s, [1, 6, 1]),
+          (s, [1, 6]),
+          (s, [1, 6, 7]),
+          (s, [1, 6, 8]), // a maker seller's 8 goes back to the book
+        ]) {
+          for (final wire in after) {
+            final label = '$role $wires → $wire';
+            final before = await along(role, wires);
+            final read = next(
+              before,
+              await made(wire, role: role, taker: third),
+            );
+            expect(
+              read.position.name,
+              isNot(before.position.name),
+              reason: label,
+            );
+            expect(read.warnings, [isA<ContractSeenLate>()], reason: label);
+            expect(read.trail.breached, isFalse, reason: label);
+            expect(read.trail.take, 1, reason: label);
+            expect(read.trail.takerHashId, third.hashId.hex, reason: label);
+            // Its deadline at the steps is no longer readable: the last one read is kept.
+            expect(read.trail.takeDeadline, deadline0, reason: label);
+            expect(read.trail.escrowHash, isNull, reason: label);
+            storable(read, before);
+            // The contract goes on from there, with its taker: read again, nothing more to say.
+            final again = next(
+              read,
+              await made(wire, role: role, taker: third),
+            );
+            if (!read.isTerminal) {
+              expect(again.warnings, isEmpty, reason: label);
+            }
+            expect(again.trail.take, 1, reason: label);
+            expect(again.trail.breached, isFalse, reason: label);
+          }
+        }
+      },
+    );
+
+    test(
+      'from the book, any taker from 9 on is a next contract: the book never gives back the one before',
+      () async {
+        final before = await along(b, [1, 6, 1]);
+        final read = next(before, await made(14));
+        expect(read, isA<Succeeded>());
+        expect(read.warnings, [isA<ContractSeenLate>()]);
+        expect(read.trail.take, 1);
+        expect(read.trail.takerHashId, peer.hashId.hex);
+      },
+    );
+
+    test(
+      'a range\'s next contract seen late keeps the amount it read',
+      () async {
+        final before = await along(s, [1, 6, 1], range: true);
+        final read = next(
+          before,
+          await made(9, role: s, range: true, taker: third, taken: 80),
+          range: true,
+        );
+        expect(read.warnings, [isA<ContractSeenLate>()]);
+        expect(read.trail.takenAmount, 80);
+        expect((read as Chatting).amount.value, 80);
+      },
+    );
+
+    test(
+      'where the order cannot have gone back to the book, another taker from 9 on stays a breach',
+      () async {
+        for (final (role, wires) in [
+          (
+            b,
+            [1, 6, 8],
+          ), // a maker buyer's 8 expires the order rather than publish it
+          (b, [1, 6, 9]),
+          (s, [1, 6, 9]),
+          (b, [1, 6, 9, 10]),
+          (s, [1, 6, 9, 11]),
+        ]) {
+          for (final wire in after.where((w) => w > wires.last)) {
+            final before = await along(role, wires);
+            refused<TradeTakerChanged>(
+              next(before, await made(wire, role: role, taker: third)),
+              before,
+            );
+          }
+        }
+      },
+    );
+
+    test(
+      'the same robot taking again, read from 6, 7 or 8 at 9 or later, is taken for the same contract (a known limit)',
+      () async {
+        final before = await along(b, [1, 6]);
+        final read = next(before, await made(14));
+        expect(read.warnings, isEmpty);
+        expect(read.trail.take, 0);
+        // Of a range, another amount is said as the terms changed: no breach.
+        final range = await along(b, [1, 6], range: true);
+        final other = next(
+          range,
+          await made(9, range: true, taken: 90),
+          range: true,
+        );
+        expect(other.warnings, [isA<TradeTermsChanged>()]);
+        expect(other.trail.breached, isFalse);
+      },
+    );
+
+    test(
+      'without a contract kept, the taker read from 9 on is kept, as before',
+      () async {
+        final public = await along(s, [1]);
+        final read = next(public, await made(14, role: s, taker: third));
+        expect(read.warnings, isEmpty);
+        expect(read.trail.take, 0);
+        expect(read.trail.takerHashId, third.hashId.hex);
+      },
+    );
+
+    test(
+      'the ends read straight from the book: 5 and 1043 as the reference gives them, a bond maybe lost after the book',
+      () async {
+        for (final wires in [
+          [1],
+          [1, 2],
+          [1, 6, 1],
+        ]) {
+          final before = await along(b, wires);
+          expect(next(before, await made(5)), isA<Expired>());
+          final cancelled = next(before, const TradeOrderCancelled());
+          expect(cancelled, isA<Cancelled>());
+          // Taken and cancelled alone by this maker from another client, at 6 or 7, the bond is lost.
+          expect((cancelled as Cancelled).bondMayHaveBeenLost, isTrue);
+        }
+        final bond = await along(b, const []);
+        final atZero = next(bond, const TradeOrderCancelled());
+        expect((atZero as Cancelled).bondMayHaveBeenLost, isFalse);
+        // 4 and 12 in an order are never served: error 1043 is.
+        final public = await along(b, [1]);
+        refused<TradeStatusRegressed>(next(public, await made(4)), public);
+        refused<TradeStatusRegressed>(next(public, await made(12)), public);
       },
     );
   });
@@ -620,9 +779,10 @@ void main() {
                     )
                     as WaitingForBoth;
             expect(status.warnings, isEmpty, reason: '$role $last');
-            final gap = status.rateGap;
-            expect(gap, isNotNull);
-            gap!;
+            final gap = switch (status.rateGap) {
+              final value? => value,
+              null => fail('no gap'),
+            };
             final effect = gap.effectFor(role);
             if (last < makerSats) {
               // Fewer sats: a higher rate, a positive gap.
@@ -757,7 +917,7 @@ void main() {
         // Nothing tells it from a real take after a return to the book (design note § 3.2): this wallet pays it only under the ceiling of the contract's amount, and #187 only once the first escrow is no longer held.
         expect(second.warnings, isEmpty);
         final ceiling = madeTerms(role: s).side.maker.escrowCeilingFor(null);
-        expect(ceiling, isNotNull);
+        if (ceiling == null) fail('no ceiling');
         final huge = next(
           paid,
           await made(
@@ -772,7 +932,7 @@ void main() {
         expect(huge.warnings, isEmpty);
         expect(
           walletPaymentFor(
-            accepted: ceiling!,
+            accepted: ceiling,
             status: huge,
             step: InvoiceStep.escrow,
             now: tradeNow,
@@ -837,76 +997,134 @@ void main() {
   });
 
   group('the reference\'s own sequences, read with gaps', () {
+    /// [seeds] orders of the reference read now and then, the clock moving a few seconds at each read; with [secondClient], the maker also acts from another client.
+    Future<(int, int, int)> sequences(
+      int seeds, {
+      required int first,
+      bool secondClient = false,
+    }) async {
+      var contracts = 0;
+      var nexts = 0;
+      var late = 0;
+      for (var seed = first; seed < first + seeds; seed++) {
+        final random = Random(seed);
+        final role = random.nextBool() ? b : s;
+        final range = random.nextBool();
+        final reference = MakerReference(
+          role,
+          range: range,
+          random: random,
+          secondClient: secondClient,
+        );
+        final terms = reference.terms();
+        var now = tradeNow;
+        var status = TradeStatus.afterMake(
+          await reference.read(decoder),
+          terms: terms,
+          now: now,
+          reader: reader,
+        );
+        for (var step = 0; step < 60 && !status.isTerminal; step++) {
+          reference.step();
+          // The app reads after about one event in three, and always at the end.
+          if (!reference.ended && random.nextInt(secondClient ? 8 : 3) != 0) {
+            continue;
+          }
+          now = now.add(Duration(seconds: random.nextInt(6)));
+          final before = status;
+          status = next(
+            before,
+            await reference.read(decoder),
+            range: range,
+            now: now,
+          );
+          final label = 'seed $seed step $step $role range $range: $status';
+          if (status.has<ContractSeenLate>()) {
+            late++;
+            expect(secondClient, isTrue, reason: label);
+          }
+          expect(
+            status.warnings.where((w) => w is! ContractSeenLate),
+            isEmpty,
+            reason: label,
+          );
+          expect(status.trail.breached, isFalse, reason: label);
+          expect(status.trail.take, greaterThanOrEqualTo(before.trail.take));
+          expect(status.trail.take - before.trail.take, lessThanOrEqualTo(1));
+          if (status.trail.take > before.trail.take) nexts++;
+          expect(status.trail.take, lessThanOrEqualTo(reference.takes));
+          // The contract's taker is the reference's own, whenever the app keeps one.
+          if ((reference.taker, status.trail.takerHashId)
+              case (final taker?, final kept?)
+              when !const {
+                TradePosition.public,
+                TradePosition.paused,
+                TradePosition.expired,
+                TradePosition.cancelled,
+              }.contains(status.position)) {
+            expect(kept, taker.hashId.hex, reason: label);
+          }
+          if (before.trail.bondHash case final bond?) {
+            expect(status.trail.bondHash, bond, reason: label);
+          }
+          expect(
+            status.trail.record.whyNotReplace(
+              before.trail.record,
+              madeHere: true,
+            ),
+            isNull,
+            reason: label,
+          );
+          // Restored from its record, the trail reads the next answer as the trail in memory does.
+          final restored = TradeTrail.restore(
+            status.trail.record,
+            terms: madeTerms(role: role, range: range),
+            now: now,
+          );
+          expect(
+            switch (restored) {
+              Ok(:final value) => value == status.trail,
+              Err() => false,
+            },
+            isTrue,
+            reason: label,
+          );
+          // An escrow is its contract's own.
+          if (status.invoice case final CheckedInvoice escrow
+              when escrow.step == InvoiceStep.escrow) {
+            expect(
+              escrow.paymentHash,
+              makerEscrowInvoice(take: reference.takes).facts.paymentHash,
+              reason: label,
+            );
+          }
+        }
+        contracts += reference.takes;
+      }
+      return (contracts, nexts, late);
+    }
+
     test(
       'never a refusal or a warning, a contract only forward, every trail storable and restored as it was',
       () async {
-        var contracts = 0;
-        var nexts = 0;
-        for (var seed = 0; seed < 300; seed++) {
-          final random = Random(seed);
-          final role = random.nextBool() ? b : s;
-          final range = random.nextBool();
-          final reference = MakerReference(role, range: range, random: random);
-          final terms = reference.terms();
-          var status = TradeStatus.afterMake(
-            await reference.read(decoder),
-            terms: terms,
-            now: tradeNow,
-            reader: reader,
-          );
-          for (var step = 0; step < 60 && !status.isTerminal; step++) {
-            reference.step();
-            // The app reads after about one event in three, and always at the end.
-            if (!reference.ended && random.nextInt(3) != 0) continue;
-            final before = status;
-            status = next(before, await reference.read(decoder), range: range);
-            final label = 'seed $seed step $step $role range $range: $status';
-            expect(status.warnings, isEmpty, reason: label);
-            expect(status.trail.breached, isFalse, reason: label);
-            expect(status.trail.take, greaterThanOrEqualTo(before.trail.take));
-            expect(status.trail.take - before.trail.take, lessThanOrEqualTo(1));
-            if (status.trail.take > before.trail.take) nexts++;
-            expect(status.trail.take, lessThanOrEqualTo(reference.takes));
-            if (before.trail.bondHash case final bond?) {
-              expect(status.trail.bondHash, bond, reason: label);
-            }
-            expect(
-              status.trail.record.whyNotReplace(
-                before.trail.record,
-                madeHere: true,
-              ),
-              isNull,
-              reason: label,
-            );
-            // Restored from its record, the trail reads the next answer as the trail in memory does.
-            final restored = TradeTrail.restore(
-              status.trail.record,
-              terms: madeTerms(role: role, range: range),
-              now: tradeNow,
-            );
-            expect(
-              switch (restored) {
-                Ok(:final value) => value == status.trail,
-                Err() => false,
-              },
-              isTrue,
-              reason: label,
-            );
-            // An escrow is its contract's own.
-            if (status.invoice case final CheckedInvoice escrow
-                when escrow.step == InvoiceStep.escrow) {
-              expect(
-                escrow.paymentHash,
-                makerEscrowInvoice(take: reference.takes).facts.paymentHash,
-                reason: label,
-              );
-            }
-          }
-          contracts += reference.takes;
-        }
+        final (contracts, nexts, late) = await sequences(300, first: 0);
         // The sequences went through contracts, and next ones.
         expect(contracts, greaterThan(100));
         expect(nexts, greaterThan(10), reason: 'contracts $contracts');
+        expect(late, 0);
+      },
+    );
+
+    test(
+      'with the maker acting from another client too: never a breach, a next contract seen late said as information',
+      () async {
+        final (contracts, nexts, late) = await sequences(
+          3000,
+          first: 10000,
+          secondClient: true,
+        );
+        expect(contracts, greaterThan(1000));
+        expect(late, greaterThanOrEqualTo(25), reason: 'nexts $nexts');
       },
     );
   });
@@ -1041,99 +1259,139 @@ void main() {
             _ => false,
           };
 
-      test(
-        'the database writes every one of them, a next contract\'s escrow included',
-        () async {
-          driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-          var written = 0;
-          var nexts = 0;
-          for (var seed = 0; seed < 80; seed++) {
-            // A database of its own for each order made, whose number is the tests' one.
-            final database = P2pDatabase.forTesting(NativeDatabase.memory());
-            addTearDown(database.close);
-            final bindings = bindingsInMemory(database: database);
-            final trades = TradeRecordRepositoryImpl(
-              database,
-              clock: () => tradeNow,
-            );
-            final trails = TradeTrailRepositoryImpl(database);
-            expect(
-              await bindings.recordGeneratedKey(testnet, fingerprint),
-              isA<Ok>(),
-            );
-            final random = Random(5000 + seed);
-            final role = random.nextBool() ? b : s;
-            final range = random.nextBool();
-            final reference = MakerReference(
-              role,
-              range: range,
-              random: random,
-            );
-            final terms = reference.terms(network: testnet);
-            final reservation = switch (await trades.reserveForNewTrade(
-              RobotSlot(testnet, fingerprint, 0),
-              temple,
-            )) {
-              Ok(value: final reservation?) => reservation,
-              final other => fail('not reserved: $other'),
-            };
-            final make = switch (await trades.recordPendingMake(
-              reservation,
-              role: role,
-            )) {
-              Ok(:final value) => value,
-              Err(:final failure) => fail('$failure'),
-            };
-            expect(
-              await trails.recordMakerTerms(make, terms.side.maker.record),
-              isA<Ok>(),
-            );
-            final record = switch (await trades.confirmMake(
-              make,
-              orderId: terms.orderId,
-            )) {
-              Ok(:final value) => value,
-              Err(:final failure) => fail('$failure'),
-            };
+      /// [seeds] orders of the reference, every trail written by the real repository to a database of its own; with [secondClient], the maker also acts from another client.
+      Future<(int, int, int)> written(
+        int seeds, {
+        required int first,
+        bool secondClient = false,
+      }) async {
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+        var writes = 0;
+        var nexts = 0;
+        var late = 0;
+        for (var seed = first; seed < first + seeds; seed++) {
+          // A database of its own for each order made, whose number is the tests' one.
+          final database = P2pDatabase.forTesting(NativeDatabase.memory());
+          addTearDown(database.close);
+          final bindings = bindingsInMemory(database: database);
+          final trades = TradeRecordRepositoryImpl(
+            database,
+            clock: () => tradeNow,
+          );
+          final trails = TradeTrailRepositoryImpl(database);
+          expect(
+            await bindings.recordGeneratedKey(testnet, fingerprint),
+            isA<Ok>(),
+          );
+          final random = Random(seed);
+          final role = random.nextBool() ? b : s;
+          final range = random.nextBool();
+          final reference = MakerReference(
+            role,
+            range: range,
+            random: random,
+            secondClient: secondClient,
+          );
+          final terms = reference.terms(network: testnet);
+          final reservation = switch (await trades.reserveForNewTrade(
+            RobotSlot(testnet, fingerprint, 0),
+            temple,
+          )) {
+            Ok(value: final reservation?) => reservation,
+            final other => fail('not reserved: $other'),
+          };
+          final make = switch (await trades.recordPendingMake(
+            reservation,
+            role: role,
+          )) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(
+            await trails.recordMakerTerms(make, terms.side.maker.record),
+            isA<Ok>(),
+          );
+          final record = switch (await trades.confirmMake(
+            make,
+            orderId: terms.orderId,
+          )) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
 
-            var status = TradeStatus.afterMake(
-              await reference.read(decoder, network: testnet),
+          var now = tradeNow;
+          var status = TradeStatus.afterMake(
+            await reference.read(decoder, network: testnet),
+            terms: terms,
+            now: now,
+            reader: reader,
+          );
+          expect(
+            stored(await trails.storeTrail(record, status.trail.record)),
+            isTrue,
+          );
+          for (var step = 0; step < 60 && !status.isTerminal; step++) {
+            reference.step();
+            if (!reference.ended && random.nextInt(secondClient ? 8 : 3) != 0) {
+              continue;
+            }
+            // The clock moves at each read, by up to five seconds.
+            now = now.add(Duration(seconds: random.nextInt(6)));
+            final before = status;
+            status = TradeStatus.from(
+              previous: before,
+              answer: await reference.read(decoder, network: testnet),
               terms: terms,
-              now: tradeNow,
+              now: now,
               reader: reader,
             );
+            if (status.has<ContractSeenLate>()) late++;
+            expect(
+              status.warnings.where((w) => w is! ContractSeenLate),
+              isEmpty,
+              reason: 'seed $seed: $status',
+            );
+            if (status.trail.take > before.trail.take) nexts++;
             expect(
               stored(await trails.storeTrail(record, status.trail.record)),
               isTrue,
+              reason: 'seed $seed step $step: $before → $status',
             );
-            for (var step = 0; step < 50 && !status.isTerminal; step++) {
-              reference.step();
-              if (!reference.ended && random.nextInt(3) != 0) continue;
-              final before = status;
-              status = TradeStatus.from(
-                previous: before,
-                answer: await reference.read(decoder, network: testnet),
-                terms: terms,
-                now: tradeNow,
-                reader: reader,
-              );
-              expect(status.warnings, isEmpty, reason: 'seed $seed: $status');
-              if (status.trail.take > before.trail.take) nexts++;
-              expect(
-                stored(await trails.storeTrail(record, status.trail.record)),
-                isTrue,
-                reason: 'seed $seed step $step: $before → $status',
-              );
-              written++;
-            }
-            final history = switch (await trails.historyOf(record)) {
-              Ok(:final value) => value,
-              Err(:final failure) => fail('$failure'),
-            };
-            expect(history.trail, status.trail.record, reason: 'seed $seed');
+            writes++;
           }
-          expect(written, greaterThan(120));
-          expect(nexts, greaterThan(3), reason: 'written $written');
+          final history = switch (await trails.historyOf(record)) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(history.trail, status.trail.record, reason: 'seed $seed');
+        }
+        return (writes, nexts, late);
+      }
+
+      test(
+        'the database writes every one of them, next contracts\' escrows included',
+        () async {
+          final (writes, nexts, late) = await written(120, first: 5000);
+          expect(writes, greaterThan(200));
+          expect(nexts, greaterThanOrEqualTo(12), reason: 'writes $writes');
+          expect(late, 0);
+        },
+      );
+
+      test(
+        'and with the maker acting from another client too, next contracts seen late included',
+        () async {
+          final (writes, nexts, late) = await written(
+            1000,
+            first: 20000,
+            secondClient: true,
+          );
+          expect(writes, greaterThan(100));
+          expect(
+            late,
+            greaterThanOrEqualTo(7),
+            reason: 'nexts $nexts, writes $writes',
+          );
         },
       );
     },

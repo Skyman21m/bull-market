@@ -1637,13 +1637,13 @@ void main() {
               // Every trail a run writes may replace the one before it; a trail of an earlier read never replaces a later one.
               final record = after.trail.record;
               expect(
-                record.whyNotReplace(records.last),
+                record.whyNotReplace(records.last, madeHere: false),
                 isNull,
                 reason: 'seed $seed step $step',
               );
               for (final earlier in records) {
                 if (earlier.readAtMicros < record.readAtMicros) {
-                  expect(earlier.mayReplace(record), isFalse);
+                  expect(earlier.mayReplace(record, madeHere: false), isFalse);
                 }
               }
               records.add(record);

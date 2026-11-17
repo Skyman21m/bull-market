@@ -124,7 +124,8 @@ extension TradeWarningL10n on TradeWarning {
       MakerFeeAboveAnnounced() => l10n.p2pTradeWarnAmounts(coordinator),
       // A maker's contract (#178): no screen shows a maker's trade before #182, which may give these their own words.
       TradeTakerChanged() ||
-      EscrowNotOfThisContract() => l10n.p2pTradeWarnUnexpected,
+      EscrowNotOfThisContract() ||
+      ContractSeenLate() => l10n.p2pTradeWarnUnexpected,
       DeadlineMovedBack() => l10n.p2pTradeWarnDeadline(coordinator),
       InvoiceUnreadable() => l10n.p2pTradeWarnUnreadable(coordinator),
       InvoiceWrongNetwork() => l10n.p2pTradeWarnWrongNetwork(coordinator),
