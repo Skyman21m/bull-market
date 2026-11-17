@@ -4,6 +4,7 @@ import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_cadence.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/wallet_payment.dart';
@@ -318,6 +319,134 @@ void main() {
         second * 900,
       );
     });
+  });
+
+  group('the trail of a maker', () {
+    test(
+      'restored as it was written, and refused when it is not one a trail writes',
+      () async {
+        final both = await taken(s, range: true);
+        final record = both.trail.record;
+        final terms = termsOf(s, range: true);
+        expect(switch (TradeTrail.restore(
+          record,
+          terms: terms,
+          now: tradeNow,
+        )) {
+          Ok(:final value) => value == both.trail && value.made,
+          Err() => false,
+        }, isTrue);
+        TradeTrailRecord changed({
+          int? take,
+          int? takeDeadlineMicros,
+          String? takerHashId,
+          double? takenAmount,
+          bool clearDeadline = false,
+        }) => TradeTrailRecord(
+          version: record.version,
+          network: record.network,
+          coordinatorAlias: record.coordinatorAlias,
+          orderId: record.orderId,
+          role: record.role,
+          position: record.position,
+          readAtMicros: record.readAtMicros,
+          bondHash: record.bondHash,
+          escrowHash: record.escrowHash,
+          deadlineMicros: record.deadlineMicros,
+          bondStepSeenAtMicros: record.bondStepSeenAtMicros,
+          bondStepDeadlineMicros: record.bondStepDeadlineMicros,
+          breached: record.breached,
+          historyUnknown: record.historyUnknown,
+          take: take ?? record.take,
+          takeDeadlineMicros: clearDeadline
+              ? null
+              : takeDeadlineMicros ?? record.takeDeadlineMicros,
+          takerHashId: takerHashId ?? record.takerHashId,
+          takenAmount: takenAmount ?? record.takenAmount,
+        );
+        for (final (label, bad) in [
+          ('take below 0', changed(take: -1)),
+          (
+            'a next contract with no deadline',
+            changed(take: 1, clearDeadline: true),
+          ),
+          ('a taker that is no hash id', changed(takerHashId: 'A' * 64)),
+          ('an amount of 0', changed(takenAmount: 0)),
+          ('an amount of 10^10', changed(takenAmount: 1e10)),
+          ('an amount that is no figure', changed(takenAmount: double.nan)),
+          ('a deadline out of range', changed(takeDeadlineMicros: -1)),
+        ]) {
+          expect(
+            TradeTrail.restore(bad, terms: terms, now: tradeNow),
+            isA<Err>(),
+            reason: label,
+          );
+        }
+        // A contract on a taker's trail is no trail a taker writes.
+        final taker = await tradeTerms(role: s);
+        final takerRecord = TradeStatus.beforeFirstRead(
+          TradeTrail.forPendingTake(taker, tradeNow),
+        ).trail.record;
+        TradeTrailRecord withContract({
+          int take = 0,
+          int? deadline,
+          String? hash,
+          double? amount,
+        }) => TradeTrailRecord(
+          version: takerRecord.version,
+          network: takerRecord.network,
+          coordinatorAlias: takerRecord.coordinatorAlias,
+          orderId: takerRecord.orderId,
+          role: takerRecord.role,
+          position: takerRecord.position,
+          readAtMicros: takerRecord.readAtMicros,
+          bondHash: null,
+          escrowHash: null,
+          deadlineMicros: null,
+          bondStepSeenAtMicros: null,
+          bondStepDeadlineMicros: null,
+          breached: false,
+          historyUnknown: false,
+          take: take,
+          takeDeadlineMicros: deadline,
+          takerHashId: hash,
+          takenAmount: amount,
+        );
+        expect(
+          TradeTrail.restore(withContract(), terms: taker, now: tradeNow),
+          isA<Ok>(),
+        );
+        for (final bad in [
+          withContract(take: 1, deadline: 1),
+          withContract(deadline: 1),
+          withContract(hash: peer.hashId.hex),
+          withContract(amount: 100),
+        ]) {
+          expect(
+            TradeTrail.restore(bad, terms: taker, now: tradeNow),
+            isA<Err>(),
+          );
+        }
+      },
+    );
+
+    test(
+      'a maker\'s trail is never another side\'s: the terms of a take of the same order are refused',
+      () async {
+        final bond = first(await made(0));
+        final taker = await tradeTerms();
+        expect(bond.trail.isOf(taker), isFalse);
+        final after = TradeStatus.from(
+          previous: bond,
+          answer: await made(1),
+          terms: taker,
+          now: tradeNow,
+          reader: reader,
+        );
+        expect(after.has<TradeOrderMismatch>(), isTrue);
+        expect(after.trail, bond.trail);
+      },
+    );
   });
 
   group('the maker\'s edges', () {
