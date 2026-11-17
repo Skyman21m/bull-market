@@ -55,7 +55,7 @@ void main() {
     };
   }
 
-  WalletRateCheck check(
+  WalletRateCheck checkOf(
     MakerTerms terms,
     int asked, [
     P2pWalletBitcoinRate? wallet,
@@ -64,6 +64,16 @@ void main() {
     asked: Sats.fromInt(asked),
     wallet: wallet ?? P2pWalletRateRead(71657),
   );
+
+  /// [checkOf], which the test expects to be a comparison.
+  WalletRateCompared check(
+    MakerTerms terms,
+    int asked, [
+    P2pWalletBitcoinRate? wallet,
+  ]) => switch (checkOf(terms, asked, wallet)) {
+    final WalletRateCompared compared => compared,
+    final other => throw StateError('not compared: $other'),
+  };
 
   test('the threshold is the owner\'s, 10 %', () {
     expect(TradeTolerances.walletRateGap, 0.10);
@@ -78,8 +88,7 @@ void main() {
       test('4,045 sats expected, at the wallet\'s price', () {
         final rate = check(made, 4045);
         expect(rate.expected, Sats.fromInt(4045));
-        expect(rate.reference, WalletRateReference.wallet);
-        expect(rate.checkedByWallet, isTrue);
+        expect(rate, isA<WalletRateAtWallet>());
         expect(rate.price, 71657);
         expect(rate.currency.code, 'USD');
         expect(rate.warns, isFalse);
@@ -133,6 +142,12 @@ void main() {
       expect(rate.gapHundredths, BigInt.from(1000));
     });
 
+    test('3,000 sats, the bond expected exactly: a gap of 0, no warning', () {
+      final rate = check(made, 3000, P2pWalletRateRead(100000));
+      expect(rate.gapHundredths, BigInt.zero);
+      expect(rate.warns, isFalse);
+    });
+
     test('3,301 sats: the warning, +10.04 %', () {
       final rate = check(made, 3301, P2pWalletRateRead(100000));
       expect(rate.warns, isTrue);
@@ -179,7 +194,7 @@ void main() {
         final lied = terms(createdPrice: 7165.7);
         expect(lied.bondAgrees(Sats.fromInt(40450)), isTrue);
         final rate = check(lied, 40450);
-        expect(rate.reference, WalletRateReference.wallet);
+        expect(rate, isA<WalletRateAtWallet>());
         expect(rate.price, 71657);
         expect(rate.expected, Sats.fromInt(4045));
         expect(rate.warns, isTrue);
@@ -199,12 +214,11 @@ void main() {
     );
   });
 
-  group('without the wallet\'s price: the price of the creation, said weaker', () {
+  group('a currency the wallet does not price: the price of the creation, said weaker', () {
     test('a currency the wallet does not price', () {
       final made = terms(code: 'GBP', createdPrice: 60000);
       final rate = check(made, 4000, const P2pWalletRateNotPriced());
-      expect(rate.reference, WalletRateReference.createdNotPriced);
-      expect(rate.checkedByWallet, isFalse);
+      expect(rate, isA<WalletRateAtCreation>());
       expect(rate.price, 60000);
       expect(rate.expected.value, some(made.bondAtPrice(60000)).floor());
       // The same 10 %: 100 GBP at 62,100 is 161,030.59… sats, 4,830.91… of bond.
@@ -213,40 +227,45 @@ void main() {
       expect(check(made, 5315, const P2pWalletRateNotPriced()).warns, isTrue);
     });
 
-    test(
-      'the wallet\'s price could not be read: the default of #180, to put to the owner',
-      () {
-        final made = terms();
-        final rate = check(made, 4045, const P2pWalletRateUnavailable());
-        expect(rate.reference, WalletRateReference.createdUnreadable);
-        expect(rate.checkedByWallet, isFalse);
-        expect(rate.price, 71657);
-        expect(rate.expected, Sats.fromInt(4045));
-        expect(rate.warns, isFalse);
-      },
-    );
-
-    test(
-      'a price of the wallet outside the bounds of a price counts as unread, so that no figure is infinite',
-      () {
-        final made = terms();
-        for (final price in [1e-5, 1e15, 2e300]) {
-          final rate = check(made, 4045, P2pWalletRateRead(price));
-          expect(
-            rate.reference,
-            WalletRateReference.createdUnreadable,
-            reason: '$price',
-          );
-          expect(rate.expected, Sats.fromInt(4045));
-        }
-        // At the bounds themselves, the wallet's price is taken.
-        expect(
-          check(made, 4045, P2pWalletRateRead(0.0001)).reference,
-          WalletRateReference.wallet,
-        );
-      },
-    );
   });
+
+  group(
+    'the wallet prices the currency but its price could not be read: nothing compared, the creation\'s price never cited (review of #180, C1)',
+    () {
+      test(
+        'the reviewer\'s scenario: a price announced ten times too low, then the price service down: no reassuring comparison, the bond unverified',
+        () {
+          final lied = terms(createdPrice: 7165.7);
+          final rate = checkOf(lied, 40450, const P2pWalletRateUnavailable());
+          expect(rate, isA<WalletRateUnverified>());
+          expect(rate, isNot(isA<WalletRateCompared>()));
+          expect(rate.asked, Sats.fromInt(40450));
+          expect(rate.currency.code, 'USD');
+          // No red line: there is nothing to compare; the screen says the amount is not checked.
+          expect(rate.warns, isFalse);
+        },
+      );
+
+      test(
+        'a price of the wallet outside the bounds of a price: unverified as well, never the creation\'s',
+        () {
+          final made = terms();
+          for (final price in [1e-5, 1e15, 2e300]) {
+            expect(
+              checkOf(made, 4045, P2pWalletRateRead(price)),
+              isA<WalletRateUnverified>(),
+              reason: '$price',
+            );
+          }
+          // At the bounds themselves, the wallet's price is taken.
+          expect(
+            checkOf(made, 4045, P2pWalletRateRead(0.0001)),
+            isA<WalletRateAtWallet>(),
+          );
+        },
+      );
+    },
+  );
 
   test(
     'the bond at the price of the creation is the terms\' own expected bond',
@@ -269,7 +288,11 @@ void main() {
 
   test('its text names no amount nor price', () {
     final text = check(terms(), 4450).toString();
-    expect(text, 'WalletRateCheck(wallet, warns)');
+    expect(text, 'WalletRateAtWallet(warns)');
+    expect(
+      checkOf(terms(), 4045, const P2pWalletRateUnavailable()).toString(),
+      'WalletRateUnverified',
+    );
     expect(P2pWalletRateRead(71657).toString(), 'P2pWalletRateRead');
   });
 }

@@ -176,6 +176,13 @@ final class _Made {
         Err(:final failure) => throw StateError('$failure'),
       };
 
+  /// What `rateOfBond` gives for [quote], which the test expects to be a comparison.
+  Future<WalletRateCompared> comparedOf(P2pWalletQuote quote) async =>
+      switch (await rateOf(quote)) {
+        final WalletRateCompared compared => compared,
+        final other => throw StateError('not compared: $other'),
+      };
+
   Future<TradePaymentRecord?> recorded([TradeRecord? of]) async =>
       switch (await payments.paymentOf(of ?? record, InvoiceStep.bond)) {
         Ok(:final value) => value,
@@ -232,10 +239,10 @@ void main() {
         expect(offered.take, 0);
         final quote = await made.quoted();
         expect(made.fake.quoted.single.paymentHash, quote.invoice.paymentHash);
-        final rate = await made.rateOf(quote);
-        expect(rate?.reference, WalletRateReference.wallet);
-        expect(rate?.expected, Sats.fromInt(4045));
-        expect(rate?.warns, isFalse);
+        final rate = await made.comparedOf(quote);
+        expect(rate, isA<WalletRateAtWallet>());
+        expect(rate.expected, Sats.fromInt(4045));
+        expect(rate.warns, isFalse);
         expect(made.fake.ratesAsked.single.$1, made.harness.network);
         expect(made.fake.ratesAsked.single.$2.code, 'USD');
         final hash = quote.invoice.paymentHash;
@@ -260,10 +267,10 @@ void main() {
         // The wallet's price 79,000, the coordinator's 71,657: 3,669 expected, 4,045 asked, +10.25 %.
         final made = await _Made.start(rate: P2pWalletRateRead(79000));
         final quote = await made.quoted();
-        final rate = await made.rateOf(quote);
-        expect(rate?.warns, isTrue);
-        expect(rate?.asked, Sats.fromInt(4045));
-        expect(rate?.expected, Sats.fromInt(3669));
+        final rate = await made.comparedOf(quote);
+        expect(rate.warns, isTrue);
+        expect(rate.asked, Sats.fromInt(4045));
+        expect(rate.expected, Sats.fromInt(3669));
         made.fake.scriptPayment(
           Ok(
             P2pWalletPayment(
@@ -281,16 +288,18 @@ void main() {
     );
 
     test(
-      'a coordinator that announced a price ten times too low: its bond agrees with its own estimate, and the wallet\'s price warns of it',
+      'a coordinator that announced a price ten times too low: its bond agrees with its own estimate, and the wallet\'s price warns of it; without the wallet\'s price, nothing reassuring is said (review of #180, C1)',
       () async {
         // 7,165.7 announced and used for the bond: 40,450 sats, within the coordinator's estimate, so offered; the wallet's 71,657 expects 4,045.
         final made = await _Made.start(price: 7165.7);
         final quote = await made.quoted();
         expect(quote.amount, Sats.fromInt(40450));
-        final rate = await made.rateOf(quote);
-        expect(rate?.reference, WalletRateReference.wallet);
-        expect(rate?.expected, Sats.fromInt(4045));
-        expect(rate?.warns, isTrue);
+        final rate = await made.comparedOf(quote);
+        expect(rate, isA<WalletRateAtWallet>());
+        expect(rate.expected, Sats.fromInt(4045));
+        expect(rate.warns, isTrue);
+        made.fake.rate = const P2pWalletRateUnavailable();
+        expect(await made.rateOf(quote), isA<WalletRateUnverified>());
       },
     );
 
@@ -303,23 +312,27 @@ void main() {
           rate: const P2pWalletRateNotPriced(),
         );
         final quote = await made.quoted();
-        final rate = await made.rateOf(quote);
-        expect(rate?.reference, WalletRateReference.createdNotPriced);
-        expect(rate?.checkedByWallet, isFalse);
-        expect(rate?.price, 60000);
-        expect(rate?.warns, isFalse);
+        final rate = await made.comparedOf(quote);
+        expect(rate, isA<WalletRateAtCreation>());
+        expect(rate.price, 60000);
+        expect(rate.warns, isFalse);
         expect(made.fake.ratesAsked.single.$2.code, 'GBP');
       },
     );
 
     test(
-      'the wallet\'s price could not be read: compared with the price of the creation, said so, and the payment still possible',
+      'the wallet\'s price could not be read: nothing compared, the payment still possible; read again, the comparison comes',
       () async {
         final made = await _Made.start(rate: const P2pWalletRateUnavailable());
         final quote = await made.quoted();
-        final rate = await made.rateOf(quote);
-        expect(rate?.reference, WalletRateReference.createdUnreadable);
-        expect(rate?.expected, Sats.fromInt(4045));
+        expect(await made.rateOf(quote), isA<WalletRateUnverified>());
+        // « Retry »: the same quote, the price read again.
+        made.fake.rate = P2pWalletRateRead(71657);
+        final again = await made.comparedOf(quote);
+        expect(again, isA<WalletRateAtWallet>());
+        expect(again.expected, Sats.fromInt(4045));
+        expect(made.fake.ratesAsked, hasLength(2));
+        expect(made.fake.quoted, hasLength(1));
         made.fake.scriptPayment(
           Ok(
             P2pWalletPayment(

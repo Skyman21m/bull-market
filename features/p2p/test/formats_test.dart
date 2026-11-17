@@ -11,6 +11,29 @@ void main() {
   final en = P2pFormats(lookupP2pLocalizations(const Locale('en')));
   final fr = P2pFormats(lookupP2pLocalizations(const Locale('fr')));
 
+  test(
+    'the gap of a payment from the wallet\'s price (#180): its sign, 2 decimals, none for 0',
+    () {
+      expect(en.gap(BigInt.from(1002)), '+10.02%');
+      expect(en.gap(BigInt.from(-1)), '-0.01%');
+      expect(en.gap(BigInt.zero), '0.00%');
+      expect(en.threshold(0.10), '10%');
+    },
+  );
+
+  test(
+    'a price of a bitcoin as the reference\'s « Order current rate »: 5 significant digits, at most 3 decimals',
+    () {
+      expect(en.orderRate(71657), '71,657');
+      expect(en.orderRate(91711.15), '91,711');
+      expect(en.orderRate(110000), '110,000');
+      expect(en.orderRate(1234567.8), '1,234,600');
+      expect(en.orderRate(33.4567), '33.457');
+      expect(en.orderRate(1), '1');
+      expect(fr.orderRate(33.4567), '33,457');
+    },
+  );
+
   test('amounts keep 4 significant digits, ranges are min-max', () {
     expect(en.amount(fiat(100)), '100');
     expect(en.amount(fiat(1234.56)), '1,235');

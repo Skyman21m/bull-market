@@ -110,7 +110,10 @@ final class BondPayConfirming extends BondPayStep {
   /// For an order made here, how the bond quoted compares with the bond at the wallet's own price (#180, the owner's payment rule of 2026-11-17): shown in the confirmation, a red warning beyond the owner's threshold; `null` for a take.
   final WalletRateCheck? rate;
 
-  const BondPayConfirming(this.walletQuote, {this.rate});
+  /// Whether the wallet's price is being read again ([BondPaymentCubit.retryRate]), the comparison being [WalletRateUnverified] meanwhile: « Pay » stays offered.
+  final bool retrying;
+
+  const BondPayConfirming(this.walletQuote, {this.rate, this.retrying = false});
 }
 
 /// The payment is being made, after the user's confirmation, or by this process while the screen was away; [slow] once it has run for [BondPaymentCubit.stillWaitingAfter].
@@ -262,6 +265,37 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     }
     if (isClosed) return;
     emit(state._with(step: BondPayConfirming(walletQuote, rate: rate)));
+  }
+
+  /// Reads the wallet's price again for the quote the confirmation shows, when its price could not be read ([WalletRateUnverified]): on the tap of « Retry » only, once at a time; the quote is kept, never asked again.
+  ///
+  /// The comparison it gives replaces the line, with or without the red warning, or still says the amount is not checked. A confirmation left meanwhile (« Go back », « Pay », a closed screen) is not touched: what the read gives then is dropped. A quote the wallet finds too old by the time « Pay » is tapped is refused by the wallet as any stale quote (`P2pWalletQuoteStale`), nothing paid, and « Pay with this wallet » asks a new quote and a new price.
+  Future<void> retryRate() async {
+    final step = state.step;
+    final rate = _rate;
+    if (isClosed ||
+        rate == null ||
+        step is! BondPayConfirming ||
+        step.retrying ||
+        step.rate is! WalletRateUnverified) {
+      return;
+    }
+    final retrying = BondPayConfirming(
+      step.walletQuote,
+      rate: step.rate,
+      retrying: true,
+    );
+    emit(state._with(step: retrying));
+    final read = await rate(record, step.walletQuote);
+    if (isClosed || !identical(state.step, retrying)) return;
+    emit(
+      state._with(
+        step: switch (read) {
+          Ok(:final value) => BondPayConfirming(step.walletQuote, rate: value),
+          Err(:final failure) => BondPayIdle(refused: failure),
+        },
+      ),
+    );
   }
 
   /// Leaves the confirmation without paying.
