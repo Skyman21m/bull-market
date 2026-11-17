@@ -298,6 +298,18 @@ void main() {
           ).premiumRank,
           33,
         );
+        // 2 of 3 below: 66.67 %, floored to 66, not rounded.
+        expect(
+          PublicWaitStanding.of(
+            order,
+            book: await parseOrders([
+              bookOrder(id: 1, type: 0, premium: 1),
+              bookOrder(id: 2, type: 0, premium: 1.5),
+              bookOrder(id: 3, type: 0, premium: 4),
+            ]),
+          ).premiumRank,
+          66,
+        );
       },
     );
 
@@ -668,6 +680,9 @@ void main() {
           find.text('Unexpected change on the coordinator\'s side.'),
           findsNothing,
         );
+        // Information, in the text colour with the info icon, not an alert.
+        expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+        expect(find.byIcon(Icons.info_outline), findsOneWidget);
         // Nothing to pay from this wallet at 9 and after, so nothing offered that the warning would refuse.
         expect(find.text('Pay with this wallet'), findsNothing);
       },
