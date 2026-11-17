@@ -214,23 +214,15 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   MakeOrderCubit(
     RobosatsNetwork network, {
     required RobosatsCurrency currency,
-    required ListMakeHosts listHosts,
-    required FetchMakeInfo fetchInfo,
-    required FetchMakeLimits fetchLimits,
-    required MakeOrder make,
-    required HasGarageKey hasGarageKey,
-    required CoordinatorLottery lottery,
-    required DateTime Function() now,
-    CheckMakePrice? checkPrice,
-  }) : _listHosts = listHosts,
-       _fetchInfo = fetchInfo,
-       _fetchLimits = fetchLimits,
-       _make = make,
-       _hasGarageKey = hasGarageKey,
-       _lottery = lottery,
-       _now = now,
-       _checkPrice = checkPrice,
-       super(MakeOrderState(network: network, currency: currency));
+    required this._listHosts,
+    required this._fetchInfo,
+    required this._fetchLimits,
+    required this._make,
+    required this._hasGarageKey,
+    required this._lottery,
+    required this._now,
+    this._checkPrice,
+  }) : super(MakeOrderState(network: network, currency: currency));
 
   /// Reads every coordinator's `/api/info/` at once, then draws their order by the reference's lottery (`federationLottery`, run once the information is loaded, `models/Federation.model.ts:584-609`): the first one that takes first contacts is the default, as the reference picks the first of its list (`MakerForm.tsx:132-138`); then its limits.
   Future<void> start() async {
@@ -250,8 +242,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     ], infos: infos);
     final byAlias = {for (final host in hosts) host.coordinator.shortAlias: host};
     final drawn = [
-      for (final coordinator in order)
-        if (byAlias[coordinator.shortAlias] case final host?) host,
+      for (final coordinator in order) ?byAlias[coordinator.shortAlias],
     ];
     final first = drawn
         .where((host) => !host.refusesFirstContacts)

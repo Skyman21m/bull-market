@@ -126,6 +126,8 @@ void setUpP2pForTesting(
     tor: () => tor,
     clock: clock,
     waits: const P2pWaits(start: Timer.new, random: _middle),
+    // The lottery of the create form's default coordinator with every draw at the middle: the order of the chances, the same at each run.
+    lotteryDraws: _middle,
     shuffle: shuffle,
   );
   if (garageKeys != null) {

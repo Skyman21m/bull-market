@@ -7,7 +7,7 @@ import 'package:robosats/src/coordinator/json_fields.dart';
 /// - any space but U+0020 (the no-break and the typographic spaces, the ideographic space, the Braille blank), which a reader cannot tell from it or from nothing;
 /// - the invisible characters: the soft hyphen, the combining grapheme joiner, the Hangul fillers, the Khmer and Mongolian invisible signs, the zero width space, the word joiner and the invisible operators, the deprecated format characters, the byte order mark, the interlinear annotation characters, the Unicode tag block (which can carry a hidden text), and the other format characters (`Cf`) of Unicode 16;
 /// - the private use characters and the noncharacters, which have no agreed glyph;
-/// - a zero width joiner or non-joiner anywhere but alone between two characters that are seen (as in « کارت‌به‌کارت » or an emoji sequence);
+/// - a zero width joiner or non-joiner anywhere but alone between two characters that are seen (as in a Persian word written with its zero width non-joiner, or an emoji sequence);
 /// - a variation selector anywhere but right after a character that is seen;
 /// - a combining mark at the start, after a space or a joiner, or more than [maxCombiningMarks] in a row (a text piled up over its neighbours).
 ///

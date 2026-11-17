@@ -411,7 +411,7 @@ final class _DecimalsFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) {
     final text = newValue.text;
-    final separator = text.lastIndexOf(RegExp('[.,٫]'));
+    final separator = text.lastIndexOf(RegExp('[.,\u066b]'));
     if (separator >= 0 && text.length - separator - 1 > decimals) {
       return oldValue;
     }

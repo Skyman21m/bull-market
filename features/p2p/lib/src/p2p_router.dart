@@ -18,6 +18,7 @@ import 'presentation/chat_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/host_rating_cubit.dart';
+import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
@@ -25,6 +26,7 @@ import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
 import 'presentation/trade_order_page_cubit.dart';
+import 'ui/create_order_screen.dart';
 import 'ui/garage/garage_reauthentication.dart';
 import 'ui/garage/garage_view.dart';
 import 'ui/order_details_screen.dart';
@@ -56,6 +58,21 @@ final class P2pTradeRouteArgs {
   final TradeRecord record;
 
   const P2pTradeRouteArgs(this.record);
+}
+
+/// What the create page needs (#181): the network of the tab, and the book's choices it starts from, as the reference's form starts from the book's (`fav`): « Buy » chosen when the book shows the orders a buyer takes, the currency the book shows first, USD when it shows any (`MakerForm.tsx:98-100`); and the coordinators the book could not reach.
+final class P2pCreateRouteArgs {
+  final RobosatsNetwork network;
+  final OrderType? initialType;
+  final RobosatsCurrency currency;
+  final Set<String> offline;
+
+  const P2pCreateRouteArgs(
+    this.network, {
+    required this.currency,
+    this.initialType,
+    this.offline = const {},
+  });
 }
 
 /// What the page of an order gives back when it is left for the Garage (« I have a Garage Key »).
@@ -219,6 +236,33 @@ final class P2pRouter {
       ),
     );
   }
+
+  /// The create page (#181): the form over its cubit, a made order replacing the page by its trade as a take does.
+  ///
+  /// No route builds it yet and nothing in the tab opens it: « Create » stays disabled until the maker's panels exist (#182, design note § 2.1, « Order of the pull requests »); the tests and the captures build it here.
+  @visibleForTesting
+  static Widget createPage(GetIt locator, P2pCreateRouteArgs args) =>
+      BlocProvider(
+        create: (_) => locator<MakeOrderCubit>(
+          param1: args.network,
+          param2: args.currency,
+        )..start(),
+        child: Builder(
+          builder: (context) => CreateOrderScreen(
+            initialType: args.initialType,
+            offline: args.offline,
+            coordinatorDetails: (request) =>
+                locator<CoordinatorDetailsCubit>(param1: request),
+            onOpenGarage: locator.isRegistered<GarageCubit>()
+                ? () => context.pop(P2pOrderExit.garage)
+                : null,
+            onMade: (record) => context.pushReplacementNamed(
+              tradeName,
+              extra: P2pTradeRouteArgs(record),
+            ),
+          ),
+        ),
+      );
 
   /// [screen], under the payout panel's listener when there is one: once a payout given told something, the trade's watch reads at once, whichever tab is shown.
   static Widget _toldReads(bool payouts, BuildContext context, Widget screen) =>

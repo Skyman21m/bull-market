@@ -2023,17 +2023,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String expected,
     String gap,
   ) {
-    return 'Au prix de ce portefeuille, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
+    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
   }
 
   @override
   String p2pPayRateNotPriced(String currency, String coordinator) {
-    return 'Ce portefeuille n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix de $coordinator : vérifiez-le vous-même avant de payer.';
+    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix de $coordinator : vérifiez-le vous-même avant de payer.';
   }
 
   @override
   String p2pPayRateUnverified(String currency) {
-    return 'Ce portefeuille n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
+    return 'Le portefeuille Bull n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
   }
 
   @override
@@ -2972,4 +2972,268 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pEndImproveGithub => 'Github';
+
+  @override
+  String get p2pMakeEnableAdvanced => 'Activer les options avancées';
+
+  @override
+  String get p2pMakeComingLater => 'Arrive dans une prochaine version.';
+
+  @override
+  String get p2pMakeBuyOrSell => 'Acheter ou vendre bitcoin ?';
+
+  @override
+  String get p2pMakeBuy => 'Acheter';
+
+  @override
+  String get p2pMakeSell => 'Vendre';
+
+  @override
+  String get p2pMakeSellComingLater =>
+      'La vente comme créateur arrive dans une prochaine version.';
+
+  @override
+  String get p2pMakeAmount => 'Montant';
+
+  @override
+  String get p2pMakeAmountHint => 'Montant de fiat à échanger contre bitcoin';
+
+  @override
+  String p2pMakeMoreThan(String minAmount) {
+    return 'Doit être supérieur à $minAmount';
+  }
+
+  @override
+  String p2pMakeLessThan(String maxAmount) {
+    return 'Doit être inférieur à $maxAmount';
+  }
+
+  @override
+  String get p2pMakePaymentMethods => 'Mode(s) de paiement fiat';
+
+  @override
+  String get p2pMakePaymentMethodsHint =>
+      'Indiquez vos modes de paiement fiat préférés. Les modes rapides sont fortement recommandés.';
+
+  @override
+  String get p2pMakeAddCustomMethod =>
+      'Ajouter un mode de paiement personnalisé';
+
+  @override
+  String get p2pMakeCustomMethodQuestion =>
+      'Vous ne trouvez pas votre mode de paiement préféré dans la liste ?';
+
+  @override
+  String get p2pMakeCustomMethodText =>
+      'Utilisez ce champ libre pour ajouter tout mode de paiement que vous souhaitez offrir.';
+
+  @override
+  String get p2pMakeCustomMethodLabel => 'Mode de paiement';
+
+  @override
+  String get p2pMakeCustomMethodEmpty => 'Ne peut pas être vide';
+
+  @override
+  String get p2pMakeCustomMethodNotShown =>
+      'Les autres ne verraient pas ce texte tel que vous l’avez tapé. N’utilisez que des caractères visibles.';
+
+  @override
+  String get p2pMakeAddPaymentMethod => 'Ajouter un mode de paiement';
+
+  @override
+  String get p2pMakeMustBeShorter => 'Doit être plus court que 65 caractères';
+
+  @override
+  String p2pMakeRemoveMethod(String method) {
+    return 'Retirer $method';
+  }
+
+  @override
+  String get p2pMakePremium => 'Prime sur le marché (%)';
+
+  @override
+  String p2pMakePremiumTooHigh(String max) {
+    return 'Doit être inférieur à $max %';
+  }
+
+  @override
+  String p2pMakePremiumTooLow(String min) {
+    return 'Doit être supérieur à $min %';
+  }
+
+  @override
+  String get p2pMakeOrderFor => 'Ordre pour ';
+
+  @override
+  String get p2pMakeBuyBtcFor => 'Acheter BTC pour ';
+
+  @override
+  String get p2pMakeAtMarketPrice => ' au prix du marché';
+
+  @override
+  String p2pMakeAtPremium(String premium) {
+    return ' à une prime de $premium %';
+  }
+
+  @override
+  String p2pMakeAtDiscount(String discount) {
+    return ' à une remise de $discount %';
+  }
+
+  @override
+  String p2pMakeEstimatedBond(String sats) {
+    return 'Caution estimée : $sats sats';
+  }
+
+  @override
+  String p2pMakeCurrentRate(String rate, String currencyCode) {
+    return 'Taux actuel de l’ordre : $rate $currencyCode/BTC';
+  }
+
+  @override
+  String get p2pMakeCurrentRateHint =>
+      'Le taux de change actuel de votre ordre. Il suivra le marché.';
+
+  @override
+  String get p2pMakeCreateOrder => 'Créer l’ordre';
+
+  @override
+  String get p2pMakeLoading => 'Chargement…';
+
+  @override
+  String get p2pMakeChooseHost => 'Choisir le coordinateur de l’ordre';
+
+  @override
+  String get p2pMakeWhyLoadingCoordinators =>
+      'Chargement de la liste des coordinateurs…';
+
+  @override
+  String get p2pMakeWhyPriceNotSynchronized =>
+      'Le prix du bitcoin n’est pas synchronisé.';
+
+  @override
+  String get p2pMakeWhyNoSide =>
+      'Veuillez choisir si vous souhaitez acheter ou vendre.';
+
+  @override
+  String get p2pMakeWhyOutsideLimits =>
+      'Le montant est en dehors des limites autorisées.';
+
+  @override
+  String get p2pMakeWhyBadPaymentMethod =>
+      'Le mode de paiement n’est pas valide.';
+
+  @override
+  String get p2pMakeWhyNoAmount => 'Veuillez saisir un montant.';
+
+  @override
+  String get p2pMakeWhyAmountNotPositive =>
+      'Le montant doit être supérieur à 0.';
+
+  @override
+  String get p2pMakeWhyPremiumInvalid => 'La prime n’est pas valide.';
+
+  @override
+  String get p2pMakeWhyLimitsUnavailable =>
+      'Les limites du coordinateur ne sont pas disponibles.';
+
+  @override
+  String get p2pMakeWhyPremiumNotANumber => 'La prime doit être un nombre.';
+
+  @override
+  String get p2pMakeWhyNoPaymentMethod =>
+      'Veuillez sélectionner un mode de paiement.';
+
+  @override
+  String get p2pMakeWhyFormIncorrect =>
+      'Vous devez remplir le formulaire correctement';
+
+  @override
+  String p2pMakeRateCompare(
+    String walletPrice,
+    String currency,
+    String coordinator,
+    String coordinatorPrice,
+    String gap,
+  ) {
+    return 'Pour comparaison, prix indicatif du portefeuille Bull : $walletPrice $currency/BTC (celui de $coordinator : $coordinatorPrice, écart $gap).';
+  }
+
+  @override
+  String p2pMakeRateBelow(String coordinator, String threshold) {
+    return 'Le prix de $coordinator est plus de $threshold sous celui du portefeuille Bull : votre caution et votre échange seraient comptés en trop de sats. Vérifiez-le avant de créer l’ordre.';
+  }
+
+  @override
+  String p2pMakeRateAbove(String coordinator, String threshold) {
+    return 'Le prix de $coordinator est plus de $threshold au-dessus de celui du portefeuille Bull : vous recevriez moins de sats à la prise de votre ordre. Vérifiez-le avant de créer l’ordre.';
+  }
+
+  @override
+  String p2pMakeRateNotPriced(String currency, String coordinator) {
+    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix de $coordinator : vérifiez-le vous-même avant de créer l’ordre.';
+  }
+
+  @override
+  String p2pMakeRateUnverified(String currency) {
+    return 'Le portefeuille Bull n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié.';
+  }
+
+  @override
+  String get p2pMakeRateReading =>
+      'Lecture du prix du portefeuille Bull pour comparaison…';
+
+  @override
+  String get p2pMakeCreating => 'Création de votre ordre…';
+
+  @override
+  String p2pMakePending(String coordinator) {
+    return 'Bull Market ne sait pas encore si $coordinator a créé votre ordre. Il continue de vérifier.';
+  }
+
+  @override
+  String get p2pMakeNotMade => 'L’ordre n’a pas été créé.';
+
+  @override
+  String p2pMakeNotMadeAfter(String reason) {
+    return '$reason L’ordre n’a pas été créé.';
+  }
+
+  @override
+  String p2pMakeCoordinatorUnreadable(String coordinator) {
+    return 'Impossible de joindre $coordinator. L’ordre n’a pas été créé.';
+  }
+
+  @override
+  String p2pMakeFeeTooHigh(String coordinator) {
+    return '$coordinator demande des frais de créateur supérieurs à 1 %. L’ordre n’a pas été créé.';
+  }
+
+  @override
+  String get p2pMakeTermsUnusable =>
+      'Les conditions de cet ordre n’ont pas pu être vérifiées. Il n’a pas été créé.';
+
+  @override
+  String get p2pMakeNotRecorded =>
+      'Bull Market n’a pas pu écrire ses enregistrements sur cet appareil. L’ordre n’a pas été créé.';
+
+  @override
+  String p2pMakeRobotNotNew(String coordinator) {
+    return 'Le robot choisi pour cet ordre existait déjà chez $coordinator. L’ordre n’a pas été créé : réessayez.';
+  }
+
+  @override
+  String get p2pMakeKeyNotForTrades =>
+      'Les robots d’une clé de garage collée ne peuvent pas créer d’ordres ici. Générez une nouvelle clé de garage dans le Garage.';
+
+  @override
+  String get p2pMakeTooBig => 'Votre ordre est trop gros.';
+
+  @override
+  String get p2pMakeTooSmall => 'Votre ordre est trop petit.';
+
+  @override
+  String p2pMakeBookFull(String coordinator) {
+    return 'Le carnet de $coordinator est complet.';
+  }
 }
