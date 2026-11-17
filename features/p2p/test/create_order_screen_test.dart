@@ -358,12 +358,19 @@ void main() {
         expect(form.limitsAsked, ['temple']);
         await tester.tap(find.text('Go back'));
         await settle(tester);
-        form.now = form.now.add(const Duration(minutes: 2));
+        // The Bull wallet's price moved, the line still within: the press goes on, with the line read again.
+        form
+          ..now = form.now.add(const Duration(minutes: 2))
+          ..rate = P2pWalletRateRead(100000);
         await tester.tap(_create);
         await settle(tester);
         expect(form.limitsAsked, ['temple', 'temple']);
         expect(form.pricesAsked, [eur, eur]);
         expect(find.byType(StoreTokenDialog), findsOneWidget);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.seenSent.single.walletPrice, 100000);
+        expect(form.seenSent.single.verdict, MakePriceVerdict.within);
       },
     );
 
