@@ -269,7 +269,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
 
   /// Reads the wallet's price again for the quote the confirmation shows, when its price could not be read ([WalletRateUnverified]): on the tap of « Retry » only, once at a time; the quote is kept, never asked again.
   ///
-  /// The comparison it gives replaces the line, with or without the red warning, or still says the amount is not checked. A confirmation left meanwhile (« Go back », « Pay », a closed screen) is not touched: what the read gives then is dropped. A quote the wallet finds too old by the time « Pay » is tapped is refused by the wallet as any stale quote (`P2pWalletQuoteStale`), nothing paid, and « Pay with this wallet » asks a new quote and a new price.
+  /// The comparison it gives replaces the line, with or without the red warning, or still says « rate not checked ». A confirmation left meanwhile (« Go back », « Pay », a closed screen) is not touched: what the read gives then is dropped. A quote the wallet finds too old by the time « Pay » is tapped is refused by the wallet as any stale quote (`P2pWalletQuoteStale`), nothing paid, and « Pay with this wallet » asks a new quote and a new price.
   Future<void> retryRate() async {
     final step = state.step;
     final rate = _rate;

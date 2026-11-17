@@ -691,6 +691,45 @@ void main() {
       },
     );
 
+    test(
+      'a « Retry » answered after a new quote and its own comparison: dropped, the new confirmation kept',
+      () async {
+        final payments = Payments()..offer = Ok(_offered);
+        final answers = <Completer<Result<WalletRateCheck?, BondPayRefusal>>>[];
+        final cubit = cubitOf(payments, () {
+          final answer = Completer<Result<WalletRateCheck?, BondPayRefusal>>();
+          answers.add(answer);
+          return answer.future;
+        })..start();
+        payments.follows.single.add(const BondPaymentNone());
+        await pumpEventQueue();
+        final first = cubit.ask(_bondStep);
+        payments.quotes.single.complete(Ok(walletQuote()));
+        await pumpEventQueue();
+        answers.single.complete(Ok(_rateAt(const P2pWalletRateUnavailable())));
+        await first;
+        final retrying = cubit.retryRate();
+        cubit.dismiss();
+        final second = cubit.ask(_bondStep);
+        final newQuote = walletQuote();
+        payments.quotes.last.complete(Ok(newQuote));
+        await pumpEventQueue();
+        final fresh = _rateAt(P2pWalletRateRead(91711.15));
+        answers.last.complete(Ok(fresh));
+        await second;
+        // The old « Retry » answers last, with a comparison the new confirmation must not take.
+        answers[1].complete(Ok(_rateAt(P2pWalletRateRead(110000))));
+        await retrying;
+        final step = cubit.state.step;
+        expect(step, isA<BondPayConfirming>());
+        if (step is BondPayConfirming) {
+          expect(step.walletQuote, same(newQuote));
+          expect(step.rate, same(fresh));
+        }
+        await cubit.close();
+      },
+    );
+
     test('« Retry » does nothing on a comparison made', () async {
       final payments = Payments()..offer = Ok(_offered);
       var reads = 0;
