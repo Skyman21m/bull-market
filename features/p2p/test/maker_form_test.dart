@@ -79,6 +79,11 @@ void main() {
         expect(amount(chars([0x06F1, 0x06F2])).value, 12.0);
         expect(amount(chars([0x0967, 0x0968])).value, 12.0);
         expect(amount(chars([0xFF11, 0xFF12])).value, 12.0);
+        // Each script's zero and nine too.
+        expect(amount(chars([0x0661, 0x0660, 0x0669])).value, 109.0);
+        expect(amount(chars([0x06F1, 0x06F0, 0x06F9])).value, 109.0);
+        expect(amount(chars([0x0967, 0x0966, 0x096F])).value, 109.0);
+        expect(amount(chars([0xFF11, 0xFF10, 0xFF19])).value, 109.0);
       },
     );
 

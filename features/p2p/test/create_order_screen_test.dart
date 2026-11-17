@@ -199,6 +199,17 @@ void main() {
         expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
         expect(_createEnabled(tester), isFalse);
         // « Sell » cannot be chosen.
+        expect(
+          tester
+              .widget<TradeButton>(
+                find.ancestor(
+                  of: find.text('Sell'),
+                  matching: find.byType(TradeButton),
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
         await tester.tap(find.text('Sell'), warnIfMissed: false);
         await tester.pump();
         expect(find.text('Order for 0 EUR at market price'), findsOneWidget);
@@ -366,6 +377,9 @@ void main() {
         // A custom method: its ends trimmed, its spaces single.
         await _addMethod(tester, '  Bank   transfer  ');
         expect(find.text('Bank transfer'), findsOneWidget);
+        // A method already chosen is not added twice.
+        await _addMethod(tester, 'Bank transfer');
+        expect(find.byType(InputChip), findsNWidgets(2));
         // Spaces only: « Can't be empty »; a zero width space: refused, said.
         await tester.tap(find.byTooltip('Add custom payment method'));
         await settle(tester);
