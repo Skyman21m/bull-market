@@ -54,6 +54,32 @@ void main() {
     },
   );
 
+  test(
+    'each money member is named by the use case of its action only: the make by the make, the take by the take (#179)',
+    () {
+      // Who may make an order is pinned as who may take one: a make sent from any other use case, a pause before its own (#184), or a cancel from elsewhere is a breach of this list, written out.
+      const trade = 'lib/src/domain/usecases/trade/';
+      final named = <String, Set<String>>{};
+      for (final MapEntry(key: path, value: source) in sources.entries) {
+        for (final member in _MoneyNames.of(source).named) {
+          (named[member] ??= {}).add(path);
+        }
+      }
+      expect(named, {
+        'makeOrder': {'${trade}make_order_usecase.dart'},
+        'takeOrder': {'${trade}take_order_usecase.dart'},
+        'cancelOrder': {'${trade}cancel_trade_usecase.dart'},
+        'submitPayoutInvoice': {'${trade}submit_payout_usecase.dart'},
+        'submitPayoutAddress': {'${trade}submit_payout_usecase.dart'},
+        'confirmFiat': {'${trade}chat_step_action_usecase.dart'},
+        'releaseEscrow': {'${trade}chat_step_action_usecase.dart'},
+        'undoConfirmFiat': {'${trade}chat_step_action_usecase.dart'},
+        'openDispute': {'${trade}chat_step_action_usecase.dart'},
+      });
+      expect(named['pauseOrder'], isNull);
+    },
+  );
+
   group('the rule bites:', () {
     const tradeUseCase =
         'lib/src/domain/usecases/trade/take_order_usecase.dart';

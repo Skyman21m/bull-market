@@ -110,6 +110,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// Runs as each request arrives, before it is answered: the test can move the order there, or stop the app (an `Error` thrown here reaches the caller of a read; the coordinator client turns one thrown on a `POST` into an outcome unknown).
   void Function(CoordinatorRequest request)? onRequest;
 
+  /// A hostile coordinator (#179): a pre-taker's cancel is answered with the whole order at status 4, which the reference never sends (it answers an order the cancel ended with a short body, `api/views.py:604-615`, and a pre-taker's cancel with the order as it then is); the order itself goes on as the cancel left it.
+  bool cancelAnswersWholeOrderAt4 = false;
+
   /// Whether a take on a public order is answered with the order as it is, this robot not its taker, as the reference does on a take that did not happen (`api/views.py:595-596`).
   bool takesNotMade = false;
 
@@ -932,6 +935,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       _preTakes.remove(key);
       // The pre-taker's cancel costs it a penalty (`kick_taker`, `api/logics.py:470-483`).
       _penalties[key] = clock().toUtc().add(const Duration(seconds: 60));
+      // The whole order at 4, as it would read with this robot named its taker (the parser takes a taker only with its hash id).
+      if (cancelAnswersWholeOrderAt4) {
+        return _json(200, {
+          ..._orderJson(robot, 6),
+          'status': 4,
+          'total_secs_exp': 0,
+        });
+      }
       return _orderFor(robot);
     }
     switch (_status) {

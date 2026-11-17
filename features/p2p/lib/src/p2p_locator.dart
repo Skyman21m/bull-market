@@ -64,6 +64,7 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
+import 'domain/usecases/trade/make_order_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
@@ -76,6 +77,7 @@ import 'domain/usecases/trade/trade_chats.dart';
 import 'domain/usecases/trade/trade_keyring.dart';
 import 'domain/usecases/trade/trade_read_order.dart';
 import 'domain/usecases/trade/trade_reader.dart';
+import 'domain/usecases/trade/trade_make_locks.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
 import 'domain/usecases/trade/watch_chat_usecase.dart';
@@ -338,6 +340,23 @@ final class P2pLocator {
         invoices(),
         locator(),
         preparedTakes: locator(),
+      ),
+    );
+    // One for the feature: the makes and the resolutions of pending makes of a network run one at a time, whichever use case object runs them (#179). No screen calls the make yet: the create screen does (#181, #182).
+    locator.registerLazySingleton<TradeMakeLocks>(TradeMakeLocks.new);
+    locator.registerFactory<MakeOrderUsecase>(
+      () => MakeOrderUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        invoices(),
+        locator(),
+        Federation.robosats,
       ),
     );
     // One for the feature: one subscription per trade, whichever use case object makes it.

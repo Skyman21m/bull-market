@@ -59,6 +59,45 @@ abstract interface class TradeTrailRepository {
   Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
     RobosatsNetwork network,
   );
+
+  /// The terms of the makes of [network] and the trail of each, by robot: a new map after each write of either, pending makes included (no trail), the makes without terms left out (#179).
+  ///
+  /// A database that cannot be read gives a [P2pStorageFailure] in place of the map; a row this code never writes is a [StoredMadeHistory] marked [StoredMadeHistory.unreadable].
+  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
+  watchMadeHistories(RobosatsNetwork network);
+}
+
+/// What is stored of one make's terms and trail (#179).
+@immutable
+final class StoredMadeHistory {
+  /// What the maker asked, written before the make's request; `null` only when [unreadable].
+  final MakerTermsRecord? terms;
+
+  /// The trail, or `null` when none was written: a pending make, or a confirmed make whose first trail was not written.
+  final TradeTrailRecord? trail;
+
+  /// Whether a row is stored that this code does not read back as a record.
+  final bool unreadable;
+
+  const StoredMadeHistory({
+    required this.terms,
+    required this.trail,
+    this.unreadable = false,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is StoredMadeHistory &&
+      other.terms == terms &&
+      other.trail == trail &&
+      other.unreadable == unreadable;
+
+  @override
+  int get hashCode => Object.hash(terms, trail, unreadable);
+
+  @override
+  String toString() =>
+      'StoredMadeHistory(terms: ${terms != null}, trail: $trail, unreadable: $unreadable)';
 }
 
 /// What is stored of one trade's terms and trail.

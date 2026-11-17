@@ -359,6 +359,14 @@ void main() {
       expect(referring((r) => r == 'request CoordinatorClient.cancelOrder'), {
         '${_tradeUseCases}cancel_trade_usecase.dart',
       });
+      // The make (#179): sent by its own use case only, as the take; the pause by none before its own (#184).
+      expect(referring((r) => r == 'request CoordinatorClient.makeOrder'), {
+        _makeOrderUseCase,
+      });
+      expect(
+        referring((r) => r == 'request CoordinatorClient.pauseOrder'),
+        isEmpty,
+      );
       for (final member in ['submitPayoutInvoice', 'submitPayoutAddress']) {
         expect(referring((r) => r == 'request CoordinatorClient.$member'), {
           '${_tradeUseCases}submit_payout_usecase.dart',
@@ -400,6 +408,7 @@ void main() {
               'request CoordinatorClient.fetchOrder',
               'request CoordinatorClient.takeOrder',
               'request CoordinatorClient.cancelOrder',
+              'request CoordinatorClient.makeOrder',
               'request CoordinatorClient.submitPayoutInvoice',
               'request CoordinatorClient.submitPayoutAddress',
               'request CoordinatorClient.fetchChat',
@@ -451,14 +460,16 @@ void main() {
           ).difference({_recoverTradeUseCase}),
           isEmpty,
         );
-        // A record of origin `madeHere` comes only from the make use case (#179), and its order id only from a read that shows its robot as the maker: no file writes, confirms or closes a pending make yet, nor writes a make's terms (#176).
+        // A record of origin `madeHere` comes only from the make use case (#179), and its order id only from a read that shows its robot as the maker: only it writes, confirms or closes a pending make, or writes a make's terms (#176), as only the take writes a pending take.
         for (final member in [
           'TradeRecordRepository.recordPendingMake',
           'TradeRecordRepository.confirmMake',
           'TradeRecordRepository.closePendingMake',
           'TradeTrailRepository.recordMakerTerms',
         ]) {
-          expect(referring((r) => r == member), isEmpty, reason: member);
+          expect(referring((r) => r == member), {
+            _makeOrderUseCase,
+          }, reason: member);
         }
         // The state of a record follows what the coordinator says: only the trade use cases change it.
         for (final member in [
@@ -531,8 +542,14 @@ void main() {
         expect(referring((r) => r == 'TradeTrail.recovered'), {
           '${_tradeUseCases}trade_reader.dart',
         });
-        // A maker's trade starts from the first read of its order: nothing in lib/ starts one before the make use case (#179).
-        expect(referring((r) => r == 'TradeStatus.afterMake'), isEmpty);
+        // A maker's trade starts from the first read of its order (#179): only the make use case names `afterMake`, after the make's answer and at the resolution of a pending make; a confirmed make whose first trail was not written is read once on its own fresh trail, by the make use case (what stays when that trail cannot be stored) and by the reader that resumes a recorded trade, as `forPendingTake` was named by the take only.
+        expect(referring((r) => r == 'TradeStatus.afterMake'), {
+          _makeOrderUseCase,
+        });
+        expect(referring((r) => r == 'TradeTrail.forConfirmedMake'), {
+          _makeOrderUseCase,
+          '${_tradeUseCases}trade_reader.dart',
+        });
         // The gap is computed by the state machine alone, from the order's `satoshis_now`, which `package:robosats` bounds (#178).
         expect(referring((r) => r == 'MakerTerms.rateGap'), {
           'lib/src/domain/trade/trade_status.dart',
@@ -834,16 +851,17 @@ void main() {
       () {
         // A robot reaches a coordinator from a screen only through the panel's cubit, which the user drives: « Select Host », then « Continue ».
         const cubit = 'lib/src/presentation/robot_coordinator_cubit.dart';
-        for (final member in [
-          'ReadRobotOnCoordinatorUsecase.execute',
-          'ReleaseRobotUsecase.execute',
-        ]) {
-          expect(referring((r) => r == member), {cubit}, reason: member);
-        }
-        // And the take (#87), which puts the fresh robot it reserved on the order's coordinator before its pending take: its first contact, through the same use case.
+        expect(referring((r) => r == 'ReleaseRobotUsecase.execute'), {cubit});
+        // And the make (#179), which reads its robot back from the coordinator its binding names to resolve a make whose answer was lost: the robot's active or last order, through the same use case.
+        expect(referring((r) => r == 'ReadRobotOnCoordinatorUsecase.execute'), {
+          cubit,
+          _makeOrderUseCase,
+        });
+        // And the take (#87) and the make (#179), which put the fresh robot they reserved on the order's coordinator before their pending record: its first contact, through the same use case.
         expect(referring((r) => r == 'PutRobotOnCoordinatorUsecase.execute'), {
           cubit,
           _takeOrderUseCase,
+          _makeOrderUseCase,
         });
         // The cubit, its states and every widget reach a robot request only through those use cases: never the use case that binds, the coordinator client, the limiter, the bindings, the database, a credential or a raw client.
         final panel = [
@@ -2347,7 +2365,10 @@ const _watched = {
   'TradeStatus': ('package:p2p/', {'afterTake', 'afterMake'}),
   // The gap from the rate of the creation, slow on a huge figure: only the state machine computes it, from an order the package bounded (#178).
   'MakerTerms': ('package:p2p/', {'rateGap'}),
-  'TradeTrail': ('package:p2p/', {'forPendingTake', 'recovered'}),
+  'TradeTrail': (
+    'package:p2p/',
+    {'forPendingTake', 'recovered', 'forConfirmedMake'},
+  ),
   // What the trade use cases share, which writes trails and closes records, and the acknowledgement of a bond lost (review of #117).
   'TradeReader': (
     'package:p2p/',
@@ -2712,6 +2733,7 @@ const _panel = 'lib/src/ui/garage/robot_coordinator_panel.dart';
 /// The folder of the trade use cases, and the two that may write a trade record (#87, #79).
 const _tradeUseCases = 'lib/src/domain/usecases/trade/';
 const _takeOrderUseCase = '${_tradeUseCases}take_order_usecase.dart';
+const _makeOrderUseCase = '${_tradeUseCases}make_order_usecase.dart';
 const _recoverTradeUseCase = '${_tradeUseCases}recover_trade_usecase.dart';
 
 /// The public members of [declaration] (constructors, fields, methods, getters and setters whose names do not start with `_`), each as `<kind> <source without body>`.

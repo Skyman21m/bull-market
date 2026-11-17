@@ -482,7 +482,7 @@ void main() {
     'only the trade\'s own domain and use cases name the fresh trails and the take\'s start',
     () {
       final names = RegExp(
-        r'\b(forPendingTake|afterTake|afterMake|TradeTrail\.recovered|TradeTrail\._fresh)\b',
+        r'\b(forPendingTake|forConfirmedMake|afterTake|afterMake|TradeTrail\.recovered|TradeTrail\._fresh)\b',
       );
       for (final file in Directory('lib').listSync(recursive: true)) {
         if (file is! File || !file.path.endsWith('.dart')) continue;
@@ -497,7 +497,7 @@ void main() {
       final status = File(
         'lib/src/domain/trade/trade_status.dart',
       ).readAsStringSync();
-      // No public fresh trail but those three: the take's start is private.
+      // No public fresh trail but those of a pending take, a recovered trade and a confirmed make without its first trail (#179): the take's start is private.
       expect(status.contains('factory TradeTrail.atTake'), isFalse);
       expect(status.contains('factory TradeTrail._fresh('), isTrue);
     },

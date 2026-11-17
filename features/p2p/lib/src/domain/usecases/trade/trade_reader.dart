@@ -112,7 +112,7 @@ final class TradeStep {
 
 /// What the trade use cases share: opening a recorded trade from its stored terms and trail, reading its order through the robot's places, and keeping what each answer gives (#87).
 ///
-/// It writes the trail only through [TradeTrailRepository.storeTrail], which asks [TradeTrailRecord.whyNotReplace] first; it never returns a status computed from a trail that was not stored, but the stored trail's own; it confirms a record only when an answer shows the robot as the taker, and closes it only at a terminal status whose trail is stored.
+/// It writes the trail only through [TradeTrailRepository.storeTrail], which asks [TradeTrailRecord.whyNotReplace] first; it never returns a status computed from a trail that was not stored, but the stored trail's own; it confirms a take only when an answer shows the robot as the taker (a make is confirmed by the make use case, from a read that [showsMaker], #179), and closes a record only at a terminal status whose trail is stored.
 /// Only the trade use cases and the composition name it (`robot_bindings_architecture_test.dart`): its members write trails and close records.
 /// The network and the coordinator of every call come from the record, checked against the robot's binding; nothing here moves money.
 final class TradeReader {
@@ -192,11 +192,9 @@ final class TradeReader {
   }
 
   /// [record] opened from what is stored: its terms restored ([TradeTerms.restore]) and its trail restored ([TradeTrail.restore]); a pending take without its terms or its first trail never sent its request ([TradeTakeNeverSent]); a recovered trade without a trail starts on [TradeTrail.recovered]; any other trade without a trail is refused, never restarted on a fresh trail.
-  /// A trade made here is refused before anything is read ([TradeRecordMalformed]): its terms are a maker's, which the make use case opens (#179); until then no use case of a take reads it, confirms it, closes it or acts on it as a take (#178).
+  /// A trade made here is opened from a maker's terms ([TradeTerms.restoreMade] of what `maker_terms` holds, #179), never from a taker's: a record of origin `madeHere` with terms in `trade_terms` is refused ([TradeRecordMalformed]); a confirmed make without its first trail (the app killed between its confirmation and that write, design note `docs/design/phase-3-making-an-order.md` § 3.4) starts on [TradeTrail.forConfirmedMake], whose first read can only be the make's own (0, 5 or 1043), since no invoice was ever shown for it.
   Future<TradeOpening> open(TradeRecord record) async {
-    if (record.origin == TradeOrigin.madeHere) {
-      return const TradeNotRestorable(TradeRecordMalformed());
-    }
+    if (record.origin == TradeOrigin.madeHere) return _openMade(record);
     final StoredTradeHistory history;
     switch (await _trails.historyOf(record)) {
       case Ok(:final value):
@@ -242,6 +240,73 @@ final class TradeReader {
       trail = TradeTrail.recovered(terms, now());
     } else {
       return const TradeNotRestorable(TradeRecordMalformed());
+    }
+    switch (await _robotAndCoordinator(record)) {
+      case Ok(value: (final robot, final coordinator)):
+        return TradeOpened(
+          OpenTrade(
+            record: record,
+            robot: robot,
+            coordinator: coordinator,
+            terms: terms,
+            seen: TradeSeen(TradeStatus.beforeFirstRead(trail), order: null),
+          ),
+        );
+      case Err(:final failure):
+        return TradeNotOpened(failure);
+    }
+  }
+
+  /// [record], a trade made here, opened from its maker's terms and its trail ([open]).
+  Future<TradeOpening> _openMade(TradeRecord record) async {
+    final StoredTradeHistory history;
+    switch (await _trails.historyOf(record)) {
+      case Ok(:final value):
+        history = value;
+      case Err(:final failure):
+        return TradeNotOpened(failure);
+    }
+    // A make's terms are a maker's: a taker's terms on it are no record this code writes (the trigger `trade_terms_of_their_trade` refuses them).
+    if (history.unreadable || history.terms != null) {
+      return const TradeNotRestorable(TradeRecordMalformed());
+    }
+    final MakerTermsRecord? termsRecord;
+    switch (await _trails.makerTermsOf(record.robot)) {
+      case Ok(:final value):
+        termsRecord = value;
+      case Err(:final failure):
+        return TradeNotOpened(failure);
+    }
+    // The database confirms a make only once its terms exist (the trigger `trades_set_once`).
+    if (termsRecord == null) {
+      return const TradeNotRestorable(TradeRecordMalformed());
+    }
+    final TradeTerms<MadeSide> terms;
+    switch (TradeTerms.restoreMade(termsRecord, orderId: record.orderId)) {
+      case Ok(:final value):
+        terms = value;
+      case Err(:final failure):
+        return TradeNotRestorable(failure);
+    }
+    if (terms.network != record.network ||
+        terms.coordinator.shortAlias != record.coordinatorAlias ||
+        terms.role != record.role) {
+      return const TradeNotRestorable(TradeRecordOfAnotherTrade());
+    }
+    final stored = history.trail;
+    final TradeTrail trail;
+    if (stored == null) {
+      trail = TradeTrail.forConfirmedMake(
+        terms,
+        record.confirmedAt ?? record.takenAt,
+      );
+    } else {
+      switch (TradeTrail.restore(stored, terms: terms, now: now())) {
+        case Ok(:final value):
+          trail = value;
+        case Err(:final failure):
+          return TradeNotRestorable(failure);
+      }
     }
     switch (await _robotAndCoordinator(record)) {
       case Ok(value: (final robot, final coordinator)):
@@ -324,25 +389,30 @@ final class TradeReader {
     isBusy: (answer) => !times.heldBack && answeredBusy(answer),
   );
 
-  /// One read of order [orderId] of [coordinator] on [network], by [robot], through [requests]: the read of a take being prepared, which has no record yet (#119); a busy answer is sent again as the limiter says.
+  /// One read of order [orderId] of [coordinator] on [network], by [robot], through [requests]: the read of a take being prepared, or of an order made, which has no record yet (#119, #179); a busy answer is sent again as the limiter says. With [times], the read is ranked as [timed] ranks one, so that its answer can be kept ([keep]).
   Future<Result<Result<CoordinatorOrder, CoordinatorFailure>, P2pFailure>>
   readOrderOf(
     RobotRequests requests,
     RobosatsNetwork network,
     int orderId,
     NetworkRobot robot,
-    Coordinator coordinator,
-  ) => requests.send(
-    network,
-    coordinator,
-    () => _client.fetchOrder(
-      coordinator,
+    Coordinator coordinator, {
+    RequestTimes? times,
+  }) {
+    Future<Result<CoordinatorOrder, CoordinatorFailure>> read() =>
+        _client.fetchOrder(
+          coordinator,
+          network,
+          identity: robot.identity,
+          orderId: orderId,
+        );
+    return requests.send(
       network,
-      identity: robot.identity,
-      orderId: orderId,
-    ),
-    isBusy: answeredBusy,
-  );
+      coordinator,
+      times == null ? read : () => timed(times, read),
+      isBusy: answeredBusy,
+    );
+  }
 
   /// Whether a read was answered busy by the transport: nothing reached the coordinator.
   static bool answeredBusy(Result<Object?, CoordinatorFailure> answer) =>
@@ -589,6 +659,25 @@ final class TradeReader {
               order.id == terms.orderId,
         _ => false,
       };
+
+  /// Whether [answer] shows this robot as the maker of an order of [coordinator] on [network] numbered [orderId] (#179): the only proof that a make made it, the make's own answer naming no robot (`api/serializers.py:83-107`).
+  ///
+  /// The package has checked that `is_maker` names the robot that asked (`coordinator_order.dart`, the maker's hash id against the robot's); the order must not show this robot as its taker too. Nothing else of the order is compared here: the robot was fresh when put on the coordinator (no order, active or last), which is what makes an order it names its own, and the state machine compares the order with what was asked from its first read on (`TradeTermsChanged`). Its creation time is the coordinator's word, so it is not compared with this device's clock: a coordinator that lies sets it as it likes, and a device whose clock runs ahead would leave an honest make pending for good (functional review of #179).
+  /// Any status is taken: the state machine judges it from the make's first read (`TradeStatus.afterMake`), where anything but 0, 5 or 1043 is an edge the reference never takes (an order whose bond was paid from another client with the same Garage Key, while this app's make was pending, is followed rather than lost, with that warning).
+  static bool showsMaker(
+    TradeAnswer answer, {
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required int orderId,
+  }) => switch (answer) {
+    TradeOrderRead(:final order) =>
+      order.isMaker &&
+          !order.isTaker &&
+          order.coordinator == coordinator &&
+          order.network == network &&
+          order.id == orderId,
+    _ => false,
+  };
 
   /// The position of [seen], for the cadence.
   static TradePosition positionOf(TradeSeen seen) => seen.status.position;

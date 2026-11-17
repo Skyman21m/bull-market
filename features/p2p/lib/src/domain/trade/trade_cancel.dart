@@ -8,7 +8,7 @@ import '../trade_record.dart';
 import 'trade_storable.dart';
 import 'trade_watch.dart';
 
-/// The user's confirmation that a cancel now loses the taker bond (status 6 or 7, design note § 1.4), for one trade at the status the user saw: the trade screen builds it only from its confirmation dialog, after the user confirmed it (#88; `robot_bindings_architecture_test.dart` pins the file that may build it).
+/// The user's confirmation that a cancel now loses the bond, the taker's or the maker's (status 6 or 7, design note § 1.4; `docs/design/phase-3-making-an-order.md` § 1.7), for one trade at the status the user saw: the trade screen builds it only from its confirmation dialog, after the user confirmed it (#88; `robot_bindings_architecture_test.dart` pins the file that may build it).
 ///
 /// `CancelTradeUsecase` refuses such a cancel without it, and refuses one given for another trade or at another status than the one it cancels with ([CancelAcknowledgementMismatch]); a free cancel (the pre-take, 3) needs none.
 @immutable
@@ -126,7 +126,17 @@ final class CancelDone extends CancelOutcome {
   @override
   final P2pFailure? recordProblem;
 
-  const CancelDone(this.record, this.seen, {this.recordProblem});
+  /// Whether the cancel was this maker's of its public or paused order, which the coordinator ended on this very cancel, guarded by the status shown: it returns the maker bond before it ends the order (`close_public_order`, `api/logics.py:961-1003`), so the bond is not lost, whatever `Cancelled.bondMayHaveBeenLost` says (the state machine cannot know which cancel ended the order, #178) (#179).
+  ///
+  /// It says what the coordinator does, not that the money is back: a bond paid from this wallet comes back through the swap service, so a screen says « nothing was taken » only once the bond's payment record is in a final state with nothing sent, never from this alone.
+  final bool makerBondReturned;
+
+  const CancelDone(
+    this.record,
+    this.seen, {
+    this.recordProblem,
+    this.makerBondReturned = false,
+  });
 
   @override
   String toString() => 'CancelDone($record, ${seen.status})';
