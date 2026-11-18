@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_renewal.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
@@ -119,31 +120,34 @@ void main() {
           'payment_method': 'Cash F2F',
           'description': 'Pay me elsewhere',
         };
-        await read(harness, record);
-        final stored = await harness.trailOf(record);
-        // Whatever the state machine kept of such a read, the renewal never takes its terms: when the trail stands at the expiry, it renews the kept request; elsewhere it renews nothing.
-        switch (await harness.make.renewal(record)) {
-          case Ok(:final value):
-            expect(stored?.position, TradePosition.expired.name);
-            expect(value.request, asked);
-            harness.coordinator.orderChanges.clear();
-            final renewed = valueOf(
-              await harness.make.execute(
-                value.request,
-                coordinator: value.coordinator,
-                network: value.network,
-                seen: seenNow(harness, value.request),
-              ),
-            );
-            final next = (renewed as MakeStarted).record;
-            expect(
-              harness.coordinator.order(next.orderId).body,
-              harness.coordinator.order(record.orderId).body,
-            );
-          case Err(:final failure):
-            expect(failure, isA<RenewalNotEnded>());
-            expect(stored?.position, isNot(TradePosition.expired.name));
-        }
+        final seen = await read(harness, record);
+        // The state machine says the terms changed, and keeps the expiry.
+        expect(seen.status, isA<Expired>());
+        expect(seen.status.has<TradeTermsChanged>(), isTrue);
+        expect(
+          (await harness.trailOf(record))?.position,
+          TradePosition.expired.name,
+        );
+        final renewal = valueOf(await harness.make.renewal(record));
+        expect(renewal.request, asked);
+        final renewed = valueOf(
+          await harness.make.execute(
+            renewal.request,
+            coordinator: renewal.coordinator,
+            network: renewal.network,
+            seen: seenNow(harness, renewal.request),
+          ),
+        );
+        final next = (renewed as MakeStarted).record;
+        // The new make's body is the first make's, field for field: none of the terms read back.
+        expect(
+          harness.coordinator.order(next.orderId).body,
+          harness.coordinator.order(record.orderId).body,
+        );
+        final body = harness.coordinator.order(next.orderId).body;
+        expect((body['amount'] as num?)?.toDouble(), 100);
+        expect(body['payment_method'], 'Revolut Instant SEPA');
+        expect(body['description'], isNull);
       },
     );
 
@@ -242,7 +246,8 @@ void main() {
         final moved = TradeRecord(
           robot: record.robot,
           coordinatorAlias: record.coordinatorAlias,
-          coordinatorOnion: 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcd.onion',
+          coordinatorOnion:
+              'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcd.onion',
           orderId: record.orderId,
           role: record.role,
           origin: record.origin,
@@ -264,8 +269,8 @@ void main() {
           for (final role in TradeRole.values) {
             final expected = switch (position) {
               TradePosition.expired || TradePosition.succeeded => true,
-              TradePosition.sendingSats || TradePosition.routingFailed =>
-                role == TradeRole.seller,
+              TradePosition.sendingSats ||
+              TradePosition.routingFailed => role == TradeRole.seller,
               _ => false,
             };
             expect(
@@ -324,12 +329,15 @@ void main() {
         );
         expect(await harness.trailOf(record), trailBefore);
         final rows = await harness.allTrades();
-        final old = rows.singleWhere((row) => row['order_id'] == record.orderId);
+        final old = rows.singleWhere(
+          (row) => row['order_id'] == record.orderId,
+        );
         expect(old['closed_at'], isNotNull);
         // The new order active, the old one not.
-        expect([
-          for (final active in await harness.activeRecords()) active.orderId,
-        ], [next.orderId]);
+        expect(
+          [for (final active in await harness.activeRecords()) active.orderId],
+          [next.orderId],
+        );
       },
     );
 
@@ -393,10 +401,7 @@ void main() {
           ),
         );
         expect(renewed, isA<MakeStarted>());
-        expect(
-          (renewed as MakeStarted).record.robot,
-          isNot(record.robot),
-        );
+        expect((renewed as MakeStarted).record.robot, isNot(record.robot));
       },
     );
 
@@ -471,7 +476,7 @@ void main() {
         expect(created, 91711.15);
         harness.coordinator.prices[2] = 110053.38;
         final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
-          ..rate = const P2pWalletRateRead(110000);
+          ..rate = P2pWalletRateRead(110000);
         final form = renewalForm(harness, record, wallet);
         await form.start();
         expect(form.state.renewal, isA<MakeRenewalReady>());
@@ -482,8 +487,7 @@ void main() {
         final check = (form.state.price as MakeFormPriceChecked).check;
         expect((check as MakePriceCompared).side, MakePriceSide.within);
         final seen = form.seen() ?? (throw StateError('no price'));
-        final renewal =
-            (form.state.renewal as MakeRenewalReady).renewal;
+        final renewal = (form.state.renewal as MakeRenewalReady).renewal;
         await form.make(renewal.request, coordinator: harness.host, seen: seen);
         final next = switch (form.state.progress) {
           MakeMade(:final record) => record,
@@ -503,7 +507,7 @@ void main() {
         final record = await expiredOrder(harness);
         harness.coordinator.prices[2] = 110053.38;
         final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
-          ..rate = const P2pWalletRateRead(91711.15);
+          ..rate = P2pWalletRateRead(91711.15);
         final form = renewalForm(harness, record, wallet);
         await form.start();
         final check = (form.state.price as MakeFormPriceChecked).check;
@@ -525,7 +529,7 @@ void main() {
         final harness = await MakeHarness.start();
         final record = await expiredOrder(harness);
         final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
-          ..rate = const P2pWalletRateRead(91711.15);
+          ..rate = P2pWalletRateRead(91711.15);
         final form = renewalForm(harness, record, wallet);
         await form.start();
         final shown = form.seen() ?? (throw StateError('no price'));
@@ -536,7 +540,11 @@ void main() {
             .length;
         final makesBefore = makes(harness);
         final renewal = (form.state.renewal as MakeRenewalReady).renewal;
-        await form.make(renewal.request, coordinator: harness.host, seen: shown);
+        await form.make(
+          renewal.request,
+          coordinator: harness.host,
+          seen: shown,
+        );
         expect(
           form.state.progress,
           isA<MakeIdle>().having(
@@ -570,7 +578,7 @@ void main() {
         final harness = await MakeHarness.start();
         final record = await expiredOrder(harness);
         final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
-          ..rate = const P2pWalletRateRead(91711.15);
+          ..rate = P2pWalletRateRead(91711.15);
         final form = renewalForm(harness, record, wallet);
         await form.start();
         final renewal = (form.state.renewal as MakeRenewalReady).renewal;
