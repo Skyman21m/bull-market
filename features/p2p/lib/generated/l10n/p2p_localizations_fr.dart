@@ -3397,4 +3397,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pPayoutRateUnverified(String currency) {
     return 'Le portefeuille Bull n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou continuer sans cette vérification.';
   }
+
+  @override
+  String p2pTradeBreachWhatToDo(String coordinator) {
+    return 'Pour suivre cet ordre en sécurité, ouvrez-le dans l’app officielle RoboSats avec votre clé de garage, et contactez $coordinator si quelque chose vous paraît anormal.';
+  }
 }

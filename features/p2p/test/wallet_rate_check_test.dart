@@ -369,7 +369,8 @@ void main() {
           received(1, const P2pWalletRateUnavailable()),
           isA<WalletRateUnverified>(),
         );
-        expect(received(1, P2pWalletRateRead(0)), isA<WalletRateUnverified>());
+        // A price no coordinator could give (not below `MakerTerms.maxCreatedPrice`).
+        expect(received(1, P2pWalletRateRead(1e16)), isA<WalletRateUnverified>());
         expect(received(1, const P2pWalletRateNotPriced()).warns, isFalse);
       });
     },

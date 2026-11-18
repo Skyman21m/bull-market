@@ -3350,6 +3350,11 @@ class P2pLocalizationsPt extends P2pLocalizations {
   String p2pPayoutRateUnverified(String currency) {
     return 'The Bull wallet\'s price of a bitcoin in $currency could not be read: rate not checked. You can try again, or go on without the check.';
   }
+
+  @override
+  String p2pTradeBreachWhatToDo(String coordinator) {
+    return 'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact $coordinator if something looks wrong.';
+  }
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).

@@ -812,7 +812,7 @@ void main() {
       return cubit;
     }
 
-    // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,900 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
+    // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,899.996 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
     final atWallet = P2pWalletRateRead(91711.15);
 
     testWidgets(
@@ -829,13 +829,13 @@ void main() {
         await tester.pump();
         expect(
           find.textContaining(
-            'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, 100 EUR are worth 106,900 sats. You receive 89,978 sats: gap -15.83%.',
+            'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, 100 EUR are worth 106,899 sats. You receive 89,978 sats: gap -15.83%.',
           ),
           findsOneWidget,
         );
         expect(
           find.text(
-            'You receive more than 10% fewer sats than that: 89,978 sats received, 106,900 sats expected. Check it before going on.',
+            'You receive more than 10% fewer sats than that: 89,978 sats received, 106,899 sats expected. Check it before going on.',
           ),
           findsOneWidget,
         );
@@ -948,6 +948,7 @@ void main() {
         );
         await tester.pump();
         expect(asked.fiatSent, hasLength(1));
+        await tester.pump(const Duration(seconds: 31));
       },
     );
 
