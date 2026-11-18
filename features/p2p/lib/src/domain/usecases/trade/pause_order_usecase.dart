@@ -17,7 +17,7 @@ import 'trade_take_locks.dart';
 /// 2. one action of the order runs at a time in the process ([TradeTakeLocks], which the take, the cancel, the payout, the bond's payment and the chat step share): a second tap, another screen of the same trade, waits for the first to end and then reads the order the first left;
 /// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]); the request is sent only if that read is marked stored and still shows the status the user saw ([PauseStatusMoved] otherwise, with the status now, nothing sent), so that a pause never leaves for an order already paused, paused elsewhere, taken or expired;
 /// 4. the request is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: an answer lost, unreadable or late is an outcome unknown, resolved by the reads that follow, never by a second request;
-/// 5. its answer is kept, then the order read again and kept; the status then shown is compared with what the user asked ([PauseWanted.reachedAt]): [PauseDone] only when a status marked stored shows the order where the user asked, never because the request was accepted; [PauseNotReached] when the coordinator accepted it and the order is read elsewhere (toggled twice or the other way, taken, expired, or a coordinator that answers falsely), so that the screen says when the order stayed or became public again; [PauseNotDone] when it was refused or never left; [PauseOutcomeUnknown] otherwise.
+/// 5. the order is read again and kept (the answer, accepted or refused, only says what the coordinator did with the request); the status then shown is compared with what the user asked ([PauseWanted.reachedAt]): [PauseDone] only when a status marked stored shows the order where the user asked, never because the request was accepted; [PauseNotReached] when the coordinator accepted it and the order is read elsewhere (toggled twice or the other way, taken, expired, or a coordinator that answers falsely), so that the screen says when the order stayed or became public again; [PauseNotDone] when it was refused or never left; [PauseOutcomeUnknown] otherwise.
 /// Nothing here pays or moves the wallet's funds; nothing is printed or logged.
 final class PauseOrderUsecase {
   final CoordinatorClient _client;
@@ -159,17 +159,7 @@ final class PauseOrderUsecase {
       isBusy: _answeredBusy,
     );
 
-    // The answer first (the coordinator answers with its read of the order, `api/views.py:695`), then a read after it.
-    if (sent case Ok(value: Ok(:final value))) {
-      final kept = await _reader.advance(
-        current,
-        TradeOrderRead(value.order),
-        at: _reader.now(),
-        request: actionTimes,
-      );
-      current = kept.trade;
-      problem ??= kept.recordProblem;
-    }
+    // A read after it. The answer itself is the coordinator's read of the order once toggled (`api/views.py:695`), checked by the package (`parseTradeActionAnswer`), but it is not kept as the status shown: only a read sent after the request says where the order is, so that « paused » is never shown on the word of the request's own answer (a coordinator that answers « paused » and toggles nothing is caught by the read after).
     final readAfter = _reader.request();
     final read = await _reader.readOrder(
       requests,
@@ -178,6 +168,8 @@ final class PauseOrderUsecase {
       trade.coordinator,
       times: readAfter,
     );
+    // Whether the read after was stored: what it shows is then where the order is after the request; otherwise the status shown is still the read before it.
+    var readAfterStored = false;
     if (read case Ok(value: final result)) {
       if (TradeAnswer.ofRead(result) case final after?) {
         final kept = await _reader.advance(
@@ -189,16 +181,17 @@ final class PauseOrderUsecase {
         );
         current = kept.trade;
         problem ??= kept.recordProblem;
+        readAfterStored = kept.stored;
       }
     }
     final now = current.seen;
-    // Where the user asked, by a status marked stored: done, whatever the answer said (an answer lost whose request landed).
-    if (wanted.reachedAt(now)) {
+    // Where the user asked, by the read after, stored: done, whatever the answer said (an answer lost whose request landed).
+    if (readAfterStored && wanted.reachedAt(now)) {
       return Ok(PauseDone(wanted, current.record, now, recordProblem: problem));
     }
     return Ok(switch (sent) {
-      // Accepted, and the order read elsewhere: the screen says where; a status that could not be stored says nothing, and the outcome is unknown.
-      Ok(value: Ok()) when now.stored => PauseNotReached(
+      // Accepted, and the read after shows the order elsewhere: the screen says where; without a read after stored, the outcome is unknown.
+      Ok(value: Ok()) when readAfterStored => PauseNotReached(
         wanted,
         current.record,
         now,

@@ -1,0 +1,515 @@
+import 'package:p2p/src/domain/trade/trade_make.dart';
+import 'package:p2p/src/domain/trade/trade_pause.dart';
+import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade/trade_watch.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/testing.dart' show ScriptedFault, ScriptedMakerRequest;
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
+import 'package:test/test.dart';
+
+import 'support/make_harness.dart';
+
+/// The pause and « Unpause Order » of a public order made here (#184, design note `docs/design/phase-3-making-an-order.md` § 1.6, § 3.4), over the real records, reader, limiter and state machine, the coordinator played by `ScriptedMakerCoordinator` as the reference answers a maker's `pause` (`api/views.py:617-619`, `:686-695`, `Logics.pause_unpause_public_order`, `api/logics.py:1758-1783`).
+///
+/// The request is a toggle with no direction: every test counts the pause requests that reached the coordinator, and where the order ends, so that a request never leaves twice for one tap, never leaves for an order already where the user asked, and the outcome is never « paused » unless a read says so.
+void main() {
+  T valueOf<T>(Result<T, Failure> result) => switch (result) {
+    Ok(:final value) => value,
+    Err(:final failure) => fail('$failure'),
+  };
+
+  /// An order made and its bond locked (public, 1), paused at the coordinator when [paused], moved by [move], then read by the watch: the harness, the record and the status the user sees.
+  Future<(MakeHarness, TradeRecord, TradeSeen)> shown({
+    bool paused = false,
+    void Function(MakeHarness harness)? move,
+  }) async {
+    final harness = await MakeHarness.start();
+    final made = valueOf(await harness.makeOrder());
+    final record = (made as MakeStarted).record;
+    // The maker's first read makes the bond at 0, which then locks.
+    final first = harness.watchOf(record);
+    await harness.settle();
+    await first.subscription.cancel();
+    harness.coordinator.lockMakerBond(record.orderId);
+    if (paused) harness.coordinator.pause(record.orderId);
+    move?.call(harness);
+    final run = harness.watchOf(record);
+    await harness.settle();
+    final seen = run.lastStatus.seen;
+    await run.subscription.cancel();
+    return (harness, record, seen);
+  }
+
+  int pauses(MakeHarness harness) => harness.coordinator.received
+      .where((kind) => kind == ScriptedMakerRequest.pause)
+      .length;
+
+  int statusAt(MakeHarness harness, TradeRecord record) =>
+      harness.coordinator.order(record.orderId).status;
+
+  Matcher isPublic({required bool paused}) =>
+      isA<MakerOrderPublic>().having((s) => s.paused, 'paused', paused);
+
+  group('one tap, one request, the outcome read', () {
+    test(
+      'public → paused: the order read, the pause sent once, the read after shows it paused: done',
+      () async {
+        final (harness, record, seen) = await shown();
+        expect(seen.stored, isTrue);
+        expect(seen.status, isPublic(paused: false));
+        expect(PauseWanted.of(seen), PauseWanted.paused);
+        final before = harness.coordinator.received.length;
+        final done = valueOf(await harness.pause.execute(record, seen));
+        expect(done, isA<PauseDone>());
+        expect(done.wanted, PauseWanted.paused);
+        expect(done.seen.stored, isTrue);
+        expect(done.seen.status, isPublic(paused: true));
+        expect(statusAt(harness, record), 2);
+        // A read first, the pause once, a read after it.
+        expect(harness.coordinator.received.sublist(before), [
+          ScriptedMakerRequest.order,
+          ScriptedMakerRequest.pause,
+          ScriptedMakerRequest.order,
+        ]);
+        // The body of both buttons, the reference's (`TradeBox/index.tsx:310-313`).
+        final sent = harness.coordinator.requests.firstWhere(
+          (r) =>
+              r.method == CoordinatorHttpMethod.post &&
+              r.url.path == '/api/order/',
+        );
+        expect(
+          String.fromCharCodes(sent.body ?? const []),
+          '{"action":"pause"}',
+        );
+      },
+    );
+
+    test(
+      'paused → public, « Unpause Order »: the same request, the order public again: done',
+      () async {
+        final (harness, record, seen) = await shown(paused: true);
+        expect(seen.status, isPublic(paused: true));
+        expect(PauseWanted.of(seen), PauseWanted.public);
+        final done = valueOf(await harness.pause.execute(record, seen));
+        expect(done, isA<PauseDone>());
+        expect(done.wanted, PauseWanted.public);
+        expect(done.seen.status, isPublic(paused: false));
+        expect(statusAt(harness, record), 1);
+        expect(pauses(harness), 1);
+      },
+    );
+
+    test(
+      'the deadline does not move: a pause and a resume keep the order\'s expiry (`Order.update_status` writes the status only)',
+      () async {
+        final (harness, record, seen) = await shown();
+        final deadline = (seen.status as MakerOrderPublic).deadline;
+        final paused = valueOf(await harness.pause.execute(record, seen));
+        expect((paused.seen.status as MakerOrderPublic).deadline, deadline);
+        final resumed = valueOf(
+          await harness.pause.execute(record, paused.seen),
+        );
+        expect(resumed, isA<PauseDone>());
+        expect((resumed.seen.status as MakerOrderPublic).deadline, deadline);
+        expect(pauses(harness), 2);
+      },
+    );
+
+    test(
+      'two taps at once: the second waits for the first, reads the order paused and sends nothing',
+      () async {
+        final (harness, record, seen) = await shown();
+        final first = harness.pause.execute(record, seen);
+        final second = harness.pause.execute(record, seen);
+        final (a, b) = (await first, await second);
+        expect(valueOf(a), isA<PauseDone>());
+        switch (b) {
+          case Err(failure: PauseStatusMoved(:final seen)):
+            expect(seen.status, isPublic(paused: true));
+          case _:
+            fail('$b');
+        }
+        expect(pauses(harness), 1);
+        expect(statusAt(harness, record), 2);
+      },
+    );
+  });
+
+  group('nothing sent when the fresh read is not the status the user saw', () {
+    test(
+      'paused from another app meanwhile: the toggle would make it public again, so nothing is sent',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.pause(record.orderId);
+        final refused = await harness.pause.execute(record, seen);
+        switch (refused) {
+          case Err(failure: PauseStatusMoved(:final seen)):
+            expect(seen.status, isPublic(paused: true));
+            expect(seen.stored, isTrue);
+          case _:
+            fail('$refused');
+        }
+        expect(pauses(harness), 0);
+        expect(statusAt(harness, record), 2);
+      },
+    );
+
+    test(
+      'unpaused from another app meanwhile: « Unpause Order » sends nothing, the order shown public',
+      () async {
+        final (harness, record, seen) = await shown(paused: true);
+        harness.coordinator.pause(record.orderId);
+        final refused = await harness.pause.execute(record, seen);
+        expect(
+          refused,
+          isA<Err<PauseOutcome, PauseRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<PauseStatusMoved>().having(
+              (m) => m.seen.status,
+              'status',
+              isPublic(paused: false),
+            ),
+          ),
+        );
+        expect(pauses(harness), 0);
+        expect(statusAt(harness, record), 1);
+      },
+    );
+
+    test('taken meanwhile: nothing sent, the trade shown at 6', () async {
+      final (harness, record, seen) = await shown();
+      harness.coordinator.take(record.orderId, harness.robot(4));
+      final refused = await harness.pause.execute(record, seen);
+      switch (refused) {
+        case Err(failure: PauseStatusMoved(:final seen)):
+          expect(seen.status, isA<WaitingForBoth>());
+        case _:
+          fail('$refused');
+      }
+      expect(pauses(harness), 0);
+    });
+
+    test(
+      'expired while paused: « Unpause Order » sends nothing, the order shown expired',
+      () async {
+        final (harness, record, seen) = await shown(paused: true);
+        harness.coordinator.expire(record.orderId);
+        final refused = await harness.pause.execute(record, seen);
+        switch (refused) {
+          case Err(failure: PauseStatusMoved(:final seen)):
+            expect(seen.status, isA<Expired>());
+          case _:
+            fail('$refused');
+        }
+        expect(pauses(harness), 0);
+      },
+    );
+
+    test(
+      'cancelled meanwhile (1043): nothing sent, the trade shown cancelled',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.order(record.orderId).status = 4;
+        final refused = await harness.pause.execute(record, seen);
+        switch (refused) {
+          case Err(failure: PauseStatusMoved(:final seen)):
+            expect(seen.status, isA<Cancelled>());
+          case _:
+            fail('$refused');
+        }
+        expect(pauses(harness), 0);
+      },
+    );
+
+    test('the read before fails: nothing sent, said as such', () async {
+      final (harness, record, seen) = await shown();
+      harness.coordinator.failNext(
+        ScriptedMakerRequest.order,
+        ScriptedFault.timedOut,
+      );
+      final refused = await harness.pause.execute(record, seen);
+      expect(
+        refused,
+        isA<Err<PauseOutcome, PauseRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<PauseReadFailed>(),
+        ),
+      );
+      expect(pauses(harness), 0);
+      expect(statusAt(harness, record), 1);
+    });
+
+    test(
+      'a status that offers no pause: no request at all, not even a read',
+      () async {
+        final (harness, record, seen) = await shown();
+        final before = harness.coordinator.received.length;
+        final notStored = TradeSeen(seen.status, order: seen.order);
+        final noOrder = TradeSeen(seen.status, order: null, stored: true);
+        for (final status in [notStored, noOrder]) {
+          expect(
+            await harness.pause.execute(record, status),
+            isA<Err<PauseOutcome, PauseRefusal>>().having(
+              (e) => e.failure,
+              'failure',
+              isA<PauseNotOffered>(),
+            ),
+          );
+        }
+        // A trade taken here, its read saying otherwise: never a pause.
+        final taken = TradeRecord(
+          robot: record.robot,
+          coordinatorAlias: record.coordinatorAlias,
+          coordinatorOnion: record.coordinatorOnion,
+          orderId: record.orderId,
+          role: record.role,
+          origin: TradeOrigin.takenHere,
+          takenAt: record.takenAt,
+          confirmedAt: record.confirmedAt,
+          closedAt: null,
+        );
+        expect(
+          await harness.pause.execute(taken, seen),
+          isA<Err<PauseOutcome, PauseRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<PauseNotOffered>(),
+          ),
+        );
+        expect(harness.coordinator.received.length, before);
+      },
+    );
+
+    test(
+      'at the maker bond\'s step (0): no pause offered, nothing sent',
+      () async {
+        final harness = await MakeHarness.start();
+        final record =
+            (valueOf(await harness.makeOrder()) as MakeStarted).record;
+        final run = harness.watchOf(record);
+        await harness.settle();
+        final seen = run.lastStatus.seen;
+        await run.subscription.cancel();
+        expect(seen.status, isA<WaitingForMakerBond>());
+        expect(PauseWanted.of(seen), isNull);
+        final before = harness.coordinator.received.length;
+        expect(
+          await harness.pause.execute(record, seen),
+          isA<Err<PauseOutcome, PauseRefusal>>(),
+        );
+        expect(harness.coordinator.received.length, before);
+      },
+    );
+  });
+
+  group('an answer lost, late or refused: never sent again by itself', () {
+    test(
+      'the answer lost after the toggle: the read after shows it paused, done; one request',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.answerLost,
+        );
+        final done = valueOf(await harness.pause.execute(record, seen));
+        expect(done, isA<PauseDone>());
+        expect(done.seen.status, isPublic(paused: true));
+        expect(pauses(harness), 1);
+      },
+    );
+
+    test(
+      'no answer and nothing done: unknown, the order shown public, never sent again',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.timedOut,
+        );
+        final unknown = valueOf(await harness.pause.execute(record, seen));
+        expect(unknown, isA<PauseOutcomeUnknown>());
+        expect(unknown.seen.status, isPublic(paused: false));
+        expect(showsPublicOrder(unknown.seen), isTrue);
+        expect(pauses(harness), 1);
+        expect(statusAt(harness, record), 1);
+      },
+    );
+
+    test(
+      'a request that lands after the read: unknown, then paused at the coordinator; a new tap from the stale status reads it paused and sends nothing, so the order is never toggled back',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.landsLate,
+        );
+        final unknown = valueOf(await harness.pause.execute(record, seen));
+        expect(unknown, isA<PauseOutcomeUnknown>());
+        expect(statusAt(harness, record), 1);
+        harness.coordinator.landLate();
+        expect(statusAt(harness, record), 2);
+        // The user taps again from the status still shown (public).
+        final again = await harness.pause.execute(record, unknown.seen);
+        switch (again) {
+          case Err(failure: PauseStatusMoved(:final seen)):
+            expect(seen.status, isPublic(paused: true));
+          case _:
+            fail('$again');
+        }
+        expect(pauses(harness), 1);
+        expect(statusAt(harness, record), 2);
+      },
+    );
+
+    test(
+      'the transport busy: nothing reached the coordinator, tried again by the limiter; toggled once',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.busy,
+        );
+        final done = valueOf(await harness.pause.execute(record, seen));
+        expect(done, isA<PauseDone>());
+        expect(statusAt(harness, record), 2);
+      },
+    );
+
+    test(
+      'taken between the read and the request: the coordinator refuses (1033), nothing paused, the trade shown at 6',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            harness.coordinator.take(record.orderId, harness.robot(4));
+          }
+        };
+        final notDone = valueOf(await harness.pause.execute(record, seen));
+        expect(notDone, isA<PauseNotDone>());
+        expect(
+          (notDone as PauseNotDone).cause,
+          isA<TradeActionNotNow>().having(
+            (c) => c.fromLastRead,
+            'fromLastRead',
+            isFalse,
+          ),
+        );
+        expect(notDone.seen.status, isA<WaitingForBoth>());
+        expect(statusAt(harness, record), 6);
+        expect(pauses(harness), 1);
+      },
+    );
+
+    for (final (code, cause) in [
+      (1032, isA<TradeActionNotMaker>()),
+      (1033, isA<TradeActionNotNow>()),
+    ]) {
+      test(
+        'refused with $code: nothing done, said by type, the order shown public',
+        () async {
+          final (harness, record, seen) = await shown();
+          harness.coordinator.pauseRefusals.add(code);
+          final notDone = valueOf(await harness.pause.execute(record, seen));
+          expect(notDone, isA<PauseNotDone>());
+          expect((notDone as PauseNotDone).cause, cause);
+          expect(notDone.seen.status, isPublic(paused: false));
+          expect(showsPublicOrder(notDone.seen), isTrue);
+          expect(pauses(harness), 1);
+          expect(statusAt(harness, record), 1);
+        },
+      );
+    }
+
+    test('refused with 1047: nothing done, said by type', () async {
+      final (harness, record, seen) = await shown();
+      harness.coordinator.failNext(
+        ScriptedMakerRequest.pause,
+        ScriptedFault.refused,
+      );
+      final notDone = valueOf(await harness.pause.execute(record, seen));
+      expect(notDone, isA<PauseNotDone>());
+      expect((notDone as PauseNotDone).cause, isA<OrderNotParticipant>());
+      expect(statusAt(harness, record), 1);
+    });
+  });
+
+  group('the answer compared with what the user asked, never trusted alone', () {
+    test(
+      'paused from another app between the read and the request: the toggle makes it public again, accepted; the outcome says not reached, the order shown public',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            // The official app with the same Garage Key pauses it first.
+            harness.coordinator.pause(record.orderId);
+          }
+        };
+        final outcome = valueOf(await harness.pause.execute(record, seen));
+        expect(outcome, isA<PauseNotReached>());
+        expect(outcome.wanted, PauseWanted.paused);
+        expect(outcome.seen.status, isPublic(paused: false));
+        expect(showsPublicOrder(outcome.seen), isTrue);
+        expect(statusAt(harness, record), 1);
+        expect(pauses(harness), 1);
+      },
+    );
+
+    test(
+      'a coordinator that answers « paused » and toggles nothing: the read after shows it public, not reached',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator
+          ..pauseNotToggled = true
+          ..pauseAnswerChanges.add({'status': 2});
+        final outcome = valueOf(await harness.pause.execute(record, seen));
+        expect(outcome, isA<PauseNotReached>());
+        expect(outcome.seen.status, isPublic(paused: false));
+        expect(statusAt(harness, record), 1);
+      },
+    );
+
+    test(
+      'a coordinator that answers « paused », toggles nothing, and whose read after is lost: unknown, never done, the order shown public',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator
+          ..pauseNotToggled = true
+          ..pauseAnswerChanges.add({'status': 2});
+        harness.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            harness.coordinator.failNext(
+              ScriptedMakerRequest.order,
+              ScriptedFault.timedOut,
+            );
+          }
+        };
+        final outcome = valueOf(await harness.pause.execute(record, seen));
+        // The answer alone says paused: never taken for the order's status; the status shown stays the read before, public.
+        expect(outcome, isA<PauseOutcomeUnknown>());
+        expect(outcome.seen.status, isPublic(paused: false));
+        expect(statusAt(harness, record), 1);
+      },
+    );
+
+    test(
+      'taken right after a resume, before the read: accepted at 6, not reached; the trade shown taken',
+      () async {
+        final (harness, record, seen) = await shown(paused: true);
+        harness.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.get &&
+              harness.coordinator.order(record.orderId).status == 1 &&
+              pauses(harness) == 1) {
+            harness.coordinator.take(record.orderId, harness.robot(4));
+          }
+        };
+        final outcome = valueOf(await harness.pause.execute(record, seen));
+        expect(outcome, isA<PauseNotReached>());
+        expect(outcome.seen.status, isA<WaitingForBoth>());
+        expect(pauses(harness), 1);
+      },
+    );
+  });
+}

@@ -35,7 +35,8 @@ enum PauseWanted {
   bool reachedAt(TradeSeen seen) =>
       seen.stored &&
       switch (seen.status) {
-        MakerOrderPublic(:final paused) => paused == (this == PauseWanted.paused),
+        MakerOrderPublic(:final paused) =>
+          paused == (this == PauseWanted.paused),
         _ => false,
       };
 }

@@ -280,8 +280,8 @@ extension TradePauseNoticeL10n on TradePauseNotice {
       PauseWasNotDone(cause: CoordinatorNotOnNetwork()) =>
         l10n.p2pTradePauseNotDoneAfter(l10n.p2pBookError),
       // Any other refusal left and changed nothing (1032, 1033, 1047, the empty 400 of the form check, the authentication's): the coordinator's, never its text.
-      PauseWasNotDone(cause: CoordinatorFailure()) => l10n
-          .p2pTradePauseRefusedBy(coordinator),
+      PauseWasNotDone(cause: CoordinatorFailure()) =>
+        l10n.p2pTradePauseRefusedBy(coordinator),
       PauseWasNotDone(cause: final P2pFailure failure) =>
         l10n.p2pTradePauseNotDoneAfter(failure.toTranslated(context)),
       PauseWasNotDone() => l10n.p2pTradePauseNotDoneAfter(l10n.p2pBookError),

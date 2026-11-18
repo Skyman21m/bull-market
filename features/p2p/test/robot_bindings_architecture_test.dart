@@ -408,6 +408,7 @@ void main() {
               'request CoordinatorClient.takeOrder',
               'request CoordinatorClient.cancelOrder',
               'request CoordinatorClient.makeOrder',
+              'request CoordinatorClient.pauseOrder',
               'request CoordinatorClient.submitPayoutInvoice',
               'request CoordinatorClient.submitPayoutAddress',
               'request CoordinatorClient.fetchChat',
