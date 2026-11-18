@@ -7,25 +7,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/coordinator_lottery.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/matching_orders.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_host.dart';
+import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/make_price_check.dart';
 import 'package:p2p/src/domain/trade/maker_form.dart';
 import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
+import 'package:p2p/src/ui/widgets/offer_row.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/captures.dart';
+import 'support/fakes.dart' show bookOrder, parseOrders;
 import 'support/harness.dart';
 import 'support/make_form.dart';
+import 'support/trade_harness.dart' show tradeKey;
 import 'support/trade_screens.dart';
 
 late CurrencyLimits _limits;
@@ -158,6 +166,9 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
   _Form form, {
   OrderType? initialType,
   Locale locale = const Locale('en'),
+  List<PublicOrder>? book,
+  ActiveTradesState? activeTrades,
+  List<PublicOrder>? openedOrders,
 }) async {
   tester.view
     ..physicalSize = const Size(390 * 3, 2400 * 3)
@@ -193,6 +204,10 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
               initialType: initialType,
               coordinatorDetails: (_) => throw StateError('not opened'),
               onMade: opened.add,
+              book: book,
+              activeTrades: activeTrades,
+              onOpenOrder: openedOrders?.add,
+              now: () => form.now,
             ),
           ),
         ),
@@ -1978,6 +1993,258 @@ void main() {
         'Pour comparaison, prix indicatif du portefeuille Bull',
       ),
       findsOneWidget,
+    );
+  });
+
+  group('« Existing orders match yours! » (#186)', () {
+    // The book the tab received, read by the package's parser (`support/fakes.dart`): EUR sell orders but #2 (a buy order) and #5 (USD); #1, #3, #4 and #6 match « Buy », 100 EUR, Revolut, 2 %; #7 is at 2.5 %.
+    late List<PublicOrder> book;
+    setUpAll(() async {
+      book = await parseOrders([
+        bookOrder(id: 1, premium: 1.5),
+        bookOrder(id: 2, type: 0),
+        bookOrder(id: 3, premium: 0.5, paymentMethod: 'Revolut'),
+        bookOrder(id: 4, premium: 2),
+        bookOrder(id: 5, currency: 1),
+        bookOrder(
+          id: 6,
+          premium: 1,
+          amount: null,
+          minAmount: 50,
+          maxAmount: 500,
+        ),
+        bookOrder(id: 7, premium: 2.5),
+      ]);
+    });
+
+    /// No trade of the device: every order of the book can be offered.
+    const none = ActiveTradesListed([]);
+
+    /// The device holds a trade of order [id] of temple, taken here.
+    ActiveTradesListed holding(int id) => ActiveTradesListed([
+      ActiveTrade(
+        TradeRecord(
+          robot: RobotSlot(
+            RobosatsNetwork.mainnet,
+            switch (GarageKeyFingerprint.of(tradeKey)) {
+              Ok(:final value) => value,
+              Err(:final failure) => throw StateError('$failure'),
+            },
+            1,
+          ),
+          coordinatorAlias: 'temple',
+          coordinatorOnion:
+              Federation.robosats.byAlias('temple')?.mainnet.onion ??
+              (throw StateError('temple')),
+          orderId: id,
+          role: TradeRole.buyer,
+          origin: TradeOrigin.takenHere,
+          takenAt: DateTime.utc(2026, 11, 17),
+          confirmedAt: DateTime.utc(2026, 11, 17),
+          closedAt: null,
+        ),
+        const ActiveTradeTakeNeverSent(),
+      ),
+    ]);
+
+    /// The ids of the orders shown, top to bottom.
+    List<int> shown(WidgetTester tester) => [
+      for (final row in tester.widgetList<OfferRow>(find.byType(OfferRow)))
+        row.order.id,
+    ];
+
+    Finder submit() => find.text('Submit');
+    Finder title() => find.text('Existing orders match yours!');
+    Finder edit() => find.byTooltip('Edit order');
+
+    /// What the form asked of anyone so far: the limits, the Bull wallet's prices, the vault, the makes.
+    List<int> asked(_Form form) => [
+      form.limitsAsked.length,
+      form.pricesAsked.length,
+      form.keysAsked,
+      form.made.length,
+    ];
+
+    testWidgets(
+      'orders match: « Submit » shows them above the summary, the fields folded away, asking nothing; « Edit order » unfolds them (`MakerPage/index.tsx:106-146`, `MakerForm.tsx:1286-1330`)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form, book: book, activeTrades: none);
+        // Nothing typed: no amount, so nothing matches (`Number(null)`).
+        expect(find.text('Create order'), findsOneWidget);
+        expect(submit(), findsNothing);
+        await _fill(tester);
+        expect(submit(), findsOneWidget);
+        expect(_create, findsNothing);
+        expect(title(), findsNothing);
+        final before = asked(form);
+        final comparison = tester
+            .widget<Text>(find.textContaining('Bull wallet'))
+            .data;
+        await tester.tap(submit());
+        await settle(tester);
+        expect(title(), findsOneWidget);
+        // Four match (#3, #6, #1, #4, the lowest premium first): on the tall test screen (2,400 points) the reference's table shows three, its pagination hiding the rest (`MatchingOrders.rowsShown`).
+        expect(MatchingOrders.rowsShown(4, 2400), 3);
+        expect(shown(tester), [3, 6, 1]);
+        // Folded away as in the reference: the side, the amount, the methods, the premium, « Clear form » and the options' switch.
+        for (final text in [
+          'Buy or Sell Bitcoin? *',
+          'Amount *',
+          'Fiat Payment Method(s) *',
+          'Premium over Market (%) *',
+          'Enable advanced options',
+        ]) {
+          expect(find.text(text), findsNothing, reason: text);
+        }
+        // What stays, as it was: the coordinator, the summary, the rate and the Bull wallet's comparison.
+        expect(find.text('Temple of Sats'), findsOneWidget);
+        expect(
+          find.text('Buy BTC for 100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Order current rate:'), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.textContaining('Bull wallet')).data,
+          comparison,
+        );
+        // « Create order » now, with « Edit order » beside it.
+        expect(_create, findsOneWidget);
+        expect(_createEnabled(tester), isTrue);
+        expect(submit(), findsNothing);
+        expect(edit(), findsOneWidget);
+        // Nothing asked of anyone by the search or by « Submit ».
+        expect(asked(form), before);
+
+        await tester.tap(edit());
+        await settle(tester);
+        expect(title(), findsNothing);
+        expect(find.byType(OfferRow), findsNothing);
+        expect(find.text('Premium over Market (%) *'), findsOneWidget);
+        expect(submit(), findsOneWidget);
+        expect(edit(), findsNothing);
+        // Typing changes what matches: at 1 %, #3 and #6, of which the table shows one.
+        await tester.enterText(_premiumField, '1');
+        await settle(tester);
+        await tester.tap(submit());
+        await settle(tester);
+        expect(shown(tester), [3]);
+        expect(asked(form), before);
+      },
+    );
+
+    testWidgets(
+      '« Create order » after « Submit » goes on as before: « Store your garage key », then the make of the form as typed',
+      (tester) async {
+        final form = _Form()..answer = const Err(MakePriceUnknown());
+        await _show(tester, form, book: book, activeTrades: none);
+        await _fill(tester);
+        await tester.tap(submit());
+        await settle(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.made, hasLength(1));
+        expect(form.made.single.premium.percent, 2);
+        expect(form.made.single.paymentMethod, 'Revolut');
+      },
+    );
+
+    testWidgets(
+      'no order matches: « Create order » at once, with no title, as the reference\'s',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form, book: book, activeTrades: none);
+        await _fill(tester, amount: '2000');
+        expect(submit(), findsNothing);
+        expect(_createEnabled(tester), isTrue);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+        expect(title(), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'an order this device holds a trade of is never offered; while the device\'s trades are not listed, none is',
+      (tester) async {
+        // Only #3 matches at 0.5 %: held, it is not offered, and the button reads « Create order ».
+        await _show(tester, _Form(), book: book, activeTrades: holding(3));
+        await _fill(tester);
+        await tester.enterText(_premiumField, '0.5');
+        await settle(tester);
+        expect(submit(), findsNothing);
+        expect(_create, findsOneWidget);
+        // With #1 held instead, the others are offered and #1 is not.
+        await _show(tester, _Form(), book: book, activeTrades: holding(1));
+        await _fill(tester);
+        await tester.tap(submit());
+        await settle(tester);
+        expect(shown(tester), [3, 6]);
+        for (final active in [
+          const ActiveTradesLoading(),
+          const ActiveTradesUnreadable(),
+        ]) {
+          await _show(tester, _Form(), book: book, activeTrades: active);
+          await _fill(tester);
+          expect(submit(), findsNothing, reason: '$active');
+        }
+      },
+    );
+
+    testWidgets(
+      'a tap on an order shown opens it; while the make runs, a tap opens nothing',
+      (tester) async {
+        final form = _Form();
+        final opened = <PublicOrder>[];
+        await _show(
+          tester,
+          form,
+          book: book,
+          activeTrades: none,
+          openedOrders: opened,
+        );
+        await _fill(tester);
+        await tester.tap(submit());
+        await settle(tester);
+        await tester.tap(find.byType(OfferRow).at(1));
+        await settle(tester);
+        expect([for (final order in opened) order.id], [6]);
+        // The make held: the form locked, the orders shown stay but open nothing.
+        await tester.tap(_create);
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.made, hasLength(1));
+        await tester.tap(find.byType(OfferRow).first);
+        await settle(tester);
+        expect([for (final order in opened) order.id], [6]);
+        form.answers.single.complete(const Err(MakePriceUnknown()));
+        await settle(tester);
+      },
+    );
+
+    testWidgets(
+      'the advanced options\' line stays as it is while the orders are shown',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form, book: book, activeTrades: none);
+        await _fill(tester);
+        await _open(tester);
+        await tester.enterText(_descriptionField, 'Fast');
+        await settle(tester);
+        // Closed again: the description is still sent, said in the warning colour.
+        await _open(tester);
+        const closed =
+            'Advanced options closed, but still sent with this order: a description.';
+        expect(find.text(closed), findsOneWidget);
+        await tester.tap(submit());
+        await settle(tester);
+        expect(find.text(closed), findsOneWidget);
+        expect(shown(tester), [3, 6, 1]);
+      },
     );
   });
 
