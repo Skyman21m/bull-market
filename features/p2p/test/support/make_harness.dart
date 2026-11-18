@@ -88,6 +88,9 @@ final class MakeHarness {
   late final RobotRequestLimiter limiter;
   late final TradeReader reader;
   late final MakeOrderUsecase make;
+
+  /// The make use case of this run over another federation list than the app's ([federation]): a coordinator removed from the list since (#185, functional review R2).
+  late final MakeOrderUsecase Function(Federation federation) makeOn;
   late final WatchTradeUsecase watch;
   late final CancelTradeUsecase cancel;
   late final ListActiveTradesUsecase list;
@@ -158,7 +161,7 @@ final class MakeHarness {
       invoices,
     );
     chat = ChatStepActionUsecase(client, reader, limiter, locks);
-    make = MakeOrderUsecase(
+    makeOn = (federation) => MakeOrderUsecase(
       client,
       robots,
       put,
@@ -169,8 +172,9 @@ final class MakeHarness {
       limiter,
       invoices,
       makeLocks,
-      Federation.robosats,
+      federation,
     );
+    make = makeOn(Federation.robosats);
     watch = WatchTradeUsecase(
       reader,
       limiter,
@@ -264,6 +268,7 @@ final class MakeHarness {
     Duration publicDuration = const Duration(seconds: 86340),
     Duration escrowDuration = const Duration(seconds: 10800),
     double bondSize = 3,
+    String paymentMethod = 'Revolut Instant SEPA',
   }) {
     T some<T>(T? value) => value ?? (throw StateError('missing'));
     final OrderAmount asked = switch (range) {
@@ -280,7 +285,7 @@ final class MakeHarness {
         type: sell ? OrderType.sell : OrderType.buy,
         currency: currency ?? some(RobosatsCurrency.fromId(2)),
         amount: asked,
-        paymentMethod: 'Revolut Instant SEPA',
+        paymentMethod: paymentMethod,
         premium: some(Premium.tryCreate(premium)),
         publicDuration: publicDuration,
         escrowDuration: escrowDuration,

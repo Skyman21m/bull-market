@@ -6,6 +6,7 @@ import '../domain/p2p_failure.dart';
 import '../domain/trade/maker_form.dart';
 import '../domain/trade/maker_terms.dart';
 import '../domain/trade/trade_make.dart';
+import '../domain/trade/trade_renewal.dart';
 import 'make_order_cubit.dart';
 import 'p2p_failure_l10n.dart';
 
@@ -30,6 +31,19 @@ extension MakerFormBlockL10n on MakerFormBlock {
       MakerFormBlock.noPaymentMethod => l10n.p2pMakeWhyNoPaymentMethod,
       MakerFormBlock.descriptionInvalid => l10n.p2pMakeWhyDescriptionInvalid,
       MakerFormBlock.formIncorrect => l10n.p2pMakeWhyFormIncorrect,
+    };
+  }
+}
+
+/// Why an order cannot be renewed from this device (#185): a text of the app for each type.
+extension RenewalRefusalL10n on RenewalRefusal {
+  String toText(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      RenewalNotMadeHere() ||
+      RenewalTermsUnreadable() => l10n.p2pRenewTermsUnreadable,
+      RenewalNotEnded() => l10n.p2pRenewNotEnded,
+      RenewalCoordinatorGone() => l10n.p2pRenewCoordinatorGone,
     };
   }
 }

@@ -14,6 +14,7 @@ import '../../domain/taker_estimate.dart';
 import '../../domain/trade/maker_terms.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_pause.dart';
+import '../../domain/trade/trade_renewal.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/trade_watch.dart';
@@ -107,6 +108,9 @@ class TradeScreen extends StatefulWidget {
   /// Whether a [PayoutRateCubit] is above the screen (the wallet's port was lent): the owner's payment rule on a maker buyer's side (#182) is then read when its step is shown.
   final bool checksPayoutRate;
 
+  /// Opens the renewal's page of the order of the trade (#185), and completes when that page is left with no order made (an order made replaces this page by the new trade's, `P2pRouter.openRenewal`): « Renew Order » at 5 and « Renew » at « Trade finished! » for an order made here, at a status marked stored where the reference offers it ([OrderRenewal.offeredAt]); `null` where the feature cannot make an order, and neither button is shown.
+  final Future<void> Function(TradeRecord record)? onRenew;
+
   const TradeScreen({
     super.key,
     required this.now,
@@ -125,6 +129,7 @@ class TradeScreen extends StatefulWidget {
     this.onTaken,
     this.book,
     this.checksPayoutRate = false,
+    this.onRenew,
   });
 
   @override
@@ -145,6 +150,32 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
 
   /// Whether the watch was stopped because the app was hidden or paused.
   bool _suspended = false;
+
+  /// Whether the renewal's page opened by « Renew Order » or « Renew » is open (#185): another tap opens nothing more, so that one tap opens one page.
+  bool _renewing = false;
+
+  /// « Renew Order » or « Renew » (#185): the renewal's page of [record], once at a time; the button spins until that page is left.
+  Future<void> _renew(TradeRecord record) async {
+    final open = widget.onRenew;
+    if (open == null || _renewing) return;
+    setState(() => _renewing = true);
+    try {
+      await open(record);
+    } finally {
+      if (mounted) setState(() => _renewing = false);
+    }
+  }
+
+  /// The renewal offered for the status [seen] of [record] (#185): an order made here, the status marked stored, one where the reference offers its maker a renewal; `null` otherwise.
+  VoidCallback? _renewalOf(TradeRecord record, TradeSeen seen) {
+    if (widget.onRenew == null ||
+        record.origin != TradeOrigin.madeHere ||
+        !seen.stored ||
+        !OrderRenewal.offeredAt(seen.status.position, role: record.role)) {
+      return null;
+    }
+    return () => unawaited(_renew(record));
+  }
 
   @override
   void initState() {
@@ -401,6 +432,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         beforeAct: widget.checksPayoutRate
                             ? context.read<PayoutRateCubit>().beforeAct
                             : null,
+                        onRenew: _renewalOf(record, contract.seen),
+                        renewing: _renewing,
                       ),
                     },
                   ],
@@ -569,6 +602,10 @@ class _Contract extends StatelessWidget {
   /// Before « Submit » and the dialog of « Confirm … sent »: the rule's price read again when old ([PayoutRateCubit.beforeAct]), `false` stopping the press; `null` without the rule.
   final Future<bool> Function()? beforeAct;
 
+  /// « Renew Order » at 5, « Renew » at « Trade finished! » (#185): `null` where not offered; spinning and off while [renewing].
+  final VoidCallback? onRenew;
+  final bool renewing;
+
   const _Contract({
     super.key,
     required this.contract,
@@ -599,6 +636,8 @@ class _Contract extends StatelessWidget {
     required this.rateCubit,
     required this.onRetryRate,
     required this.beforeAct,
+    required this.onRenew,
+    required this.renewing,
   });
 
   @override
@@ -957,9 +996,22 @@ class _Contract extends StatelessWidget {
           ],
         ],
       ),
-      (TradePrompt.expired, Expired(:final reason?)) => _Line(
-        reason.toText(context),
-        center: true,
+      // The coordinator's expiry reason, then « Renew Order » for an order made here (`Prompts/Expired.tsx:31-97`, #185).
+      (TradePrompt.expired, Expired(:final reason)) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (reason != null) _Line(reason.toText(context), center: true),
+          if (onRenew case final renew?) ...[
+            if (reason != null) const Gap(BullSpacing.sm),
+            TradeButton(
+              key: const ValueKey('trade-renew'),
+              label: l10n.p2pRenewOrder,
+              outlined: true,
+              busy: renewing,
+              onPressed: renew,
+            ),
+          ],
+        ],
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
       // The chat step (#95; the seller's, #96), with the chat panel (#93) in its place when the screen was given one.
@@ -1205,6 +1257,8 @@ class _Contract extends StatelessWidget {
     otherActionRunning: moneyActionRunning || cancel is CancelRunning,
     offersRating: offersRating,
     hostRating: hostRating?.call(context, contract.seen, coordinator),
+    onRenew: onRenew,
+    renewing: renewing,
   );
 
   /// The payout panel of the status shown, when the screen was given one, keyed so that a change of the prompt around it keeps it.

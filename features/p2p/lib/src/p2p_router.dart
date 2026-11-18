@@ -80,13 +80,26 @@ final class P2pCreateRouteArgs {
   /// The book of the tab, handed to the trade of the order made ([P2pTradeRouteArgs.book], #182).
   final List<PublicOrder>? book;
 
+  /// The trade of the order made here that the page renews (#185), `null` for a creation.
+  final TradeRecord? renewing;
+
   const P2pCreateRouteArgs(
     this.network, {
     required this.currency,
     this.initialType,
     this.offline = const {},
     this.book,
-  });
+  }) : renewing = null;
+
+  /// The renewal's page of the order of [record] (#185), from its trade's page: the form filled with that order's kept terms, on its coordinator; [currency] stands until those terms are read, and is shown nowhere.
+  P2pCreateRouteArgs.renewal(TradeRecord record, {this.book})
+    : network = record.network,
+      currency =
+          RobosatsCurrency.fromCode('USD') ??
+          (throw StateError('USD is in the RoboSats currencies')),
+      initialType = null,
+      offline = const {},
+      renewing = record;
 
   /// The create page's start from [book], the book of the tab (#182): « Buy » when it shows the orders a buyer takes and « Sell » when it shows a seller's, as the reference's form takes its side from the book's filter (`fav.type`, `MakerForm.tsx:258`); the first currency it shows, USD for any (`MakerForm.tsx:98-100`); the coordinators it could not reach; and every order it received.
   static P2pCreateRouteArgs fromBook(BookState book) {
@@ -297,6 +310,14 @@ final class P2pRouter {
             ),
             book: args.book,
             checksPayoutRate: checksPayoutRate,
+            // « Renew Order » and « Renew » (#185): the renewal's page above the trade, where the feature can make an order; the Garage, when that page is left for it, through this page.
+            onRenew:
+                locator.isRegistered<MakeOrderCubit>(
+                      instanceName: MakeOrderCubit.renewalInstance,
+                    ) &&
+                    locator.isRegistered<PendingMakesCubit>()
+                ? (record) => openRenewal(context, record, book: args.book)
+                : null,
           ),
         ),
       ),
@@ -312,9 +333,17 @@ final class P2pRouter {
   ) => MultiBlocProvider(
     providers: [
       BlocProvider(
-        create: (_) =>
-            locator<MakeOrderCubit>(param1: args.network, param2: args.currency)
-              ..start(),
+        create: (_) => switch (args.renewing) {
+          // A renewal (#185): the form's cubit built from the record of the order renewed.
+          final record? => locator<MakeOrderCubit>(
+            param1: record,
+            instanceName: MakeOrderCubit.renewalInstance,
+          ),
+          null => locator<MakeOrderCubit>(
+            param1: args.network,
+            param2: args.currency,
+          ),
+        }..start(),
       ),
       // The pending makes resolved once when the form opens: the form makes nothing while one is listed (security review of #181, S2).
       BlocProvider(
@@ -335,13 +364,56 @@ final class P2pRouter {
         onOpenGarage: locator.isRegistered<GarageCubit>()
             ? () => context.pop(P2pOrderExit.garage)
             : null,
-        onMade: (record) => context.pushReplacementNamed(
-          tradeName,
-          extra: P2pTradeRouteArgs(record, book: args.book),
-        ),
+        onMade: (record) => openMade(context, args, record),
       ),
     ),
   );
+
+  /// « Renew Order » and « Renew » of the page of the trade of [record] (#185, functional review C1): the renewal's page above it; when that page made the new order, it closes with the new trade's record and the page of the renewed order is replaced by the new trade's, as the reference navigates to the new order (`TradeBox/index.tsx:186-188`), so that no page of the renewed order stays behind with its button; when it is left for the Garage, this page is left for it too; left otherwise (going back, nothing sent, a refusal, a make whose outcome is unknown, now a pending make), the future completes and the page of the renewed order is shown again.
+  ///
+  /// Used by [tradePage], and by the tests that play the app's navigation.
+  @visibleForTesting
+  static Future<void> openRenewal(
+    BuildContext context,
+    TradeRecord record, {
+    List<PublicOrder>? book,
+  }) async {
+    final exit = await context.pushNamed<Object>(
+      createName,
+      extra: P2pCreateRouteArgs.renewal(record, book: book),
+    );
+    if (!context.mounted) return;
+    switch (exit) {
+      case P2pOrderExit.garage:
+        context.pop(P2pOrderExit.garage);
+      case final TradeRecord made:
+        context.pushReplacementNamed(
+          tradeName,
+          extra: P2pTradeRouteArgs(made, book: book),
+        );
+      case _:
+        break;
+    }
+  }
+
+  /// The order [record] the create page made, or a pending make of its network confirmed there: a creation's page is replaced by the new trade's (#182); a renewal's page closes with [record], which [openRenewal] opens in place of the renewed order's page (#185).
+  ///
+  /// Used by [createPage], and by the tests that play the app's navigation.
+  @visibleForTesting
+  static void openMade(
+    BuildContext context,
+    P2pCreateRouteArgs args,
+    TradeRecord record,
+  ) {
+    if (args.renewing != null) {
+      context.pop(record);
+      return;
+    }
+    context.pushReplacementNamed(
+      tradeName,
+      extra: P2pTradeRouteArgs(record, book: args.book),
+    );
+  }
 
   /// [screen], under the payout panel's listener when there is one: once a payout given told something, the trade's watch reads at once, whichever tab is shown.
   static Widget _toldReads(bool payouts, BuildContext context, Widget screen) =>
