@@ -256,7 +256,7 @@ final class OrderDescription {
 
   /// The description [typed] as it is sent: `null` when nothing is left once its ends' spaces are taken off.
   static String? keptOf(String typed) {
-    final kept = typed.replaceAll('　', ' ').trim();
+    final kept = typed.replaceAll('\u3000', ' ').trim();
     return kept.isEmpty ? null : kept;
   }
 
