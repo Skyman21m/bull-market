@@ -163,7 +163,10 @@ class _Line extends StatelessWidget {
                     : () => unawaited(
                         context.read<PendingMakesCubit>().resolve(make),
                       ),
-                child: Text(l10n.p2pCommonRetry),
+                child: Text(
+                  l10n.p2pCommonRetry,
+                  style: TextStyle(color: checking ? null : colors.primary),
+                ),
               ),
               if (step is PendingMakeLeftPending ||
                   step is PendingMakeNotSetAside)

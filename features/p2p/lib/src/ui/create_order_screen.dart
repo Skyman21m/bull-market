@@ -1052,6 +1052,9 @@ class _CreateButton extends StatelessWidget {
     final lines = <Widget>[
       if (block != null && progress is MakeIdle)
         _Line(block.toText(context), live: true),
+      // A pending make of the network first (#182): said under the button too, where the reason of a disabled button is.
+      if (block == null && pendingFirst && progress is MakeIdle)
+        _Line(l10n.p2pMakePendingFirst, live: true),
       if (stopped case final stopped? when progress is MakeIdle)
         _Line(
           switch (stopped) {

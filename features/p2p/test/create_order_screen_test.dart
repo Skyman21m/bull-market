@@ -183,7 +183,9 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
               BlocProvider.value(value: cubit),
               BlocProvider.value(value: pending),
             ],
+            // A screen of its own at each show, so that a press of a show before is not kept.
             child: CreateOrderScreen(
+              key: UniqueKey(),
               initialType: initialType,
               coordinatorDetails: (_) => throw StateError('not opened'),
               onMade: opened.add,
