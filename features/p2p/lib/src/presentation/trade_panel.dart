@@ -50,7 +50,7 @@ enum TradeTitle {
 enum TradePrompt {
   lockInvoice,
 
-  /// The maker's at 1 (`Prompts/PublicWait.tsx`) and at 2 (`Prompts/Paused.tsx`, its text without « Unpause Order », which comes with the pause, #184), #182.
+  /// The maker's at 1 (`Prompts/PublicWait.tsx`, with its pause button) and at 2 (`Prompts/Paused.tsx`, with « Unpause Order »), #182, #184.
   publicWait,
   paused,
   payout,

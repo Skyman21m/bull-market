@@ -3420,8 +3420,76 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Votre ordre public a été mis en pause. Pour le moment, il ne peut être ni vu ni pris par d’autres robots. Vous pouvez choisir de le reprendre à tout moment.';
 
   @override
-  String get p2pTradeUnpauseLater =>
-      '« Reprendre l’ordre » arrive dans une version ultérieure : pour le reprendre maintenant, utilisez l’app officielle RoboSats avec votre clé de garage.';
+  String get p2pTradePauseOrder => 'Mettre en pause l’ordre public';
+
+  @override
+  String get p2pTradeUnpauseOrder => 'Reprendre l’ordre';
+
+  @override
+  String get p2pTradePauseNeedsRead =>
+      'Attendez que l’ordre soit relu avant de le mettre en pause ou de le reprendre.';
+
+  @override
+  String get p2pTradePauseMovedOn =>
+      'L’ordre a changé avant l’envoi de votre demande : rien n’a été envoyé. Il est affiché tel qu’il est maintenant.';
+
+  @override
+  String p2pTradePauseReadFailed(String coordinator) {
+    return 'L’ordre n’a pas pu être relu chez $coordinator : rien n’a été envoyé.';
+  }
+
+  @override
+  String p2pTradePauseNotDoneAfter(String reason) {
+    return '$reason Votre demande n’a rien changé.';
+  }
+
+  @override
+  String p2pTradePauseRefusedBy(String coordinator) {
+    return '$coordinator a refusé la demande : votre demande n’a rien changé. L’ordre est affiché tel qu’il est maintenant.';
+  }
+
+  @override
+  String p2pTradePauseUnknown(String coordinator) {
+    return 'Bull Market ne sait pas encore si votre demande est arrivée chez $coordinator. Il vérifie de nouveau tant que cet écran est ouvert, et ne la renvoie jamais de lui-même. Ne réappuyez pas avant qu’une lecture montre où en est votre ordre : une seconde demande annulerait la première si celle-ci arrivait en retard.';
+  }
+
+  @override
+  String p2pTradePauseNotReachedPaused(String coordinator) {
+    return '$coordinator a accepté la demande, mais votre ordre n’est pas en pause : il est affiché tel qu’il est maintenant.';
+  }
+
+  @override
+  String p2pTradePauseNotReachedPublic(String coordinator) {
+    return '$coordinator a accepté la demande, mais votre ordre n’est pas public : il est affiché tel qu’il est maintenant.';
+  }
+
+  @override
+  String get p2pTradePauseWhileCancel =>
+      'L’ordre est en cours d’annulation : attendez la fin.';
+
+  @override
+  String get p2pTradePauseMayStillArrive =>
+      'Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public : tant qu’il n’a pas été lu en pause deux fois, à quelques minutes d’intervalle, cet écran ouvert, considérez qu’il peut être public.';
+
+  @override
+  String get p2pTradeCancelAfterPause =>
+      'Votre annulation partira une fois la mise en pause ou la reprise terminée.';
+
+  @override
+  String get p2pTradeCancelMovedOnTapAgain =>
+      'L’ordre a changé d’état avant l’annulation : rien n’a été annulé. Appuyez de nouveau sur « Annuler » si vous voulez toujours l’annuler.';
+
+  @override
+  String get p2pTradeStillPublic =>
+      'Votre ordre est public : les robots peuvent le voir et le prendre.';
+
+  @override
+  String get p2pTradeMayBePublic =>
+      'Tant qu’une lecture faite après votre demande ne le montre pas en pause, considérez votre ordre comme public : les robots peuvent le prendre.';
+
+  @override
+  String get p2pTradePublicAgain =>
+      'Votre ordre est de nouveau public, alors qu’il avait été mis en pause depuis cette app : les robots peuvent le voir et le prendre.';
 
   @override
   String get p2pTradeMakerBondLocked => 'Votre caution de créateur est bloquée';

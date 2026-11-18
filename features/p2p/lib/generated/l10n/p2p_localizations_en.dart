@@ -3371,8 +3371,76 @@ class P2pLocalizationsEn extends P2pLocalizations {
       'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.';
 
   @override
-  String get p2pTradeUnpauseLater =>
-      '\"Unpause Order\" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.';
+  String get p2pTradePauseOrder => 'Pause the public order';
+
+  @override
+  String get p2pTradeUnpauseOrder => 'Unpause Order';
+
+  @override
+  String get p2pTradePauseNeedsRead =>
+      'Wait until the order is read again before pausing or unpausing it.';
+
+  @override
+  String get p2pTradePauseMovedOn =>
+      'The order changed before your request left: nothing was sent. It is shown as it is now.';
+
+  @override
+  String p2pTradePauseReadFailed(String coordinator) {
+    return 'The order could not be read again from $coordinator: nothing was sent.';
+  }
+
+  @override
+  String p2pTradePauseNotDoneAfter(String reason) {
+    return '$reason Your request changed nothing.';
+  }
+
+  @override
+  String p2pTradePauseRefusedBy(String coordinator) {
+    return '$coordinator refused the request: your request changed nothing. The order is shown as it is now.';
+  }
+
+  @override
+  String p2pTradePauseUnknown(String coordinator) {
+    return 'Bull Market does not know yet whether your request reached $coordinator. It checks again while this screen is open, and never sends it again by itself. Do not tap again until a read shows where your order is: a second request would undo the first if the first arrives late.';
+  }
+
+  @override
+  String p2pTradePauseNotReachedPaused(String coordinator) {
+    return '$coordinator accepted the request, but your order is not paused: it is shown as it is now.';
+  }
+
+  @override
+  String p2pTradePauseNotReachedPublic(String coordinator) {
+    return '$coordinator accepted the request, but your order is not public: it is shown as it is now.';
+  }
+
+  @override
+  String get p2pTradePauseWhileCancel =>
+      'The order is being cancelled: wait until it ends.';
+
+  @override
+  String get p2pTradePauseMayStillArrive =>
+      'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+
+  @override
+  String get p2pTradeCancelAfterPause =>
+      'Your cancel will leave once the pause or unpause ends.';
+
+  @override
+  String get p2pTradeCancelMovedOnTapAgain =>
+      'The order changed state before the cancel: nothing was cancelled. Tap \"Cancel\" again if you still want to cancel it.';
+
+  @override
+  String get p2pTradeStillPublic =>
+      'Your order is public: robots can see it and take it.';
+
+  @override
+  String get p2pTradeMayBePublic =>
+      'Until a read made after your request shows it paused, count on your order being public: robots can take it.';
+
+  @override
+  String get p2pTradePublicAgain =>
+      'Your order is public again, although it was paused from this app: robots can see it and take it.';
 
   @override
   String get p2pTradeMakerBondLocked => 'Your maker bond is locked';

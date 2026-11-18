@@ -28,6 +28,8 @@ import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/chat_step_action_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/pause_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/pauses_in_flight.dart';
 import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_make_locks.dart';
@@ -90,6 +92,9 @@ final class MakeHarness {
   late final CancelTradeUsecase cancel;
   late final ListActiveTradesUsecase list;
 
+  /// The pause and « Unpause Order » of a public order made here (#184).
+  late final PauseOrderUsecase pause;
+
   /// A maker buyer's payout and « fiat sent » (#182): the phase 2 use cases over this run's records.
   late final SubmitPayoutUsecase payout;
   late final ChatStepActionUsecase chat;
@@ -101,6 +106,9 @@ final class MakeHarness {
   final List<HarnessTimer> timers = [];
 
   final TradeTakeLocks locks = TradeTakeLocks();
+
+  /// The pauses running in this run (#184, functional review R1).
+  final PausesInFlight pausesInFlight = PausesInFlight();
   final TradeMakeLocks makeLocks = TradeMakeLocks();
   final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
   final _MakeVault _vault;
@@ -181,6 +189,7 @@ final class MakeHarness {
       watchRegistry,
     );
     cancel = CancelTradeUsecase(client, reader, limiter, locks);
+    pause = PauseOrderUsecase(client, reader, limiter, locks, pausesInFlight);
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
   }
 
