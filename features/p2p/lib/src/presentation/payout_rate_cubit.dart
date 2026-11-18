@@ -85,8 +85,9 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   Future<void> show(TradeSeen seen) async {
     final step = PayoutRateStep.of(seen.status);
     if (step == null || !seen.stored) {
-      if (state is! PayoutRateNone && step != _asked)
+      if (state is! PayoutRateNone && step != _asked) {
         emit(const PayoutRateNone());
+      }
       return;
     }
     _seen = seen;
