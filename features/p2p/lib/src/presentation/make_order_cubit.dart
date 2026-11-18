@@ -444,6 +444,12 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
         Err() => false,
       };
 
+  /// The network's last pending make is resolved or set aside (#182, functional review C1): a form locked by a make whose outcome was unknown is free again, nothing sent; any other state is left as it is.
+  void pendingCleared() {
+    if (isClosed || state.progress is! MakeUncertain) return;
+    emit(state._with(progress: const MakeIdle()));
+  }
+
   /// Makes [request] on [coordinator], the price check shown being [seen] (all three taken at the press): once at a time, and never after a make that made, or may have made, an order. The screen calls it after « Store your garage key ».
   ///
   /// When the price read just before the make would show another check ([MakePriceCheckChanged], security review of #181), nothing was sent with a robot: the form shows the coordinator's limits and the check at that price, the Bull wallet's price compared being the one already shown (nothing is read anew), and the user may press again having seen it.

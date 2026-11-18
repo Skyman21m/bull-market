@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
@@ -40,6 +42,12 @@ void main() {
   FakeP2pWalletPort wallet(P2pWalletBitcoinRate rate) =>
       FakeP2pWalletPort(Ok(Sats.fromInt(50000)))..rate = rate;
 
+  /// The comparison a finding holds, which the test expects.
+  WalletRateCheck checkOf(PayoutRateFinding? finding) => switch (finding) {
+    PayoutRateFound(:final check) => check,
+    final other => throw StateError('no comparison: $other'),
+  };
+
   group('the use case', () {
     test(
       'at 6, the sats the buyer receives against the contract\'s amount at the wallet\'s price, read once, through the port, for the order\'s currency',
@@ -47,16 +55,41 @@ void main() {
         final (harness, record, seen) = await taken();
         expect(seen.status, isA<WaitingForBoth>());
         final port = wallet(P2pWalletRateRead(91711.15));
-        final check = await CheckPayoutRateUsecase(
-          harness.reader,
-          port,
-        ).execute(record, seen);
+        final check = checkOf(
+          await CheckPayoutRateUsecase(
+            harness.reader,
+            port,
+          ).execute(record, seen),
+        );
         expect(check, isA<WalletRateAtWallet>());
-        check as WalletRateAtWallet;
         expect(check.side, WalletRateSide.receives);
         expect(check.asked, (seen.status as WaitingForBoth).payoutAmount);
         expect(port.ratesAsked.single.$2.code, 'EUR');
         expect(port.ratesAsked.single.$1, record.network);
+      },
+    );
+
+    test(
+      'at 9, where the coordinator gives no `trade_satoshis` (`api/views.py:346-356`), the order\'s `last_satoshis` less the maker fee: the same sats as the payout of 8',
+      () async {
+        final (harness, record, six) = await taken();
+        harness.coordinator.lockEscrow(record.orderId);
+        final eight = await readOf(harness, record);
+        expect(eight.status, isA<WaitingForPayout>());
+        final payout = (eight.status as WaitingForPayout).payoutAmount;
+        harness.coordinator.order(record.orderId).status = 9;
+        final nine = await readOf(harness, record);
+        expect(nine.status, isA<Chatting>());
+        // The fake gives what the reference gives at 9: no `trade_satoshis`.
+        expect(nine.order?.tradeSatoshis, isNull);
+        expect(nine.order?.satoshisNow, isNotNull);
+        final check = checkOf(
+          await CheckPayoutRateUsecase(
+            harness.reader,
+            wallet(P2pWalletRateRead(91711.15)),
+          ).execute(record, nine),
+        );
+        expect(check.asked, payout);
       },
     );
 
@@ -85,17 +118,21 @@ void main() {
     test('a currency the wallet does not price, a price not read', () async {
       final (harness, record, seen) = await taken();
       expect(
-        await CheckPayoutRateUsecase(
-          harness.reader,
-          wallet(const P2pWalletRateNotPriced()),
-        ).execute(record, seen),
+        checkOf(
+          await CheckPayoutRateUsecase(
+            harness.reader,
+            wallet(const P2pWalletRateNotPriced()),
+          ).execute(record, seen),
+        ),
         isA<WalletRateNotPriced>(),
       );
       expect(
-        await CheckPayoutRateUsecase(
-          harness.reader,
-          wallet(const P2pWalletRateUnavailable()),
-        ).execute(record, seen),
+        checkOf(
+          await CheckPayoutRateUsecase(
+            harness.reader,
+            wallet(const P2pWalletRateUnavailable()),
+          ).execute(record, seen),
+        ),
         isA<WalletRateUnverified>(),
       );
     });
@@ -112,16 +149,15 @@ void main() {
         final cubit = PayoutRateCubit(record, (record, seen) {
           asked.add(seen);
           return usecase.execute(record, seen);
-        });
+        }, now: () => harness.now);
         addTearDown(cubit.close);
         await cubit.show(six);
         expect(asked, hasLength(1));
-        expect(cubit.state, isA<PayoutRateChecked>());
         expect(
           (cubit.state as PayoutRateChecked).check,
           isA<WalletRateUnverified>(),
         );
-        // Shown again, or at 8 of the same contract: no read.
+        // Shown again within 3 minutes: no read.
         await cubit.show(six);
         expect(asked, hasLength(1));
         // « Retry »: read again.
@@ -138,12 +174,69 @@ void main() {
         // A next contract after a return to the book: read again.
         harness.coordinator.backToBook(record.orderId);
         await readOf(harness, record);
-        await harness.elapse(const Duration(minutes: 10));
+        await harness.elapse(const Duration(minutes: 1));
         harness.coordinator.take(record.orderId, harness.robot(5));
         final next = await readOf(harness, record);
         expect(next.status.trail.take, 1);
         await cubit.show(next);
         expect(asked, hasLength(3));
+      },
+    );
+
+    test(
+      'shown again once the last read is 3 minutes old (8 shown hours after 6): read again, never more often',
+      () async {
+        final (harness, record, six) = await taken();
+        final asked = <TradeSeen>[];
+        final usecase = CheckPayoutRateUsecase(
+          harness.reader,
+          wallet(P2pWalletRateRead(91711.15)),
+        );
+        final cubit = PayoutRateCubit(record, (record, seen) {
+          asked.add(seen);
+          return usecase.execute(record, seen);
+        }, now: () => harness.now);
+        addTearDown(cubit.close);
+        await cubit.show(six);
+        await harness.elapse(const Duration(minutes: 2, seconds: 59));
+        await cubit.show(six);
+        expect(asked, hasLength(1));
+        await harness.elapse(const Duration(seconds: 1));
+        await cubit.show(six);
+        expect(asked, hasLength(2));
+        await cubit.show(six);
+        expect(asked, hasLength(2));
+      },
+    );
+
+    test(
+      'a late answer of a step no longer shown never replaces the step shown',
+      () async {
+        final (harness, record, six) = await taken();
+        harness.coordinator.lockEscrow(record.orderId);
+        await readOf(harness, record);
+        harness.coordinator.order(record.orderId).status = 9;
+        final nine = await readOf(harness, record);
+        final answers = <Completer<PayoutRateFinding?>>[];
+        final cubit = PayoutRateCubit(record, (record, seen) {
+          final answer = Completer<PayoutRateFinding?>();
+          answers.add(answer);
+          return answer.future;
+        }, now: () => harness.now);
+        addTearDown(cubit.close);
+        unawaited(cubit.show(six));
+        await pumpEventQueue();
+        unawaited(cubit.show(nine));
+        await pumpEventQueue();
+        expect(answers, hasLength(2));
+        answers[1].complete(const PayoutRateSatsMissing());
+        await pumpEventQueue();
+        expect(cubit.state, isA<PayoutRateSatsMissing>());
+        expect((cubit.state as PayoutRateSatsMissing).step.fiatSent, isTrue);
+        // The answer of 6 lands late: dropped.
+        answers[0].complete(null);
+        await pumpEventQueue();
+        expect(cubit.state, isA<PayoutRateSatsMissing>());
       },
     );
 
@@ -155,11 +248,42 @@ void main() {
       final cubit = PayoutRateCubit(record, (record, seen) async {
         asked++;
         return null;
-      });
+      }, now: () => harness.now);
       addTearDown(cubit.close);
       await cubit.show(atZero);
       expect(asked, 0);
       expect(cubit.state, isA<PayoutRateNone>());
     });
+
+    test(
+      'a taker\'s trade never sees the rule, not even « reading »',
+      () async {
+        final (harness, record, six) = await taken();
+        final taker = TradeRecord(
+          robot: record.robot,
+          coordinatorAlias: record.coordinatorAlias,
+          coordinatorOnion: record.coordinatorOnion,
+          orderId: record.orderId,
+          role: TradeRole.buyer,
+          origin: TradeOrigin.takenHere,
+          takenAt: record.takenAt,
+          confirmedAt: record.confirmedAt,
+          closedAt: null,
+        );
+        final states = <PayoutRateState>[];
+        var asked = 0;
+        final cubit = PayoutRateCubit(taker, (record, seen) async {
+          asked++;
+          return null;
+        }, now: () => harness.now);
+        addTearDown(cubit.close);
+        final sub = cubit.stream.listen(states.add);
+        addTearDown(sub.cancel);
+        await cubit.show(six);
+        await pumpEventQueue();
+        expect(asked, 0);
+        expect(states, isEmpty);
+      },
+    );
   });
 }

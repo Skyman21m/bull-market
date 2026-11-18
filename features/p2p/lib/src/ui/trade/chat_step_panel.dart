@@ -14,6 +14,7 @@ import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
+import '../widgets/trade_dialog_body.dart';
 import '../widgets/word_fit_text.dart';
 import 'chat_actions.dart';
 import 'confirm_collab_cancel_dialog.dart';
@@ -22,7 +23,6 @@ import 'confirm_fiat_received_dialog.dart';
 import 'confirm_fiat_sent_dialog.dart';
 import 'confirm_undo_fiat_sent_dialog.dart';
 import 'order_options_dialog.dart';
-import 'rate_gap_line.dart';
 
 /// The chat step, 9 and 10 (`TradeBox/Prompts/Chat.tsx`, commit ff1998c; #95, the seller's #96): the reference's prompt for the side and « ⚠️ Beware scams », the place of the chat, then the action buttons under it, as the reference lays them out: « … » (« Order options ») and, for the buyer, « Confirm {{amount}} {{currencyCode}} sent » at 9 and « Payment failed? » at 10; for the seller, « Confirm {{amount}} {{currencyCode}} received », shown off at 9 and on at 10, once « fiat sent » is recorded (`Prompts/Chat.tsx:237-247`).
 ///
@@ -68,8 +68,8 @@ class ChatStepPanel extends StatefulWidget {
   /// « Audit Chat » and « Export » of « Order options » (#157), built when « … » is pressed, over the cubit of [chat]; `null` with it, and « Order options » is shown without them.
   final ChatOptions Function()? chatOptions;
 
-  /// The lines of the owner's payment rule on a maker buyer's side (#182), said in « Confirm … sent »; empty for a taker.
-  final List<({String text, bool alert})> rateLines;
+  /// A maker buyer's lines said in « Confirm … sent » (#182): the owner's payment rule, or the gap from the creation's rate without it; empty for a taker.
+  final List<TradeDialogLine> rateLines;
 
   const ChatStepPanel({
     super.key,
@@ -199,30 +199,11 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
           context,
           amount: amount,
           currencyCode: currencyCode,
-          gap: _gapOf(seen),
           lines: widget.rateLines,
         )) {
           await cubit.confirmFiatSent(seen);
         }
       });
-
-  /// A maker buyer's line of the gap (design note § 3.3, #182), said in « Confirm … sent », from the status's own figure, its amount and the order's sats fixed at the take; `null` for a taker or when the read gives no sats.
-  String? _gapOf(TradeSeen seen) {
-    final sats = seen.order?.satoshisNow ?? widget.order?.satoshisNow;
-    return switch (seen.status) {
-      Chatting(:final rateGap?, :final amount, :final currency)
-          when sats != null =>
-        RateGapLine.textOf(
-          context,
-          gap: rateGap,
-          coordinator: widget.coordinator,
-          sats: sats,
-          amount: amount,
-          currency: currency,
-        ),
-      _ => null,
-    };
-  }
 
   Future<void> _confirmFiatReceived(String amount, String currencyCode) =>
       _once((cubit, seen) async {

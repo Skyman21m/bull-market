@@ -451,7 +451,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
             'You can only submit an invoice after expiration or 3 failed attempts',
       });
     }
-    final payout = made.lastSatoshis - (made.lastSatoshis * makerFee).round();
+    final payout = _payoutOf(made);
     final ppm = fields['routing_budget_ppm'];
     final budget = ppm is int ? ppm : 0;
     final asked = (payout.toDouble() - payout.toDouble() * (budget / 1000000))
@@ -476,9 +476,13 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         'bad_invoice': 'You must submit a NEW invoice',
       });
     }
-    made
-      ..payoutHashes.add(facts.paymentHash)
-      ..status = made.status == 6 ? 7 : 9;
+    made.payoutHashes.add(facts.paymentHash);
+    if (made.status == 6) {
+      made.status = 7;
+    } else {
+      // Into the chat: its deadline set from now (`Logics.update_invoice`, `api/logics.py:909-947`, `FIAT_EXCHANGE_DURATION`, 24 h in `.env-sample`).
+      _toChat(made);
+    }
     return _json(200, _orderJson(made, robot, isMaker: true));
   }
 
@@ -491,9 +495,10 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     if (made == null) {
       return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
     }
+    // Refused outside the chat states with 1029 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); the seller's confirmation is the test's ([sellerConfirms]).
     if (made.type != 0 || (made.status != 9 && made.status != 10)) {
       return _json(400, {
-        'error_code': 1027,
+        'error_code': 1029,
         'bad_request': 'You cannot confirm the fiat payment at this stage',
       });
     }
@@ -504,20 +509,48 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// The taker, the seller, locks the escrow of order [id] (`Logics.update_status` on the escrow's lock, `api/logics.py:1469-1481`): 6 → 8, 7 → 9 (#182).
   void lockEscrow(int id) {
     final made = order(id);
-    made.status = switch (made.status) {
-      6 => 8,
-      7 => 9,
-      _ => throw StateError('no escrow to lock at ${made.status}'),
-    };
+    switch (made.status) {
+      case 6:
+        made.status = 8;
+      case 7:
+        _toChat(made);
+      default:
+        throw StateError('no escrow to lock at ${made.status}');
+    }
   }
 
-  /// The taker, the seller, confirms the fiat received at 10: the escrow settled, the buyer paid, the trade succeeded (13, then 14 once paid), the maker bond returned (`Logics.confirm_fiat`, `api/logics.py:1721-1726`) (#182).
+  /// [made] into the chat (9), its deadline the chat's from now (`api/logics.py:913-916`, `:927-930`, `:1475-1480`).
+  void _toChat(ScriptedMadeOrder made) {
+    made
+      ..status = 9
+      ..expiresAt = clock().toUtc().add(const Duration(hours: 24));
+  }
+
+  /// What a maker buyer receives, `invoice_amount`: `round(last_satoshis − last_satoshis × fee)`, a half to the even one as Python's `round` (`Logics.payout_amount`, `api/logics.py:650-669`).
+  int _payoutOf(ScriptedMadeOrder made) {
+    final value = made.lastSatoshis - made.lastSatoshis * makerFee;
+    final floor = value.floorToDouble();
+    final rest = value - floor;
+    final whole = floor.toInt();
+    if (rest > 0.5) return whole + 1;
+    if (rest < 0.5) return whole;
+    return whole.isEven ? whole : whole + 1;
+  }
+
+  /// The taker, the seller, confirms the fiat received at 10: the escrow settled, both bonds returned, the buyer's invoice being paid, 13 (`Logics.confirm_fiat`, `api/logics.py:1712-1730`, `pay_buyer`) (#182).
   void sellerConfirms(int id) {
     final made = order(id);
     if (made.status != 10) throw StateError('not at 10');
     made
-      ..status = 14
+      ..status = 13
       ..bondReturned = true;
+  }
+
+  /// The buyer's invoice paid: the trade succeeded, 14 (`follow_invoices.py`, the payment's success) (#182).
+  void buyerPaid(int id) {
+    final made = order(id);
+    if (made.status != 13) throw StateError('not at 13');
+    made.status = 14;
   }
 
   CoordinatorResponse _make(RobotIdentity robot, CoordinatorRequest request) {
@@ -748,7 +781,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         ..['premium_now'] = made.premium;
     }
     final fee = (made.lastSatoshis * makerFee).round();
-    final payout = made.lastSatoshis - fee;
+    final payout = _payoutOf(made);
     final escrow = made.lastSatoshis + fee;
     data
       ..['is_buyer'] = buyer
@@ -763,8 +796,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       ..['taker_locked'] = status >= 6
       ..['escrow_locked'] = status == 8 || status >= 9;
     if (taker != null) data['taker_hash_id'] = taker.hashId.hex;
-    // Once both bonds are locked, the chat included (`api/views.py:345-371`, `CCA`).
-    if (const [6, 7, 8, 9, 10, 11, 13, 14, 15].contains(status)) {
+    // Once both bonds are locked, at the statuses `api/views.py:346-356` lists: 6 (WF2), 7 (WFE), 8 (WFI), 10 (FSE), 11 (DIS), 12 (CCA), 13 (PAY), 14 (SUC), 15 (FAI); not at 9 (CHA, the chat).
+    if (const [6, 7, 8, 10, 11, 12, 13, 14, 15].contains(status)) {
       data['trade_satoshis'] = buyer ? payout : escrow;
     }
     switch (status) {

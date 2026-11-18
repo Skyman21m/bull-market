@@ -304,6 +304,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             }
           },
         ),
+        // The last pending make of the network resolved or set aside: a form locked by an outcome unknown is free again (#182, functional review C1).
+        BlocListener<PendingMakesCubit, PendingMakesState>(
+          listenWhen: (previous, current) =>
+              (previous.makes?.isNotEmpty ?? false) &&
+              !current.unreadable &&
+              (current.makes?.isEmpty ?? false),
+          listener: (context, _) =>
+              context.read<MakeOrderCubit>().pendingCleared(),
+        ),
         // A pending make a resolution confirmed: its trade, as an order made (#182).
         BlocListener<PendingMakesCubit, PendingMakesState>(
           listenWhen: (previous, current) =>
@@ -342,14 +351,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(BullSpacing.md),
                     children: [
-                      if (sending && _leaveTried) ...[
-                        _Line(
-                          l10n.p2pMakeSendingStay(coordinatorName),
-                          color: colors.warning,
-                          live: true,
-                        ),
-                        const Gap(BullSpacing.md),
-                      ],
                       // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
                       if (pending.blocksMaking &&
                           (pending.unreadable ||
@@ -406,6 +407,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         check: check,
                         state: state,
                         pendingFirst: pending.blocksMaking,
+                        pendingShown:
+                            pending.unreadable ||
+                            (pending.makes?.isNotEmpty ?? false),
+                        leaveTried: sending && _leaveTried,
                         asking: _asking,
                         stopped: _stopped,
                         coordinator: coordinatorName,
@@ -1022,6 +1027,12 @@ class _CreateButton extends StatelessWidget {
   /// Whether a pending make of the network is listed, or the records cannot tell (#182): nothing is made beside it.
   final bool pendingFirst;
 
+  /// Whether one is known to be listed, or the records are known unreadable: only then is the reason said (while they are being read, the button is off and nothing is said, functional review R6).
+  final bool pendingShown;
+
+  /// Whether going back was tried while the make is sent: the line that says to wait is under the button, where the user is (functional review R7).
+  final bool leaveTried;
+
   /// Why the last press stopped, the form showing something else.
   final _PressStopped? stopped;
   final String coordinator;
@@ -1031,6 +1042,8 @@ class _CreateButton extends StatelessWidget {
     required this.check,
     required this.state,
     required this.pendingFirst,
+    required this.pendingShown,
+    required this.leaveTried,
     required this.asking,
     required this.stopped,
     required this.coordinator,
@@ -1053,8 +1066,14 @@ class _CreateButton extends StatelessWidget {
       if (block != null && progress is MakeIdle)
         _Line(block.toText(context), live: true),
       // A pending make of the network first (#182): said under the button too, where the reason of a disabled button is.
-      if (block == null && pendingFirst && progress is MakeIdle)
+      if (block == null && pendingShown && progress is MakeIdle)
         _Line(l10n.p2pMakePendingFirst, live: true),
+      if (leaveTried && progress is MakeSending)
+        _Line(
+          l10n.p2pMakeSendingStay(coordinator),
+          color: colors.warning,
+          live: true,
+        ),
       if (stopped case final stopped? when progress is MakeIdle)
         _Line(
           switch (stopped) {

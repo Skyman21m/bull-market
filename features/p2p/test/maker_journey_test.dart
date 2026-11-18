@@ -267,6 +267,9 @@ void main() {
       // The seller confirms: the end, the maker bond returned by the coordinator; the screen says it from the payment's record only.
       harness.coordinator.sellerConfirms(record.orderId);
       (view, seen) = await read(harness, record);
+      expect(seen.status, isA<SendingSats>());
+      harness.coordinator.buyerPaid(record.orderId);
+      (view, seen) = await read(harness, record);
       expect(seen.status, isA<Succeeded>());
       expect(view.title, TradeTitle.finished);
       expect(harness.coordinator.order(record.orderId).bondReturned, isTrue);

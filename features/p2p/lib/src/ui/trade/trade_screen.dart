@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
+import '../../domain/trade/maker_terms.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_warning.dart';
@@ -32,6 +33,7 @@ import 'trade_first_read_wait.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
+import '../widgets/trade_dialog_body.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
 import 'chat_actions.dart';
@@ -788,13 +790,12 @@ class _Contract extends StatelessWidget {
             ),
             const Gap(BullSpacing.sm),
           ],
-          // A maker buyer's line of the gap, before « Submit » (design note § 3.3, #182).
+          // The owner's payment rule on a maker buyer's side, before « Submit » (#182); the gap from the creation's rate under it, only without a comparison with the Bull wallet's price.
+          ?_rateLines(context),
           if (_gapLine(context, status) case final gap?) ...[
             gap,
             const Gap(BullSpacing.sm),
           ],
-          // The owner's payment rule on a maker buyer's side, before « Submit » (#182).
-          ?_rateLines(context),
           ?_payoutPanel(context),
         ],
       ),
@@ -806,6 +807,15 @@ class _Contract extends StatelessWidget {
           _Line(l10n.p2pTradeEscrowWait),
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pTradeEscrowWaitHangOn),
+          // The reference's « you will get your bond back automatically » is a taker's case: for a maker the order goes back to the book, its bond locked (#182).
+          if (record.origin == TradeOrigin.madeHere) ...[
+            const Gap(BullSpacing.sm),
+            _Line(
+              l10n.p2pTradeEscrowWaitMaker,
+              color: colors.warning,
+              icon: Icons.info_outline,
+            ),
+          ],
         ],
       ),
       (TradePrompt.expired, Expired(:final reason?)) => _Line(
@@ -817,8 +827,12 @@ class _Contract extends StatelessWidget {
       (TradePrompt.chat, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The owner's payment rule on a maker buyer's side, before « Confirm … sent » (#182), with its « Retry ».
+          // The owner's payment rule on a maker buyer's side, before « Confirm … sent » (#182), with its « Retry »; the gap under it, only without a comparison.
           ?_rateLines(context),
+          if (_gapLine(context, status) case final gap?) ...[
+            gap,
+            const Gap(BullSpacing.sm),
+          ],
           ChatStepPanel(
             seen: contract.seen,
             order: order,
@@ -843,20 +857,7 @@ class _Contract extends StatelessWidget {
             chatOptions: chatOptions == null
                 ? null
                 : () => chatOptions(context, chatRequest),
-            rateLines: switch (payoutRate) {
-              PayoutRateChecked(:final check, :final step)
-                  when step == PayoutRateStep.of(status) =>
-                PayoutRateLines.linesOf(
-                  context,
-                  check,
-                  coordinator: coordinator,
-                  amount: PayoutRateLines.amountOf(context, order),
-                ),
-              PayoutRateReading(:final step)
-                  when step == PayoutRateStep.of(status) =>
-                [(text: l10n.p2pPayoutRateReading, alert: false)],
-              _ => const [],
-            },
+            rateLines: _dialogLines(context, status),
           ),
         ],
       ),
@@ -914,16 +915,47 @@ class _Contract extends StatelessWidget {
     };
   }
 
-  /// The lines of the owner's payment rule for the step shown, with their « Retry » (#182); `null` where there are none.
-  Widget? _rateLines(BuildContext context) {
+  /// The rule's state for the step shown, `null` when it is another step's or there is none: never the check of a step before.
+  PayoutRateState? get _ruleShown {
     final state = payoutRate;
-    // Only the check of the step shown: never one of a step before.
     final shown = PayoutRateStep.of(contract.status);
     final step = switch (state) {
-      PayoutRateReading(:final step) || PayoutRateChecked(:final step) => step,
+      PayoutRateReading(:final step) ||
+      PayoutRateChecked(:final step) ||
+      PayoutRateSatsMissing(:final step) => step,
       _ => null,
     };
-    if (state == null || step == null || step != shown) return null;
+    if (step == null || step != shown) return null;
+    return state;
+  }
+
+  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
+  List<TradeDialogLine> _dialogLines(BuildContext context, TradeStatus status) {
+    final state = _ruleShown;
+    final order = contract.order;
+    final gap = _gapOf(context, status);
+    return [
+      if (state != null)
+        ...PayoutRateLines.linesOf(
+          context,
+          state,
+          coordinator: coordinator,
+          amount: PayoutRateLines.amountOf(context, order),
+        ),
+      if (gap != null && !PayoutRateLines.compares(state))
+        (
+          text: gap.text,
+          tone: gap.gap.effectFor(gap.role) == RateGapEffect.unfavourable
+              ? TradeDialogTone.warning
+              : TradeDialogTone.plain,
+        ),
+    ];
+  }
+
+  /// The lines of the owner's payment rule for the step shown, with their « Retry » (#182); `null` where there are none.
+  Widget? _rateLines(BuildContext context) {
+    final state = _ruleShown;
+    if (state == null || state is PayoutRateNone) return null;
     return Padding(
       padding: const EdgeInsets.only(bottom: BullSpacing.sm),
       child: PayoutRateLines(
@@ -935,27 +967,53 @@ class _Contract extends StatelessWidget {
     );
   }
 
-  /// The line of the gap of a maker's contract at 6 and 8 ([RateGapLine]), from the status's own figure and the order it was read from; `null` for a taker, whose statuses carry no gap.
+  /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only when the owner's rule shows no comparison with the Bull wallet's price (a currency it does not price, a price not read, no rule without the wallet's port); `null` for a taker, whose statuses carry no gap.
   Widget? _gapLine(BuildContext context, TradeStatus status) {
+    if (PayoutRateLines.compares(_ruleShown)) return null;
+    final gap = _gapOf(context, status);
+    if (gap == null) return null;
+    return RateGapLine(gap: gap.gap, role: gap.role, text: gap.text);
+  }
+
+  /// The gap of a maker's contract at 6, 8 and 9, its role and its words, from the status's own figure and the order it was read from.
+  ({TradeRateGap gap, TradeRole role, String text})? _gapOf(
+    BuildContext context,
+    TradeStatus status,
+  ) {
     final order = contract.order;
-    final (gap, role) = switch (status) {
+    final (gap, role, amount) = switch (status) {
       WaitingForBoth(:final rateGap, :final role) ||
-      WaitingForPayout(:final rateGap, :final role) => (rateGap, role),
-      _ => (null, record.role),
+      WaitingForPayout(:final rateGap, :final role) => (
+        rateGap,
+        role,
+        switch ((order?.takenAmount, order?.amount)) {
+          (final taken?, _) => taken,
+          (null, FixedOrderAmount(:final amount)) => amount,
+          _ => null,
+        },
+      ),
+      Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
+        rateGap,
+        role,
+        amount,
+      ),
+      _ => (null, record.role, null),
     };
-    if (order == null) return null;
-    return RateGapLine.of(
-      context,
+    final sats = order?.satoshisNow;
+    if (gap == null || amount == null || sats == null || order == null) {
+      return null;
+    }
+    return (
       gap: gap,
       role: role,
-      coordinator: coordinator,
-      sats: order.satoshisNow,
-      amount: switch ((order.takenAmount, order.amount)) {
-        (final taken?, _) => taken,
-        (null, FixedOrderAmount(:final amount)) => amount,
-        _ => null,
-      },
-      currency: order.currency,
+      text: RateGapLine.textOf(
+        context,
+        gap: gap,
+        coordinator: coordinator,
+        sats: sats,
+        amount: amount,
+        currency: order.currency,
+      ),
     );
   }
 
@@ -1528,6 +1586,13 @@ class _PublicWait extends StatelessWidget {
               '${seconds ~/ 3600}',
               '${(seconds - seconds ~/ 3600 * 3600) ~/ 60}',
             ),
+          ),
+          const Gap(BullSpacing.sm),
+          // The reference's box rings; this app neither rings nor follows the order outside this screen (#182, functional review).
+          _Line(
+            l10n.p2pTradeNoRingYet,
+            color: colors.warning,
+            icon: Icons.info_outline,
           ),
           const Gap(BullSpacing.sm),
         ],

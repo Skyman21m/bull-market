@@ -402,8 +402,11 @@ final class P2pLocator {
       () => CheckPayoutRateUsecase(locator(), locator<P2pWalletPort>()),
     );
     locator.registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
-      (record, _) =>
-          PayoutRateCubit(record, locator<CheckPayoutRateUsecase>().execute),
+      (record, _) => PayoutRateCubit(
+        record,
+        locator<CheckPayoutRateUsecase>().execute,
+        now: clock,
+      ),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(

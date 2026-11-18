@@ -800,17 +800,12 @@ void main() {
         };
         final cubit = PayoutRateCubit(_record, (record, seen) async {
           reads?.add(seen);
-          final contract = CheckPayoutRateUsecase.contractOf(seen);
-          if (contract == null) return null;
-          return WalletRateCheck.ofMakerPayout(
+          return CheckPayoutRateUsecase.findingAt(
             maker,
-            amount:
-                maker.contractAmount(contract.rangeAmount) ??
-                (throw StateError('no amount')),
-            received: contract.received,
+            seen,
             wallet: wallet(),
           );
-        });
+        }, now: () => tradeNow);
         addTearDown(cubit.close);
         return cubit;
       }
@@ -860,6 +855,11 @@ void main() {
           findsOneWidget,
         );
         expect(find.textContaining('fewer sats than that'), findsNothing);
+        // With a comparison at the Bull wallet's price, the gap from the creation's rate is not shown: one figure (decided after the functional review of #182).
+        expect(
+          find.textContaining('from the rate when you made it'),
+          findsNothing,
+        );
       });
 
       testWidgets(
@@ -884,6 +884,64 @@ void main() {
             findsOneWidget,
           );
           expect(find.text('Retry'), findsNothing);
+          // No comparison: the gap from the creation's rate under the alert, as information.
+          final gap = find.textContaining('from the rate when you made it');
+          expect(gap, findsOneWidget);
+          expect(
+            tester.getTopLeft(gap).dy,
+            greaterThan(
+              tester.getTopLeft(find.textContaining('has no price for')).dy,
+            ),
+          );
+        },
+      );
+
+      testWidgets(
+        'at 9 with a read that gives no sats: « rate not checked », never nothing',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(8),
+            makerOrderJson(9, changes: {'satoshis_now': null}),
+          ]);
+          await _show(tester, seen, rate: rateOf(() => atWallet));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text(
+              'Rate not checked: Temple of Sats gives no sats for this step of the trade. Check them yourself before going on.',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'at 9 without the rule (no wallet\'s port), the gap from the creation\'s rate against the buyer is in the warning colour in « Confirm … sent »',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: _lowSats),
+            makerOrderJson(8, last: _lowSats),
+            makerOrderJson(9, last: _lowSats),
+          ]);
+          await _show(tester, seen);
+          final confirm = find.textContaining('Confirm 100 EUR sent');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          final gap = find.descendant(
+            of: find.byType(ConfirmFiatSentDialog),
+            matching: find.textContaining('+5.85% from the rate'),
+          );
+          expect(gap, findsOneWidget);
+          expect(
+            tester.widget<Text>(gap).style?.color,
+            testBullTheme.warning,
+          );
         },
       );
 
@@ -1011,17 +1069,12 @@ void main() {
             final rate = wallet == null
                 ? null
                 : PayoutRateCubit(_record, (record, seen) async {
-                    final contract = CheckPayoutRateUsecase.contractOf(seen);
-                    if (contract == null) return null;
-                    return WalletRateCheck.ofMakerPayout(
+                    return CheckPayoutRateUsecase.findingAt(
                       maker,
-                      amount:
-                          maker.contractAmount(contract.rangeAmount) ??
-                          (throw StateError('no amount')),
-                      received: contract.received,
+                      seen,
                       wallet: wallet,
                     );
-                  });
+                  }, now: () => tradeNow);
             if (rate != null) addTearDown(rate.close);
             await _show(
               tester,

@@ -197,8 +197,8 @@ Map<String, Object?> makerOrderJson(
     ..['escrow_locked'] = status == 8 || status >= 9;
   if (hasTaker) data['taker_hash_id'] = contractTaker.hashId.hex;
   final trade = buyer ? makerPayoutOf(last) : makerEscrowOf(last);
-  // `trade_satoshis` once both bonds are locked, the chat included (`api/views.py:345-371`, `CCA`).
-  if ([6, 7, 8, 9, 10, 11, 13, 14, 15].contains(status)) {
+  // `trade_satoshis` once both bonds are locked, at the statuses `api/views.py:346-356` lists: 6 (WF2), 7 (WFE), 8 (WFI), 10 (FSE), 11 (DIS), 12 (CCA), 13 (PAY), 14 (SUC), 15 (FAI); not at 9 (CHA, the chat).
+  if ([6, 7, 8, 10, 11, 12, 13, 14, 15].contains(status)) {
     data['trade_satoshis'] = trade;
   }
   switch (status) {

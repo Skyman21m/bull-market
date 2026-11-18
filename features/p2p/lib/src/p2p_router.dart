@@ -554,7 +554,12 @@ class _P2pPageState extends State<_P2pPage> {
               onOpenTrades: opens
                   ? () => _openTrades(context, active, pending)
                   : null,
-              onCreate: pending != null && !opens
+              // Not while the records are being read: « Create » is for a network known to have no active trade nor pending make (functional review R8).
+              onCreate:
+                  pending != null &&
+                      !opens &&
+                      active is! ActiveTradesLoading &&
+                      pendingState?.makes != null
                   ? () => unawaited(_openCreate(context))
                   : null,
             );

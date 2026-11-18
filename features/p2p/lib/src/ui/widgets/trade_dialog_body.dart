@@ -26,8 +26,8 @@ class TradeDialogBody extends StatelessWidget {
   /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
   final String? note;
 
-  /// Lines of the app under [note] (#182: the owner's payment rule on the buyer's side), each in the text colour, or in the error colour when [alert]; empty for a dialog without them.
-  final List<({String text, bool alert})> lines;
+  /// Lines of the app under [note] (#182: the owner's payment rule on the buyer's side, the gap from the creation's rate), each in the colour of its [TradeDialogTone]; empty for a dialog without them.
+  final List<TradeDialogLine> lines;
 
   /// What the button that goes on does; `null` while it waits (« Wait ({{time}}) », `TradeBox/Dialogs/ConfirmUndoFiatSent.tsx`).
   final VoidCallback? onGo;
@@ -143,8 +143,14 @@ class TradeDialogBody extends StatelessWidget {
             WordFitText(
               line.text,
               style: styles.bodyMedium?.copyWith(
-                color: line.alert ? colors.error : colors.text,
-                fontWeight: line.alert ? FontWeight.bold : null,
+                color: switch (line.tone) {
+                  TradeDialogTone.plain => colors.text,
+                  TradeDialogTone.warning => colors.warning,
+                  TradeDialogTone.alert => colors.error,
+                },
+                fontWeight: line.tone == TradeDialogTone.plain
+                    ? null
+                    : FontWeight.bold,
               ),
             ),
           ],
@@ -169,3 +175,9 @@ class TradeDialogBody extends StatelessWidget {
     );
   }
 }
+
+/// How a line of the app in a dialog is drawn: in the text colour, in the warning colour (a gap against the user, a check that could not be made), or in the error colour (the red warning of the owner's rule).
+enum TradeDialogTone { plain, warning, alert }
+
+/// A line of the app in a dialog, and its tone.
+typedef TradeDialogLine = ({String text, TradeDialogTone tone});

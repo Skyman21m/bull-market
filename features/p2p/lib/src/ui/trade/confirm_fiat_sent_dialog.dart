@@ -12,17 +12,13 @@ class ConfirmFiatSentDialog extends StatelessWidget {
   final String amount;
   final String currencyCode;
 
-  /// A maker buyer's line of the gap from the rate when the order was made (design note § 3.3, #182), said under the reference's texts: information, « Confirm » unchanged; `null` for a taker.
-  final String? gap;
-
-  /// The lines of the owner's payment rule on a maker buyer's side (#182): the comparison with the Bull wallet's price, its red warning, or why it was not made; information, « Confirm » unchanged.
-  final List<({String text, bool alert})> lines;
+  /// A maker buyer's lines (#182): the owner's payment rule (the comparison with the Bull wallet's price, its red warning, or why it was not made) or, without a comparison, the gap from the creation's rate; information, « Confirm » unchanged; empty for a taker.
+  final List<TradeDialogLine> lines;
 
   const ConfirmFiatSentDialog({
     super.key,
     required this.amount,
     required this.currencyCode,
-    this.gap,
     this.lines = const [],
   });
 
@@ -31,15 +27,13 @@ class ConfirmFiatSentDialog extends StatelessWidget {
     BuildContext context, {
     required String amount,
     required String currencyCode,
-    String? gap,
-    List<({String text, bool alert})> lines = const [],
+    List<TradeDialogLine> lines = const [],
   }) async =>
       await BullDialog.show<bool>(
         context: context,
         builder: (_) => ConfirmFiatSentDialog(
           amount: amount,
           currencyCode: currencyCode,
-          gap: gap,
           lines: lines,
         ),
       ) ??
@@ -57,7 +51,6 @@ class ConfirmFiatSentDialog extends StatelessWidget {
       warning: l10n.p2pEndCannotBeUndone,
       semanticWarning: withoutLeadingEmoji(l10n.p2pEndCannotBeUndone),
       afterWarning: l10n.p2pEndFalseConfirmRisk,
-      note: gap,
       lines: lines,
       backLabel: l10n.p2pCommonGoBack,
       onBack: () => Navigator.of(context).pop(false),
