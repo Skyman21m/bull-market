@@ -73,6 +73,8 @@ final class CheckPayoutRateUsecase {
     final amount = maker.contractAmount(
       kept == null ? null : FiatAmount.tryCreate(kept),
     );
+    // Another amount than the contract's kept one: the state machine's alert alone (`TradeSeen.contractAmountMoved`, C5 of #183).
+    final moved = seen.contractAmountMoved;
     switch (status) {
       case WaitingForBoth(role: TradeRole.buyer) ||
           WaitingForPayout(role: TradeRole.buyer):
@@ -88,7 +90,7 @@ final class CheckPayoutRateUsecase {
           (null, final b?) => b,
           _ => null,
         };
-        if (amountsDisagree(status)) return PayoutRateMismatch(keep);
+        if (amountsDisagree(status) || moved) return PayoutRateMismatch(keep);
         if (invoice == null || amount == null) return const PayoutRateNoSats();
         return PayoutRateCompared(
           received: invoice,
@@ -101,6 +103,8 @@ final class CheckPayoutRateUsecase {
         // A contract this app saw only from 9 on (another taker, « seen late »), with no invoice kept: its alert is said whatever the coordinator's figures then say, beside « rate not checked » or the amounts' warning, never hidden by them (third security pass of #182, R13, #207).
         final notSeen = asked == null && status.has<ContractSeenLate>();
         if (amount == null) return PayoutRateNoSats(notSeen: notSeen);
+        // Another amount than the contract's: the alert alone, the kept invoice not compared either, so that no line reassures beside it (C5 of #183).
+        if (moved) return PayoutRateMismatch(null, notSeen: notSeen);
         final disagree = amountsDisagree(status);
         // The invoice's sats this app kept are its own figure: compared even when the coordinator's figures are missing or do not agree, beside the state machine's warning (second security review of #182, R8).
         if (asked != null && (last == null || disagree)) {

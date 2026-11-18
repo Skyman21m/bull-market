@@ -1,7 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:meta/meta.dart';
 import 'package:robosats/robosats.dart';
 
-import 'exact_ratio.dart';
 import 'maker_terms.dart';
 import 'trade_make.dart';
 
@@ -205,7 +206,7 @@ enum MakerFormBlock {
   /// « Please enter an amount. »: nothing typed, or no number, for an exact amount (a range has its own reason, as the reference's `maker.amount == null && !makerHasAmountRange`, `:540-542`).
   noAmount,
 
-  /// « The amount range is not valid. » (#183): a bound of the range missing, out of the form's limits, or the range's ratio outside [MakerFormCheck.minRangeRatio] to [MakerFormCheck.maxRangeRatio] (`AmountRange.tsx:57-77`, `MakerForm.tsx:543-545`).
+  /// « The amount range is not valid. » (#183): a field « From » or « to » in error by the reference's rules ([MakerFormCheck.rangeErrorsOf], `AmountRange.tsx:57-77`, `MakerForm.tsx:543-545`).
   amountRangeInvalid,
 
   /// « The amount must be greater than 0. »
@@ -323,6 +324,9 @@ final class MakerFormInput {
   bool get hasRange => advanced && rangeEnabled;
 }
 
+/// Which thumb of the range's slider the user moves.
+enum RangeThumb { min, max }
+
 /// The bounds a range takes when the form sets them, as the reference's `resetRange` (`MakerForm.tsx:394-411`), its currency change (`:184-199`) and its slider (`AmountRange.tsx:79-117`) set them (#183).
 @immutable
 final class MakerRange {
@@ -331,7 +335,7 @@ final class MakerRange {
 
   const MakerRange(this.min, this.max);
 
-  /// The range « Enable advanced options » opens with (`resetRange`): half the amount typed and the amount, else a quarter and three quarters of the coordinator's largest order in the currency ([limit]'s `max_amount`, without the premium nor the form's margins, as the reference reads `limits[index].max_amount`), each to 2 significant digits but the amount typed, kept as it is; `null` when neither is known (no amount above zero, no limit for the currency), the fields then left as they are.
+  /// The range « Enable advanced options » opens with (`resetRange`, `MakerForm.tsx:394-411`): half the amount typed, to 2 significant digits, and the amount as it is; else a quarter and three quarters of the coordinator's largest order in the currency ([limit]'s `max_amount`, without the premium nor the form's margins, as the reference reads `limits[index].max_amount`), each to 2 significant digits (`:399`, `:403`); `null` when neither is known (no amount above zero, no limit for the currency), the fields then left as they are.
   static MakerRange? opening({
     required double? amount,
     required CurrencyLimit? limit,
@@ -340,36 +344,45 @@ final class MakerRange {
       return MakerRange(significant(amount / 2, 2), amount);
     }
     if (limit == null) return null;
-    return _quarters(limit);
+    return MakerRange(
+      significant(limit.maxAmount * 0.25, 2),
+      significant(limit.maxAmount * 0.75, 2),
+    );
   }
 
-  /// The range after a change of currency, the new currency's limit being [limit] (`handleCurrencyChange`, `:184-199`): kept when both bounds lie within its smallest and largest order (`min_amount` and `max_amount`, to 2 significant digits), else a quarter and three quarters of its largest order; `null` to keep it as typed (no limit for the currency, or a bound that is no number, which the reference cannot have).
+  /// The range after a change of currency, the new currency's limit being [limit] (`handleCurrencyChange`, `:184-199`): kept when both bounds lie within its smallest and largest order (`min_amount` and `max_amount`, to 2 significant digits), else a quarter and three quarters of that largest order (rounded first, as the reference rounds it there, `:186`, `:195-196`); `null` to keep it (no limit for the currency). A bound left empty is 0, as the reference's number field reads it (`Number('')`), so it sets the range again.
   static MakerRange? afterCurrency({
-    required double? min,
-    required double? max,
+    required double min,
+    required double max,
     required CurrencyLimit? limit,
   }) {
-    if (limit == null || min == null || max == null) return null;
+    if (limit == null) return null;
     final low = significant(limit.minAmount, 2);
     final high = significant(limit.maxAmount, 2);
     if (min < low || min > high || max > high || max < low) {
-      return _quarters(limit);
+      return MakerRange(
+        significant(high * 0.25, 2),
+        significant(high * 0.75, 2),
+      );
     }
     return null;
   }
 
-  static MakerRange _quarters(CurrencyLimit limit) {
-    final high = significant(limit.maxAmount, 2);
-    return MakerRange(significant(high * 0.25, 2), significant(high * 0.75, 2));
-  }
+  /// The thumb that moved from [previous], what the slider showed, to [next]: the one that moved the most. The platform's slider puts both values back on its grid at each move (`_discretizeRangeValues` of Flutter's `RangeSlider`), so the thumb that stayed can come back shifted by part of a step; the one dragged moves by the drag. The reference's slider names it (`activeThumb`, `AmountRange.tsx:82`).
+  static RangeThumb movedThumb(MakerRange previous, MakerRange next) =>
+      (next.min - previous.min).abs() >= (next.max - previous.max).abs()
+      ? RangeThumb.min
+      : RangeThumb.max;
 
-  /// The range the slider gives when one thumb moved to [next] from [previous] (`handleRangeAmountChange`, `AmountRange.tsx:79-117`): the minimum at most the form's largest amount × 0.98 / 1.6 and the maximum at least 1.6 × the form's smallest × 1.03 (`amountSafeThresholds` applied once more, as the reference writes it), then the other thumb moved so that the ratio stays from 1.6 to 14.8, then each bound to 2 significant digits below 100, 3 from 100.
+  /// The range the slider gives when [moved] went to [next] (`handleRangeAmountChange`, `AmountRange.tsx:79-117`): the minimum at most the form's largest amount × 0.98 / 1.6 and the maximum at least 1.6 × the form's smallest × 1.03 (`amountSafeThresholds` applied once more, as the reference writes it), then the other thumb moved so that the ratio stays from 1.6 to 14.8, then each bound to 2 significant digits below 100, 3 from 100.
+  ///
+  /// The app's own, after that: when the reference's rounding gives a range its own check refuses ([MakerFormCheck.rangeErrorsOf]: from 20-9,000 with « From » moved to 20.4, the reference writes 20-302, a ratio of 15.1, which it then marks in error), the thumb moved is kept at its rounding (or, at an end of the slider, rounded inwards) and the other one computed again from it by the same ratio, rounded to the nearest, then up, then down, the first range the check takes being written; so the slider never writes a range the form refuses.
   static MakerRange slid({
-    required MakerRange previous,
+    required RangeThumb moved,
     required MakerRange next,
     required MakerAmountLimits limits,
   }) {
-    final minMoved = next.min != previous.min;
+    final minMoved = moved == RangeThumb.min;
     var min = next.min;
     var max = next.max;
     final cap =
@@ -382,24 +395,65 @@ final class MakerRange {
         limits.min *
         MakerAmountLimits.minThreshold;
     if (max < floor) max = floor;
+    // The ratio the reference keeps here, if any: 1.6 when the range is too narrow, 14.8 when too wide.
+    double? ratio;
     if (min > max / MakerFormCheck.minRangeRatio) {
-      if (minMoved) {
-        max = MakerFormCheck.minRangeRatio * min;
-      } else {
-        min = max / MakerFormCheck.minRangeRatio;
-      }
+      ratio = MakerFormCheck.minRangeRatio;
     } else if (min < max / MakerFormCheck.maxRangeRatio) {
-      if (minMoved) {
-        max = MakerFormCheck.maxRangeRatio * min;
-      } else {
-        min = max / MakerFormCheck.maxRangeRatio;
+      ratio = MakerFormCheck.maxRangeRatio;
+    }
+    final leader = minMoved ? min : max;
+    double followerOf(double leading) => switch (ratio) {
+      final ratio? => minMoved ? ratio * leading : leading / ratio,
+      null => minMoved ? max : min,
+    };
+    MakerRange pair(double leading, double following) => minMoved
+        ? MakerRange(leading, following)
+        : MakerRange(following, leading);
+    bool fits(MakerRange range) {
+      final errors = MakerFormCheck.rangeErrorsOf(
+        range.min,
+        range.max,
+        limits,
+      );
+      return !errors.min && !errors.max;
+    }
+
+    final reference = pair(_precise(leader), _precise(followerOf(leader)));
+    if (fits(reference)) return reference;
+    for (final leading in [
+      _precise(leader),
+      _toward(leader, up: minMoved),
+      _toward(leader, up: !minMoved),
+    ]) {
+      final following = followerOf(leading);
+      for (final candidate in [
+        _precise(following),
+        _toward(following, up: true),
+        _toward(following, up: false),
+      ]) {
+        final range = pair(leading, candidate);
+        if (fits(range)) return range;
       }
     }
-    return MakerRange(_slidPrecision(min), _slidPrecision(max));
+    return reference;
   }
 
-  static double _slidPrecision(double value) =>
-      significant(value, value < 100 ? 2 : 3);
+  static int _digitsOf(double value) => value < 100 ? 2 : 3;
+
+  static double _precise(double value) =>
+      significant(value, _digitsOf(value));
+
+  /// [value] rounded up or down at the slider's precision ([_precise]).
+  static double _toward(double value, {required bool up}) {
+    if (!value.isFinite || value <= 0) return _precise(value);
+    final digits = _digitsOf(value);
+    final exponent = (math.log(value) / math.ln10).floor();
+    final scale = math.pow(10, digits - 1 - exponent).toDouble();
+    final scaled = value * scale;
+    final whole = up ? scaled.ceilToDouble() : scaled.floorToDouble();
+    return significant(whole / scale, digits);
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -437,9 +491,13 @@ final class MakerFormCheck {
   static const double maxBondSize = 15;
   static const double bondSizeStep = 0.25;
 
-  /// The ratios of a range's maximum to its minimum the form takes: the reference client's 1.6 and 14.8 (`maxRangeAmountMultiple`, `minRangeAmountMultiple`, `AmountRange.tsx:54-55`), so that a range the form takes is not refused by the coordinator, which compares sats at its price of the moment with its own 1.5 and 15 (`api/logics.py:157-175`; the package keeps those, `MakeOrderRequest.minRangeRatio`, design note § 2.2, #183's comment).
+  /// The ratios of a range's maximum to its minimum the reference's slider keeps (`minRangeAmountMultiple`, `maxRangeAmountMultiple`, `AmountRange.tsx:54-55`, `:79-117`).
   static const double minRangeRatio = 1.6;
   static const double maxRangeRatio = 14.8;
+
+  /// The ratios the reference's check of the range's bounds lets through, with the margins it writes (`minRangeAmountMultiple - 0.1`, `maxRangeAmountMultiple + 0.15`, `AmountRange.tsx:63-64`, `:74-75`), computed in floating point as there, so 1.5 to 14.95 but for a rounding at 1.5. The coordinator's are 1.5 and 15 (`api/logics.py:157-175`), which the package keeps (`MakeOrderRequest.minRangeRatio`).
+  static const double typedMinRangeRatio = minRangeRatio - 0.1;
+  static const double typedMaxRangeRatio = maxRangeRatio + 0.15;
 
   /// The longest « Description » (`MakerForm.tsx:363`), in UTF-16 units.
   static const int maxDescriptionLength = 240;
@@ -464,11 +522,11 @@ final class MakerFormCheck {
   /// The fixed amount the summary shows and the request sends: the number typed, 0 when nothing or no number is (the reference's `maker.amount ?? 0`).
   final double amount;
 
-  /// « From » and « to » of a range, as read, and their values, `null` when no number is typed.
+  /// « From » and « to » of a range, as read, and their values, 0 when nothing or no number is typed, as the reference's number fields read an empty one (`Number('')`, `AmountRange.tsx:156`, `:187`).
   final FormNumber minAmountField;
   final FormNumber maxAmountField;
-  final double? rangeMin;
-  final double? rangeMax;
+  final double rangeMin;
+  final double rangeMax;
 
   /// Whether the field « From », or « to », shows an error (`minAmountError`, `maxAmountError`, `AmountRange.tsx:57-77`); only for a range.
   final bool rangeMinError;
@@ -571,17 +629,26 @@ final class MakerFormCheck {
     return value;
   }
 
-  /// Whether [high] is from [minRangeRatio] to [maxRangeRatio] times [low], both at least as large as each bound, compared on the decimals the fields show ([ExactRatio]), so that 200 and 320 are exactly 1.6 and allowed, where floating point could put either bound one ulp off.
-  static bool _ratioWithin(double low, double high) {
-    final min = ExactRatio.ofDouble(low);
-    final max = ExactRatio.ofDouble(high);
-    final lowest = ExactRatio.ofDouble(minRangeRatio);
-    final highest = ExactRatio.ofDouble(maxRangeRatio);
-    if (min == null || max == null || lowest == null || highest == null) {
-      return false;
-    }
-    final ratio = max / min;
-    return ratio >= lowest && ratio <= highest;
+  /// The errors of the fields « From » and « to » for the bounds [low] and [high] (`minAmountError`, `maxAmountError`, `AmountRange.tsx:57-77`), as the reference writes them: either below the other, a ratio outside [typedMinRangeRatio] to [typedMaxRangeRatio] (`low < high / 14.95`, `low × 1.5 > high`), the minimum below 0.99 of the form's smallest amount, the maximum above 1.01 of its largest.
+  static ({bool min, bool max}) rangeErrorsOf(
+    double low,
+    double high,
+    MakerAmountLimits? limits,
+  ) {
+    final crossed =
+        high < low ||
+        low < high / typedMaxRangeRatio ||
+        low * typedMinRangeRatio > high;
+    return (
+      min:
+          crossed ||
+          (limits != null &&
+              low < limits.min * MakerAmountLimits.rangeMinMargin),
+      max:
+          crossed ||
+          (limits != null &&
+              high > limits.max * MakerAmountLimits.rangeMaxMargin),
+    );
   }
 
   static bool _isDuration(Duration duration, Duration min, Duration max) =>
@@ -621,8 +688,8 @@ final class MakerFormCheck {
       maxDecimals: premiumDecimals,
     );
     final amount = amountField.value ?? 0.0;
-    final rangeMin = minAmountField.value;
-    final rangeMax = maxAmountField.value;
+    final rangeMin = minAmountField.value ?? 0.0;
+    final rangeMax = maxAmountField.value ?? 0.0;
     final typedPremium = premiumField.value ?? 0.0;
     final premiumProblem = typedPremium > maxPremium
         ? MakerPremiumProblem.tooHigh
@@ -670,7 +737,7 @@ final class MakerFormCheck {
         ? null
         : significant(price * (1 + premiumPercent / 100), 5);
     // The reference's estimate is on the range's maximum (`bondCalculator.ts:24`), the bond the coordinator asks (`api/logics.py:1266-1268`).
-    final estimatedAmount = hasRange ? (rangeMax ?? 0.0) : amount;
+    final estimatedAmount = hasRange ? rangeMax : amount;
     final estimatedBond = rate != null && rate > 0 && estimatedAmount > 0
         ? _bondOf(estimatedAmount, rate, bondSizePercent)
         : null;
@@ -682,31 +749,12 @@ final class MakerFormCheck {
         ? MakerAmountTooHigh(significant(limits.max, 2))
         : null;
 
-    // The range's own checks (`AmountRange.tsx:57-77`): a bound below 0.99 of the form's smallest amount or above 1.01 of its largest, a maximum below the minimum, or a ratio outside the form's (the reference's typed check lets 1.5 to 14.95 through, its slider 1.6 to 14.8: here 1.6 to 14.8 for both, see [minRangeRatio]). A bound with no number is an error of its own field, where the reference's number field reads an empty one as 0.
-    var rangeMinError = false;
-    var rangeMaxError = false;
-    if (hasRange) {
-      final low = rangeMin;
-      final high = rangeMax;
-      if (low == null || low <= 0) rangeMinError = true;
-      if (high == null || high <= 0) rangeMaxError = true;
-      if (low != null && high != null && low > 0 && high > 0) {
-        if (!_ratioWithin(low, high)) {
-          rangeMinError = true;
-          rangeMaxError = true;
-        }
-      }
-      if (limits != null) {
-        if (low != null &&
-            low < limits.min * MakerAmountLimits.rangeMinMargin) {
-          rangeMinError = true;
-        }
-        if (high != null &&
-            high > limits.max * MakerAmountLimits.rangeMaxMargin) {
-          rangeMaxError = true;
-        }
-      }
-    }
+    // The range's own checks, the reference's (`AmountRange.tsx:57-77`, [rangeErrorsOf]).
+    final errors = hasRange
+        ? rangeErrorsOf(rangeMin, rangeMax, limits)
+        : (min: false, max: false);
+    final rangeMinError = errors.min;
+    final rangeMaxError = errors.max;
 
     MakerFormCheck build(MakerFormBlock? block, MakeOrderRequest? request) =>
         MakerFormCheck._(
@@ -775,8 +823,8 @@ final class MakerFormCheck {
     }
     final OrderAmount? orderAmount;
     if (hasRange) {
-      final low = rangeMin == null ? null : FiatAmount.tryCreate(rangeMin);
-      final high = rangeMax == null ? null : FiatAmount.tryCreate(rangeMax);
+      final low = FiatAmount.tryCreate(rangeMin);
+      final high = FiatAmount.tryCreate(rangeMax);
       orderAmount = low == null || high == null
           ? null
           : RangeOrderAmount.tryCreate(low, high);

@@ -248,11 +248,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   /// A thumb of the range's slider moved (`handleRangeAmountChange`, `AmountRange.tsx:79-117`).
   ///
-  /// [previous] is what the slider showed (the bounds typed, held within the form's limits), so that the thumb moved is told from the one that stayed.
+  /// [previous] is what the slider showed (the bounds typed, held within the form's limits), so that the thumb moved is told from the one that stayed ([MakerRange.movedThumb]).
   void _slide(MakerRange previous, MakerRange next, MakerAmountLimits limits) {
     setState(
       () => _setRange(
-        MakerRange.slid(previous: previous, next: next, limits: limits),
+        MakerRange.slid(
+          moved: MakerRange.movedThumb(previous, next),
+          next: next,
+          limits: limits,
+        ),
       ),
     );
     _amountChanged();
@@ -1174,7 +1178,7 @@ class _Summary extends StatelessWidget {
     final bond = check.estimatedBond;
     // A range as the reference writes it, « min-max » (`amountToString`, `utils/prettyNumbers.ts:13-28`), each bound with all the decimals sent.
     final amount = check.hasRange
-        ? '${formats.typedNumber(check.rangeMin ?? 0)}-${formats.typedNumber(check.rangeMax ?? 0)}'
+        ? '${formats.typedNumber(check.rangeMin)}-${formats.typedNumber(check.rangeMax)}'
         : formats.typedNumber(check.amount);
     return Semantics(
       container: true,
@@ -1531,7 +1535,7 @@ class _RangeSwitch extends StatelessWidget {
   }
 }
 
-/// The range (`AmountRange.tsx`): « From » … « to » and the currency, then the reference's slider over the form's limits, its two ends marked with them (3 significant digits), each thumb's value shown as it moves (2 significant digits below 100, 3 from 100).
+/// The range (`AmountRange.tsx`): « From » … « to » and the currency, then the reference's slider over the form's limits (continuous here), its two ends marked with them (3 significant digits), each thumb's value shown as it moves (2 significant digits below 100, 3 from 100).
 class _AmountRange extends StatelessWidget {
   final TextEditingController min;
   final TextEditingController max;
@@ -1619,24 +1623,32 @@ class _AmountRange extends StatelessWidget {
                 builder: (context) {
                   double within(double value) =>
                       value.clamp(limits.min, limits.max).toDouble();
-                  final start = within(check.rangeMin ?? limits.min);
-                  final end = within(check.rangeMax ?? limits.max);
+                  final start = within(check.rangeMin);
+                  final end = within(check.rangeMax);
                   final values = RangeValues(start <= end ? start : end, end);
                   String thumb(double value) =>
                       bound(value, value < 100 ? 2 : 3);
-                  return RangeSlider(
-                    values: values,
-                    min: limits.min,
-                    max: limits.max,
-                    divisions: 5000,
-                    labels: RangeLabels(thumb(values.start), thumb(values.end)),
-                    onChanged: enabled
-                        ? (next) => onSlide(
-                            MakerRange(values.start, values.end),
-                            MakerRange(next.start, next.end),
-                            limits,
-                          )
-                        : null,
+                  // Continuous, where the reference's step is a 5,000th of the span (`AmountRange.tsx:236`): the bounds are rounded to 2 or 3 significant digits anyway, and a grid would move the thumb left alone at each move (Flutter's `RangeSlider` puts both values back on it), which [MakerRange.movedThumb] would then have to tell apart from a drag.
+                  return SliderTheme(
+                    data: SliderTheme.of(
+                      context,
+                    ).copyWith(showValueIndicator: ShowValueIndicator.onDrag),
+                    child: RangeSlider(
+                      values: values,
+                      min: limits.min,
+                      max: limits.max,
+                      labels: RangeLabels(
+                        thumb(values.start),
+                        thumb(values.end),
+                      ),
+                      onChanged: enabled
+                          ? (next) => onSlide(
+                              MakerRange(values.start, values.end),
+                              MakerRange(next.start, next.end),
+                              limits,
+                            )
+                          : null,
+                    ),
                   );
                 },
               ),

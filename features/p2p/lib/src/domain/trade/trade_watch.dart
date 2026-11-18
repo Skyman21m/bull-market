@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -6,6 +8,7 @@ import '../p2p_failure.dart';
 import '../trade_record.dart';
 import 'trade_status.dart';
 import 'trade_storable.dart';
+import 'trade_tolerances.dart';
 
 /// A status of a trade as the user saw it, with the order it was read from: what `CancelTradeUsecase` cancels with.
 @immutable
@@ -29,6 +32,16 @@ final class TradeSeen {
     this.stored = false,
     this.requestedAt,
   });
+
+  /// Whether the read gives a range's contract another amount than the one kept with the contract (`TradeTrail.takenAmount`, kept from the contract's first read), or none: the state machine then says the terms changed (`TradeTermsChanged`), and nothing compares or words a figure with either amount while it lasts, so that no line reassures beside that alert (#183, after its functional review, C5). Never for a fixed amount, whose other amount the state machine refuses.
+  bool get contractAmountMoved {
+    final kept = status.trail.takenAmount;
+    if (kept == null) return false;
+    final read = order?.takenAmount?.value;
+    return read == null ||
+        (read - kept).abs() >
+            TradeTolerances.fiatAmount * math.max(1, kept.abs());
+  }
 
   @override
   String toString() =>

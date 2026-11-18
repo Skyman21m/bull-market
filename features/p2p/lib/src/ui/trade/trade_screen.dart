@@ -1037,6 +1037,8 @@ class _Contract extends StatelessWidget {
     TradeStatus status,
   ) {
     final order = contract.order;
+    // A range's contract shown with another amount than the one kept: the state machine's alert alone, no gap beside it (C5 of #183).
+    if (TradeSeen(status, order: order).contractAmountMoved) return null;
     final (gap, role, amount) = switch (status) {
       WaitingForBoth(:final rateGap, :final role) ||
       WaitingForPayout(:final rateGap, :final role) => (

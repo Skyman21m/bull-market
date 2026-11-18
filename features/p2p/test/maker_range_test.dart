@@ -147,20 +147,48 @@ void main() {
       },
     );
 
-    test(
-      'another amount shown later within the same contract: said by the state machine, the comparison still on the amount kept',
-      () async {
-        final (harness, record, maker, _) = await taken(250);
-        harness.coordinator.order(record.orderId).takenAmount = 120;
-        final seen = await readOf(harness, record);
-        expect(seen.status, isA<WaitingForBoth>());
-        expect(seen.order?.takenAmount?.value, 120);
-        expect(seen.status.has<TradeTermsChanged>(), isTrue);
-        expect(seen.status.trail.takenAmount, 250);
-        final subject = CheckPayoutRateUsecase.subjectAt(record, maker, seen);
-        expect((subject as PayoutRateCompared).amount.value, 250);
-      },
-    );
+    for (final (direction, moved) in [('raised to 380', 380.0), ('lowered to 120', 120.0)]) {
+      test(
+        'another amount shown within the same contract, $direction with the sats of it: the state machine\'s alert alone, nothing compared at 6, 8 and 9 (functional review of #183, C5)',
+        () async {
+          final (harness, record, maker, _) = await taken(250);
+          final order = harness.coordinator.order(record.orderId)
+            ..takenAmount = moved
+            // The sats of that amount at the coordinator's price with the premium.
+            ..lastSatoshis = (moved * 100000000 / (91711.15 * 1.02)).floor();
+          final six = await readOf(harness, record);
+          expect(six.status, isA<WaitingForBoth>());
+          expect(six.order?.takenAmount?.value, moved);
+          expect(six.status.has<TradeTermsChanged>(), isTrue);
+          expect(six.status.trail.takenAmount, 250);
+          expect(six.contractAmountMoved, isTrue);
+          expect(
+            CheckPayoutRateUsecase.subjectAt(record, maker, six),
+            isA<PayoutRateMismatch>(),
+          );
+          harness.coordinator.lockEscrow(record.orderId);
+          final eight = await readOf(harness, record);
+          expect(eight.status, isA<WaitingForPayout>());
+          expect(eight.contractAmountMoved, isTrue);
+          expect(
+            CheckPayoutRateUsecase.subjectAt(record, maker, eight),
+            isA<PayoutRateMismatch>(),
+          );
+          order.status = 9;
+          final nine = await readOf(harness, record);
+          expect(nine.status, isA<Chatting>());
+          expect(nine.contractAmountMoved, isTrue);
+          // Nothing compared, the invoice of 8 kept or not.
+          for (final asked in [null, Sats.fromInt(250000)]) {
+            expect(
+              CheckPayoutRateUsecase.subjectAt(record, maker, nine, asked: asked),
+              isA<PayoutRateMismatch>(),
+              reason: '$asked',
+            );
+          }
+        },
+      );
+    }
 
     test(
       'an amount outside the range is refused, never compared (`api/logics.py:190-194`)',

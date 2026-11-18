@@ -9,12 +9,29 @@ import 'support/make_form.dart';
 void main() {
   late CurrencyLimits narrow;
   late CurrencyLimits wide;
+  late CurrencyLimits odd;
+  late CurrencyLimits tiny;
   setUpAll(() async {
     // 100 to 1,000 EUR at 50,000: the form's limits are exactly 103 and 980.
     narrow = await limitsOf({2: (50000, 100, 1000)});
     // 10 to 10,000 EUR at 50,000: the form's limits are 10.3 and 9,800.
     wide = await limitsOf({2: (50000, 10, 10000)});
+    // A largest order of 1,349 EUR, where rounding before or after the quarters differs (functional review of #183, C4).
+    odd = await limitsOf({2: (50000, 100, 1349)});
+    // 1 to 60 EUR: bounds of 2 significant digits at every place of the slider.
+    tiny = await limitsOf({2: (50000, 1, 60)});
   });
+
+  /// The slider moved from what it showed, [previous], to [next]: the thumb told as the screen tells it.
+  MakerRange slide({
+    required MakerRange previous,
+    required MakerRange next,
+    required MakerAmountLimits limits,
+  }) => MakerRange.slid(
+    moved: MakerRange.movedThumb(previous, next),
+    next: next,
+    limits: limits,
+  );
 
   MakerFormCheck checkOf({
     bool advanced = true,
@@ -121,23 +138,23 @@ void main() {
     });
 
     test(
-      'the ratios of the reference\'s client, 1.6 and 14.8, at their very bounds',
+      'the reference\'s check of typed bounds (`AmountRange.tsx:57-77`): 1.6 − 0.1 and 14.8 + 0.15, in floating point as there',
       () {
+        expect(MakerFormCheck.typedMinRangeRatio, 1.6 - 0.1);
+        expect(MakerFormCheck.typedMaxRangeRatio, 14.8 + 0.15);
+        // 1.6 − 0.1 is 1.5 in floating point: exactly 1.5 is taken, as there.
+        expect(checkOf(min: '200', max: '300').block, isNull);
         expect(checkOf(min: '200', max: '320').block, isNull);
-        final under = checkOf(min: '200', max: '319.99');
+        final under = checkOf(min: '200', max: '299.99');
         expect(under.block, MakerFormBlock.amountRangeInvalid);
         expect(under.rangeMinError && under.rangeMaxError, isTrue);
-        // 1.5, which the coordinator and the package take, is not taken by the form.
+        expect(checkOf(min: '100', max: '155').block, isNull);
+        expect(checkOf(min: '100', max: '1495', limits: wide).block, isNull);
         expect(
-          checkOf(min: '200', max: '300').block,
+          checkOf(min: '100', max: '1495.01', limits: wide).block,
           MakerFormBlock.amountRangeInvalid,
         );
-        expect(checkOf(min: '100', max: '1480', limits: wide).block, isNull);
-        expect(
-          checkOf(min: '100', max: '1480.01', limits: wide).block,
-          MakerFormBlock.amountRangeInvalid,
-        );
-        // 15, the coordinator's, is not taken either.
+        // 15, the coordinator's, is beyond the reference's 14.95.
         expect(
           checkOf(min: '100', max: '1500', limits: wide).block,
           MakerFormBlock.amountRangeInvalid,
@@ -145,20 +162,26 @@ void main() {
       },
     );
 
-    test('a maximum below the minimum, a bound missing or not above 0', () {
-      final crossed = checkOf(min: '400', max: '200');
-      expect(crossed.rangeMinError && crossed.rangeMaxError, isTrue);
-      expect(crossed.block, MakerFormBlock.amountRangeInvalid);
-      final noMin = checkOf(min: '');
-      expect(noMin.rangeMinError, isTrue);
-      expect(noMin.rangeMaxError, isFalse);
-      expect(noMin.block, MakerFormBlock.amountRangeInvalid);
-      expect(checkOf(max: 'abc').rangeMaxError, isTrue);
-      expect(checkOf(min: '0').rangeMinError, isTrue);
-      expect(checkOf(min: '-200').block, MakerFormBlock.amountRangeInvalid);
-      // No estimate without a maximum.
-      expect(checkOf(max: '').estimatedBond, isNull);
-    });
+    test(
+      'a maximum below the minimum; a bound left empty or no number read as 0, as the reference\'s number field',
+      () {
+        final crossed = checkOf(min: '400', max: '200');
+        expect(crossed.rangeMinError && crossed.rangeMaxError, isTrue);
+        expect(crossed.block, MakerFormBlock.amountRangeInvalid);
+        final noMin = checkOf(min: '');
+        expect(noMin.rangeMin, 0);
+        // 0 is below the form's smallest amount, and 0 < 400 / 14.95: both fields in error.
+        expect(noMin.rangeMinError && noMin.rangeMaxError, isTrue);
+        expect(noMin.block, MakerFormBlock.amountRangeInvalid);
+        final noMax = checkOf(max: 'abc');
+        expect(noMax.rangeMax, 0);
+        expect(noMax.rangeMaxError, isTrue);
+        expect(checkOf(min: '0').rangeMinError, isTrue);
+        expect(checkOf(min: '-200').block, MakerFormBlock.amountRangeInvalid);
+        // No estimate without a maximum.
+        expect(checkOf(max: '').estimatedBond, isNull);
+      },
+    );
 
     test('its reason in the reference\'s order', () {
       // Neither « Please enter an amount. » nor the exact amount's limits with a range.
@@ -361,6 +384,11 @@ void main() {
           const MakerRange(250, 750),
         );
         expect(MakerRange.opening(amount: null, limit: null), isNull);
+        // `max_amount` × 0.25 and × 0.75, each to 2 significant digits, never the rounded `max_amount` (`MakerForm.tsx:399`, `:403`): 337.25 and 1,011.75.
+        expect(
+          MakerRange.opening(amount: null, limit: odd[eur]),
+          const MakerRange(340, 1000),
+        );
       },
     );
 
@@ -380,9 +408,15 @@ void main() {
           MakerRange.afterCurrency(min: 200, max: 1100, limit: limit),
           const MakerRange(250, 750),
         );
+        // A bound left empty is 0, as the reference reads it (`Number('')`): set again.
         expect(
-          MakerRange.afterCurrency(min: null, max: 400, limit: limit),
-          isNull,
+          MakerRange.afterCurrency(min: 0, max: 400, limit: limit),
+          const MakerRange(250, 750),
+        );
+        // Here the largest order is rounded first, as the reference rounds it there (`:186`, `:195-196`): 1,300 × 0.25 and × 0.75.
+        expect(
+          MakerRange.afterCurrency(min: 50, max: 400, limit: odd[eur]),
+          const MakerRange(330, 980),
         );
         expect(
           MakerRange.afterCurrency(min: 200, max: 400, limit: null),
@@ -401,7 +435,7 @@ void main() {
         if (narrowLimits == null || wideLimits == null) return;
         // The minimum capped at 980 × 0.98 / 1.6 = 600.25, the maximum pushed to 1.6 × 600.25 = 960.4.
         expect(
-          MakerRange.slid(
+          slide(
             previous: const MakerRange(200, 800),
             next: const MakerRange(700, 800),
             limits: narrowLimits,
@@ -410,7 +444,7 @@ void main() {
         );
         // The maximum at least 1.6 × 103 × 1.03 = 169.744, the minimum pulled to 169.744 / 1.6 = 106.09.
         expect(
-          MakerRange.slid(
+          slide(
             previous: const MakerRange(120, 800),
             next: const MakerRange(120, 150),
             limits: narrowLimits,
@@ -419,7 +453,7 @@ void main() {
         );
         // Above 14.8: the maximum follows the minimum moved.
         expect(
-          MakerRange.slid(
+          slide(
             previous: const MakerRange(100, 9000),
             next: const MakerRange(20, 9000),
             limits: wideLimits,
@@ -428,7 +462,7 @@ void main() {
         );
         // The maximum moved: the minimum follows.
         expect(
-          MakerRange.slid(
+          slide(
             previous: const MakerRange(20, 200),
             next: const MakerRange(20, 1480),
             limits: wideLimits,
@@ -437,7 +471,7 @@ void main() {
         );
         // Within the ratios: only the precision.
         expect(
-          MakerRange.slid(
+          slide(
             previous: const MakerRange(200, 500),
             next: const MakerRange(213.456, 500),
             limits: narrowLimits,
@@ -445,13 +479,122 @@ void main() {
           const MakerRange(213, 500),
         );
         expect(
-          MakerRange.slid(
+          slide(
             previous: const MakerRange(20, 200),
             next: const MakerRange(23.456, 200),
             limits: wideLimits,
           ),
           const MakerRange(23, 200),
         );
+      },
+    );
+
+    test(
+      'the thumb moved is the one that moved the most: the platform\'s slider can shift the other a little',
+      () {
+        expect(
+          MakerRange.movedThumb(
+            const MakerRange(200, 400),
+            const MakerRange(200.04, 280),
+          ),
+          RangeThumb.max,
+        );
+        expect(
+          MakerRange.movedThumb(
+            const MakerRange(200, 400),
+            const MakerRange(300, 399.96),
+          ),
+          RangeThumb.min,
+        );
+      },
+    );
+
+    test(
+      '« to » pulled down: « From » follows, as the reference (`AmountRange.tsx:101-102`)',
+      () {
+        final limits = checkOf(limits: wide).limits;
+        if (limits == null) fail('no limits');
+        expect(
+          slide(
+            previous: const MakerRange(200, 400),
+            next: const MakerRange(200, 280),
+            limits: limits,
+          ),
+          const MakerRange(175, 280),
+        );
+        expect(
+          slide(
+            previous: const MakerRange(200, 400),
+            next: const MakerRange(300, 400),
+            limits: limits,
+          ),
+          const MakerRange(300, 480),
+        );
+      },
+    );
+
+    test(
+      'where the reference\'s rounding leaves its own check, the other bound computed again from the one moved (functional review of #183, C2)',
+      () {
+        final limits = checkOf(limits: wide).limits;
+        if (limits == null) fail('no limits');
+        // The reference writes 20-302 (a ratio of 15.1, refused by its own check); here 20-296.
+        final wideRange = slide(
+          previous: const MakerRange(20, 9000),
+          next: const MakerRange(20.4, 9000),
+          limits: limits,
+        );
+        expect(wideRange, const MakerRange(20, 296));
+        // 105-167: a ratio of 1.590, which the reference's check takes, written as the reference writes it.
+        final narrowRange = slide(
+          previous: const MakerRange(110, 200),
+          next: const MakerRange(110, 167.4),
+          limits: limits,
+        );
+        expect(narrowRange, const MakerRange(105, 167));
+        for (final range in [wideRange, narrowRange]) {
+          final check = checkOf(
+            min: '${range.min}',
+            max: '${range.max}',
+            limits: wide,
+          );
+          expect(check.block, isNull, reason: '$range');
+        }
+      },
+    );
+
+    test(
+      'every range the slider writes is one the form takes, each thumb across the slider, for three coordinators\' limits',
+      () {
+        for (final market in [narrow, wide, tiny]) {
+          final limits = checkOf(limits: market).limits;
+          if (limits == null) fail('no limits');
+          final low = limits.min;
+          final high = limits.max;
+          final start = MakerRange(
+            significant(low * 2, 3),
+            significant(low * 6, 3),
+          );
+          for (var step = 0; step <= 400; step++) {
+            final value = low + (high - low) * step / 400;
+            for (final next in [
+              if (value <= start.max) MakerRange(value, start.max),
+              if (value >= start.min) MakerRange(start.min, value),
+            ]) {
+              final range = slide(previous: start, next: next, limits: limits);
+              final errors = MakerFormCheck.rangeErrorsOf(
+                range.min,
+                range.max,
+                limits,
+              );
+              expect(
+                errors.min || errors.max,
+                isFalse,
+                reason: '$low-$high: $start → ${next.min}-${next.max}: ${range.min}-${range.max}',
+              );
+            }
+          }
+        }
       },
     );
 
@@ -464,7 +607,7 @@ void main() {
         (const MakerRange(200, 500), const MakerRange(103, 500)),
         (const MakerRange(200, 500), const MakerRange(200, 980)),
       ]) {
-        final range = MakerRange.slid(
+        final range = slide(
           previous: previous,
           next: next,
           limits: limits,
@@ -475,14 +618,14 @@ void main() {
     });
   });
 
-  test('the package\'s nominal ratios are wider than the form\'s', () {
+  test('the package\'s nominal ratios, the coordinator\'s, are no narrower than the form\'s', () {
     expect(
       MakeOrderRequest.minRangeRatio,
-      lessThan(MakerFormCheck.minRangeRatio),
+      lessThanOrEqualTo(MakerFormCheck.typedMinRangeRatio),
     );
     expect(
       MakeOrderRequest.maxRangeRatio,
-      greaterThan(MakerFormCheck.maxRangeRatio),
+      greaterThan(MakerFormCheck.typedMaxRangeRatio),
     );
     expect(MakerAmountLimits.rangeMinMargin, 0.99);
     expect(MakerAmountLimits.rangeMaxMargin, 1.01);

@@ -657,21 +657,28 @@ void main() {
     );
 
     testWidgets(
-      'a range taken for 120 EUR, then shown taken for 60 within the same contract: the change said, the gap still on the amount kept with the contract (#183)',
+      'a range taken for 120 EUR, then shown taken for 60 within the same contract: the change said, no gap beside it (#183, functional review C5)',
       (tester) async {
         final terms = madeTerms(range: true);
-        final seen = (await _chain([
+        final chain = await _chain([
           makerOrderJson(0, range: true),
           makerOrderJson(1, range: true),
           makerOrderJson(6, range: true, last: _lowSats),
           makerOrderJson(6, range: true, last: _lowSats, taken: 60),
-        ], terms: terms)).last;
+        ], terms: terms);
+        final kept = chain[2];
+        expect(kept.contractAmountMoved, isFalse);
+        await _show(tester, kept);
+        // Before the change, the gap of the contract kept, 120 EUR.
+        expect(find.textContaining('sats for 120 EUR'), findsOneWidget);
+        final seen = chain.last;
         expect(seen.status, isA<WaitingForBoth>());
         expect(seen.status.has<TradeTermsChanged>(), isTrue);
         expect(seen.status.trail.takenAmount, 120);
         expect(seen.order?.takenAmount?.value, 60);
+        expect(seen.contractAmountMoved, isTrue);
         await _show(tester, seen);
-        expect(find.textContaining('sats for 120 EUR'), findsOneWidget);
+        expect(find.textContaining('sats for 120 EUR'), findsNothing);
         expect(find.textContaining('sats for 60 EUR'), findsNothing);
       },
     );
@@ -940,6 +947,48 @@ void main() {
         List<Object>? reads,
         DateTime Function()? now,
       }) => _rateCubit(wallet, reads: reads, now: now);
+
+      testWidgets(
+        'a range\'s contract: the line names the amount taken, the one kept with the contract (#183, functional review C6)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+          ], terms: terms)).last;
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('120 EUR are worth'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a range\'s contract shown with another amount: the state machine\'s alert alone, no comparison (#183, functional review C5)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+            makerOrderJson(6, range: true, last: 150000, taken: 190),
+          ], terms: terms)).last;
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('are worth'), findsNothing);
+          expect(find.textContaining('from the rate when you made it'), findsNothing);
+        },
+      );
 
       // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,899.996 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
       final atWallet = P2pWalletRateRead(91711.15);
