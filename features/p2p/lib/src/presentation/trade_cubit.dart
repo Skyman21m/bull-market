@@ -599,8 +599,11 @@ class TradeCubit extends Cubit<TradeScreenState> {
         // A read kept before the refusal is shown: the status now.
         final read = switch (failure) {
           PauseStatusMoved(:final seen, :final record) ||
-          PauseReadFailed(seen: final seen?, :final record) =>
-            TradeWatchStatus(record ?? state.record, seen, takePending: false),
+          PauseReadFailed(seen: final seen?, :final record) => TradeWatchStatus(
+            record ?? state.record,
+            seen,
+            takePending: false,
+          ),
           _ => null,
         };
         emit(

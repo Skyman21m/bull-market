@@ -5418,11 +5418,23 @@ abstract class P2pLocalizations {
   /// **'Bull Market does not know yet whether your request reached {coordinator}. It keeps checking, and never sends it again by itself.'**
   String p2pTradePauseUnknown(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own: the coordinator accepted a pause or an unpause and the order is read elsewhere: toggled twice or the other way (paused or unpaused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184).
+  /// Not in the RoboSats texts: the project's own: the coordinator accepted a pause and the read after it does not show the order paused: toggled twice (paused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184; named after the functional review, R5).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} accepted the request, but the order is not read where you asked: it is shown as it is now.'**
-  String p2pTradePauseNotReached(String coordinator);
+  /// **'{coordinator} accepted the request, but your order is not paused: it is shown as it is now.'**
+  String p2pTradePauseNotReachedPaused(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator accepted an unpause (« Unpause Order ») and the read after it does not show the order public: toggled twice (unpaused from another app meanwhile), expired, or a coordinator that answers falsely (#184; named after the functional review, R5).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} accepted the request, but your order is not public: it is shown as it is now.'**
+  String p2pTradePauseNotReachedPublic(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the pause button and « Unpause Order » are off while a cancel of the order runs, and this line says why (#184, functional review B1).
+  ///
+  /// In en, this message translates to:
+  /// **'The order is being cancelled: wait until it ends.'**
+  String get p2pTradePauseWhileCancel;
 
   /// Not in the RoboSats texts: the project's own: after a pause that did not happen, while the order is read public: a public order can be taken, the maker's bond then at stake (design note § 3.4, #184).
   ///

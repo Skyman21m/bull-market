@@ -1,3 +1,4 @@
+import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_pause.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
@@ -8,6 +9,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
+import 'support/holding_transport.dart';
 import 'support/make_harness.dart';
 
 /// The pause and « Unpause Order » of a public order made here (#184, design note `docs/design/phase-3-making-an-order.md` § 1.6, § 3.4), over the real records, reader, limiter and state machine, the coordinator played by `ScriptedMakerCoordinator` as the reference answers a maker's `pause` (`api/views.py:617-619`, `:686-695`, `Logics.pause_unpause_public_order`, `api/logics.py:1758-1783`).
@@ -509,6 +511,84 @@ void main() {
         expect(outcome, isA<PauseNotReached>());
         expect(outcome.seen.status, isA<WaitingForBoth>());
         expect(pauses(harness), 1);
+      },
+    );
+  });
+
+  group('a pause in flight, held on its way (functional review of #184)', () {
+    test(
+      'the pause and a cancel share the order\'s lock: the cancel reaches the coordinator only after the pause, once, and is refused (1020) since the pause moved the status it guards',
+      () async {
+        final (harness, record, seen) = await shown();
+        final transport = HoldingTransport(harness.coordinator)
+          ..holdNextPause();
+        final pause = pauseThrough(harness, transport);
+        final paused = pause.execute(record, seen);
+        await harness.settle();
+        expect(transport.pausesSent, 1);
+        final cancel = harness.cancel.execute(record, seen);
+        await harness.settle();
+        // Held behind the pause: nothing of the cancel reached the coordinator.
+        expect(
+          harness.coordinator.received,
+          isNot(contains(ScriptedMakerRequest.cancel)),
+        );
+        expect(pauses(harness), 0);
+        transport.release();
+        expect(valueOf(await paused), isA<PauseDone>());
+        final cancelled = valueOf(await cancel);
+        expect(cancelled, isA<CancelNotDone>());
+        expect((cancelled as CancelNotDone).cause, isA<OrderStatusChanged>());
+        final kinds = harness.coordinator.received;
+        expect(
+          kinds.indexOf(ScriptedMakerRequest.pause),
+          lessThan(kinds.indexOf(ScriptedMakerRequest.cancel)),
+        );
+        expect(
+          kinds.where((k) => k == ScriptedMakerRequest.cancel),
+          hasLength(1),
+        );
+        expect(statusAt(harness, record), 2);
+      },
+    );
+
+    test(
+      'the watch sends no read while the pause runs, however long it waits',
+      () async {
+        final (harness, record, seen) = await shown();
+        final transport = HoldingTransport(harness.coordinator)
+          ..holdNextPause();
+        final pause = pauseThrough(harness, transport);
+        final run = harness.watchOf(record);
+        await harness.settle();
+        final paused = pause.execute(record, seen);
+        await harness.settle();
+        final before = harness.coordinator.received.length;
+        await harness.elapse(const Duration(minutes: 10));
+        expect(harness.coordinator.received.length, before);
+        transport.release();
+        expect(valueOf(await paused), isA<PauseDone>());
+        await run.subscription.cancel();
+      },
+    );
+
+    test(
+      'known as running while in flight, with what was asked; forgotten once it ends',
+      () async {
+        final (harness, record, seen) = await shown();
+        final transport = HoldingTransport(harness.coordinator)
+          ..holdNextPause();
+        final pause = pauseThrough(harness, transport);
+        expect(pause.running(record), isNull);
+        final paused = pause.execute(record, seen);
+        await harness.settle();
+        final running = pause.running(record);
+        expect(running?.wanted, PauseWanted.paused);
+        // Another use case object of the same process sees it too.
+        expect(harness.pause.running(record), isNotNull);
+        transport.release();
+        await paused;
+        expect(pause.running(record), isNull);
       },
     );
   });

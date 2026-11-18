@@ -51,11 +51,13 @@ final class HoldingTransport implements CoordinatorTransport {
 }
 
 /// The pause use case of [harness] whose requests go through [transport], sharing everything else with the harness's use cases (the reader, the limiter, the order's lock, the pauses in flight).
-PauseOrderUsecase pauseThrough(MakeHarness harness, HoldingTransport transport) =>
-    PauseOrderUsecase(
-      CoordinatorClient(transport, clock: () => harness.now),
-      harness.reader,
-      harness.limiter,
-      harness.locks,
-      harness.pausesInFlight,
-    );
+PauseOrderUsecase pauseThrough(
+  MakeHarness harness,
+  HoldingTransport transport,
+) => PauseOrderUsecase(
+  CoordinatorClient(transport, clock: () => harness.now),
+  harness.reader,
+  harness.limiter,
+  harness.locks,
+  harness.pausesInFlight,
+);

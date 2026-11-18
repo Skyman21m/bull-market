@@ -3454,9 +3454,18 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pTradePauseNotReached(String coordinator) {
-    return '$coordinator a accepté la demande, mais l’ordre relu n’est pas là où vous l’avez demandé : il est affiché tel qu’il est maintenant.';
+  String p2pTradePauseNotReachedPaused(String coordinator) {
+    return '$coordinator a accepté la demande, mais votre ordre n’est pas en pause : il est affiché tel qu’il est maintenant.';
   }
+
+  @override
+  String p2pTradePauseNotReachedPublic(String coordinator) {
+    return '$coordinator a accepté la demande, mais votre ordre n’est pas public : il est affiché tel qu’il est maintenant.';
+  }
+
+  @override
+  String get p2pTradePauseWhileCancel =>
+      'L’ordre est en cours d’annulation : attendez la fin.';
 
   @override
   String get p2pTradeStillPublic =>

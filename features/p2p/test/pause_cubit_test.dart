@@ -153,4 +153,69 @@ void main() {
       expect(harness.coordinator.order(record.orderId).status, 1);
     },
   );
+
+  test(
+    'one tap, three requests: the read before, the pause, the read after; the watch reads nothing more at once (functional review of #184, R2: four before)',
+    () async {
+      final (harness, record, cubit) = await followed();
+      final seen = cubit.state.seen;
+      if (seen == null) fail('no status');
+      final before = harness.coordinator.received.length;
+      await cubit.pause(seen);
+      await harness.settle();
+      expect(harness.coordinator.received.sublist(before), [
+        ScriptedMakerRequest.order,
+        ScriptedMakerRequest.pause,
+        ScriptedMakerRequest.order,
+      ]);
+    },
+  );
+
+  test(
+    'an unknown outcome whose request lands, read paused by the watch, then unpaused from another app: said public again (functional review of #184, R6)',
+    () async {
+      final (harness, record, cubit) = await followed();
+      final seen = cubit.state.seen;
+      if (seen == null) fail('no status');
+      harness.coordinator.failNext(
+        ScriptedMakerRequest.pause,
+        ScriptedFault.landsLate,
+      );
+      await cubit.pause(seen);
+      await harness.settle();
+      expect(
+        cubit.state.pause,
+        isA<PauseIdle>().having(
+          (p) => p.notice,
+          'notice',
+          isA<PauseWasUnknown>(),
+        ),
+      );
+      harness.coordinator.landLate();
+      cubit.signal(TradeWatchSignal.readNow);
+      await harness.settle();
+      expect(
+        cubit.state.seen?.status,
+        isA<MakerOrderPublic>().having((s) => s.paused, 'paused', true),
+      );
+      expect(
+        cubit.state.pause,
+        isA<PauseIdle>()
+            .having((p) => p.notice, 'notice', isNull)
+            .having((p) => p.pausedHere, 'pausedHere', isTrue),
+      );
+      harness.coordinator.pause(record.orderId);
+      cubit.signal(TradeWatchSignal.readNow);
+      await harness.settle();
+      expect(
+        cubit.state.pause,
+        isA<PauseIdle>().having(
+          (p) => p.notice,
+          'notice',
+          isA<PausePublicAgain>(),
+        ),
+      );
+      expect(pauses(harness), 1);
+    },
+  );
 }

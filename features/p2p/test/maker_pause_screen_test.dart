@@ -24,6 +24,7 @@ import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import 'support/holding_transport.dart';
 import 'support/make_harness.dart';
 import 'support/fakes.dart'
     show FakeTransport, bookOrder, coordinator, parseOrders, testNow;
@@ -310,19 +311,52 @@ void main() {
       },
     );
 
-    testWidgets('a cancel running: the pause button is off', (tester) async {
-      final (public, _, _) = await _statuses();
-      final pauses = _Pauses();
-      await _show(tester, public, pauses: pauses);
-      await tester.ensureVisible(find.text('Cancel'));
-      await tester.pump();
-      await tester.tap(find.text('Cancel'));
-      await tester.pump();
-      await _tapPause(tester);
-      await tester.pump();
-      expect(pauses.asked, isEmpty);
-      await _waitOut(tester);
-    });
+    testWidgets(
+      'a cancel running: the pause button is off, and the screen says why',
+      (tester) async {
+        final (public, _, _) = await _statuses();
+        final pauses = _Pauses();
+        await _show(tester, public, pauses: pauses);
+        expect(
+          find.text('The order is being cancelled: wait until it ends.'),
+          findsNothing,
+        );
+        await tester.ensureVisible(find.text('Cancel'));
+        await tester.pump();
+        await tester.tap(find.text('Cancel'));
+        await tester.pump();
+        expect(
+          find.text('The order is being cancelled: wait until it ends.'),
+          findsOneWidget,
+        );
+        await _tapPause(tester);
+        await tester.pump();
+        expect(pauses.asked, isEmpty);
+        await _waitOut(tester);
+      },
+    );
+
+    testWidgets(
+      'status 2, a cancel running: « Unpause Order » off, the screen says why',
+      (tester) async {
+        final (_, paused, _) = await _statuses();
+        final pauses = _Pauses();
+        await _show(tester, paused, pauses: pauses);
+        await tester.ensureVisible(find.text('Cancel'));
+        await tester.pump();
+        await tester.tap(find.text('Cancel'));
+        await tester.pump();
+        expect(
+          find.text('The order is being cancelled: wait until it ends.'),
+          findsOneWidget,
+        );
+        expect(tester.widget<TradeButton>(_unpause).onPressed, isNull);
+        await tester.tap(_unpause, warnIfMissed: false);
+        await tester.pump();
+        expect(pauses.asked, isEmpty);
+        await _waitOut(tester);
+      },
+    );
 
     testWidgets(
       'the app hidden and back while the pause runs: nothing asked again, still spinning',
@@ -401,7 +435,7 @@ void main() {
         expect(find.text('Your order is public (2/5)'), findsOneWidget);
         expect(
           find.text(
-            'Temple of Sats accepted the request, but the order is not read where you asked: it is shown as it is now.',
+            'Temple of Sats accepted the request, but your order is not paused: it is shown as it is now.',
           ),
           findsOneWidget,
         );
@@ -531,7 +565,12 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(find.text('Your order is paused (2/5)'), findsOneWidget);
-        expect(find.textContaining('accepted the request'), findsOneWidget);
+        expect(
+          find.text(
+            'Temple of Sats accepted the request, but your order is not public: it is shown as it is now.',
+          ),
+          findsOneWidget,
+        );
         expect(find.textContaining('robots can'), findsNothing);
       },
     );
@@ -678,4 +717,256 @@ void main() {
       },
     );
   });
+
+  group(
+    'a pause held on its way, over the real use cases, by real gestures (functional review of #184)',
+    () {
+      /// An order made and public on the scripted coordinator, its pause going through a transport that can hold it.
+      Future<(MakeHarness, TradeRecord, HoldingTransport)> made(
+        WidgetTester tester,
+      ) async {
+        tester.view
+          ..physicalSize = const Size(390, 1600) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final harness = await tester.runAsync(MakeHarness.start);
+        if (harness == null) fail('no harness');
+        final record = await tester.runAsync(() async {
+          final made = await harness.makeOrder();
+          final record = switch (made) {
+            Ok(value: MakeStarted(:final record)) => record,
+            _ => throw StateError('$made'),
+          };
+          final first = harness.watchOf(record);
+          await harness.settle();
+          await first.subscription.cancel();
+          harness.coordinator.lockMakerBond(record.orderId);
+          return record;
+        });
+        if (record == null) fail('no record');
+        return (harness, record, HoldingTransport(harness.coordinator));
+      }
+
+      /// The trade screen of [record], its cubit built as the locator builds it, over the harness's use cases and [transport]'s pause.
+      Future<TradeCubit> mount(
+        WidgetTester tester,
+        MakeHarness harness,
+        TradeRecord record,
+        HoldingTransport transport,
+      ) async {
+        final pause = pauseThrough(harness, transport);
+        final trade = TradeCubit(
+          record,
+          harness.watch.execute,
+          harness.cancel.execute,
+          lastStored: harness.watch.lastStored,
+          pause: pause.execute,
+          pauseRunning: pause.running,
+        )..start();
+        final reads = FakeTransport();
+        final page = TradeOrderPageCubit(
+          coordinator('temple'),
+          RobosatsNetwork.testnet,
+          FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+          FindPublicOrderUsecase(
+            CoordinatorClient(reads, clock: () => testNow),
+          ).execute,
+        );
+        addTearDown(page.close);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MultiBlocProvider(
+                providers: [
+                  BlocProvider.value(value: trade),
+                  BlocProvider.value(value: page),
+                ],
+                child: TradeScreen(
+                  now: () => harness.now,
+                  coordinatorDetails: (_) => throw StateError('not opened'),
+                ),
+              ),
+            ),
+          ),
+        );
+        return trade;
+      }
+
+      Future<void> settleBoth(WidgetTester tester, MakeHarness harness) async {
+        for (var i = 0; i < 5; i++) {
+          await tester.runAsync(harness.settle);
+          await tester.pump();
+        }
+      }
+
+      int count(MakeHarness harness, ScriptedMakerRequest kind) =>
+          harness.coordinator.received.where((k) => k == kind).length;
+
+      Future<void> tapCancel(WidgetTester tester) async {
+        final cancel = find.widgetWithText(TradeButton, 'Cancel');
+        await tester.ensureVisible(cancel);
+        await tester.pump();
+        await tester.tap(cancel);
+      }
+
+      testWidgets(
+        '« Cancel » during a pause: sent, after the pause, once; refused since the pause moved the status, said; « Cancel » again cancels',
+        (tester) async {
+          final (harness, record, transport) = await made(tester);
+          final trade = await mount(tester, harness, record, transport);
+          await settleBoth(tester, harness);
+          transport.holdNextPause();
+          await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+          await tester.pump();
+          await tester.tap(find.byTooltip(_pauseTooltip));
+          await settleBoth(tester, harness);
+          expect(transport.pausesSent, 1);
+          // « Cancel » stays on during the pause, as the reference's.
+          expect(
+            tester
+                .widget<TradeButton>(find.widgetWithText(TradeButton, 'Cancel'))
+                .onPressed,
+            isNotNull,
+          );
+          await tapCancel(tester);
+          await settleBoth(tester, harness);
+          // Waiting behind the pause: not lost, not sent yet.
+          expect(trade.state.cancel, isA<CancelRunning>());
+          expect(count(harness, ScriptedMakerRequest.cancel), 0);
+          transport.release();
+          await settleBoth(tester, harness);
+          expect(count(harness, ScriptedMakerRequest.pause), 1);
+          expect(count(harness, ScriptedMakerRequest.cancel), 1);
+          expect(harness.coordinator.order(record.orderId).status, 2);
+          expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+          expect(
+            find.text(
+              'The order moved on before the cancel: nothing was cancelled.',
+            ),
+            findsOneWidget,
+          );
+          // From the status now shown, the cancel goes.
+          await tapCancel(tester);
+          await settleBoth(tester, harness);
+          expect(count(harness, ScriptedMakerRequest.cancel), 2);
+          expect(harness.coordinator.order(record.orderId).status, 4);
+          expect(find.text('Your order is paused (2/5)'), findsNothing);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(trade.close);
+        },
+      );
+
+      testWidgets(
+        'the screen left and opened again while the pause runs: the new screen shows it running, a tap sends nothing, and it says what the pause gave',
+        (tester) async {
+          final (harness, record, transport) = await made(tester);
+          final first = await mount(tester, harness, record, transport);
+          await settleBoth(tester, harness);
+          transport.holdNextPause();
+          await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+          await tester.pump();
+          await tester.tap(find.byTooltip(_pauseTooltip));
+          await settleBoth(tester, harness);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(first.close);
+          final second = await mount(tester, harness, record, transport);
+          await settleBoth(tester, harness);
+          expect(second.state.pause, isA<PauseRunning>());
+          expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          await tester.tap(find.byTooltip(_pauseTooltip), warnIfMissed: false);
+          await settleBoth(tester, harness);
+          transport.release();
+          await settleBoth(tester, harness);
+          expect(transport.pausesSent, 1);
+          expect(harness.coordinator.order(record.orderId).status, 2);
+          expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+          expect(
+            find.textContaining('changed before your request'),
+            findsNothing,
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(second.close);
+        },
+      );
+
+      testWidgets(
+        'the same, the answer lost and the request landing late: one request; the new screen says the outcome is unknown and to count the order as public, then shows it paused once it landed',
+        (tester) async {
+          final (harness, record, transport) = await made(tester);
+          final first = await mount(tester, harness, record, transport);
+          await settleBoth(tester, harness);
+          transport.holdNextPause();
+          harness.coordinator.failNext(
+            ScriptedMakerRequest.pause,
+            ScriptedFault.landsLate,
+          );
+          await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+          await tester.pump();
+          await tester.tap(find.byTooltip(_pauseTooltip));
+          await settleBoth(tester, harness);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(first.close);
+          final second = await mount(tester, harness, record, transport);
+          await settleBoth(tester, harness);
+          await tester.tap(find.byTooltip(_pauseTooltip), warnIfMissed: false);
+          await settleBoth(tester, harness);
+          transport.release();
+          await settleBoth(tester, harness);
+          expect(transport.pausesSent, 1);
+          expect(
+            find.text(
+              'Until a read shows it paused, count on your order being public: robots can take it.',
+            ),
+            findsOneWidget,
+          );
+          harness.coordinator.landLate();
+          second.signal(TradeWatchSignal.readNow);
+          await settleBoth(tester, harness);
+          expect(harness.coordinator.order(record.orderId).status, 2);
+          expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+          expect(transport.pausesSent, 1);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(second.close);
+        },
+      );
+
+      testWidgets(
+        'the app hidden and back while the real pause runs, then a tap: one request, the order paused',
+        (tester) async {
+          final (harness, record, transport) = await made(tester);
+          final trade = await mount(tester, harness, record, transport);
+          await settleBoth(tester, harness);
+          transport.holdNextPause();
+          await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+          await tester.pump();
+          await tester.tap(find.byTooltip(_pauseTooltip));
+          await settleBoth(tester, harness);
+          for (final state in [
+            AppLifecycleState.inactive,
+            AppLifecycleState.hidden,
+            AppLifecycleState.paused,
+            AppLifecycleState.hidden,
+            AppLifecycleState.inactive,
+            AppLifecycleState.resumed,
+          ]) {
+            tester.binding.handleAppLifecycleStateChanged(state);
+            await settleBoth(tester, harness);
+          }
+          await tester.tap(find.byTooltip(_pauseTooltip), warnIfMissed: false);
+          await settleBoth(tester, harness);
+          transport.release();
+          await settleBoth(tester, harness);
+          expect(transport.pausesSent, 1);
+          expect(count(harness, ScriptedMakerRequest.pause), 1);
+          expect(harness.coordinator.order(record.orderId).status, 2);
+          expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(trade.close);
+        },
+      );
+    },
+  );
 }
