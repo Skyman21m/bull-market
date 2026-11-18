@@ -163,7 +163,11 @@ void main() {
     (tester) async {
       final records = StreamController<Result<List<ActiveTrade>, P2pFailure>>();
       addTearDown(records.close);
-      await open(tester, activeStream: () => records.stream);
+      final (_, router) = await open(
+        tester,
+        activeStream: () => records.stream,
+      );
+      final pages = router.routerDelegate.currentConfiguration.matches.length;
       await tester.tap(find.text('100 EUR', findRichText: true).first);
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsNothing);
@@ -176,6 +180,10 @@ void main() {
       records.add(Ok([ActiveTrade(made, const ActiveTradeTakeNeverSent())]));
       await settle(tester);
       expect(find.byType(TradeScreen, skipOffstage: false), findsOneWidget);
+      expect(
+        router.routerDelegate.currentConfiguration.matches.length,
+        pages + 1,
+      );
       expect(find.byType(OrderDetailsScreen), findsNothing);
     },
   );
