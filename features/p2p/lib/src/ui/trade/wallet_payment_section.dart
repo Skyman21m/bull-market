@@ -59,21 +59,30 @@ final class WalletPaymentSlot {
   });
 }
 
-/// Where a payment of the bond, or of the escrow, from this wallet stands, as « Cancel » needs it (#100, #97): [sending] while either is being sent, [sent] while the bond's is on its way (sent, held, or not yet known; not refunded nor settled), [escrowSent] while the escrow's is.
+/// Where a payment of the bond, or of the escrow, from this wallet stands, as « Cancel » needs it (#100, #97): [sending] while either is being sent, [sent] while the bond's is on its way (sent, held, or not yet known; not refunded nor settled), [escrowSent] while the escrow's is; and whether each was paid with this wallet ([bondPaid], [escrowPaid]), for the line that says how a bond or collateral paid so comes back (#207).
 @immutable
 final class WalletBondState {
   final bool sending;
   final bool sent;
   final bool escrowSent;
 
+  /// Whether the bond, and the escrow, were paid with this wallet, as the trade's payment records tell.
+  final WalletPaidHere bondPaid;
+  final WalletPaidHere escrowPaid;
+
   const WalletBondState({
     required this.sending,
     required this.sent,
     this.escrowSent = false,
+    this.bondPaid = WalletPaidHere.no,
+    this.escrowPaid = WalletPaidHere.no,
   });
 
   static const none = WalletBondState(sending: false, sent: false);
 }
+
+/// Whether a bond or an escrow was paid with this wallet, as the trade's payment records tell (#207): [yes] only when the payment of this wallet is established as paying the invoice (the port's « pending », a hold invoice the coordinator holds, or « paid », one settled); [cannotTell] when the records cannot be read, a payment is being sent, or its funds may have left without the invoice established as paid by them (sent but not yet received by the swap service, the bond perhaps locked by another wallet meanwhile; a broadcast not known; a review; an expiry or failure after sending; a refund, which does not tell a hold invoice cancelled after its lock from the service failing to pay it: reviews of #208); [no] otherwise (nothing paid with this wallet, nothing left it, or the records still being read, which takes a moment).
+enum WalletPaidHere { no, yes, cannotTell }
 
 /// Builds what the wallet offers for [request], or `null` when it has nothing to offer: then the section is empty and « Pay with another wallet » opens at once.
 typedef WalletPaymentBuilder =

@@ -362,6 +362,7 @@ final class P2pRouter {
         coordinatorDetails: (request) =>
             locator<CoordinatorDetailsCubit>(param1: request),
         canTake: canTake,
+        recordsUnreadable: !args.takeable,
         onOpenGarage: locator.isRegistered<GarageCubit>()
             ? () => context.pop(P2pOrderExit.garage)
             : null,
@@ -414,7 +415,7 @@ class _P2pPageState extends State<_P2pPage> {
   /// How long a tap on an order of the book waits for the active trades' read.
   static const Duration _activeTradesWait = Duration(seconds: 10);
 
-  /// Whether a tap on an order waits for the active trades' read: another tap meanwhile does nothing, so that one page opens (second security review of #182, R11).
+  /// Whether a tap on an order waits for the active trades' read: another tap meanwhile does nothing, so that one page opens (second security review of #182, R11); the tab shows the wait (#207).
   bool _waitingForTrades = false;
 
   void _show(P2pDestination destination) =>
@@ -433,7 +434,7 @@ class _P2pPageState extends State<_P2pPage> {
       final cubit = context.read<ActiveTradesCubit>();
       known = cubit.state;
       if (known is ActiveTradesLoading) {
-        _waitingForTrades = true;
+        setState(() => _waitingForTrades = true);
         try {
           known = await cubit.stream
               .firstWhere((state) => state is! ActiveTradesLoading)
@@ -441,6 +442,7 @@ class _P2pPageState extends State<_P2pPage> {
               .catchError((Object _) => cubit.state);
         } finally {
           _waitingForTrades = false;
+          if (mounted) setState(() {});
         }
       }
       if (!mounted || !context.mounted) return;
@@ -546,6 +548,7 @@ class _P2pPageState extends State<_P2pPage> {
       onDestination: _show,
       onOpenTrades: onOpenTrades,
       onCreate: onCreate,
+      waitingForTrades: _waitingForTrades,
       garage: hasGarage
           ? (context) => BlocProvider(
               // A new Garage for each network, which reads the key of that network only when it is shown.

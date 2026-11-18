@@ -385,6 +385,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         payoutRate: widget.checksPayoutRate
                             ? context.watch<PayoutRateCubit>().state
                             : null,
+                        rateCubit: widget.checksPayoutRate
+                            ? context.read<PayoutRateCubit>()
+                            : null,
                         onRetryRate: widget.checksPayoutRate
                             ? () => unawaited(
                                 context.read<PayoutRateCubit>().retry(),
@@ -545,6 +548,9 @@ class _Contract extends StatelessWidget {
 
   /// The owner's payment rule on a maker buyer's side (#182), `null` without the wallet's port, and its « Retry ».
   final PayoutRateState? payoutRate;
+
+  /// The rule's cubit, `null` without the wallet's port: what the dialog of « Confirm … sent » reads when it opens and follows while open (security review of #208, C1).
+  final PayoutRateCubit? rateCubit;
   final VoidCallback? onRetryRate;
 
   /// Before « Submit » and the dialog of « Confirm … sent »: the rule's price read again when old ([PayoutRateCubit.beforeAct]), `false` stopping the press; `null` without the rule.
@@ -573,6 +579,7 @@ class _Contract extends StatelessWidget {
     required this.walletBond,
     required this.book,
     required this.payoutRate,
+    required this.rateCubit,
     required this.onRetryRate,
     required this.beforeAct,
   });
@@ -593,6 +600,8 @@ class _Contract extends StatelessWidget {
     );
     final step = contract.step;
     final warnings = warningsOf(status, now: now);
+    // How the bond and the escrow were paid, as the trade's payment records tell: « Cancel » and the line under a bond returned (#207).
+    final paid = walletBond?.call(context) ?? WalletBondState.none;
     // The reference's alert of a collaborative cancel, above the title, at 9 only (`TradeBox/CollabCancelAlert.tsx`): the peer's ask, or this robot's.
     final collabAlert = switch ((status, contract.order)) {
       (Chatting(fiatSent: false, peerAskedToCancel: true), final order?) =>
@@ -683,7 +692,7 @@ class _Contract extends StatelessWidget {
           ),
           const Gap(BullSpacing.sm),
         ],
-        _prompt(context, status),
+        _prompt(context, status, paid),
         // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it, and at 14 the panel of the end, under its stars, when it offers them.
         if (contract.prompt != TradePrompt.chat &&
             !(contract.prompt == TradePrompt.finished && offersRating))
@@ -697,7 +706,11 @@ class _Contract extends StatelessWidget {
           ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
-          _BondLine(line: contract.bondLine, maker: contract.maker),
+          _BondLine(
+            line: contract.bondLine,
+            maker: contract.maker,
+            swapLine: _backThroughSwap(l10n, paid),
+          ),
         ],
         if (contract.cancel != TradeCancelOffer.none) ...[
           const Gap(BullSpacing.md),
@@ -708,14 +721,18 @@ class _Contract extends StatelessWidget {
             cancel: cancel,
             coordinator: coordinator,
             moneyActionRunning: moneyActionRunning,
-            bond: walletBond?.call(context) ?? WalletBondState.none,
+            bond: paid,
           ),
         ],
       ],
     );
   }
 
-  Widget _prompt(BuildContext context, TradeStatus status) {
+  Widget _prompt(
+    BuildContext context,
+    TradeStatus status,
+    WalletBondState paid,
+  ) {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
     final formats = P2pFormats.of(context);
@@ -769,6 +786,7 @@ class _Contract extends StatelessWidget {
         order: order,
         book: book,
         escrowDuration: order?.escrowDuration,
+        swapLine: _backThroughSwap(l10n, paid),
       ),
       // A maker's order paused from another app (#182): `Prompts/Paused.tsx`'s text; « Unpause Order » comes with the pause (#184).
       (TradePrompt.paused, _) => Column(
@@ -785,12 +803,11 @@ class _Contract extends StatelessWidget {
           _Line(l10n.p2pTradePayoutWait),
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pTradePayoutWaitHangOn),
-          const Gap(BullSpacing.sm),
-          _Line(
-            l10n.p2pTradeBondBackThroughSwap,
-            color: colors.textMuted,
-            icon: Icons.info_outline,
-          ),
+          // « you will get back the trade collateral and your bond »: both come back the same way when paid with this wallet.
+          if (_backThroughSwap(l10n, paid, escrow: true) case final line?) ...[
+            const Gap(BullSpacing.sm),
+            _Line(line, color: colors.textMuted, icon: Icons.info_outline),
+          ],
         ],
       ),
       (TradePrompt.payout, _) => Column(
@@ -835,13 +852,9 @@ class _Contract extends StatelessWidget {
               color: colors.warning,
               icon: Icons.info_outline,
             ),
-          ] else ...[
+          ] else if (_backThroughSwap(l10n, paid) case final line?) ...[
             const Gap(BullSpacing.sm),
-            _Line(
-              l10n.p2pTradeBondBackThroughSwap,
-              color: colors.textMuted,
-              icon: Icons.info_outline,
-            ),
+            _Line(line, color: colors.textMuted, icon: Icons.info_outline),
           ],
         ],
       ),
@@ -884,7 +897,11 @@ class _Contract extends StatelessWidget {
             chatOptions: chatOptions == null
                 ? null
                 : () => chatOptions(context, chatRequest),
-            rateLines: _dialogLines(context, status),
+            // Built from the rule's state when the dialog opens and at each change while open, never from this build's (security review of #208, C1).
+            rateLines: LiveDialogLines(
+              of: (context) => _dialogLines(context, status, rateCubit?.state),
+              changes: rateCubit?.stream ?? const Stream.empty(),
+            ),
             beforeConfirmFiatSent: beforeAct,
           ),
         ],
@@ -944,8 +961,10 @@ class _Contract extends StatelessWidget {
   }
 
   /// The rule's state for the step shown, `null` when it is another step's or there is none: never the check of a step before.
-  PayoutRateState? get _ruleShown {
-    final state = payoutRate;
+  PayoutRateState? get _ruleShown => _ruleOf(payoutRate);
+
+  /// [state] when it is the rule's state for the step shown, `null` otherwise.
+  PayoutRateState? _ruleOf(PayoutRateState? state) {
     final shown = PayoutRateStep.of(contract.status);
     final step = switch (state) {
       PayoutRateReading(:final step) ||
@@ -959,8 +978,12 @@ class _Contract extends StatelessWidget {
   }
 
   /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
-  List<TradeDialogLine> _dialogLines(BuildContext context, TradeStatus status) {
-    final state = _ruleShown;
+  List<TradeDialogLine> _dialogLines(
+    BuildContext context,
+    TradeStatus status,
+    PayoutRateState? now,
+  ) {
+    final state = _ruleOf(now);
     final order = contract.order;
     final gap = _gapOf(context, status);
     return [
@@ -1084,12 +1107,43 @@ class _Contract extends StatelessWidget {
   };
 }
 
+/// The project's line under a text of the reference that says a bond is returned (and, at 8 for a seller, the collateral too: [escrow]), from how the trade's payment records say each was paid ([paid], functional review of #182, U2, #207): named when paid with this wallet, said as a condition (true in every case) when the records cannot tell, `null` when neither was paid with this wallet or without the wallet's port.
+String? _backThroughSwap(
+  P2pLocalizations l10n,
+  WalletBondState paid, {
+  bool escrow = false,
+}) {
+  final bond = paid.bondPaid;
+  final collateral = escrow ? paid.escrowPaid : WalletPaidHere.no;
+  if (collateral == WalletPaidHere.cannotTell) {
+    return l10n.p2pTradeBondOrEscrowBackThroughSwap;
+  }
+  if (bond == WalletPaidHere.cannotTell) {
+    return collateral == WalletPaidHere.yes
+        ? l10n.p2pTradeBondOrEscrowBackThroughSwap
+        : l10n.p2pTradeBondBackThroughSwap;
+  }
+  return switch ((bond, collateral)) {
+    (WalletPaidHere.yes, WalletPaidHere.yes) => l10n.p2pTradeBothPaidHereBack,
+    (WalletPaidHere.yes, _) => l10n.p2pTradeBondPaidHereBack,
+    (_, WalletPaidHere.yes) => l10n.p2pTradeEscrowPaidHereBack,
+    _ => null,
+  };
+}
+
 /// « Your taker bond is locked / unlocked / settled », « Your maker bond is … » for a maker (`BondStatus.tsx:39`, #182), with the reference's icons (`TradeBox/BondStatus.tsx`).
 class _BondLine extends StatelessWidget {
   final TradeBondLine line;
   final bool maker;
 
-  const _BondLine({required this.line, required this.maker});
+  /// The line under « … bond is unlocked » of a bond paid with this wallet ([_backThroughSwap]), `null` for none.
+  final String? swapLine;
+
+  const _BondLine({
+    required this.line,
+    required this.maker,
+    required this.swapLine,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1128,18 +1182,15 @@ class _BondLine extends StatelessWidget {
         ),
       ],
     );
-    if (line != TradeBondLine.unlocked) return row;
-    // A bond « unlocked » by the coordinator comes back to this wallet through the swap service (#182, second review).
+    final swapLine = this.swapLine;
+    if (line != TradeBondLine.unlocked || swapLine == null) return row;
+    // A bond « unlocked » by the coordinator comes back to this wallet through the swap service when paid with it (#182, second review; #207).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         row,
         const Gap(BullSpacing.xs),
-        _Line(
-          l10n.p2pTradeBondBackThroughSwap,
-          color: colors.textMuted,
-          center: true,
-        ),
+        _Line(swapLine, color: colors.textMuted, center: true),
       ],
     );
   }
@@ -1579,10 +1630,14 @@ class _PublicWait extends StatelessWidget {
   final List<PublicOrder>? book;
   final Duration? escrowDuration;
 
+  /// The line under « your bond will return to you » of a bond paid with this wallet ([_backThroughSwap]), `null` for none.
+  final String? swapLine;
+
   const _PublicWait({
     required this.order,
     required this.book,
     required this.escrowDuration,
+    required this.swapLine,
   });
 
   @override
@@ -1641,12 +1696,10 @@ class _PublicWait extends StatelessWidget {
         ),
         const Gap(BullSpacing.sm),
         _Line(l10n.p2pTradePublicExpiresUntaken),
-        const Gap(BullSpacing.sm),
-        _Line(
-          l10n.p2pTradeBondBackThroughSwap,
-          color: colors.textMuted,
-          icon: Icons.info_outline,
-        ),
+        if (swapLine case final swapLine?) ...[
+          const Gap(BullSpacing.sm),
+          _Line(swapLine, color: colors.textMuted, icon: Icons.info_outline),
+        ],
         if (order != null && standing != null) ...[
           Divider(height: BullSpacing.lg, color: colors.outlineVariant),
           figure(

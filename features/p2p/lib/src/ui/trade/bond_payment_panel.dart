@@ -108,22 +108,40 @@ class BondPaymentPanel extends StatefulWidget {
     _ => WalletPaymentSlot(panel, othersHidden: true),
   };
 
-  /// Where the payments of the bond and of the escrow stand, for « Cancel »: either being sent, or each sent (its funds may have left the wallet). The escrow's is read only where the page provides its cubit.
+  /// Where the payments of the bond and of the escrow stand, for « Cancel »: either being sent, or each sent (its funds may have left the wallet); and whether each was paid with this wallet, for the line under a bond or collateral returned (#207). The escrow's is read only where the page provides its cubit.
   static WalletBondState bondOf(BuildContext context) {
-    final (bondSending, bondSent) = _stateOf(
-      context.watch<BondPaymentCubit>().state.step,
-    );
-    final (escrowSending, escrowSent) = switch (context
-        .watch<EscrowPaymentCubit?>()) {
-      final escrow? => _stateOf(escrow.state.step),
-      null => (false, false),
-    };
+    final bond = context.watch<BondPaymentCubit>().state.step;
+    final escrow = context.watch<EscrowPaymentCubit?>()?.state.step;
+    final (bondSending, bondSent) = _stateOf(bond);
+    final (escrowSending, escrowSent) = escrow == null
+        ? (false, false)
+        : _stateOf(escrow);
     return WalletBondState(
       sending: bondSending || escrowSending,
       sent: bondSent,
       escrowSent: escrowSent,
+      bondPaid: paidHereOf(bond),
+      escrowPaid: escrow == null ? WalletPaidHere.no : paidHereOf(escrow),
     );
   }
+
+  /// Whether the payment at [step] says the invoice was paid with this wallet ([WalletPaidHere]), for the line under a bond or collateral returned (#207).
+  @visibleForTesting
+  static WalletPaidHere paidHereOf(BondPayStep step) => switch (step) {
+    BondPayFollowing(:final progress) ||
+    BondPayPaidElsewhere(:final progress) => switch (progress) {
+      // The only states the port establishes as this wallet's swap paying the invoice: « pending », a hold invoice the coordinator holds, and « paid », one settled (`p2p_wallet_port.dart`).
+      P2pWalletPaymentPending() || P2pWalletPaymentPaid() => WalletPaidHere.yes,
+      // Funds that may have left without the invoice established as paid by them: sent but not yet received by the service (the bond perhaps locked by another wallet meanwhile, security review of #208, R1), a broadcast not known, a review, an expiry or failure after sending, a refund (which does not tell a hold invoice cancelled after its lock from the service failing to pay it, functional review of #208, C1).
+      _ when progress.fundsMayHaveLeft => WalletPaidHere.cannotTell,
+      _ => WalletPaidHere.no,
+    },
+    BondPayUnreadable() || BondPaySending() => WalletPaidHere.cannotTell,
+    BondPayLooking() ||
+    BondPayIdle() ||
+    BondPayQuoting() ||
+    BondPayConfirming() => WalletPaidHere.no,
+  };
 
   /// Whether a payment at [step] is being sent, and whether it is on its way.
   static (bool, bool) _stateOf(BondPayStep step) => switch (step) {

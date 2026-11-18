@@ -43,14 +43,20 @@ class PayoutRateLines extends StatelessWidget {
       PayoutRateReading() => [
         (text: l10n.p2pPayoutRateReading, tone: TradeDialogTone.plain),
       ],
-      PayoutRateSatsMissing() => [
+      PayoutRateSatsMissing(:final notSeen) => [
+        // At 9, a contract seen late whose invoice was never seen here: said first, in the alert colour, whatever the coordinator's figures say (third security pass of #182, R13, #207).
+        if (notSeen)
+          (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
         (
           text: l10n.p2pPayoutRateSatsMissing(coordinator),
           tone: TradeDialogTone.warning,
         ),
       ],
-      // The state machine's warning says it alone: no comparison beside amounts that do not agree (security review of #182, C1 bis).
-      PayoutRateAmountsDisagree() => const [],
+      // The state machine's warning says it alone: no comparison beside amounts that do not agree (security review of #182, C1 bis); for a contract seen late whose invoice was never seen here, its alert beside it (R13, #207).
+      PayoutRateAmountsDisagree(:final notSeen) => [
+        if (notSeen)
+          (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
+      ],
       PayoutRateChecked(:final check, :final basis) => [
         // At 9, a coordinator's figure that moved since the invoice it asked: said first, in the alert colour (security review of #182, C2).
         if (basis case PayoutRateTold(:final told, :final asked))
@@ -83,11 +89,11 @@ class PayoutRateLines extends StatelessWidget {
                 ),
                 tone: TradeDialogTone.plain,
               ),
-              // At 9 with nothing kept: the figure compared is the coordinator's of now.
+              // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
               if (basis is PayoutRateToldNow)
                 (
                   text: l10n.p2pPayoutRateToldNow(coordinator),
-                  tone: TradeDialogTone.warning,
+                  tone: TradeDialogTone.plain,
                 ),
               if (check.warns)
                 (

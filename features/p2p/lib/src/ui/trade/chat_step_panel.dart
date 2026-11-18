@@ -68,8 +68,8 @@ class ChatStepPanel extends StatefulWidget {
   /// « Audit Chat » and « Export » of « Order options » (#157), built when « … » is pressed, over the cubit of [chat]; `null` with it, and « Order options » is shown without them.
   final ChatOptions Function()? chatOptions;
 
-  /// A maker buyer's lines said in « Confirm … sent » (#182): the owner's payment rule, or the gap from the creation's rate without it; empty for a taker.
-  final List<TradeDialogLine> rateLines;
+  /// A maker buyer's lines said in « Confirm … sent » (#182): the owner's payment rule, or the gap from the creation's rate without it, built by the dialog when it opens and kept current while it is open (security review of #208, C1); `null` or empty for a taker.
+  final LiveDialogLines? rateLines;
 
   /// Run when « Confirm … sent » is pressed, before its dialog opens, the button busy meanwhile: `false` stops the press (the screen then shows what changed, and a second press goes on); `null` opens the dialog at once (#182).
   final Future<bool> Function()? beforeConfirmFiatSent;
@@ -90,7 +90,7 @@ class ChatStepPanel extends StatefulWidget {
     required this.now,
     this.chat,
     this.chatOptions,
-    this.rateLines = const [],
+    this.rateLines,
     this.beforeConfirmFiatSent,
   });
 
@@ -200,26 +200,28 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     }
   }
 
-  Future<void> _confirmFiatSent(String amount, String currencyCode) =>
-      _once((cubit, seen) async {
-        final before = widget.beforeConfirmFiatSent;
-        if (before != null) {
-          setState(() => _checking = true);
-          final goOn = await before();
-          if (!mounted) return;
-          setState(() => _checking = false);
-          if (!goOn) return;
-        }
-        // The lines of the build after the check: never older than the press.
-        if (await ConfirmFiatSentDialog.show(
-          context,
-          amount: amount,
-          currencyCode: currencyCode,
-          lines: widget.rateLines,
-        )) {
-          await cubit.confirmFiatSent(seen);
-        }
-      });
+  Future<void> _confirmFiatSent(String amount, String currencyCode) => _once((
+    cubit,
+    seen,
+  ) async {
+    final before = widget.beforeConfirmFiatSent;
+    if (before != null) {
+      setState(() => _checking = true);
+      final goOn = await before();
+      if (!mounted) return;
+      setState(() => _checking = false);
+      if (!goOn) return;
+    }
+    // The dialog builds its lines from the rule's state when it opens, after the check, and again at each change while open: never the lines of a build drawn during the check (« Reading… »), which `widget` may still hold here (security review of #208, C1).
+    if (await ConfirmFiatSentDialog.show(
+      context,
+      amount: amount,
+      currencyCode: currencyCode,
+      lines: widget.rateLines,
+    )) {
+      await cubit.confirmFiatSent(seen);
+    }
+  });
 
   Future<void> _confirmFiatReceived(String amount, String currencyCode) =>
       _once((cubit, seen) async {

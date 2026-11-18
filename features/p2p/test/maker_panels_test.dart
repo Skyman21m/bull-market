@@ -22,6 +22,7 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
 import 'package:p2p/src/presentation/payout_rate_cubit.dart';
@@ -35,6 +36,7 @@ import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/rate_gap_line.dart';
 import 'package:p2p/src/ui/trade/trade_order_details.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -77,9 +79,12 @@ final _record = TradeRecord(
 
 final _reader = Bolt11Reader(Bolt11TestDecoder([makerBondInvoice()]));
 
-/// The statuses of the reference's answers [answers] read one after the other by the state machine, from the order's first read (`TradeStatus.afterMake`): an order's JSON, or an answer of another kind ([TradeAnswer]).
-Future<List<TradeSeen>> _chain(List<Object> answers) async {
-  final terms = madeTerms();
+/// The statuses of the reference's answers [answers] read one after the other by the state machine, from the order's first read (`TradeStatus.afterMake`): an order's JSON, or an answer of another kind ([TradeAnswer]); the order's terms are [madeTerms]'s unless [terms] are given.
+Future<List<TradeSeen>> _chain(
+  List<Object> answers, {
+  TradeTerms<MadeSide>? terms,
+}) async {
+  final made = terms ?? madeTerms();
   final seen = <TradeSeen>[];
   TradeStatus? status;
   for (final given in answers) {
@@ -92,14 +97,14 @@ Future<List<TradeSeen>> _chain(List<Object> answers) async {
     status = status == null
         ? TradeStatus.afterMake(
             answer,
-            terms: terms,
+            terms: made,
             now: tradeNow,
             reader: _reader,
           )
         : TradeStatus.from(
             previous: status,
             answer: answer,
-            terms: terms,
+            terms: made,
             now: tradeNow,
             reader: _reader,
           );
@@ -115,13 +120,32 @@ Future<TradeSeen> _at(List<Object> answers) async =>
 /// A contract fixed for 101,000 sats where the creation's rate gave 106,900: a rate higher by 5.85 %, fewer sats for the maker buyer.
 const _lowSats = 101000;
 
+/// The bond paid with this wallet, held by the coordinator, as `BondPaymentPanel.bondOf` tells it (#207).
+const _bondPaidHere = WalletBondState(
+  sending: false,
+  sent: true,
+  bondPaid: WalletPaidHere.yes,
+);
+
+/// The project's lines under a bond (or collateral) returned (#207).
+const _bondBack =
+    'Your bond was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+const _escrowBack =
+    'Your collateral was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+const _bothBack =
+    'Your bond and collateral were paid with this wallet: once returned, they come back through the swap service, less its fees, after a delay.';
+const _bondMaybeBack =
+    'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
+const _eitherMaybeBack =
+    'A bond or collateral paid with this wallet comes back through the swap service, less its fees, after a delay.';
+
 /// What the screen asked of the trade's cubit.
 final class _Asked {
   final List<(TradeSeen, BondLossAcknowledged?)> cancels = [];
   final List<TradeSeen> fiatSent = [];
 }
 
-/// Shows the trade screen of [_record] at [seen], over a cubit whose watch the test feeds, with [book] for the figures of a public order; the cancel answers [cancel].
+/// Shows the trade screen of [_record] (or of [record]) at [seen], over a cubit whose watch the test feeds, with [book] for the figures of a public order; the cancel answers [cancel]; how the bond and the escrow were paid is [paid], as the wallet's port tells it (`BondPaymentPanel.bondOf`), none without it.
 Future<(_Asked, StreamController<TradeWatchState>)> _show(
   WidgetTester tester,
   TradeSeen seen, {
@@ -130,7 +154,10 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
   Future<Result<CancelOutcome, CancelRefusal>> Function(TradeSeen seen)? cancel,
   PayoutRateCubit? rate,
   ValueListenable<bool>? onScreen,
+  TradeRecord? record,
+  WalletBondState? paid,
 }) async {
+  final trading = record ?? _record;
   tester.view
     ..physicalSize = const Size(390, 1600) * 3
     ..devicePixelRatio = 3;
@@ -139,7 +166,7 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
   addTearDown(watch.close);
   final asked = _Asked();
   final trade = TradeCubit(
-    _record,
+    trading,
     (record, {signals = const Stream.empty(), onScreen = true}) {
       signals.listen((_) {});
       return watch.stream;
@@ -195,6 +222,7 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
                 coordinatorDetails: (_) => throw StateError('not opened'),
                 book: book,
                 checksPayoutRate: rate != null,
+                walletBond: paid == null ? null : (_) => paid,
               ),
             ),
           ),
@@ -203,20 +231,21 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
     ),
   );
   await tester.pump();
-  watch.add(TradeScreenStatuses.watched(seen, of: _record));
+  watch.add(TradeScreenStatuses.watched(seen, of: trading));
   await tester.pump();
   await tester.pump();
   return (asked, watch);
 }
 
-/// The rule's cubit over [_record] and the terms of the tests, the Bull wallet's price being [wallet] at each read (each read added to [reads]), with a memory of its own unless [memory] is given.
+/// The rule's cubit over [_record] and the terms of the tests (or [terms]), the Bull wallet's price being [wallet] at each read (each read added to [reads]), with a memory of its own unless [memory] is given.
 PayoutRateCubit _rateCubit(
   P2pWalletBitcoinRate Function() wallet, {
   List<Object>? reads,
   DateTime Function()? now,
   PayoutRateMemory? memory,
+  TradeTerms<MadeSide>? terms,
 }) {
-  final maker = switch (madeTerms().side) {
+  final maker = switch ((terms ?? madeTerms()).side) {
     MadeSide(:final maker) => maker,
   };
   final cubit = PayoutRateCubit(
@@ -387,6 +416,7 @@ void main() {
             bookOrder(id: 1, type: 0, premium: 1),
             bookOrder(id: 4, type: 1),
           ]),
+          paid: _bondPaidHere,
         );
         expect(find.text('Your order is public (2/5)'), findsOneWidget);
         expect(
@@ -408,13 +438,8 @@ void main() {
           ),
           findsOneWidget,
         );
-        // A bond paid with this wallet comes back through the swap service: said under the reference's « will return to you ».
-        expect(
-          find.text(
-            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.',
-          ),
-          findsOneWidget,
-        );
+        // The bond paid with this wallet comes back through the swap service: said under the reference's « will return to you » (#207: only when the payment records say so).
+        expect(find.text(_bondBack), findsOneWidget);
         expect(find.text('3'), findsOneWidget);
         expect(find.text('Public orders for EUR'), findsOneWidget);
         expect(find.text('Premium rank 50%'), findsOneWidget);
@@ -470,14 +495,13 @@ void main() {
           makerOrderJson(10),
           makerOrderJson(13),
         ]);
-        await _show(tester, seen);
+        await _show(tester, seen, paid: _bondPaidHere);
         expect(find.text('Your maker bond is unlocked'), findsOneWidget);
-        expect(
-          find.text(
-            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.text(_bondBack), findsOneWidget);
+        // Paid with another wallet: no word of the swap service (functional review of #182, U2).
+        await _show(tester, seen, paid: WalletBondState.none);
+        expect(find.text('Your maker bond is unlocked'), findsOneWidget);
+        expect(find.textContaining('swap service'), findsNothing);
       },
     );
 
@@ -1295,10 +1319,16 @@ void main() {
           ]);
           await _show(tester, seen, rate: rateOf(() => atWallet));
           await tester.pump();
+          // A normal case, said plainly: in the text colour, not bold, the user asked to compare it with the invoice (functional review of #182, U3, #207); a line of its own beside the comparison.
+          final now = find.text(
+            'The sats you receive shown above are those Temple of Sats gives now: Bull Market does not keep your invoice after a restart. Compare them yourself with your invoice\'s amount.',
+          );
+          expect(now, findsOneWidget);
+          final style = tester.widget<Text>(now).style;
+          expect(style?.color, testBullTheme.text);
+          expect(style?.fontWeight, isNot(FontWeight.bold));
           expect(
-            find.text(
-              'Compared with the figure Temple of Sats gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.',
-            ),
+            find.textContaining('At the Bull wallet\'s price'),
             findsOneWidget,
           );
         },
@@ -1871,6 +1901,578 @@ void main() {
     },
   );
 
+  group(
+    'the line of the swap service, by how the bond and the collateral were paid (#207, functional review of #182, U2)',
+    () {
+      Future<TradeSeen> makerAt(int status) => _at([
+        makerOrderJson(0),
+        makerOrderJson(1),
+        if (status == 13) ...[
+          makerOrderJson(6),
+          makerOrderJson(8),
+          makerOrderJson(9),
+          makerOrderJson(10),
+          makerOrderJson(13),
+        ],
+      ]);
+
+      testWidgets(
+        'a maker\'s 1: named when the bond was paid with this wallet, said as a condition when the records cannot tell, nothing when it was paid with another wallet or without the wallet\'s port',
+        (tester) async {
+          final seen = await makerAt(1);
+          await _show(tester, seen, paid: _bondPaidHere);
+          expect(find.text(_bondBack), findsOneWidget);
+          await _show(tester, seen, paid: WalletBondState.none);
+          expect(find.textContaining('swap service'), findsNothing);
+          await _show(
+            tester,
+            seen,
+            paid: const WalletBondState(
+              sending: false,
+              sent: true,
+              bondPaid: WalletPaidHere.cannotTell,
+            ),
+          );
+          expect(find.text(_bondMaybeBack), findsOneWidget);
+          await _show(tester, seen);
+          expect(find.textContaining('swap service'), findsNothing);
+          // The reference's own line stays in every case.
+          expect(
+            find.text(
+              'If the order expires untaken, your bond will return to you (no action needed).',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'a taker buyer\'s 7 and 13: named under « you will get your bond back automatically » and « Your taker bond is unlocked » when paid with this wallet, nothing otherwise',
+        (tester) async {
+          final statuses = await TradeScreenStatuses.make();
+          final seven = await statuses.waitingForEscrow();
+          final thirteen = await statuses.sendingSats();
+          for (final seen in [seven, thirteen]) {
+            await _show(
+              tester,
+              seen,
+              record: TradeScreenStatuses.record,
+              paid: _bondPaidHere,
+            );
+            expect(find.text(_bondBack), findsOneWidget);
+            await _show(
+              tester,
+              seen,
+              record: TradeScreenStatuses.record,
+              paid: const WalletBondState(
+                sending: false,
+                sent: false,
+                escrowPaid: WalletPaidHere.yes,
+              ),
+            );
+            // A buyer pays no escrow: its line is never about one.
+            expect(find.textContaining('swap service'), findsNothing);
+          }
+        },
+      );
+
+      testWidgets(
+        'a taker seller\'s 8, under « you will get back the trade collateral and your bond »: the bond, the collateral or both by how each was paid, a condition when the records cannot tell, nothing when neither was paid with this wallet',
+        (tester) async {
+          final statuses = await TradeScreenStatuses.make(
+            role: TradeRole.seller,
+          );
+          final eight = await statuses.waitingForPayout();
+          final seller = TradeScreenStatuses.recordFor(TradeRole.seller);
+          for (final (bond, escrow, line) in [
+            (WalletPaidHere.yes, WalletPaidHere.yes, _bothBack),
+            (WalletPaidHere.yes, WalletPaidHere.no, _bondBack),
+            (WalletPaidHere.no, WalletPaidHere.yes, _escrowBack),
+            (WalletPaidHere.no, WalletPaidHere.cannotTell, _eitherMaybeBack),
+            (WalletPaidHere.yes, WalletPaidHere.cannotTell, _eitherMaybeBack),
+            (WalletPaidHere.cannotTell, WalletPaidHere.yes, _eitherMaybeBack),
+            (WalletPaidHere.cannotTell, WalletPaidHere.no, _bondMaybeBack),
+            (WalletPaidHere.no, WalletPaidHere.no, null),
+          ]) {
+            await _show(
+              tester,
+              eight,
+              record: seller,
+              paid: WalletBondState(
+                sending: false,
+                sent: false,
+                bondPaid: bond,
+                escrowPaid: escrow,
+              ),
+            );
+            expect(
+              find.textContaining('If the buyer does not cooperate'),
+              findsOneWidget,
+              reason: '$bond $escrow',
+            );
+            if (line == null) {
+              expect(
+                find.textContaining('swap service'),
+                findsNothing,
+                reason: '$bond $escrow',
+              );
+            } else {
+              expect(find.text(line), findsOneWidget, reason: '$bond $escrow');
+              expect(
+                find.textContaining('swap service'),
+                findsOneWidget,
+                reason: '$bond $escrow',
+              );
+            }
+          }
+        },
+      );
+
+      testWidgets('the French texts of the line', (tester) async {
+        final statuses = await TradeScreenStatuses.make(role: TradeRole.seller);
+        final eight = await statuses.waitingForPayout();
+        final seller = TradeScreenStatuses.recordFor(TradeRole.seller);
+        for (final (bond, escrow, line) in [
+          (
+            WalletPaidHere.yes,
+            WalletPaidHere.yes,
+            'Votre caution et votre garantie ont été payées avec ce portefeuille : une fois rendues, elles reviennent par le service de swap, moins ses frais, après un délai.',
+          ),
+          (
+            WalletPaidHere.yes,
+            WalletPaidHere.no,
+            'Votre caution a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.',
+          ),
+          (
+            WalletPaidHere.no,
+            WalletPaidHere.yes,
+            'Votre garantie a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.',
+          ),
+          (
+            WalletPaidHere.no,
+            WalletPaidHere.cannotTell,
+            'Une caution ou une garantie payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.',
+          ),
+          (
+            WalletPaidHere.cannotTell,
+            WalletPaidHere.no,
+            'Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.',
+          ),
+        ]) {
+          await _show(
+            tester,
+            eight,
+            record: seller,
+            locale: const Locale('fr'),
+            paid: WalletBondState(
+              sending: false,
+              sent: false,
+              bondPaid: bond,
+              escrowPaid: escrow,
+            ),
+          );
+          expect(find.text(line), findsOneWidget, reason: '$bond $escrow');
+        }
+      });
+
+      testWidgets(
+        'captures of the line (with P2P_CAPTURE_DIR)',
+        skip: captureDirectory == null,
+        (tester) async {
+          await loadCaptureFonts();
+          final statuses = await tester.runAsync(
+            () => TradeScreenStatuses.make(role: TradeRole.seller),
+          );
+          if (statuses == null) throw StateError('no statuses');
+          final eight = await tester.runAsync(statuses.waitingForPayout);
+          final public = await tester.runAsync(() => makerAt(1));
+          if (eight == null || public == null) throw StateError('no status');
+          for (final locale in const [Locale('fr'), Locale('en')]) {
+            final code = locale.languageCode;
+            await _show(tester, public, locale: locale, paid: _bondPaidHere);
+            await capture(tester, '$code-swap-createur-1-paye-ici');
+            await _show(
+              tester,
+              public,
+              locale: locale,
+              paid: WalletBondState.none,
+            );
+            await capture(tester, '$code-swap-createur-1-paye-ailleurs');
+            await _show(
+              tester,
+              eight,
+              locale: locale,
+              record: TradeScreenStatuses.recordFor(TradeRole.seller),
+              paid: const WalletBondState(
+                sending: false,
+                sent: true,
+                escrowSent: true,
+                bondPaid: WalletPaidHere.yes,
+                escrowPaid: WalletPaidHere.yes,
+              ),
+            );
+            await capture(tester, '$code-swap-vendeur-8-les-deux');
+            await _show(
+              tester,
+              eight,
+              locale: locale,
+              record: TradeScreenStatuses.recordFor(TradeRole.seller),
+              paid: const WalletBondState(
+                sending: false,
+                sent: false,
+                escrowPaid: WalletPaidHere.cannotTell,
+              ),
+            );
+            await capture(tester, '$code-swap-vendeur-8-illisible');
+          }
+        },
+      );
+    },
+  );
+
+  group('the payout rule at 9, after the reviews of #182 (#207)', () {
+    final atWallet = P2pWalletRateRead(91711.15);
+
+    testWidgets(
+      'the one sat of a half\'s rounding (functional review T03): 30,000 sats and a maker fee of 0.0015 × 0.1 give 29,996 asked at 6 and 8 and 29,995 at 9, no red line of two figures; two sats apart, the red line',
+      (tester) async {
+        // The double the reference's floats give for 0.0015 × 0.1, 0.00015000000000000001: `MakerTerms.payoutAt` computes 29,995 exactly where the coordinator's floats gave 29,996 (functional review of #182, third pass).
+        final terms = madeTerms(fee: 0.0015 * 0.1);
+        final maker = switch (terms.side) {
+          MadeSide(:final maker) => maker,
+        };
+        expect(maker.payoutAt(Sats.fromInt(30000)), Sats.fromInt(29995));
+        for (final (invoice, moved) in [(29996, false), (29997, true)]) {
+          Map<String, Object?> asked(int status) => makerOrderJson(
+            status,
+            last: 30000,
+            changes: {'trade_satoshis': invoice, 'invoice_amount': invoice},
+          );
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            asked(6),
+            asked(8),
+            makerOrderJson(9, last: 30000),
+          ], terms: terms);
+          for (final seen in chain.skip(2)) {
+            expect(
+              CheckPayoutRateUsecase.amountsDisagree(seen.status),
+              isFalse,
+              reason: '$invoice',
+            );
+          }
+          final (_, watch) = await _show(
+            tester,
+            chain[2],
+            rate: _rateCubit(() => atWallet, terms: terms),
+          );
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('Confirm 100 EUR sent'),
+            findsOneWidget,
+            reason: '$invoice',
+          );
+          expect(
+            find.textContaining('but asked for an invoice of'),
+            moved ? findsOneWidget : findsNothing,
+            reason: '$invoice',
+          );
+          // The smaller of the two compared, in both cases.
+          expect(
+            find.textContaining('You receive 29,995 sats'),
+            findsOneWidget,
+            reason: '$invoice',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'the third security pass\'s attack E5: a contract seen late with amounts that do not add up at 9, nothing kept: the alert that its invoice was never seen beside the amounts\' warning, on the screen and in « Confirm … sent » (R13)',
+      (tester) async {
+        final chain = await _chain([
+          makerOrderJson(0),
+          makerOrderJson(1),
+          makerOrderJson(6, last: 50000),
+          makerOrderJson(7, last: 50000),
+          makerOrderJson(
+            9,
+            taker: third,
+            last: 106900,
+            changes: {'trade_satoshis': 200000},
+          ),
+        ]);
+        expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+        expect(CheckPayoutRateUsecase.amountsDisagree(chain[4].status), isTrue);
+        final (_, watch) = await _show(
+          tester,
+          chain[2],
+          rate: _rateCubit(() => atWallet),
+        );
+        await tester.pump();
+        watch
+          ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+          ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+        await tester.pump();
+        await tester.pump();
+        final alert = find.text(
+          'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.',
+        );
+        expect(alert, findsOneWidget);
+        expect(tester.widget<Text>(alert).style?.color, testBullTheme.error);
+        expect(find.textContaining('do not add up'), findsOneWidget);
+        expect(
+          find.textContaining('At the Bull wallet\'s price'),
+          findsNothing,
+        );
+        final confirm = find.textContaining('Confirm 100 EUR sent');
+        await _reveal(tester, confirm);
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        for (final words in ['do not add up', 'has not seen this contract']) {
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining(words),
+            ),
+            findsOneWidget,
+            reason: words,
+          );
+        }
+        await capture(tester, 'en-createur-9-vu-tard-montants');
+      },
+    );
+
+    testWidgets(
+      'a range order\'s contract seen late at 9, then a read refused as a whole (the status kept from no order, so no contract\'s amount), nothing kept: the alert beside « rate not checked » (R13, review of #208, R2)',
+      (tester) async {
+        final terms = madeTerms(range: true);
+        final chain = await _chain([
+          makerOrderJson(0, range: true),
+          makerOrderJson(1, range: true),
+          makerOrderJson(6, range: true, last: 50000),
+          makerOrderJson(7, range: true, last: 50000),
+          makerOrderJson(9, range: true, taker: third, last: 106900),
+        ], terms: terms);
+        expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+        // As `TradeReader` keeps a status after a read the state machine refuses as a whole: from no order (`TradeScreenStatuses.refusedRead`).
+        final kept = TradeSeen(chain[4].status, order: null, stored: true);
+        final maker = switch (terms.side) {
+          MadeSide(:final maker) => maker,
+        };
+        expect(maker.contractAmount(kept.order?.takenAmount), isNull);
+        expect(
+          CheckPayoutRateUsecase.subjectAt(_record, maker, kept),
+          const PayoutRateNoSats(notSeen: true),
+        );
+        final (_, watch) = await _show(
+          tester,
+          chain[2],
+          rate: _rateCubit(() => atWallet, terms: terms),
+        );
+        await tester.pump();
+        watch
+          ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+          ..add(TradeScreenStatuses.watched(kept, of: _record));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.textContaining('has not seen this contract\'s payout invoice'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Rate not checked'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a contract seen late whose read gives no sats at 9, nothing kept: the alert beside « rate not checked » (R13)',
+      (tester) async {
+        final chain = await _chain([
+          makerOrderJson(0),
+          makerOrderJson(1),
+          makerOrderJson(6, last: 50000),
+          makerOrderJson(7, last: 50000),
+          makerOrderJson(9, taker: third, changes: {'satoshis_now': null}),
+        ]);
+        expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+        expect(chain[4].order?.satoshisNow, isNull);
+        final (_, watch) = await _show(
+          tester,
+          chain[2],
+          rate: _rateCubit(() => atWallet),
+        );
+        await tester.pump();
+        watch
+          ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+          ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.textContaining('has not seen this contract\'s payout invoice'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Rate not checked'), findsOneWidget);
+      },
+    );
+  });
+
+  group(
+    '« Confirm … sent » after a price read again at the press: the dialog\'s lines are those of the read, never « Reading… » (security review of #208, C1)',
+    () {
+      final atWallet = P2pWalletRateRead(91711.15);
+
+      /// The rule's cubit whose first read answers at once, every later read held by the test until it completes it.
+      (PayoutRateCubit, List<Completer<P2pWalletBitcoinRate>>) heldCubit(
+        DateTime Function() clock,
+      ) {
+        final answers = <Completer<P2pWalletBitcoinRate>>[];
+        var first = true;
+        final maker = switch (madeTerms().side) {
+          MadeSide(:final maker) => maker,
+        };
+        final cubit = PayoutRateCubit(
+          _record,
+          terms: (_) async => maker,
+          price: (_, _) {
+            if (first) {
+              first = false;
+              return Future.value(atWallet);
+            }
+            final answer = Completer<P2pWalletBitcoinRate>();
+            answers.add(answer);
+            return answer.future;
+          },
+          memory: PayoutRateMemory(),
+          now: clock,
+        );
+        addTearDown(cubit.close);
+        return (cubit, answers);
+      }
+
+      Finder inDialog(String words) => find.descendant(
+        of: find.byType(ConfirmFiatSentDialog),
+        matching: find.textContaining(words),
+      );
+
+      /// Presses « Confirm 100 EUR sent » with a price 3 minutes old: the read is held over a frame (« Reading… » drawn), then answered with [answer].
+      Future<void> pressAfterHeldRead(
+        WidgetTester tester,
+        List<Completer<P2pWalletBitcoinRate>> answers,
+        P2pWalletBitcoinRate answer,
+      ) async {
+        final confirm = find.textContaining('Confirm 100 EUR sent');
+        await _reveal(tester, confirm);
+        await tester.tap(confirm);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.textContaining('Reading the Bull wallet'), findsOneWidget);
+        expect(find.byType(ConfirmFiatSentDialog), findsNothing);
+        expect(answers, hasLength(1));
+        answers.single.complete(answer);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+        expect(inDialog('Reading the Bull wallet'), findsNothing);
+      }
+
+      testWidgets(
+        'the red warning of the 10 % at 9 (nothing kept): in the dialog after the read (the review\'s SECU1)',
+        (tester) async {
+          var clock = tradeNow;
+          final (cubit, answers) = heldCubit(() => clock);
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+            makerOrderJson(8, last: 90000),
+            makerOrderJson(9, last: 90000),
+          ]);
+          await _show(tester, seen, rate: cubit);
+          await tester.pump();
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          clock = clock.add(const Duration(minutes: 3));
+          await pressAfterHeldRead(tester, answers, atWallet);
+          expect(inDialog('fewer sats than that'), findsOneWidget);
+          expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a contract seen late compared at 9: « has not seen this contract\'s payout invoice » in the dialog after the read (the review\'s SECU2)',
+        (tester) async {
+          var clock = tradeNow;
+          final (cubit, answers) = heldCubit(() => clock);
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(7, last: 50000),
+            makerOrderJson(9, taker: third, last: 106900),
+          ]);
+          expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+          final (_, watch) = await _show(tester, chain[2], rate: cubit);
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('has not seen this contract'),
+            findsOneWidget,
+          );
+          clock = clock.add(const Duration(minutes: 3));
+          await pressAfterHeldRead(tester, answers, atWallet);
+          expect(inDialog('has not seen this contract'), findsOneWidget);
+          expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'within the margin, no alert: the comparison in the dialog after the read; and the dialog kept current when the coordinator\'s figure moves while it is open',
+        (tester) async {
+          var clock = tradeNow;
+          final (cubit, answers) = heldCubit(() => clock);
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 106900),
+            makerOrderJson(8, last: 106900),
+            makerOrderJson(9, last: 106900),
+            makerOrderJson(9, last: 50000),
+          ]);
+          final (_, watch) = await _show(tester, chain[2], rate: cubit);
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('fewer sats than that'), findsNothing);
+          clock = clock.add(const Duration(minutes: 3));
+          await pressAfterHeldRead(tester, answers, atWallet);
+          expect(inDialog('You receive 106,873 sats'), findsOneWidget);
+          expect(inDialog('fewer sats than that'), findsNothing);
+          expect(inDialog('but asked for an invoice of'), findsNothing);
+          // The figure moves while the dialog is open: its lines follow.
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            inDialog('but asked for an invoice of 106,873'),
+            findsOneWidget,
+          );
+          expect(inDialog('fewer sats than that'), findsOneWidget);
+        },
+      );
+    },
+  );
+
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);
     for (final locale in const [Locale('fr'), Locale('en')]) {
@@ -1892,6 +2494,7 @@ void main() {
             List<Object> answers, {
             List<PublicOrder>? withBook,
             P2pWalletBitcoinRate? wallet,
+            WalletBondState? paid,
           }) async {
             final seen = await tester.runAsync(() => _at(answers));
             if (seen == null) throw StateError(name);
@@ -1902,16 +2505,19 @@ void main() {
               locale: locale,
               book: withBook,
               rate: rate,
+              paid: paid,
             );
             await tester.pump();
             await tester.pump();
             await capture(tester, '$code-createur-$name');
           }
 
-          await shoot('public', [
-            makerOrderJson(0),
-            makerOrderJson(1),
-          ], withBook: book);
+          await shoot(
+            'public',
+            [makerOrderJson(0), makerOrderJson(1)],
+            withBook: book,
+            paid: _bondPaidHere,
+          );
           await shoot('public-sans-carnet', [
             makerOrderJson(0),
             makerOrderJson(1),

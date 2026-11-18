@@ -226,6 +226,67 @@ void main() {
   }
 
   testWidgets(
+    'at 8, the line of the swap service from the payments followed: the collateral when its payment of this wallet is held, the bond and the collateral once the bond\'s is too, nothing without either (#207)',
+    (tester) async {
+      await _show(tester, state: 'eight', size: const Size(390, 1600));
+      expect(find.textContaining('swap service'), findsNothing);
+      await _show(
+        tester,
+        state: 'eight',
+        size: const Size(390, 1600),
+        escrowFound: BondPaymentFollowed(
+          _payment,
+          const P2pWalletPaymentPending(),
+        ),
+      );
+      expect(
+        find.text(
+          'Your collateral was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.',
+        ),
+        findsOneWidget,
+      );
+      _follow(_bondPayments, const P2pWalletPaymentPending());
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Your bond and collateral were paid with this wallet: once returned, they come back through the swap service, less its fees, after a delay.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'at 8, a payment of the collateral by this wallet being refunded, then refunded: said as a condition, never « Your collateral was paid with this wallet » (review of #208, C1)',
+    (tester) async {
+      for (final progress in const [
+        P2pWalletPaymentRefundPending(),
+        P2pWalletPaymentRefunded(),
+      ]) {
+        await _show(
+          tester,
+          state: 'eight',
+          size: const Size(390, 1600),
+          escrowFound: BondPaymentFollowed(_payment, progress),
+        );
+        expect(
+          find.text(
+            'A bond or collateral paid with this wallet comes back through the swap service, less its fees, after a delay.',
+          ),
+          findsOneWidget,
+          reason: '$progress',
+        );
+        expect(
+          find.textContaining('collateral was paid with this wallet'),
+          findsNothing,
+          reason: '$progress',
+        );
+      }
+    },
+  );
+
+  testWidgets(
     'the confirmation states the collateral, the fees, the escrow\'s facts and the reference\'s line once; the QR code hidden; nothing paid before its tap',
     (tester) async {
       final (_, payments) = await _show(tester, state: 'six');

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +16,7 @@ import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
+import 'package:p2p/src/ui/p2p_tab_screen.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/testing.dart';
 import 'package:secrets/secrets.dart' show Secrets;
@@ -168,9 +170,12 @@ void main() {
         activeStream: () => records.stream,
       );
       final pages = router.routerDelegate.currentConfiguration.matches.length;
+      expect(find.byKey(P2pTabScreen.waitingForTradesKey), findsNothing);
       await tester.tap(find.text('100 EUR', findRichText: true).first);
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsNothing);
+      // The wait is shown (#207).
+      expect(find.byKey(P2pTabScreen.waitingForTradesKey), findsOneWidget);
       // A second tap while waiting does nothing: one page opens (R11).
       await tester.tap(
         find.text('100 EUR', findRichText: true).first,
@@ -185,6 +190,37 @@ void main() {
         pages + 1,
       );
       expect(find.byType(OrderDetailsScreen), findsNothing);
+      expect(
+        find.byKey(P2pTabScreen.waitingForTradesKey, skipOffstage: false),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'a read of the active trades that does not end: after 10 s the bar goes and the order\'s page opens without « Take Order » (review of #208, R3)',
+    (tester) async {
+      final never = StreamController<Result<List<ActiveTrade>, P2pFailure>>();
+      addTearDown(never.close);
+      await open(tester, activeStream: () => never.stream);
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await tester.pump();
+      expect(find.byKey(P2pTabScreen.waitingForTradesKey), findsOneWidget);
+      await tester.pump(const Duration(seconds: 9));
+      expect(find.byKey(P2pTabScreen.waitingForTradesKey), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await settle(tester);
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(
+        tester
+            .widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen))
+            .recordsUnreadable,
+        isTrue,
+      );
+      expect(
+        find.byKey(P2pTabScreen.waitingForTradesKey, skipOffstage: false),
+        findsNothing,
+      );
     },
   );
 
@@ -204,6 +240,17 @@ void main() {
             .canTake,
         isFalse,
       );
+      // Why « Take Order » is not there, in one line, rather than « You do not have a Garage Key » at its press (#207).
+      final why = find.text(
+        'Bull Market could not read its trades: this order may be yours, so it cannot be taken here. Go back and try again.',
+      );
+      await tester.scrollUntilVisible(
+        why,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(why, findsOneWidget);
+      expect(find.text('Take Order', skipOffstage: false), findsNothing);
     },
   );
 
@@ -218,6 +265,16 @@ void main() {
           .widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen))
           .canTake,
       isTrue,
+    );
+    await tester.scrollUntilVisible(
+      find.text('Take Order'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Take Order'), findsOneWidget);
+    expect(
+      find.textContaining('could not read its trades', skipOffstage: false),
+      findsNothing,
     );
   });
 

@@ -41,6 +41,12 @@ class P2pTabScreen extends StatelessWidget {
   /// Opens the create form (#182): set where the feature can make an order and the network has no active trade nor pending make (« Create order » is then in the list « Order » opens).
   final VoidCallback? onCreate;
 
+  /// Whether a tap on an order of the book awaits the read of the active trades (at most 10 s, #182): a bar shows it under the entries (#207).
+  final bool waitingForTrades;
+
+  /// The bar of [waitingForTrades].
+  static const waitingForTradesKey = ValueKey('p2p-waiting-for-trades');
+
   const P2pTabScreen({
     super.key,
     required this.now,
@@ -52,6 +58,7 @@ class P2pTabScreen extends StatelessWidget {
     required this.garage,
     this.onOpenTrades,
     this.onCreate,
+    this.waitingForTrades = false,
   });
 
   @override
@@ -80,7 +87,18 @@ class P2pTabScreen extends StatelessWidget {
                 onCreate: onCreate,
               ),
             ),
-            const Gap(BullSpacing.sm),
+            // The gap under the entries, which shows the wait of a tap on an order for the active trades' read (#207).
+            SizedBox(
+              height: BullSpacing.sm,
+              child: waitingForTrades
+                  ? Center(
+                      child: LinearProgressIndicator(
+                        key: waitingForTradesKey,
+                        color: colors.primary,
+                      ),
+                    )
+                  : null,
+            ),
             Expanded(
               child: showsGarage
                   ? garage(context)

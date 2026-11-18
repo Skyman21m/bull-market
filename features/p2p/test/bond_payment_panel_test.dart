@@ -18,6 +18,7 @@ import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/bond_payment_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -149,6 +150,7 @@ void main() {
       'bond': await statuses.bondStep(),
       'six': await statuses.waitingForBoth(),
       'expired': await statuses.expired(),
+      'seven': await statuses.waitingForEscrow(),
     };
     final offer = walletPaymentFor(
       accepted: Sats.fromInt(1000000),
@@ -157,6 +159,130 @@ void main() {
       now: tradeNow,
     );
     _offered = offer as WalletPaymentOffered;
+  });
+
+  group('how the bond was paid, for the line of the swap service (#207)', () {
+    test('each step of the payment', () {
+      for (final (step, paid) in <(BondPayStep, WalletPaidHere)>[
+        (const BondPayLooking(), WalletPaidHere.no),
+        (const BondPayIdle(), WalletPaidHere.no),
+        (const BondPayQuoting(), WalletPaidHere.no),
+        (
+          const BondPayFollowing(P2pWalletPaymentPreparing()),
+          WalletPaidHere.no,
+        ),
+        (const BondPayFollowing(P2pWalletPaymentSigned()), WalletPaidHere.no),
+        (
+          const BondPayFollowing(
+            P2pWalletPaymentExpired(P2pWalletFunds.notSent),
+          ),
+          WalletPaidHere.no,
+        ),
+        // Sent, not yet received by the swap service: the bond may have been locked by another wallet meanwhile (security review of #208, R1).
+        (
+          const BondPayFollowing(P2pWalletPaymentSent()),
+          WalletPaidHere.cannotTell,
+        ),
+        (const BondPayFollowing(P2pWalletPaymentPending()), WalletPaidHere.yes),
+        (
+          const BondPayFollowing(P2pWalletPaymentUnderReview()),
+          WalletPaidHere.cannotTell,
+        ),
+        (const BondPayFollowing(P2pWalletPaymentPaid()), WalletPaidHere.yes),
+        // A refund does not tell a hold invoice cancelled after its lock from the swap service failing to pay it (review of #208, C1).
+        (
+          const BondPayFollowing(P2pWalletPaymentRefundPending()),
+          WalletPaidHere.cannotTell,
+        ),
+        (
+          const BondPayFollowing(P2pWalletPaymentRefunded()),
+          WalletPaidHere.cannotTell,
+        ),
+        // The wallet's own screens paid it: this wallet still.
+        (
+          const BondPayPaidElsewhere(P2pWalletPaymentPending()),
+          WalletPaidHere.yes,
+        ),
+        (
+          const BondPayPaidElsewhere(P2pWalletPaymentSent()),
+          WalletPaidHere.cannotTell,
+        ),
+        (
+          const BondPayPaidElsewhere(P2pWalletPaymentSigned()),
+          WalletPaidHere.no,
+        ),
+        (
+          const BondPayFollowing(P2pWalletPaymentBroadcastUnknown()),
+          WalletPaidHere.cannotTell,
+        ),
+        (
+          const BondPayFollowing(P2pWalletPaymentFailed(P2pWalletFunds.sent)),
+          WalletPaidHere.cannotTell,
+        ),
+        (const BondPayUnreadable(), WalletPaidHere.cannotTell),
+        (const BondPaySending(), WalletPaidHere.cannotTell),
+      ]) {
+        expect(BondPaymentPanel.paidHereOf(step), paid, reason: '$step');
+      }
+    });
+
+    testWidgets(
+      'at 7, the trade screen\'s line from the payment followed: named once a payment of this wallet is held, said as a condition when the records cannot be read, nothing without one',
+      (tester) async {
+        const named =
+            'Your bond was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+        const maybe =
+            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
+        final (_, payments) = await _show(
+          tester,
+          state: 'seven',
+          offered: false,
+        );
+        expect(find.textContaining('swap service'), findsNothing);
+        // Sent, not yet received by the swap service: a condition only (security review of #208, R1).
+        _follow(payments, const P2pWalletPaymentSent());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(maybe), findsOneWidget);
+        expect(find.text(named), findsNothing);
+        _follow(payments, const P2pWalletPaymentPending());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(named), findsOneWidget);
+        payments.follows.last.add(
+          const BondPaymentUnreadable(P2pStorageFailure()),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(maybe), findsOneWidget);
+        expect(find.text(named), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'at 7, a payment of this wallet being refunded, then refunded: said as a condition, never « Your bond was paid with this wallet », since the bond may have been paid with another wallet after the swap failed (review of #208, C1)',
+      (tester) async {
+        const named =
+            'Your bond was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+        const maybe =
+            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
+        final (_, payments) = await _show(
+          tester,
+          state: 'seven',
+          offered: false,
+        );
+        for (final progress in const [
+          P2pWalletPaymentRefundPending(),
+          P2pWalletPaymentRefunded(),
+        ]) {
+          _follow(payments, progress);
+          await tester.pump();
+          await tester.pump();
+          expect(find.text(maybe), findsOneWidget, reason: '$progress');
+          expect(find.text(named), findsNothing, reason: '$progress');
+        }
+      },
+    );
   });
 
   testWidgets(

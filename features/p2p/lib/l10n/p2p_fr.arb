@@ -857,7 +857,12 @@
   "p2pTradeNoRingYet": "Bull Market ne sonne pas encore : gardez cet écran ouvert, ou revenez-y souvent.",
   "p2pTradeEscrowWaitMaker": "Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.",
   "p2pPayoutRateToldMoved": "{coordinator} annonce maintenant {told} sats pour ce contrat, mais a demandé avant une facture de {asked} sats : Bull Market compare le plus petit des deux. Vérifiez la facture donnée avant de continuer.",
-  "p2pPayoutRateToldNow": "Comparé au chiffre que {coordinator} donne maintenant : après un redémarrage de l’app, Bull Market ne garde plus le montant de la facture donnée.",
+  "p2pPayoutRateToldNow": "Les sats reçus affichés ci-dessus sont ceux que {coordinator} annonce maintenant : Bull Market ne garde pas votre facture après un redémarrage. Comparez-les vous-même au montant de votre facture.",
   "p2pTradeBondBackThroughSwap": "Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.",
-  "p2pPayoutRateNotSeen": "Bull Market n’a pas vu la facture de paiement de ce contrat : n’envoyez pas l’argent avant d’avoir vérifié dans l’app officielle."
+  "p2pPayoutRateNotSeen": "Bull Market n’a pas vu la facture de paiement de ce contrat : n’envoyez pas l’argent avant d’avoir vérifié dans l’app officielle.",
+  "p2pTradeBondPaidHereBack": "Votre caution a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.",
+  "p2pTradeEscrowPaidHereBack": "Votre garantie a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.",
+  "p2pTradeBothPaidHereBack": "Votre caution et votre garantie ont été payées avec ce portefeuille : une fois rendues, elles reviennent par le service de swap, moins ses frais, après un délai.",
+  "p2pTradeBondOrEscrowBackThroughSwap": "Une caution ou une garantie payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.",
+  "p2pOrderRecordsUnreadable": "Bull Market n’a pas pu lire ses échanges : cet ordre est peut-être le vôtre, il ne peut donc pas être pris ici. Revenez en arrière et réessayez."
 }

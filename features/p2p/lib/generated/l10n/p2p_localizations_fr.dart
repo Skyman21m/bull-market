@@ -3423,7 +3423,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutRateToldNow(String coordinator) {
-    return 'Comparé au chiffre que $coordinator donne maintenant : après un redémarrage de l’app, Bull Market ne garde plus le montant de la facture donnée.';
+    return 'Les sats reçus affichés ci-dessus sont ceux que $coordinator annonce maintenant : Bull Market ne garde pas votre facture après un redémarrage. Comparez-les vous-même au montant de votre facture.';
   }
 
   @override
@@ -3433,4 +3433,24 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayoutRateNotSeen =>
       'Bull Market n’a pas vu la facture de paiement de ce contrat : n’envoyez pas l’argent avant d’avoir vérifié dans l’app officielle.';
+
+  @override
+  String get p2pTradeBondPaidHereBack =>
+      'Votre caution a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.';
+
+  @override
+  String get p2pTradeEscrowPaidHereBack =>
+      'Votre garantie a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.';
+
+  @override
+  String get p2pTradeBothPaidHereBack =>
+      'Votre caution et votre garantie ont été payées avec ce portefeuille : une fois rendues, elles reviennent par le service de swap, moins ses frais, après un délai.';
+
+  @override
+  String get p2pTradeBondOrEscrowBackThroughSwap =>
+      'Une caution ou une garantie payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.';
+
+  @override
+  String get p2pOrderRecordsUnreadable =>
+      'Bull Market n’a pas pu lire ses échanges : cet ordre est peut-être le vôtre, il ne peut donc pas être pris ici. Revenez en arrière et réessayez.';
 }

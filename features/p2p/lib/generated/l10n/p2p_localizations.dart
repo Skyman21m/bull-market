@@ -5341,23 +5341,53 @@ abstract class P2pLocalizations {
   /// **'{coordinator} now gives {told} sats for this contract, but asked for an invoice of {asked} sats before: Bull Market compares the smaller. Check the invoice you gave before going on.'**
   String p2pPayoutRateToldMoved(String coordinator, String told, String asked);
 
-  /// Not in the RoboSats texts: the project's own: at 9, no invoice's sats kept in memory for the contract (the app started again between 8 and 9; #204 will keep it, schema 9): what is compared is the coordinator's figure of now, said as such (#182, security review C2).
+  /// Not in the RoboSats texts: the project's own: at 9, no invoice's sats kept in memory for the contract (most often the app started again between 8 and 9, a normal case; #204 will keep it, schema 9): what is compared is the coordinator's figure of now, said as such (#182, security review C2), in the text colour, not bold, the user asked to compare it with the invoice given (#207, functional review U3). It does not say the app was restarted, which the app cannot tell (an invoice given from another app gives the same line).
   ///
   /// In en, this message translates to:
-  /// **'Compared with the figure {coordinator} gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.'**
+  /// **'The sats you receive shown above are those {coordinator} gives now: Bull Market does not keep your invoice after a restart. Compare them yourself with your invoice\'s amount.'**
   String p2pPayoutRateToldNow(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked ») (#182, second review): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised.
+  /// Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked ») (#182, second review): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised. Since #207, only when the trade's payment records cannot tell whether the bond was paid with this wallet (records that cannot be read, a payment whose end is not known): said as a condition, true in every case; `p2pTradeBondPaidHereBack` when they say it was.
   ///
   /// In en, this message translates to:
   /// **'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.'**
   String get p2pTradeBondBackThroughSwap;
 
-  /// Not in the RoboSats texts: the project's own, in the alert colour: at 9, a contract seen late (another taker, `ContractSeenLate`) whose payout invoice this app never saw: what is compared is the coordinator's own figure, never checked (#182, second security review R9). Nothing is blocked.
+  /// Not in the RoboSats texts: the project's own, in the alert colour: at 9, a contract seen late (another taker, `ContractSeenLate`) whose payout invoice this app never saw: what is compared is the coordinator's own figure, never checked (#182, second security review R9), and the line stays when the coordinator gives no sats or amounts that do not add up (#207, R13). Nothing is blocked.
   ///
   /// In en, this message translates to:
   /// **'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.'**
   String get p2pPayoutRateNotSeen;
+
+  /// Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked »), only when the trade's payment records say the bond was paid with this wallet (#207, functional review U2): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised.
+  ///
+  /// In en, this message translates to:
+  /// **'Your bond was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.'**
+  String get p2pTradeBondPaidHereBack;
+
+  /// Not in the RoboSats texts: the project's own, at 8 for a seller under « If the buyer does not cooperate, you will get back the trade collateral and your bond automatically », when the trade's payment records say the escrow, not the bond, was paid with this wallet (#207, functional review U2); « collateral » as the reference's title of the escrow (« Lock {{amountSats}} Sats as collateral »), « garantie » in French as the project's (#96).
+  ///
+  /// In en, this message translates to:
+  /// **'Your collateral was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.'**
+  String get p2pTradeEscrowPaidHereBack;
+
+  /// Not in the RoboSats texts: the project's own, at 8 for a seller under « If the buyer does not cooperate, you will get back the trade collateral and your bond automatically », when the trade's payment records say both the bond and the escrow were paid with this wallet (#207, functional review U2).
+  ///
+  /// In en, this message translates to:
+  /// **'Your bond and collateral were paid with this wallet: once returned, they come back through the swap service, less its fees, after a delay.'**
+  String get p2pTradeBothPaidHereBack;
+
+  /// Not in the RoboSats texts: the project's own, at 8 for a seller, when the trade's payment records cannot tell whether the bond or the escrow was paid with this wallet (records that cannot be read, a payment whose end is not known): said as a condition, true in every case (#207, functional review U2).
+  ///
+  /// In en, this message translates to:
+  /// **'A bond or collateral paid with this wallet comes back through the swap service, less its fees, after a delay.'**
+  String get p2pTradeBondOrEscrowBackThroughSwap;
+
+  /// Not in the RoboSats texts: the project's own: the page of an order of the book opened while the records of this device's trades could not be read (or were not read within 10 s), in place of « Take Order »: the order may be one this device made, which a take would spend a robot on before the database refuses it (#182, security review R3; #207).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not read its trades: this order may be yours, so it cannot be taken here. Go back and try again.'**
+  String get p2pOrderRecordsUnreadable;
 }
 
 class _P2pLocalizationsDelegate
