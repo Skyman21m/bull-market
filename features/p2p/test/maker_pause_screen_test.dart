@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
+import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_pause.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
@@ -23,6 +24,7 @@ import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import 'support/make_harness.dart';
 import 'support/fakes.dart'
     show FakeTransport, bookOrder, coordinator, parseOrders, testNow;
 import 'support/harness.dart';
@@ -580,5 +582,100 @@ void main() {
         findsOneWidget,
       );
     });
+  });
+
+  group('over the real use case and the coordinator played by the tests', () {
+    testWidgets(
+      'two quick taps on the pause button, then « Unpause Order »: one pause request each reaches the coordinator, the order paused then public, each shown from a read',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(390, 1600) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final harness = await tester.runAsync(MakeHarness.start);
+        if (harness == null) fail('no harness');
+        final record = await tester.runAsync(() async {
+          final made = await harness.makeOrder();
+          final record = switch (made) {
+            Ok(value: MakeStarted(:final record)) => record,
+            _ => throw StateError('$made'),
+          };
+          final first = harness.watchOf(record);
+          await harness.settle();
+          await first.subscription.cancel();
+          harness.coordinator.lockMakerBond(record.orderId);
+          return record;
+        });
+        if (record == null) fail('no record');
+        int pauses() => harness.coordinator.received
+            .where((kind) => kind == ScriptedMakerRequest.pause)
+            .length;
+        final trade = TradeCubit(
+          record,
+          harness.watch.execute,
+          harness.cancel.execute,
+          lastStored: harness.watch.lastStored,
+          pause: harness.pause.execute,
+        )..start();
+        final reads = FakeTransport();
+        final page = TradeOrderPageCubit(
+          coordinator('temple'),
+          RobosatsNetwork.testnet,
+          FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+          FindPublicOrderUsecase(
+            CoordinatorClient(reads, clock: () => testNow),
+          ).execute,
+        );
+        Future<void> settleBoth() async {
+          for (var i = 0; i < 5; i++) {
+            await tester.runAsync(harness.settle);
+            await tester.pump();
+          }
+        }
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MultiBlocProvider(
+                providers: [
+                  BlocProvider.value(value: trade),
+                  BlocProvider.value(value: page),
+                ],
+                child: TradeScreen(
+                  now: () => harness.now,
+                  coordinatorDetails: (_) => throw StateError('not opened'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await settleBoth();
+        expect(find.text('Your order is public (2/5)'), findsOneWidget);
+        await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+        await tester.pump();
+        await tester.tap(find.byTooltip(_pauseTooltip));
+        await tester.tap(find.byTooltip(_pauseTooltip));
+        await settleBoth();
+        expect(pauses(), 1);
+        expect(harness.coordinator.order(record.orderId).status, 2);
+        expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+        await tester.ensureVisible(_unpause);
+        await tester.pump();
+        await tester.tap(_unpause);
+        await tester.tap(_unpause, warnIfMissed: false);
+        await settleBoth();
+        expect(pauses(), 2);
+        expect(harness.coordinator.order(record.orderId).status, 1);
+        expect(find.text('Your order is public (2/5)'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(() async {
+          await trade.close();
+          await page.close();
+        });
+      },
+    );
   });
 }
