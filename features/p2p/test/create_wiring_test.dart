@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:get_it/get_it.dart';
 import 'package:p2p/public/p2p_wallet_port.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/testing.dart';
@@ -12,6 +15,7 @@ import 'package:secrets/testing.dart';
 import 'package:test/test.dart';
 
 import 'support/fakes.dart' show FakeTransport;
+import 'support/trade_harness.dart' show tradeKey;
 
 /// Where the composition registers the create form's cubit (#181, security review R5, R7 M21): only with the Garage, whose `registerGarageKeys` registers `HasGarageKeyUsecase` before it calls `registerTrades`, where the cubit is; so a composition that holds the cubit always holds what it asks for a Garage Key, and one without the Garage holds neither (and `P2pRouter.createPage` is never built there). With or without the wallet's port, the cubit is made: without it, no price check.
 void main() {
@@ -61,4 +65,44 @@ void main() {
       },
     );
   }
+
+  test(
+    'the renewal\'s cubit (#185): made where the create form\'s is, from the record of the order renewed, waiting for its kept terms; not without the Garage',
+    () {
+      expect(
+        compose(garage: false).isRegistered<MakeOrderCubit>(
+          instanceName: MakeOrderCubit.renewalInstance,
+        ),
+        isFalse,
+      );
+      final locator = compose(garage: true);
+      final record = TradeRecord(
+        robot: RobotSlot(
+          RobosatsNetwork.mainnet,
+          switch (GarageKeyFingerprint.of(tradeKey)) {
+            Ok(:final value) => value,
+            Err(:final failure) => throw StateError('$failure'),
+          },
+          0,
+        ),
+        coordinatorAlias: 'temple',
+        coordinatorOnion:
+            Federation.robosats.byAlias('temple')?.mainnet.onion ?? '',
+        orderId: 42,
+        role: TradeRole.buyer,
+        origin: TradeOrigin.madeHere,
+        takenAt: DateTime.utc(2026, 11, 17),
+        confirmedAt: DateTime.utc(2026, 11, 17),
+        closedAt: null,
+      );
+      final cubit = locator<MakeOrderCubit>(
+        param1: record,
+        instanceName: MakeOrderCubit.renewalInstance,
+      );
+      addTearDown(cubit.close);
+      expect(cubit.state.network, RobosatsNetwork.mainnet);
+      expect(cubit.state.renewal, isA<MakeRenewalReading>());
+      expect(cubit.state.renewing, isTrue);
+    },
+  );
 }

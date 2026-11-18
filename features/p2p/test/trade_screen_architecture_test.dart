@@ -150,8 +150,8 @@ void main() {
       expect(_whereBuilt(sources, 'OrderRenewal'), {
         'lib/src/domain/usecases/trade/make_order_usecase.dart',
       });
+      // Declared in the cubit's file, named by the locator, which registers the renewal's cubit, and the router, which builds it.
       expect(_whereNamed(sources, 'renewalInstance'), {
-        'lib/src/presentation/make_order_cubit.dart',
         'lib/src/p2p_locator.dart',
         'lib/src/p2p_router.dart',
       });
