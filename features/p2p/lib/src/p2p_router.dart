@@ -185,6 +185,10 @@ final class P2pRouter {
     final payouts = locator.isRegistered<PayoutCubit>();
     final chats = locator.isRegistered<ChatCubit>();
     final hostRatings = locator.isRegistered<HostRatingCubit>();
+    // The owner's payment rule on a maker buyer's side (#182): with the wallet's port, where the composition registered its cubit.
+    final checksPayoutRate =
+        P2pLocator.paysBondFromWallet(locator) &&
+        locator.isRegistered<PayoutRateCubit>();
     return MultiBlocProvider(
       providers: [
         // The wallet's payment of the bond (#100), only where the wallet's port was lent: without it the screen is as before, « Pay with another wallet » alone.
@@ -194,7 +198,7 @@ final class P2pRouter {
                 locator<BondPaymentCubit>(param1: args.record)..start(),
           ),
         // The owner's payment rule on a maker buyer's side (#182), on the same condition: the Bull wallet's price is read through the port.
-        if (P2pLocator.paysBondFromWallet(locator))
+        if (checksPayoutRate)
           BlocProvider(
             create: (_) => locator<PayoutRateCubit>(param1: args.record),
           ),
@@ -289,7 +293,7 @@ final class P2pRouter {
               extra: P2pTradeRouteArgs(record),
             ),
             book: args.book,
-            checksPayoutRate: P2pLocator.paysBondFromWallet(locator),
+            checksPayoutRate: checksPayoutRate,
           ),
         ),
       ),
