@@ -79,7 +79,8 @@ final class PayoutRateSatsMissing extends PayoutRateState {
 class PayoutRateCubit extends Cubit<PayoutRateState> {
   final TradeRecord record;
   final PayoutRateChecker _check;
-  final DateTime Function() _now;
+  /// The clock of the reads' age.
+  final DateTime Function() now;
 
   /// How old a read may be when its step is shown again: older, it is read again (the create form's own bound, `MakeOrderCubit.staleAfter`).
   static const Duration freshFor = Duration(minutes: 3);
@@ -94,9 +95,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   PayoutRateCubit(
     this.record,
     this._check, {
-    required DateTime Function() now,
-  }) : _now = now,
-       super(const PayoutRateNone());
+    required this.now,
+  }) : super(const PayoutRateNone());
 
   /// The screen shows [seen]: its step's price is read when it was not read for that step yet, or when that read is [freshFor] old.
   Future<void> show(TradeSeen seen) async {
@@ -114,7 +114,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     _seen = seen;
     final readAt = _readAt;
     final stale =
-        readAt != null && !_now().isBefore(readAt.add(freshFor));
+        readAt != null && !now().isBefore(readAt.add(freshFor));
     // No sats in the last read: looked at again at each show, which reads no price until the read gives sats.
     final missing = state is PayoutRateSatsMissing;
     if (step == _asked && !stale && !missing) return;
@@ -141,7 +141,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     final finding = await _check(record, seen);
     // A late answer for a step no longer shown is dropped.
     if (isClosed || _asked != step) return;
-    _readAt = _now();
+    _readAt = now();
     emit(switch (finding) {
       null => const PayoutRateNone(),
       PayoutRateFound(:final check) => PayoutRateChecked(step, check),

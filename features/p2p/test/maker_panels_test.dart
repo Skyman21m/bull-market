@@ -4,15 +4,17 @@ import 'package:bull_ui/testing.dart' show testBullTheme;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
+import 'package:p2p/p2p.dart';
 import 'package:p2p/public/p2p_wallet_port.dart';
-import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
-import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
+import 'package:p2p/src/domain/trade/trade_payout.dart';
+import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
@@ -20,19 +22,26 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
-import 'package:p2p/src/presentation/public_wait.dart';
+import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
+import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/presentation/payout_cubit.dart';
 import 'package:p2p/src/presentation/payout_rate_cubit.dart';
+import 'package:p2p/src/presentation/public_wait.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/presentation/trade_panel.dart';
 import 'package:p2p/src/ui/trade/confirm_cancel_dialog.dart';
 import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
+import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/rate_gap_line.dart';
 import 'package:p2p/src/ui/trade/trade_order_details.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart' show Secrets;
+import 'package:secrets/testing.dart';
 
 import 'support/fakes.dart'
     show FakeTransport, bookOrder, coordinator, parseOrders, testNow;
@@ -467,7 +476,9 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.text('"Unpause Order" is coming in a later version.'),
+          find.text(
+            '"Unpause Order" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.',
+          ),
           findsOneWidget,
         );
         expect(find.text('Your maker bond is locked'), findsOneWidget);
@@ -692,7 +703,7 @@ void main() {
         );
         // Information, in the text colour with the info icon, not an alert.
         expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
-        expect(find.byIcon(Icons.info_outline), findsOneWidget);
+        expect(find.byIcon(Icons.info_outline), findsWidgets);
         // Nothing to pay from this wallet at 9 and after, so nothing offered that the warning would refuse.
         expect(find.text('Pay with this wallet'), findsNothing);
       },
@@ -1040,6 +1051,149 @@ void main() {
     },
   );
 
+  group('the payout panel of a maker buyer, built as the route builds it (#182, functional review)', () {
+    /// The trade page of [_record] as `P2pRouter.tradePage` builds it over the real composition with the wallet's port, the watch, the payout's sends and the rule's price played by the test; returns the payouts sent.
+    Future<List<CheckedPayout>> page(
+      WidgetTester tester,
+      TradeSeen seen, {
+      Locale locale = const Locale('en'),
+    }) async {
+      tester.view
+        ..physicalSize = const Size(390, 2400) * 3
+        ..devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      FakeSecureStoragePlatform().install();
+      final locator = GetIt.asNewInstance();
+      addTearDown(locator.reset);
+      final tor = StreamController<P2pTorState>.broadcast();
+      addTearDown(tor.close);
+      setUpP2pForTesting(
+        locator,
+        transport: FakeTransport(),
+        torStates: () => tor.stream,
+        clock: () => tradeNow,
+        garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+        wallet: FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
+          ..rate = P2pWalletRateRead(91711.15),
+      );
+      final watch = StreamController<TradeWatchState>.broadcast();
+      addTearDown(watch.close);
+      final sent = <CheckedPayout>[];
+      final maker = switch (madeTerms().side) {
+        MadeSide(:final maker) => maker,
+      };
+      final invoice = _payoutInvoice(seen);
+      final reader = Bolt11Reader(Bolt11TestDecoder([invoice]));
+      locator
+        ..unregister<TradeCubit>()
+        ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+          (record, _) => TradeCubit(
+            record,
+            (record, {signals = const Stream.empty(), onScreen = true}) {
+              signals.listen((_) {});
+              return watch.stream;
+            },
+            (record, seen, {bondLoss}) => Completer<Never>().future,
+          ),
+        )
+        ..unregister<PayoutCubit>()
+        ..registerFactoryParam<PayoutCubit, TradeRecord, void>(
+          (record, _) => PayoutCubit(
+            record,
+            PayoutAsk.of,
+            (record, seen, destination) => switch (PayoutAsk.of(
+              record,
+              seen,
+            )) {
+              Err(:final failure) => Err(failure),
+              Ok(:final value) => value.check(
+                destination,
+                now: tradeNow,
+                reader: reader,
+              ),
+            },
+            (record, shown, {onProgress}) async {
+              sent.add(shown);
+              return Ok(PayoutGiven(record, seen));
+            },
+            (_) => () {},
+            now: () => tradeNow,
+          ),
+        )
+        ..unregister<PayoutRateCubit>()
+        ..registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
+          (record, _) => PayoutRateCubit(
+            record,
+            (record, seen) async => CheckPayoutRateUsecase.findingAt(
+              maker,
+              seen,
+              wallet: P2pWalletRateRead(91711.15),
+            ),
+            now: () => tradeNow,
+          ),
+        );
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: captureFrame,
+          child: MaterialApp(
+            theme: testTheme,
+            locale: locale,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child ?? const SizedBox.shrink(),
+            ),
+            home: Scaffold(
+              body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      watch.add(TradeScreenStatuses.watched(seen, of: _record));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      return sent;
+    }
+
+    for (final status in [6, 8]) {
+      testWidgets(
+        'at $status: « Generate Invoice » of the wallet and « Submit »; with the red warning shown, « Submit » stays on and sends',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+            if (status == 8) makerOrderJson(8, last: 90000),
+          ]);
+          final sent = await page(tester, seen);
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          expect(find.text('Generate Invoice'), findsOneWidget);
+          final submit = find.widgetWithText(TradeButton, 'Submit');
+          expect(submit, findsOneWidget);
+          await tester.enterText(
+            find.byKey(PayoutPanel.invoiceField),
+            _payoutInvoice(seen).text,
+          );
+          await tester.pump();
+          expect(tester.widget<TradeButton>(submit).onPressed, isNotNull);
+          await tester.ensureVisible(submit);
+          await tester.pump();
+          await tester.tap(submit);
+          await tester.pump();
+          await tester.pump();
+          expect(sent, hasLength(1));
+          // The red warning still there: nothing was stopped by it.
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          await capture(tester, 'en-createur-$status-panneau-paiement');
+          await tester.pump(const Duration(seconds: 31));
+        },
+      );
+    }
+  });
+
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);
     for (final locale in const [Locale('fr'), Locale('en')]) {
@@ -1257,4 +1411,22 @@ void main() {
       );
     }
   });
+}
+
+/// A Lightning invoice of exactly what the coordinator asks at [seen] with the default routing budget, made by the test from fixed bytes.
+Bolt11TestInvoice _payoutInvoice(TradeSeen seen) {
+  final ask = switch (PayoutAsk.of(_record, seen)) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  };
+  final sats =
+      ask.invoiceSatsFor(RoutingBudgetPpm.referenceDefault) ??
+      (throw StateError('no amount'));
+  return Bolt11TestInvoice(
+    network: Bolt11Network.mainnet,
+    sats: sats.value.toInt(),
+    seed: 71,
+    createdAt: tradeNow,
+    expiry: const Duration(days: 2),
+  );
 }
