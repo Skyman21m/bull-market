@@ -122,10 +122,11 @@ extension TradeWarningL10n on TradeWarning {
       PayoutAmountMismatch() ||
       TakerFeeAboveAnnounced() ||
       MakerFeeAboveAnnounced() => l10n.p2pTradeWarnAmounts(coordinator),
-      // A maker's contract (#178): no screen shows a maker's trade before #182, which may give these their own words.
+      // Breaches of a maker's contract (#178): the coordinator contradicted what it said before, as an unexpected change.
       TradeTakerChanged() ||
-      EscrowNotOfThisContract() ||
-      ContractSeenLate() => l10n.p2pTradeWarnUnexpected,
+      EscrowNotOfThisContract() => l10n.p2pTradeWarnUnexpected,
+      // Information, not a breach (#178): a next contract seen late, in its own words (#182).
+      ContractSeenLate() => l10n.p2pTradeWarnContractSeenLate,
       DeadlineMovedBack() => l10n.p2pTradeWarnDeadline(coordinator),
       InvoiceUnreadable() => l10n.p2pTradeWarnUnreadable(coordinator),
       InvoiceWrongNetwork() => l10n.p2pTradeWarnWrongNetwork(coordinator),
@@ -170,6 +171,8 @@ extension TradeTitleL10n on TradeTitle {
       TradeTitle.lockBondToPublish => l10n.p2pTradeTitleLockBondPublish(
         amountSats,
       ),
+      TradeTitle.orderPublic => l10n.p2pTradeTitleOrderPublic,
+      TradeTitle.orderPaused => l10n.p2pTradeTitleOrderPaused,
       TradeTitle.lockEscrow => l10n.p2pTradeTitleLockEscrow(amountSats),
       TradeTitle.collateralLocked => l10n.p2pTradeTitleCollateralLocked,
       TradeTitle.chatWithBuyer => l10n.p2pTradeTitleChatWithBuyer,

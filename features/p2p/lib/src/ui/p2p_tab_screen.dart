@@ -13,12 +13,12 @@ import 'book_view.dart';
 import 'tor_wait_view.dart';
 import 'widgets/testnet_banner.dart';
 
-/// The destinations of the P2P tab that can be shown: « Create » comes in a later phase.
+/// The destinations of the P2P tab that can be shown: « Create » opens a page of its own (#182).
 enum P2pDestination { offers, garage }
 
 /// The P2P tab: « Offers », « Create » and « Garage » at the top, as the official client's bottom bar, then the destination chosen.
 ///
-/// « Offers » is the wait for Tor, then the book; « Create » is disabled; « Garage » is [garage], which needs no network and so is there while Tor connects.
+/// « Offers » is the wait for Tor, then the book; « Create » opens the create form ([onCreate], #182), disabled where the feature cannot make an order; « Garage » is [garage], which needs no network and so is there while Tor connects.
 /// Without [garage], when the feature was set up without the vault's handle, « Garage » is disabled.
 /// With an active trade on the network ([onOpenTrades] set), the middle entry is « Order » instead of « Create », as the middle button of the official client's phone bar becomes the order of the robot that has one (`basic/NavBar/AppBar/index.tsx:54-73`): it opens the trade, and is not a destination of its own.
 class P2pTabScreen extends StatelessWidget {
@@ -38,6 +38,9 @@ class P2pTabScreen extends StatelessWidget {
   /// Opens the active trade, or the list of them: set while the network has one.
   final VoidCallback? onOpenTrades;
 
+  /// Opens the create form (#182): set where the feature can make an order and the network has no active trade nor pending make (« Create order » is then in the list « Order » opens).
+  final VoidCallback? onCreate;
+
   const P2pTabScreen({
     super.key,
     required this.now,
@@ -48,6 +51,7 @@ class P2pTabScreen extends StatelessWidget {
     required this.onDestination,
     required this.garage,
     this.onOpenTrades,
+    this.onCreate,
   });
 
   @override
@@ -73,6 +77,7 @@ class P2pTabScreen extends StatelessWidget {
                 hasGarage: garage != null,
                 onDestination: onDestination,
                 onOpenOrder: onOpenTrades,
+                onCreate: onCreate,
               ),
             ),
             const Gap(BullSpacing.sm),
@@ -114,12 +119,14 @@ class _Entries extends StatefulWidget {
   final bool hasGarage;
   final ValueChanged<P2pDestination> onDestination;
   final VoidCallback? onOpenOrder;
+  final VoidCallback? onCreate;
 
   const _Entries({
     required this.showsGarage,
     required this.hasGarage,
     required this.onDestination,
     required this.onOpenOrder,
+    required this.onCreate,
   });
 
   @override
@@ -127,20 +134,21 @@ class _Entries extends StatefulWidget {
 }
 
 class _EntriesState extends State<_Entries> {
-  /// How many times « Order » was chosen, the key that puts the bar back on the destination shown.
+  /// How many times « Order » or « Create » was chosen, the key that puts the bar back on the destination shown.
   int _orders = 0;
 
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final onOpenOrder = widget.onOpenOrder;
+    final onCreate = widget.onCreate;
     final middle = onOpenOrder == null ? l10n.p2pNavCreate : l10n.p2pNavOrder;
     return BullSegmented(
       key: ValueKey(_orders),
       items: {l10n.p2pNavOffers, middle, l10n.p2pNavGarage},
       initialValue: widget.showsGarage ? l10n.p2pNavGarage : l10n.p2pNavOffers,
       disabledItems: {
-        if (onOpenOrder == null) l10n.p2pNavCreate,
+        if (onOpenOrder == null && onCreate == null) l10n.p2pNavCreate,
         if (!widget.hasGarage) l10n.p2pNavGarage,
       },
       onSelected: (item) {
@@ -151,6 +159,9 @@ class _EntriesState extends State<_Entries> {
         } else if (onOpenOrder != null && item == l10n.p2pNavOrder) {
           setState(() => _orders++);
           onOpenOrder();
+        } else if (onCreate != null && item == l10n.p2pNavCreate) {
+          setState(() => _orders++);
+          onCreate();
         }
       },
     );

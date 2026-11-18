@@ -3190,7 +3190,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pMakePending(String coordinator) {
-    return 'Bull Market ne sait pas encore si $coordinator a créé votre ordre. Il continue de vérifier.';
+    return 'Bull Market ne sait pas encore si $coordinator a créé votre ordre. Vérifiez-le de nouveau ci-dessous, ou écartez-le.';
   }
 
   @override
@@ -3265,5 +3265,172 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakePriceReadAtPress =>
-      'Le prix du portefeuille Bull était en cours de lecture quand vous avez appuyé sur « Créer l’ordre ». Vérifiez la comparaison des prix sous le formulaire, puis appuyez de nouveau sur « Créer l’ordre ».';
+      'La comparaison des prix vient d’être mise à jour. Vérifiez-la, puis appuyez de nouveau sur « Créer l’ordre ».';
+
+  @override
+  String get p2pTradeTitleOrderPublic => 'Votre ordre est public';
+
+  @override
+  String get p2pTradeTitleOrderPaused => 'Votre ordre est en pause';
+
+  @override
+  String p2pTradePublicWait(String hours, String minutes) {
+    return 'Patientez pendant que les robots consultent le carnet. Cette boîte sonnera 🔊 dès qu’un robot prendra votre ordre ; vous aurez alors $hours h $minutes min pour répondre. Si vous ne répondez pas, vous risquez de perdre votre caution.';
+  }
+
+  @override
+  String get p2pTradePublicExpiresUntaken =>
+      'Si l’ordre expire sans être pris, votre caution vous sera rendue (aucune action nécessaire).';
+
+  @override
+  String p2pTradePublicOrdersFor(String currencyCode) {
+    return 'Ordres publics pour $currencyCode';
+  }
+
+  @override
+  String p2pTradePremiumRank(String rank) {
+    return 'Classement de prime $rank %';
+  }
+
+  @override
+  String p2pTradePremiumRankAmong(String currencyCode) {
+    return 'Parmi les ordres publics en $currencyCode (plus élevé est moins cher)';
+  }
+
+  @override
+  String get p2pTradePausedText =>
+      'Votre ordre public a été mis en pause. Pour le moment, il ne peut être ni vu ni pris par d’autres robots. Vous pouvez choisir de le reprendre à tout moment.';
+
+  @override
+  String get p2pTradeUnpauseLater =>
+      '« Reprendre l’ordre » arrive dans une version ultérieure : pour le reprendre maintenant, utilisez l’app officielle RoboSats avec votre clé de garage.';
+
+  @override
+  String get p2pTradeMakerBondLocked => 'Votre caution de créateur est bloquée';
+
+  @override
+  String get p2pTradeMakerBondUnlocked =>
+      'Votre caution de créateur est débloquée';
+
+  @override
+  String get p2pTradeMakerBondSettled =>
+      'Votre caution de créateur est débitée';
+
+  @override
+  String p2pTradeRateGap(
+    String coordinator,
+    String sats,
+    String amount,
+    String currencyCode,
+    String rate,
+    String gap,
+    String createdRate,
+  ) {
+    return '$coordinator a fixé $sats sats pour $amount $currencyCode quand votre ordre a été pris : un taux de $rate $currencyCode/BTC, $gap par rapport au taux à sa création ($createdRate).';
+  }
+
+  @override
+  String get p2pTradeWarnContractSeenLate =>
+      'Votre ordre a été pris de nouveau et cet échange a avancé sans que Bull Market en voie les étapes, comme quand votre clé de garage sert dans une autre app. Vérifiez l’échange dans cette app avant d’agir ici.';
+
+  @override
+  String p2pPendingMakeChecking(String coordinator) {
+    return 'Vérification auprès de $coordinator…';
+  }
+
+  @override
+  String p2pPendingMakeUnknown(String coordinator) {
+    return 'Bull Market ne sait pas encore si $coordinator a créé cet ordre. Aucune caution n’est demandée tant qu’il ne le sait pas.';
+  }
+
+  @override
+  String get p2pPendingMakeSetAside => 'Écarter';
+
+  @override
+  String get p2pPendingMakeSetAsideTitle => 'Écarter cet ordre ?';
+
+  @override
+  String p2pPendingMakeSetAsideText(String coordinator) {
+    return 'Bull Market cessera de le vérifier. Un ordre peut encore exister chez $coordinator : aucune caution n’a été payée pour lui depuis cette app, et il expire de lui-même quelques minutes après sa création.';
+  }
+
+  @override
+  String get p2pMakePendingFirst =>
+      'Un de vos ordres est encore en cours de création. Vérifiez-le de nouveau ou écartez-le avant d’en créer un autre.';
+
+  @override
+  String p2pMakeSendingStay(String coordinator) {
+    return 'Attendez la réponse de $coordinator avant de quitter : votre ordre est en cours de création.';
+  }
+
+  @override
+  String get p2pPayoutRateReading =>
+      'Lecture du prix du portefeuille Bull pour comparaison…';
+
+  @override
+  String p2pPayoutRateWallet(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, $amount $currency valent $expected sats. Vous recevez $received sats : écart $gap.';
+  }
+
+  @override
+  String p2pPayoutRateWarning(
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'Vous recevez plus de $threshold de sats de moins que prévu : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateNotPriced(String currency, String coordinator) {
+    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix annoncé par $coordinator : vérifiez-le vous-même avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateUnverified(String currency) {
+    return 'Le portefeuille Bull n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou continuer sans cette vérification.';
+  }
+
+  @override
+  String p2pTradeBreachWhatToDo(String coordinator) {
+    return 'Pour suivre cet ordre en sécurité, ouvrez-le dans l’app officielle RoboSats avec votre clé de garage, et contactez $coordinator si quelque chose vous paraît anormal.';
+  }
+
+  @override
+  String p2pPayoutRateSatsMissing(String coordinator) {
+    return 'Taux non vérifié : $coordinator ne donne pas de sats pour cette étape de l’échange. Vérifiez-les vous-même avant de continuer.';
+  }
+
+  @override
+  String get p2pTradeNoRingYet =>
+      'Bull Market ne sonne pas encore : gardez cet écran ouvert, ou revenez-y souvent.';
+
+  @override
+  String get p2pTradeEscrowWaitMaker =>
+      'Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.';
+
+  @override
+  String p2pPayoutRateToldMoved(String coordinator, String told, String asked) {
+    return '$coordinator annonce maintenant $told sats pour ce contrat, mais a demandé avant une facture de $asked sats : Bull Market compare le plus petit des deux. Vérifiez la facture donnée avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateToldNow(String coordinator) {
+    return 'Comparé au chiffre que $coordinator donne maintenant : après un redémarrage de l’app, Bull Market ne garde plus le montant de la facture donnée.';
+  }
+
+  @override
+  String get p2pTradeBondBackThroughSwap =>
+      'Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.';
+
+  @override
+  String get p2pPayoutRateNotSeen =>
+      'Bull Market n’a pas vu la facture de paiement de ce contrat : n’envoyez pas l’argent avant d’avoir vérifié dans l’app officielle.';
 }

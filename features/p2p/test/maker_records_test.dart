@@ -342,6 +342,10 @@ void main() {
           await trades.closePendingMake(make),
           refusedWith<P2pStorageFailure>(),
         );
+        // The refusal leaves the trade open: the write's own guard (`order_id IS NULL`), not only its answer (security review of #182, M02).
+        expect(valueOf(await trades.watchActiveTrades(testnet).first), [
+          record,
+        ]);
         // Closed as any trade, it is never confirmed again.
         final closed = valueOf(await trades.closeTrade(record));
         expect(closed.closedAt, now);

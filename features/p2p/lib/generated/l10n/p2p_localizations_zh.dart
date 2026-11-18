@@ -3146,7 +3146,7 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String p2pMakePending(String coordinator) {
-    return 'Bull Market does not know yet whether $coordinator made your order. It keeps checking.';
+    return 'Bull Market does not know yet whether $coordinator made your order. Check it again below, or set it aside.';
   }
 
   @override
@@ -3211,14 +3211,179 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String p2pMakePriceCheckChanged(String coordinator) {
-    return '$coordinator\'s price changed since it was shown. Check the comparison, then press « Create order » again.';
+    return '$coordinator\'s price changed since it was shown. Check the comparison, then press \"Create order\" again.';
   }
 
   @override
   String get p2pMakePricesReadAgain =>
-      'The limits and prices were read again and changed. Check the form, then press « Create order » again.';
+      'The limits and prices were read again and changed. Check the form, then press \"Create order\" again.';
 
   @override
   String get p2pMakePriceReadAtPress =>
-      'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.';
+      'The price comparison has just been updated. Check it, then press \"Create order\" again.';
+
+  @override
+  String get p2pTradeTitleOrderPublic => 'Your order is public';
+
+  @override
+  String get p2pTradeTitleOrderPaused => 'Your order is paused';
+
+  @override
+  String p2pTradePublicWait(String hours, String minutes) {
+    return 'Be patient while robots check the book. This box will ring 🔊 once a robot takes your order, then you will have ${hours}h ${minutes}m to reply. If you do not reply, you risk losing your bond.';
+  }
+
+  @override
+  String get p2pTradePublicExpiresUntaken =>
+      'If the order expires untaken, your bond will return to you (no action needed).';
+
+  @override
+  String p2pTradePublicOrdersFor(String currencyCode) {
+    return 'Public orders for $currencyCode';
+  }
+
+  @override
+  String p2pTradePremiumRank(String rank) {
+    return 'Premium rank $rank%';
+  }
+
+  @override
+  String p2pTradePremiumRankAmong(String currencyCode) {
+    return 'Among public $currencyCode orders (higher is cheaper)';
+  }
+
+  @override
+  String get p2pTradePausedText =>
+      'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.';
+
+  @override
+  String get p2pTradeUnpauseLater =>
+      '\"Unpause Order\" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.';
+
+  @override
+  String get p2pTradeMakerBondLocked => 'Your maker bond is locked';
+
+  @override
+  String get p2pTradeMakerBondUnlocked => 'Your maker bond is unlocked';
+
+  @override
+  String get p2pTradeMakerBondSettled => 'Your maker bond is settled';
+
+  @override
+  String p2pTradeRateGap(
+    String coordinator,
+    String sats,
+    String amount,
+    String currencyCode,
+    String rate,
+    String gap,
+    String createdRate,
+  ) {
+    return '$coordinator fixed $sats sats for $amount $currencyCode when your order was taken: a rate of $rate $currencyCode/BTC, $gap from the rate when you made it ($createdRate).';
+  }
+
+  @override
+  String get p2pTradeWarnContractSeenLate =>
+      'Your order was taken again and this trade moved on without Bull Market seeing its steps, as when your Garage Key is used in another app. Check the trade in that app before acting here.';
+
+  @override
+  String p2pPendingMakeChecking(String coordinator) {
+    return 'Checking with $coordinator…';
+  }
+
+  @override
+  String p2pPendingMakeUnknown(String coordinator) {
+    return 'Bull Market does not know yet whether $coordinator made this order. No bond is asked until it knows.';
+  }
+
+  @override
+  String get p2pPendingMakeSetAside => 'Set aside';
+
+  @override
+  String get p2pPendingMakeSetAsideTitle => 'Set this order aside?';
+
+  @override
+  String p2pPendingMakeSetAsideText(String coordinator) {
+    return 'Bull Market will stop checking it. An order may still exist at $coordinator: no bond was paid for it from this app, and it expires on its own a few minutes after it was made.';
+  }
+
+  @override
+  String get p2pMakePendingFirst =>
+      'An order of yours is still being created. Check it again or set it aside before creating another.';
+
+  @override
+  String p2pMakeSendingStay(String coordinator) {
+    return 'Wait for $coordinator\'s answer before leaving: your order is being created.';
+  }
+
+  @override
+  String get p2pPayoutRateReading =>
+      'Reading the Bull wallet\'s price for comparison…';
+
+  @override
+  String p2pPayoutRateWallet(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, $amount $currency are worth $expected sats. You receive $received sats: gap $gap.';
+  }
+
+  @override
+  String p2pPayoutRateWarning(
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'You receive more than $threshold fewer sats than that: $received sats received, $expected sats expected. Check it before going on.';
+  }
+
+  @override
+  String p2pPayoutRateNotPriced(String currency, String coordinator) {
+    return 'The Bull wallet has no price for $currency: rate not checked. You are trusting $coordinator\'s price: check it yourself before going on.';
+  }
+
+  @override
+  String p2pPayoutRateUnverified(String currency) {
+    return 'The Bull wallet\'s price of a bitcoin in $currency could not be read: rate not checked. You can try again, or go on without the check.';
+  }
+
+  @override
+  String p2pTradeBreachWhatToDo(String coordinator) {
+    return 'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact $coordinator if something looks wrong.';
+  }
+
+  @override
+  String p2pPayoutRateSatsMissing(String coordinator) {
+    return 'Rate not checked: $coordinator gives no sats for this step of the trade. Check them yourself before going on.';
+  }
+
+  @override
+  String get p2pTradeNoRingYet =>
+      'Bull Market does not ring yet: keep this screen open, or come back to it often.';
+
+  @override
+  String get p2pTradeEscrowWaitMaker =>
+      'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.';
+
+  @override
+  String p2pPayoutRateToldMoved(String coordinator, String told, String asked) {
+    return '$coordinator now gives $told sats for this contract, but asked for an invoice of $asked sats before: Bull Market compares the smaller. Check the invoice you gave before going on.';
+  }
+
+  @override
+  String p2pPayoutRateToldNow(String coordinator) {
+    return 'Compared with the figure $coordinator gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.';
+  }
+
+  @override
+  String get p2pTradeBondBackThroughSwap =>
+      'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
+
+  @override
+  String get p2pPayoutRateNotSeen =>
+      'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.';
 }

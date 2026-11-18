@@ -27,6 +27,12 @@ enum ScriptedMakerRequest {
 
   /// `POST /api/order/` with the action `cancel`.
   cancel,
+
+  /// `POST /api/order/` with the action `update_invoice`: a maker buyer's payout (#182).
+  payout,
+
+  /// `POST /api/order/` with the action `confirm`: a maker buyer's « fiat sent » (#182).
+  confirm,
 }
 
 /// One order made by a robot of the test on [ScriptedMakerCoordinator], as the coordinator stores it.
@@ -64,6 +70,12 @@ final class ScriptedMadeOrder {
 
   /// Whether a cancel returned the maker bond, or settled it.
   bool bondReturned = false;
+
+  /// Whether the buyer confirmed the fiat sent (`order.is_fiat_sent`, `api/logics.py:1696`).
+  bool fiatSent = false;
+
+  /// The payment hash of the last payout invoice taken (#182): the same invoice is refused again (3002), as the reference compares a new invoice with `order.payout` only (`api/logics.py:877-879`), never with earlier ones.
+  String? payoutHash;
   bool bondSettled = false;
 
   ScriptedMadeOrder._({
@@ -385,7 +397,166 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     ScriptedMakerRequest.make => _make(_robotOf(request), request),
     ScriptedMakerRequest.order => _read(_robotOf(request), request),
     ScriptedMakerRequest.cancel => _cancel(_robotOf(request), request),
+    ScriptedMakerRequest.payout => _payout(_robotOf(request), request),
+    ScriptedMakerRequest.confirm => _confirm(_robotOf(request), request),
   };
+
+  /// The maker's made order [request] names, if [robot] is its maker.
+  ScriptedMadeOrder? _ownOrder(
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
+    final id = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final made = id == null ? null : orders[id];
+    if (made == null || made.maker.sessionKey != robot.sessionKey) return null;
+    return made;
+  }
+
+  /// A maker buyer's payout (#182): `update_invoice` as the reference answers it (`api/views.py:617-649`, `Logics.update_invoice`, `api/logics.py:752-890`): the clear signature checked against the robot's kept public key and split as `verify_signed_message` splits it (`api/utils.py:628-648`), the invoice of exactly `invoice_amount` less the routing budget, at 6 (→ 7) or 8 (→ 9); a payment hash given before refused (3002).
+  CoordinatorResponse _payout(RobotIdentity robot, CoordinatorRequest request) {
+    final made = _ownOrder(robot, request);
+    if (made == null) {
+      return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
+    }
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final signed = fields['invoice'];
+    final publicKey = _kept[robot.sessionKey]?['public_key'];
+    final verified = signed is String && publicKey is String
+        ? switch (PgpPublicKey.parse(publicKey)) {
+            Ok(:final value) => value.verifyCleartext(signed),
+            Err(:final failure) => Err<String, PgpFailure>(failure),
+          }
+        : const Err<String, PgpFailure>(PgpArmorMalformed());
+    if (signed is! String || verified is Err) {
+      return _json(400, {
+        'error_code': 1048,
+        'bad_request': 'The PGP signed cleartext message is not valid.',
+      });
+    }
+    const header = '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n';
+    const footer = '-----BEGIN PGP SIGNATURE-----';
+    final parts = signed.split(header);
+    if (parts.length < 2) return _json(500, {'detail': 'IndexError'});
+    final text = parts[1].split(footer).first.trim();
+    if (made.type != 0) {
+      return _json(400, {
+        'error_code': 1017,
+        'bad_request': 'Only the buyer of this order can provide it.',
+      });
+    }
+    if (made.status != 6 && made.status != 8) {
+      return _json(400, {
+        'error_code': 3001,
+        'bad_invoice':
+            'You can only submit an invoice after expiration or 3 failed attempts',
+      });
+    }
+    final payout = _payoutOf(made);
+    final ppm = fields['routing_budget_ppm'];
+    final budget = ppm is int ? ppm : 0;
+    final asked = (payout.toDouble() - payout.toDouble() * (budget / 1000000))
+        .truncate();
+    final facts = switch (decoder.decode(text)) {
+      Ok(:final value) => value,
+      Err() => null,
+    };
+    if (facts == null) {
+      return _json(400, {
+        'bad_invoice': 'Does not look like a valid lightning invoice',
+      });
+    }
+    if (facts.amount.value.toInt() != asked) {
+      return _json(400, {
+        'bad_invoice': 'The invoice provided is not for $asked Sats',
+      });
+    }
+    if (made.payoutHash == facts.paymentHash) {
+      return _json(400, {
+        'error_code': 3002,
+        'bad_invoice': 'You must submit a NEW invoice',
+      });
+    }
+    made.payoutHash = facts.paymentHash;
+    if (made.status == 6) {
+      made.status = 7;
+    } else {
+      // Into the chat: its deadline set from now (`Logics.update_invoice`, `api/logics.py:909-947`, `FIAT_EXCHANGE_DURATION`, 24 h in `robosats/settings.py:310`).
+      _toChat(made);
+    }
+    return _json(200, _orderJson(made, robot, isMaker: true));
+  }
+
+  /// A maker buyer's « fiat sent » (#182): `confirm` at 9 (→ 10), the step's deadline kept (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); refused elsewhere (1027).
+  CoordinatorResponse _confirm(
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
+    final made = _ownOrder(robot, request);
+    if (made == null) {
+      return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
+    }
+    // Refused outside the chat states with 1029 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); the seller's confirmation is the test's ([sellerConfirms]).
+    if (made.type != 0 || (made.status != 9 && made.status != 10)) {
+      return _json(400, {
+        'error_code': 1029,
+        'bad_request': 'You cannot confirm the fiat payment at this stage',
+      });
+    }
+    made
+      ..status = 10
+      ..fiatSent = true;
+    return _json(200, _orderJson(made, robot, isMaker: true));
+  }
+
+  /// The taker, the seller, locks the escrow of order [id] (`Logics.update_status` on the escrow's lock, `api/logics.py:1469-1481`): 6 → 8, 7 → 9 (#182).
+  void lockEscrow(int id) {
+    final made = order(id);
+    switch (made.status) {
+      case 6:
+        made.status = 8;
+      case 7:
+        _toChat(made);
+      default:
+        throw StateError('no escrow to lock at ${made.status}');
+    }
+  }
+
+  /// [made] into the chat (9), its deadline the chat's from now (`api/logics.py:913-916`, `:927-930`, `:1475-1480`).
+  void _toChat(ScriptedMadeOrder made) {
+    made
+      ..status = 9
+      ..expiresAt = clock().toUtc().add(const Duration(hours: 24));
+  }
+
+  /// What a maker buyer receives, `invoice_amount`: `round(last_satoshis − last_satoshis × fee)`, a half to the even one as Python's `round` (`Logics.payout_amount`, `api/logics.py:650-669`).
+  int _payoutOf(ScriptedMadeOrder made) {
+    final value = made.lastSatoshis - made.lastSatoshis * makerFee;
+    final floor = value.floorToDouble();
+    final rest = value - floor;
+    final whole = floor.toInt();
+    if (rest > 0.5) return whole + 1;
+    if (rest < 0.5) return whole;
+    return whole.isEven ? whole : whole + 1;
+  }
+
+  /// The taker, the seller, confirms the fiat received at 10: the escrow settled, both bonds returned, the buyer's invoice being paid, 13 (`Logics.confirm_fiat`, `api/logics.py:1712-1730`, `pay_buyer`) (#182).
+  void sellerConfirms(int id) {
+    final made = order(id);
+    if (made.status != 10) throw StateError('not at 10');
+    made
+      ..status = 13
+      ..bondReturned = true;
+  }
+
+  /// The buyer's invoice paid: the trade succeeded, 14 (`follow_invoices.py`, the payment's success) (#182).
+  void buyerPaid(int id) {
+    final made = order(id);
+    if (made.status != 13) throw StateError('not at 13');
+    made.status = 14;
+  }
 
   CoordinatorResponse _make(RobotIdentity robot, CoordinatorRequest request) {
     if (_kept[robot.sessionKey] == null) {
@@ -615,22 +786,29 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         ..['premium_now'] = made.premium;
     }
     final fee = (made.lastSatoshis * makerFee).round();
-    final payout = made.lastSatoshis - fee;
+    final payout = _payoutOf(made);
     final escrow = made.lastSatoshis + fee;
     data
       ..['is_buyer'] = buyer
       ..['is_seller'] = !buyer
       ..['taker_nick'] = taker?.nickname ?? 'None'
       ..['status_message'] = 'Some label'
-      ..['is_fiat_sent'] = status == 10
+      // `order.is_fiat_sent`: set by the buyer's « confirm » (`api/logics.py:1696`), cleared by « undo » only (`:1748`), so still set after 10 (#182).
+      ..['is_fiat_sent'] = status == 10 || (made.fiatSent && status >= 11)
       ..['is_disputed'] = status == 11 || status >= 16
       ..['ur_nick'] = robot.nickname
       ..['satoshis_now'] = made.lastSatoshis
-      ..['maker_locked'] = status != 0
-      ..['taker_locked'] = status >= 6
-      ..['escrow_locked'] = status == 8 || status >= 9;
-    if (taker != null) data['taker_hash_id'] = taker.hashId.hex;
-    if (const [6, 7, 8, 10, 11, 13, 14, 15].contains(status)) {
+      // Whether each hold invoice is LOCKED now (`api/views.py:327-343`): the maker bond from the publication to the trade's end, returned or settled at 4, 5 and 11 to 18 (`Logics.return_bond`, `settle_bond`, `api/logics.py:1561-1600`; a dispute settles the escrow and both bonds, `:503-506`; the seller's « confirm » returns both bonds before paying the buyer, `:1724-1727`); the taker bond from the contract (6) to 10; the escrow from its lock (8, or 9 after 7) to 10 (#182).
+      ..['maker_locked'] = const [1, 2, 3, 6, 7, 8, 9, 10].contains(status)
+      ..['taker_locked'] = status >= 6 && status <= 10
+      ..['escrow_locked'] = status >= 8 && status <= 10;
+    if (taker != null) {
+      data
+        ..['taker_hash_id'] = taker.hashId.hex
+        ..['taker_nostr_pubkey'] = 'None';
+    }
+    // Only while both bonds are LOCKED, at the statuses `api/views.py:346-361` lists (6, 7, 8, 10, 11, 12, 13, 14, 15, not 9): with the bonds locked only at 6, 7, 8 and 10 (above), never at 9, 11 to 15 (#182).
+    if (const [6, 7, 8, 10].contains(status)) {
       data['trade_satoshis'] = buyer ? payout : escrow;
     }
     switch (status) {
@@ -655,7 +833,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
           ..['invoice_amount'] = payout
           ..['swap_allowed'] = false
           ..['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
-      case 9 || 10:
+      // The chat's fields at 8 for the seller (the buyer's 8 is the payout's branch), 9 and 10 (`api/views.py:430-457`).
+      case 8 || 9 || 10:
         data
           ..['asked_for_cancel'] = false
           ..['chat_last_index'] = 0;
@@ -669,7 +848,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
             _ => 'Expired not taken',
           };
     }
-    if (const [5, 13, 14, 15].contains(status)) {
+    // The renewal's fields (`api/views.py:490-498`); the trade summary of 13 to 15 (`Logics.summarize_trade`) is not played.
+    if (const [5, 13, 14].contains(status) || (status == 15 && !buyer)) {
       data
         ..['public_duration'] = made.publicSeconds
         ..['bond_size'] = _decimal(body['bond_size'], 2);
@@ -740,9 +920,18 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         '/api/robot/' => ScriptedMakerRequest.robot,
         '/api/make/' => ScriptedMakerRequest.make,
         '/api/order/' when request.method == CoordinatorHttpMethod.post =>
-          ScriptedMakerRequest.cancel,
+          switch (_actionOf(request)) {
+            'update_invoice' => ScriptedMakerRequest.payout,
+            'confirm' => ScriptedMakerRequest.confirm,
+            _ => ScriptedMakerRequest.cancel,
+          },
         _ => ScriptedMakerRequest.order,
       };
+
+  static String? _actionOf(CoordinatorRequest request) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    return body is Map<String, Object?> ? body['action'] as String? : null;
+  }
 
   /// `Logics.calc_sats` of [amount] for [made] at the price now, truncated as `satoshis_now` (`api/logics.py:256-275`).
   int _satsOf(ScriptedMadeOrder made, double amount) =>

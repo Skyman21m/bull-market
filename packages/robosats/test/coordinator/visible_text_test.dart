@@ -232,6 +232,16 @@ void main() {
       ]) {
         expect(isShownAsWritten(text), isFalse, reason: jsonEncode(text));
       }
+      // A pile of joiner and virama pairs on one letter is counted as its marks, the joiner starting no new count (third security pass of #181, #182): six pass, as six marks do, seven do not, and a pile never resets the count of the marks before it.
+      String pile(int pairs) => '\u09b0${'\u200d\u09cd' * pairs}\u09af';
+      expect(isShownAsWritten(pile(maxCombiningMarks)), isTrue);
+      for (final text in [
+        pile(maxCombiningMarks + 1),
+        pile(40),
+        '\u09b0\u09be\u09be\u09be\u09be\u09be\u09be\u200d\u09cd\u09af',
+      ]) {
+        expect(isShownAsWritten(text), isFalse, reason: jsonEncode(text));
+      }
     });
 
     test('a variation selector only right after a character that is seen', () {

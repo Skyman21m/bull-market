@@ -188,16 +188,23 @@ Map<String, Object?> makerOrderJson(
     ..['is_seller'] = !buyer
     ..['taker_nick'] = hasTaker ? contractTaker.nickname : 'None'
     ..['status_message'] = 'Some label'
-    ..['is_fiat_sent'] = status == 10
+    // `order.is_fiat_sent`: set by the buyer's « confirm » (`api/logics.py:1696`), cleared by « undo » only (`:1748`): set at 10, and at 13 to 15, reached only through 10 here; 11 (a dispute opened at 9 or 10) is the test's (`changes`).
+    ..['is_fiat_sent'] = const [10, 13, 14, 15].contains(status)
     ..['is_disputed'] = status == 11 || status >= 16
     ..['ur_nick'] = us.nickname
     ..['satoshis_now'] = last
-    ..['maker_locked'] = status != 0
-    ..['taker_locked'] = status >= 6
-    ..['escrow_locked'] = status == 8 || status >= 9;
-  if (hasTaker) data['taker_hash_id'] = contractTaker.hashId.hex;
+    // Whether each hold invoice is LOCKED now (`api/views.py:327-343`): the maker bond from the publication to the trade's end, returned or settled at 4, 5 and 11 to 18 (`Logics.return_bond`, `settle_bond`, `api/logics.py:1561-1600`; a dispute settles the escrow and both bonds, `:503-506`; the seller's « confirm » returns both bonds before paying the buyer, `:1724-1727`); the taker bond from the contract (6) to 10; the escrow from its lock (8, or 9 after 7) to 10.
+    ..['maker_locked'] = const [1, 2, 3, 6, 7, 8, 9, 10].contains(status)
+    ..['taker_locked'] = status >= 6 && status <= 10
+    ..['escrow_locked'] = status >= 8 && status <= 10;
+  if (hasTaker) {
+    data
+      ..['taker_hash_id'] = contractTaker.hashId.hex
+      ..['taker_nostr_pubkey'] = 'None';
+  }
   final trade = buyer ? makerPayoutOf(last) : makerEscrowOf(last);
-  if ([6, 7, 8, 10, 11, 13, 14, 15].contains(status)) {
+  // `trade_satoshis` only while both bonds are LOCKED, at the statuses `api/views.py:346-361` lists (6, 7, 8, 10, 11, 12, 13, 14, 15, not 9): with the bonds locked only at 6, 7, 8 and 10 (above), never at 9, 11 to 15, but for the buyer's expired invoice at 15 (below).
+  if ([6, 7, 8, 10].contains(status)) {
     data['trade_satoshis'] = trade;
   }
   switch (status) {
@@ -216,6 +223,7 @@ Map<String, Object?> makerOrderJson(
         ..['invoice_amount'] = makerPayoutOf(last)
         ..['swap_allowed'] = false
         ..['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
+    // The chat's fields at 8 for the seller (the buyer's 8 is the payout's branch, above), 9 and 10 (`api/views.py:430-457`).
     case 8 || 9 || 10:
       data
         ..['asked_for_cancel'] = false
@@ -236,7 +244,8 @@ Map<String, Object?> makerOrderJson(
             ? 'Invoice not submitted'
             : 'Expired not taken';
   }
-  if (const [5, 13, 14, 15].contains(status)) {
+  // The renewal's fields (`api/views.py:490-498`), not for the buyer at 15, whose branch is the routing's (`:470-488`); the trade summary of 13 to 15 (`Logics.summarize_trade`) is not played.
+  if (const [5, 13, 14].contains(status) || (status == 15 && !buyer)) {
     data
       ..['public_duration'] = 86340
       ..['bond_size'] = '3.00';

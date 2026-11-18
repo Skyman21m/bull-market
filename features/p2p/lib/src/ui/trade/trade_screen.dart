@@ -11,13 +11,17 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
+import '../../domain/trade/maker_terms.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
+import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
+import '../../presentation/payout_rate_cubit.dart';
+import '../../presentation/public_wait.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/take_order_cubit.dart';
 import '../../presentation/trade_l10n.dart';
@@ -29,6 +33,7 @@ import 'trade_first_read_wait.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
+import '../widgets/trade_dialog_body.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
 import 'chat_actions.dart';
@@ -37,6 +42,8 @@ import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'host_rating_section.dart';
 import 'payout_panel.dart';
+import 'payout_rate_line.dart';
+import 'rate_gap_line.dart';
 import 'successful_panel.dart';
 import 'trade_order_details.dart';
 import 'wallet_payment_section.dart';
@@ -93,6 +100,12 @@ class TradeScreen extends StatefulWidget {
   /// Opens the trade a new take of the order started.
   final ValueChanged<TradeRecord>? onTaken;
 
+  /// Every order the book of the tab received when the trade was opened (`BookState.receivedOrders`), for the figures of a maker's public order (« Public orders for … », « Premium rank », `Prompts/PublicWait.tsx:52-78`, #182); `null` when no book was received, and those figures are not shown.
+  final List<PublicOrder>? book;
+
+  /// Whether a [PayoutRateCubit] is above the screen (the wallet's port was lent): the owner's payment rule on a maker buyer's side (#182) is then read when its step is shown.
+  final bool checksPayoutRate;
+
   const TradeScreen({
     super.key,
     required this.now,
@@ -109,6 +122,8 @@ class TradeScreen extends StatefulWidget {
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
+    this.book,
+    this.checksPayoutRate = false,
   });
 
   @override
@@ -140,7 +155,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     );
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _findIfPublic(context.read<TradeCubit>().state);
+      if (!mounted) return;
+      final state = context.read<TradeCubit>().state;
+      _findIfPublic(state);
+      _checkRate(state, appeared: true);
     });
   }
 
@@ -148,6 +166,15 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
   void _findIfPublic(TradeScreenState state) {
     if (TradeView.of(state.watch) case TradeOrderOnly(:final order)) {
       unawaited(context.read<TradeOrderPageCubit>().findPublic(order));
+    }
+  }
+
+  /// The owner's payment rule on a maker buyer's side (#182): the Bull wallet's price read once per contract and step when the screen shows the buyer's payout or « fiat sent », and again when the step [appeared] anew with a read 3 minutes old ([PayoutRateCubit.show]).
+  void _checkRate(TradeScreenState state, {bool appeared = false}) {
+    // Hidden (another tab, a page above it): nothing is read, the step appears anew when shown again.
+    if (!widget.checksPayoutRate || _shown == false) return;
+    if (state.watch case TradeWatchStatus(:final seen)) {
+      unawaited(context.read<PayoutRateCubit>().show(seen, appeared: appeared));
     }
   }
 
@@ -160,9 +187,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     _shown = shown;
     // The watch starts as shown; only a change is told.
     if (first && shown) return;
-    context.read<TradeCubit>().signal(
-      shown ? TradeWatchSignal.onScreen : TradeWatchSignal.offScreen,
-    );
+    final cubit = context.read<TradeCubit>()
+      ..signal(shown ? TradeWatchSignal.onScreen : TradeWatchSignal.offScreen);
+    // Shown again: the rule's step appeared anew, told after the frame, out of the build.
+    if (shown) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkRate(cubit.state, appeared: true);
+      });
+    }
   }
 
   @override
@@ -176,6 +208,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         // The clock first, so that an invoice that expired while the app was away is not drawn for a frame.
         setState(() => _now = widget.now());
+        _checkRate(cubit.state, appeared: true);
         if (_suspended) {
           _suspended = false;
           cubit.resume();
@@ -205,7 +238,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     final coordinator = _coordinatorName(state);
     final lines = _lines(context, state, coordinator);
     return BlocListener<TradeCubit, TradeScreenState>(
-      listener: (context, state) => _findIfPublic(state),
+      listener: (context, state) {
+        _findIfPublic(state);
+        _checkRate(state);
+      },
       child: Material(
         color: colors.background,
         child: SafeArea(
@@ -345,6 +381,18 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         moneyActionRunning:
                             widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
+                        book: widget.book,
+                        payoutRate: widget.checksPayoutRate
+                            ? context.watch<PayoutRateCubit>().state
+                            : null,
+                        onRetryRate: widget.checksPayoutRate
+                            ? () => unawaited(
+                                context.read<PayoutRateCubit>().retry(),
+                              )
+                            : null,
+                        beforeAct: widget.checksPayoutRate
+                            ? context.read<PayoutRateCubit>().beforeAct
+                            : null,
                       ),
                     },
                   ],
@@ -492,6 +540,16 @@ class _Contract extends StatelessWidget {
   final bool moneyActionRunning;
   final WalletBondState Function(BuildContext context)? walletBond;
 
+  /// The book of the tab, for a maker's public order ([TradeScreen.book]).
+  final List<PublicOrder>? book;
+
+  /// The owner's payment rule on a maker buyer's side (#182), `null` without the wallet's port, and its « Retry ».
+  final PayoutRateState? payoutRate;
+  final VoidCallback? onRetryRate;
+
+  /// Before « Submit » and the dialog of « Confirm … sent »: the rule's price read again when old ([PayoutRateCubit.beforeAct]), `false` stopping the press; `null` without the rule.
+  final Future<bool> Function()? beforeAct;
+
   const _Contract({
     super.key,
     required this.contract,
@@ -513,6 +571,10 @@ class _Contract extends StatelessWidget {
     required this.hostRating,
     required this.moneyActionRunning,
     required this.walletBond,
+    required this.book,
+    required this.payoutRate,
+    required this.onRetryRate,
+    required this.beforeAct,
   });
 
   @override
@@ -596,10 +658,28 @@ class _Contract extends StatelessWidget {
         ),
         Divider(height: BullSpacing.lg, color: colors.outlineVariant),
         for (final warning in warnings) ...[
+          // A next contract seen late is information, not an alert (#178, #182): its own words, in the text colour.
+          if (warning is ContractSeenLate)
+            _Line(
+              warning.toText(context, coordinator: coordinator),
+              icon: Icons.info_outline,
+            )
+          else
+            _Line(
+              warning.toText(context, coordinator: coordinator),
+              color: colors.warning,
+              icon: Icons.warning_amber_rounded,
+            ),
+          const Gap(BullSpacing.sm),
+        ],
+        // An order made here whose coordinator contradicted the trade's history (a breach): what to do (design note § 6, row 8, #182).
+        if (record.origin == TradeOrigin.madeHere &&
+            (status.trail.breached ||
+                status.has<CoordinatorInconsistent>())) ...[
           _Line(
-            warning.toText(context, coordinator: coordinator),
+            l10n.p2pTradeBreachWhatToDo(coordinator),
             color: colors.warning,
-            icon: Icons.warning_amber_rounded,
+            icon: Icons.info_outline,
           ),
           const Gap(BullSpacing.sm),
         ],
@@ -617,7 +697,7 @@ class _Contract extends StatelessWidget {
           ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
-          _BondLine(line: contract.bondLine),
+          _BondLine(line: contract.bondLine, maker: contract.maker),
         ],
         if (contract.cancel != TradeCancelOffer.none) ...[
           const Gap(BullSpacing.md),
@@ -684,12 +764,33 @@ class _Contract extends StatelessWidget {
           walletPayment: walletPayment,
         ),
       (TradePrompt.lockEscrow, _) => const SizedBox.shrink(),
+      // A maker's public order (#182): `Prompts/PublicWait.tsx`, without the pause button (#184).
+      (TradePrompt.publicWait, _) => _PublicWait(
+        order: order,
+        book: book,
+        escrowDuration: order?.escrowDuration,
+      ),
+      // A maker's order paused from another app (#182): `Prompts/Paused.tsx`'s text; « Unpause Order » comes with the pause (#184).
+      (TradePrompt.paused, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Line(l10n.p2pTradePausedText),
+          const Gap(BullSpacing.sm),
+          _Line(l10n.p2pTradeUnpauseLater, color: colors.textMuted),
+        ],
+      ),
       (TradePrompt.payoutWait, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Line(l10n.p2pTradePayoutWait),
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pTradePayoutWaitHangOn),
+          const Gap(BullSpacing.sm),
+          _Line(
+            l10n.p2pTradeBondBackThroughSwap,
+            color: colors.textMuted,
+            icon: Icons.info_outline,
+          ),
         ],
       ),
       (TradePrompt.payout, _) => Column(
@@ -709,6 +810,12 @@ class _Contract extends StatelessWidget {
             ),
             const Gap(BullSpacing.sm),
           ],
+          // The owner's payment rule on a maker buyer's side, before « Submit » (#182); the gap from the creation's rate under it, only without a comparison with the Bull wallet's price.
+          ?_rateLines(context),
+          if (_gapLine(context, status) case final gap?) ...[
+            gap,
+            const Gap(BullSpacing.sm),
+          ],
           ?_payoutPanel(context),
         ],
       ),
@@ -720,6 +827,22 @@ class _Contract extends StatelessWidget {
           _Line(l10n.p2pTradeEscrowWait),
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pTradeEscrowWaitHangOn),
+          // The reference's « you will get your bond back automatically » is a taker's case: for a maker the order goes back to the book, its bond locked (#182).
+          if (record.origin == TradeOrigin.madeHere) ...[
+            const Gap(BullSpacing.sm),
+            _Line(
+              l10n.p2pTradeEscrowWaitMaker,
+              color: colors.warning,
+              icon: Icons.info_outline,
+            ),
+          ] else ...[
+            const Gap(BullSpacing.sm),
+            _Line(
+              l10n.p2pTradeBondBackThroughSwap,
+              color: colors.textMuted,
+              icon: Icons.info_outline,
+            ),
+          ],
         ],
       ),
       (TradePrompt.expired, Expired(:final reason?)) => _Line(
@@ -728,30 +851,43 @@ class _Contract extends StatelessWidget {
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
       // The chat step (#95; the seller's, #96), with the chat panel (#93) in its place when the screen was given one.
-      (TradePrompt.chat, _) => ChatStepPanel(
-        seen: contract.seen,
-        order: order,
-        coordinator: coordinator,
-        chatStep: chatStep,
-        cancel: cancel,
-        otherActionRunning: moneyActionRunning,
-        offersFiatSent: offersFiatSent,
-        offersUndoFiatSent: offersUndoFiatSent,
-        offersFiatReceived: offersFiatReceived,
-        offersCollaborativeCancel: true,
-        offersDispute: offersDispute,
-        now: clock,
-        // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
-        chat: chat == null
-            ? null
-            : KeyedSubtree(
-                key: const ValueKey('trade-chat-panel'),
-                child: chat(context, chatRequest),
-              ),
-        // « Audit Chat » and « Export » in « Order options » (#157), over the chat panel's cubit.
-        chatOptions: chatOptions == null
-            ? null
-            : () => chatOptions(context, chatRequest),
+      (TradePrompt.chat, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // The owner's payment rule on a maker buyer's side, before « Confirm … sent » (#182), with its « Retry »; the gap under it, only without a comparison.
+          ?_rateLines(context),
+          if (_gapLine(context, status) case final gap?) ...[
+            gap,
+            const Gap(BullSpacing.sm),
+          ],
+          ChatStepPanel(
+            seen: contract.seen,
+            order: order,
+            coordinator: coordinator,
+            chatStep: chatStep,
+            cancel: cancel,
+            otherActionRunning: moneyActionRunning,
+            offersFiatSent: offersFiatSent,
+            offersUndoFiatSent: offersUndoFiatSent,
+            offersFiatReceived: offersFiatReceived,
+            offersCollaborativeCancel: true,
+            offersDispute: offersDispute,
+            now: clock,
+            // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
+            chat: chat == null
+                ? null
+                : KeyedSubtree(
+                    key: const ValueKey('trade-chat-panel'),
+                    child: chat(context, chatRequest),
+                  ),
+            // « Audit Chat » and « Export » in « Order options » (#157), over the chat panel's cubit.
+            chatOptions: chatOptions == null
+                ? null
+                : () => chatOptions(context, chatRequest),
+            rateLines: _dialogLines(context, status),
+            beforeConfirmFiatSent: beforeAct,
+          ),
+        ],
       ),
       (TradePrompt.sendingSats, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -807,6 +943,109 @@ class _Contract extends StatelessWidget {
     };
   }
 
+  /// The rule's state for the step shown, `null` when it is another step's or there is none: never the check of a step before.
+  PayoutRateState? get _ruleShown {
+    final state = payoutRate;
+    final shown = PayoutRateStep.of(contract.status);
+    final step = switch (state) {
+      PayoutRateReading(:final step) ||
+      PayoutRateChecked(:final step) ||
+      PayoutRateSatsMissing(:final step) ||
+      PayoutRateAmountsDisagree(:final step) => step,
+      _ => null,
+    };
+    if (step == null || step != shown) return null;
+    return state;
+  }
+
+  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
+  List<TradeDialogLine> _dialogLines(BuildContext context, TradeStatus status) {
+    final state = _ruleShown;
+    final order = contract.order;
+    final gap = _gapOf(context, status);
+    return [
+      if (state != null)
+        ...PayoutRateLines.dialogLinesOf(
+          context,
+          state,
+          coordinator: coordinator,
+          amount: PayoutRateLines.amountOf(context, order),
+        ),
+      if (gap != null && !PayoutRateLines.hidesGap(state))
+        (
+          text: gap.text,
+          tone: gap.gap.effectFor(gap.role) == RateGapEffect.unfavourable
+              ? TradeDialogTone.warning
+              : TradeDialogTone.plain,
+        ),
+    ];
+  }
+
+  /// The lines of the owner's payment rule for the step shown, with their « Retry » (#182); `null` where there are none.
+  Widget? _rateLines(BuildContext context) {
+    final state = _ruleShown;
+    if (state == null || state is PayoutRateNone) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: BullSpacing.sm),
+      child: PayoutRateLines(
+        state: state,
+        coordinator: coordinator,
+        amount: PayoutRateLines.amountOf(context, contract.order),
+        onRetry: onRetryRate,
+      ),
+    );
+  }
+
+  /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only when the owner's rule shows no comparison with the Bull wallet's price (a currency it does not price, a price not read, no rule without the wallet's port); `null` for a taker, whose statuses carry no gap.
+  Widget? _gapLine(BuildContext context, TradeStatus status) {
+    if (PayoutRateLines.hidesGap(_ruleShown)) return null;
+    final gap = _gapOf(context, status);
+    if (gap == null) return null;
+    return RateGapLine(gap: gap.gap, role: gap.role, text: gap.text);
+  }
+
+  /// The gap of a maker's contract at 6, 8 and 9, its role and its words, from the status's own figure and the order it was read from.
+  ({TradeRateGap gap, TradeRole role, String text})? _gapOf(
+    BuildContext context,
+    TradeStatus status,
+  ) {
+    final order = contract.order;
+    final (gap, role, amount) = switch (status) {
+      WaitingForBoth(:final rateGap, :final role) ||
+      WaitingForPayout(:final rateGap, :final role) => (
+        rateGap,
+        role,
+        switch ((order?.takenAmount, order?.amount)) {
+          (final taken?, _) => taken,
+          (null, FixedOrderAmount(:final amount)) => amount,
+          _ => null,
+        },
+      ),
+      Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
+        rateGap,
+        role,
+        amount,
+      ),
+      _ => (null, record.role, null),
+    };
+    final sats = order?.satoshisNow;
+    if (gap == null || amount == null || sats == null || order == null) {
+      return null;
+    }
+    return (
+      gap: gap,
+      role: role,
+      text: RateGapLine.textOf(
+        context,
+        gap: gap,
+        coordinator: coordinator,
+        sats: sats,
+        amount: amount,
+        currency: order.currency,
+      ),
+    );
+  }
+
   /// « Trade finished! »: the rating, the on-chain payment's lines and the trade summary (#95).
   Widget _successful(
     BuildContext context,
@@ -834,6 +1073,7 @@ class _Contract extends StatelessWidget {
       coordinator: coordinator,
       now: now,
       cancelling: cancel is CancelRunning,
+      beforeSubmit: beforeAct,
     ),
   )) {
     final panel? => KeyedSubtree(
@@ -844,11 +1084,12 @@ class _Contract extends StatelessWidget {
   };
 }
 
-/// « Your taker bond is locked / unlocked / settled » with the reference's icons (`TradeBox/BondStatus.tsx`).
+/// « Your taker bond is locked / unlocked / settled », « Your maker bond is … » for a maker (`BondStatus.tsx:39`, #182), with the reference's icons (`TradeBox/BondStatus.tsx`).
 class _BondLine extends StatelessWidget {
   final TradeBondLine line;
+  final bool maker;
 
-  const _BondLine({required this.line});
+  const _BondLine({required this.line, required this.maker});
 
   @override
   Widget build(BuildContext context) {
@@ -858,20 +1099,20 @@ class _BondLine extends StatelessWidget {
       TradeBondLine.unlocked => (
         Icons.lock_open,
         colors.success,
-        l10n.p2pTradeBondUnlocked,
+        maker ? l10n.p2pTradeMakerBondUnlocked : l10n.p2pTradeBondUnlocked,
       ),
       TradeBondLine.settled => (
         Icons.balance,
         colors.error,
-        l10n.p2pTradeBondSettled,
+        maker ? l10n.p2pTradeMakerBondSettled : l10n.p2pTradeBondSettled,
       ),
       TradeBondLine.locked || TradeBondLine.hide => (
         Icons.lock,
         colors.primary,
-        l10n.p2pTradeBondLocked,
+        maker ? l10n.p2pTradeMakerBondLocked : l10n.p2pTradeBondLocked,
       ),
     };
-    return Row(
+    final row = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         ExcludeSemantics(child: Icon(icon, size: 18, color: color)),
@@ -884,6 +1125,20 @@ class _BondLine extends StatelessWidget {
               context,
             ).textTheme.headlineMedium?.copyWith(color: color),
           ),
+        ),
+      ],
+    );
+    if (line != TradeBondLine.unlocked) return row;
+    // A bond « unlocked » by the coordinator comes back to this wallet through the swap service (#182, second review).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        const Gap(BullSpacing.xs),
+        _Line(
+          l10n.p2pTradeBondBackThroughSwap,
+          color: colors.textMuted,
+          center: true,
         ),
       ],
     );
@@ -951,6 +1206,9 @@ class _CancelRowState extends State<_CancelRow> {
           if (await CancelOrderDialog.show(context, note: note)) {
             await cubit.cancel(seen);
           }
+        // A maker's public or paused order: cancelled at once, with no dialog, as the reference (`CancelButton.tsx:30`, `:79-80`): its bond is returned by the coordinator (#182).
+        case TradeCancelOffer.immediate:
+          await cubit.cancel(seen);
         case TradeCancelOffer.losesBond:
           final acknowledged = await ConfirmCancelDialog.show(
             context,
@@ -995,7 +1253,8 @@ class _CancelRowState extends State<_CancelRow> {
           // While a payout is given, why « Cancel » is off, for a screen reader and a long press.
           message: widget.moneyActionRunning
               ? l10n.p2pTradeCancelWhilePayout
-              : offer == TradeCancelOffer.free
+              : offer == TradeCancelOffer.free ||
+                    offer == TradeCancelOffer.immediate
               ? l10n.p2pTradeCancelOrder
               : l10n.p2pTradeCancelUnilateral,
           child: TradeButton(
@@ -1308,6 +1567,99 @@ class _DisputePrompt extends StatelessWidget {
         if (contact != null) ...[
           const Gap(BullSpacing.sm),
           CoordinatorContacts(contact: contact),
+        ],
+      ],
+    );
+  }
+}
+
+/// « Your order is public » (`TradeBox/Prompts/PublicWait.tsx:80-147`, #182): the reference's two lines, then « Public orders for {{currencyCode}} » with its count and « Premium rank » with its share, computed from the book of the tab ([PublicWaitStanding]); without the pause button, which comes with the pause (#184). Without an order read, the lines alone; without a book received, no figure.
+class _PublicWait extends StatelessWidget {
+  final CoordinatorOrder? order;
+  final List<PublicOrder>? book;
+  final Duration? escrowDuration;
+
+  const _PublicWait({
+    required this.order,
+    required this.book,
+    required this.escrowDuration,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final formats = P2pFormats.of(context);
+    final seconds = escrowDuration?.inSeconds;
+    final order = this.order;
+    final book = this.book;
+    final standing = order == null || book == null
+        ? null
+        : PublicWaitStanding.of(order, book: book);
+    Widget figure(IconData icon, String primary, String secondary) => Semantics(
+      container: true,
+      child: Row(
+        children: [
+          ExcludeSemantics(child: Icon(icon, color: colors.textMuted)),
+          const Gap(BullSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  primary,
+                  style: text.bodyLarge?.copyWith(color: colors.text),
+                ),
+                Text(
+                  secondary,
+                  style: text.labelMedium?.copyWith(color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (seconds != null) ...[
+          _Line(
+            l10n.p2pTradePublicWait(
+              '${seconds ~/ 3600}',
+              '${(seconds - seconds ~/ 3600 * 3600) ~/ 60}',
+            ),
+          ),
+          const Gap(BullSpacing.sm),
+        ],
+        // The reference's box rings; this app neither rings nor follows the order outside this screen (#182, functional review), said before the order's first read too.
+        _Line(
+          l10n.p2pTradeNoRingYet,
+          color: colors.warning,
+          icon: Icons.info_outline,
+        ),
+        const Gap(BullSpacing.sm),
+        _Line(l10n.p2pTradePublicExpiresUntaken),
+        const Gap(BullSpacing.sm),
+        _Line(
+          l10n.p2pTradeBondBackThroughSwap,
+          color: colors.textMuted,
+          icon: Icons.info_outline,
+        ),
+        if (order != null && standing != null) ...[
+          Divider(height: BullSpacing.lg, color: colors.outlineVariant),
+          figure(
+            Icons.storefront,
+            formats.count(standing.similarOrders),
+            l10n.p2pTradePublicOrdersFor(order.currency.code),
+          ),
+          Divider(height: BullSpacing.lg, color: colors.outlineVariant),
+          figure(
+            Icons.percent,
+            l10n.p2pTradePremiumRank(formats.number(standing.premiumRank)),
+            l10n.p2pTradePremiumRankAmong(order.currency.code),
+          ),
         ],
       ],
     );

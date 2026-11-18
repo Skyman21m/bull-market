@@ -87,6 +87,26 @@ final class MakeOrderUsecase {
   Future<MakeOutcome> resolve(PendingMake make) =>
       _locks.run(make.network, () => _resolve(make));
 
+  /// Sets the pending make [make] aside, on the user's request (#182, reviews of #179): a make that does not resolve (its coordinator left the list or moved, its robot unknown to it, an order it names that is not the robot's, an outcome unknown again and again) is closed in the records, so that nothing reads it again; it is never made again in its place.
+  ///
+  /// Under the lock of the makes, so that it never closes a make a resolution is confirming. [Ok] `true` when it was closed, `false` when the records no longer hold it pending (confirmed or closed since it was listed), nothing written; [Err] when the records could not be read or written. Nothing is sent: an order the make may have made waits at 0 for a bond this app never shows, and the coordinator expires it on its own (300 s by default, `api/logics.py:329-338`).
+  Future<Result<bool, P2pFailure>> dismiss(PendingMake make) =>
+      _locks.run(make.network, () async {
+        if (!make.isActive) return const Ok(false);
+        switch (await _records.watchPendingMakes(make.network).first) {
+          case Ok(:final value) when value.any((m) => m.robot == make.robot):
+            break;
+          case Ok():
+            return const Ok(false);
+          case Err(:final failure):
+            return Err(failure);
+        }
+        return switch (await _records.closePendingMake(make)) {
+          Ok() => const Ok(true),
+          Err(:final failure) => Err(failure),
+        };
+      });
+
   /// The pending makes of [network], oldest first, each with whether its terms were never written (its request never left), for the « Active trades » list (design note § 3.4, « The screens of a pending make »): a new list after each write of the records or the terms, read from the device only; a database that cannot be read gives a [P2pStorageFailure] in place of the list, never an empty one.
   Stream<Result<List<ActivePendingMake>, P2pFailure>> pendingMakes(
     RobosatsNetwork network,

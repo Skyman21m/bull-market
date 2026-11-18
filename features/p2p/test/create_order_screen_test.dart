@@ -14,6 +14,7 @@ import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
+import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
@@ -21,6 +22,7 @@ import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import 'support/captures.dart';
 import 'support/harness.dart';
 import 'support/make_form.dart';
 import 'support/trade_screens.dart';
@@ -66,6 +68,38 @@ final class _Form {
   /// How many times the vault was asked, and its answer held until the test completes it, when set.
   int keysAsked = 0;
   Completer<Result<bool, P2pFailure>>? vault;
+
+  /// The network's pending makes as the records list them (#182): none by default; a test adds to [pendingMakes] and the list follows.
+  final pendingMakes =
+      StreamController<Result<List<ActivePendingMake>, P2pFailure>>();
+  List<ActivePendingMake> listedMakes = const [];
+
+  /// Whether the records list the pending makes at once; `false` keeps them unread until the test adds a list.
+  bool listsAtOnce = true;
+
+  /// What a resolution of a pending make gives, and the makes resolved and set aside.
+  MakeOutcome Function(PendingMake make)? resolution;
+  final List<PendingMake> resolved = [];
+  final List<PendingMake> setAside = [];
+
+  PendingMakesCubit pendingCubit() => PendingMakesCubit(
+    RobosatsNetwork.mainnet,
+    (network) => pendingMakes.stream,
+    (make) async {
+      resolved.add(make);
+      return resolution?.call(make) ??
+          MakePending(make, MakePendingReason.unread);
+    },
+    (make) async {
+      setAside.add(make);
+      listedMakes = [
+        for (final listed in listedMakes)
+          if (listed.make.robot != make.robot) listed,
+      ];
+      pendingMakes.add(Ok(listedMakes));
+      return const Ok(true);
+    },
+  );
 
   MakeOrderCubit cubit() => MakeOrderCubit(
     RobosatsNetwork.mainnet,
@@ -130,30 +164,42 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
   addTearDown(tester.view.reset);
   final cubit = form.cubit();
   addTearDown(cubit.close);
+  if (form.listsAtOnce) form.pendingMakes.add(Ok(form.listedMakes));
+  final pending = form.pendingCubit()..start();
+  addTearDown(pending.close);
   final opened = <TradeRecord>[];
   await tester.pumpWidget(
-    MaterialApp(
-      theme: testTheme,
-      locale: locale,
-      localizationsDelegates: P2pLocalizations.localizationsDelegates,
-      supportedLocales: P2pLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: child ?? const SizedBox.shrink(),
-      ),
-      home: Scaffold(
-        body: BlocProvider.value(
-          value: cubit,
-          child: CreateOrderScreen(
-            initialType: initialType,
-            coordinatorDetails: (_) => throw StateError('not opened'),
-            onMade: opened.add,
+    RepaintBoundary(
+      key: captureFrame,
+      child: MaterialApp(
+        theme: testTheme,
+        locale: locale,
+        localizationsDelegates: P2pLocalizations.localizationsDelegates,
+        supportedLocales: P2pLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child ?? const SizedBox.shrink(),
+        ),
+        home: Scaffold(
+          body: MultiBlocProvider(
+            providers: [
+              BlocProvider.value(value: cubit),
+              BlocProvider.value(value: pending),
+            ],
+            // A screen of its own at each show, so that a press of a show before is not kept.
+            child: CreateOrderScreen(
+              key: UniqueKey(),
+              initialType: initialType,
+              coordinatorDetails: (_) => throw StateError('not opened'),
+              onMade: opened.add,
+            ),
           ),
         ),
       ),
     ),
   );
   unawaited(cubit.start());
+  unawaited(pending.resolveAll());
   await settle(tester);
   return (opened, cubit);
 }
@@ -171,12 +217,17 @@ bool _createEnabled(WidgetTester tester) {
 }
 
 /// Adds [text] with « Add custom payment method ».
-Future<void> _addMethod(WidgetTester tester, String text) async {
-  await tester.tap(find.byTooltip('Add custom payment method'));
+Future<void> _addMethod(
+  WidgetTester tester,
+  String text, {
+  Locale locale = const Locale('en'),
+}) async {
+  final l10n = lookupP2pLocalizations(locale);
+  await tester.tap(find.byTooltip(l10n.p2pMakeAddCustomMethod));
   await settle(tester);
   await tester.enterText(find.byType(TextField).last, text);
   await tester.pump();
-  await tester.tap(find.text('Add payment method'));
+  await tester.tap(find.text(l10n.p2pMakeAddPaymentMethod));
   await settle(tester);
 }
 
@@ -187,10 +238,14 @@ Future<void> _typeAmount(WidgetTester tester) async {
 }
 
 /// « Buy », 100, Revolut, a premium of 2 %.
-Future<void> _fill(WidgetTester tester, {String amount = '100'}) async {
-  await tester.tap(find.text('Buy'));
+Future<void> _fill(
+  WidgetTester tester, {
+  String amount = '100',
+  Locale locale = const Locale('en'),
+}) async {
+  await tester.tap(find.text(lookupP2pLocalizations(locale).p2pMakeBuy));
   await tester.enterText(_amountField, amount);
-  await _addMethod(tester, 'Revolut');
+  await _addMethod(tester, 'Revolut', locale: locale);
   await tester.enterText(_premiumField, '2');
   await settle(tester);
 }
@@ -808,7 +863,7 @@ void main() {
         expect(find.byType(StoreTokenDialog), findsNothing);
         expect(
           find.text(
-            'The limits and prices were read again and changed. Check the form, then press « Create order » again.',
+            'The limits and prices were read again and changed. Check the form, then press "Create order" again.',
           ),
           findsOneWidget,
         );
@@ -821,7 +876,7 @@ void main() {
     );
 
     testWidgets(
-      'pressed while the Bull wallet\'s price is being read: the read awaited, the fields locked, then the line it shows and no dialog; a second press goes on (second security review of #181, R8)',
+      'pressed while the Bull wallet\'s price is being read, a line that warns: the read awaited, the fields locked, then the line it shows and no dialog; a second press goes on (second security review of #181, R8)',
       (tester) async {
         final form = _Form()..holdPrices = true;
         await _show(tester, form);
@@ -846,7 +901,7 @@ void main() {
         expect(find.byType(StoreTokenDialog), findsNothing);
         expect(
           find.text(
-            'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.',
+            'The price comparison has just been updated. Check it, then press "Create order" again.',
           ),
           findsOneWidget,
         );
@@ -859,6 +914,96 @@ void main() {
         await tester.tap(find.text('Done'));
         await settle(tester);
         expect(form.seenSent.single.verdict, MakePriceVerdict.below);
+      },
+    );
+
+    for (final (name, wallet, verdict) in [
+      (
+        'not priced',
+        const P2pWalletRateNotPriced(),
+        MakePriceVerdict.notPriced,
+      ),
+      (
+        'not read',
+        const P2pWalletRateUnavailable(),
+        MakePriceVerdict.unverified,
+      ),
+    ]) {
+      testWidgets(
+        'pressed while the Bull wallet\'s price is being read, a line $name: stopped, said (third functional pass of #181)',
+        (tester) async {
+          final form = _Form()..holdPrices = true;
+          await _show(tester, form);
+          await _fill(tester);
+          await tester.tap(_create);
+          await settle(tester);
+          form.heldPrices.single.complete(
+            MakePriceCheck.of(
+              currency: eur,
+              coordinatorPrice: 91711.15,
+              wallet: wallet,
+            ),
+          );
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          expect(
+            find.text(
+              'The price comparison has just been updated. Check it, then press "Create order" again.',
+            ),
+            findsOneWidget,
+          );
+          await tester.tap(_create);
+          await settle(tester);
+          await tester.tap(find.text('Done'));
+          await settle(tester);
+          expect(form.seenSent.single.verdict, verdict);
+        },
+      );
+    }
+
+    testWidgets(
+      'pressed while the Bull wallet\'s price is being read, a line with no warning: no stop, straight to « Store your garage key » with that line (third functional pass of #181)',
+      (tester) async {
+        final form = _Form()..holdPrices = true;
+        await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        form.heldPrices.single.complete(
+          MakePriceCheck.of(
+            currency: eur,
+            coordinatorPrice: 91711.15,
+            wallet: P2pWalletRateRead(92000),
+          ),
+        );
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+        expect(
+          find.textContaining('The price comparison has just been updated'),
+          findsNothing,
+        );
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.made, hasLength(1));
+        expect(form.seenSent.single.verdict, MakePriceVerdict.within);
+      },
+    );
+
+    testWidgets(
+      'the English stop lines write "Create order" in straight quotes, as the rest of the app\'s English',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        final l10n = lookupP2pLocalizations(const Locale('en'));
+        for (final text in [
+          l10n.p2pMakePriceCheckChanged('Temple of Sats'),
+          l10n.p2pMakePricesReadAgain,
+          l10n.p2pMakePriceReadAtPress,
+        ]) {
+          expect(text, contains('"Create order"'));
+          expect(text, isNot(contains('«')));
+        }
       },
     );
 
@@ -903,7 +1048,7 @@ void main() {
         await settle(tester);
         expect(
           find.text(
-            'Temple of Sats\'s price changed since it was shown. Check the comparison, then press « Create order » again.',
+            'Temple of Sats\'s price changed since it was shown. Check the comparison, then press "Create order" again.',
           ),
           findsOneWidget,
         );
@@ -1105,7 +1250,7 @@ void main() {
       await settle(tester);
       expect(
         find.text(
-          'Bull Market does not know yet whether Temple of Sats made your order. It keeps checking.',
+          'Bull Market does not know yet whether Temple of Sats made your order. Check it again below, or set it aside.',
         ),
         findsOneWidget,
       );
@@ -1115,6 +1260,210 @@ void main() {
       await settle(tester);
       expect(form.made, hasLength(1));
     });
+
+    testWidgets(
+      'the make written pending shows above the form, resolved there; a resolution that confirms it opens its trade',
+      (tester) async {
+        final form = _Form()
+          ..answer = Ok(
+            MakePending(_pending, MakePendingReason.outcomeUnknown),
+          );
+        final (opened, _) = await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        form.listedMakes = [ActivePendingMake(_pending, neverSent: false)];
+        form.pendingMakes.add(Ok(form.listedMakes));
+        await settle(tester);
+        expect(find.text('Creating your order…'), findsWidgets);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(
+          find.text(
+            'An order of yours is still being created. Check it again or set it aside before creating another.',
+          ),
+          findsOneWidget,
+        );
+        final started = await _startedOf(tester);
+        form.resolution = (make) => started;
+        await tester.tap(find.text('Retry'));
+        await settle(tester);
+        expect(form.resolved, [_pending]);
+        expect(opened, [TradeScreenStatuses.record]);
+      },
+    );
+
+    for (final setAside in [true, false]) {
+      testWidgets(
+        'an outcome unknown, then its pending make ${setAside ? 'set aside' : 'found not made'}: the form free again on the same page, « Creating your order… » gone (functional review C1)',
+        (tester) async {
+          final form = _Form()
+            ..answer = Ok(
+              MakePending(_pending, MakePendingReason.outcomeUnknown),
+            );
+          await _show(tester, form);
+          await _fill(tester);
+          await tester.tap(_create);
+          await settle(tester);
+          await tester.tap(find.text('Done'));
+          await settle(tester);
+          form.listedMakes = [ActivePendingMake(_pending, neverSent: false)];
+          form.pendingMakes.add(Ok(form.listedMakes));
+          await settle(tester);
+          expect(_createEnabled(tester), isFalse);
+          form.resolution = setAside
+              ? (make) => MakePending(make, MakePendingReason.notRecognized)
+              : (make) {
+                  form.listedMakes = [];
+                  form.pendingMakes.add(const Ok([]));
+                  return MakeNotMade(make);
+                };
+          await tester.tap(find.text('Retry'));
+          await settle(tester);
+          if (setAside) {
+            await tester.tap(find.text('Set aside'));
+            await settle(tester);
+            await tester.tap(find.text('Set aside').last);
+            await settle(tester);
+          } else {
+            expect(find.text('The order was not created.'), findsOneWidget);
+          }
+          expect(find.text('Creating your order…'), findsNothing);
+          expect(find.textContaining('Check it again below'), findsNothing);
+          expect(tester.widget<TextField>(_amountField).enabled, isTrue);
+          expect(_createEnabled(tester), isTrue);
+          // Nothing was made beside it, nor in its place.
+          expect(form.made, hasLength(1));
+        },
+      );
+    }
+
+    testWidgets(
+      'the make being sent, the network\'s pending makes emptied (the make confirmed or closed meanwhile): the form stays locked, no second make (security review of #182, M17)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.answers, hasLength(1));
+        // The make written pending, then confirmed or closed before its answer reaches the form.
+        form.pendingMakes.add(
+          Ok([ActivePendingMake(_pending, neverSent: false)]),
+        );
+        await settle(tester);
+        form.pendingMakes.add(const Ok([]));
+        await settle(tester);
+        expect(_createEnabled(tester), isFalse);
+        expect(tester.widget<TextField>(_amountField).enabled, isFalse);
+        await tester.tap(_create, warnIfMissed: false);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(form.made, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'a press drawn before a pending make of the network reached the button: the press\'s own guard sends nothing (security review of #182, M04)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        expect(_createEnabled(tester), isTrue);
+        form.pendingMakes.add(
+          Ok([ActivePendingMake(_pending, neverSent: false)]),
+        );
+        // The list reaches the cubit, not yet a frame: the button drawn is still the enabled one.
+        await tester.idle();
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(form.keysAsked, 0);
+        expect(form.made, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'while the records are not read yet: « Create order » off, and no line says a make is pending (functional review R6)',
+      (tester) async {
+        final form = _Form()..listsAtOnce = false;
+        await _show(tester, form);
+        await _fill(tester);
+        expect(_createEnabled(tester), isFalse);
+        expect(find.textContaining('still being created'), findsNothing);
+        form.pendingMakes.add(const Ok([]));
+        await settle(tester);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'opened again with a pending make of the network: « Create order » disabled until it is resolved or set aside, never made beside it (security review of #181, S2)',
+      (tester) async {
+        final form = _Form()
+          ..listedMakes = [ActivePendingMake(_pending, neverSent: false)];
+        await _show(tester, form);
+        // Resolved once when the form opens, left pending.
+        expect(form.resolved, [_pending]);
+        await _fill(tester);
+        expect(_createEnabled(tester), isFalse);
+        expect(
+          find.text(
+            'An order of yours is still being created. Check it again or set it aside before creating another.',
+          ),
+          findsWidgets,
+        );
+        await tester.tap(_create, warnIfMissed: false);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(form.made, isEmpty);
+        // Set aside: the form is free again, and nothing was made in its place.
+        await tester.tap(find.text('Set aside'));
+        await settle(tester);
+        await tester.tap(find.text('Set aside').last);
+        await settle(tester);
+        expect(form.setAside, [_pending]);
+        expect(_createEnabled(tester), isTrue);
+        expect(form.made, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'going back while the make is sent: the page stays and says to wait; the answer then opens the trade (security review of #181, S1)',
+      (tester) async {
+        final form = _Form();
+        final (opened, _) = await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.answers, hasLength(1));
+        final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+        await navigator.maybePop();
+        await settle(tester);
+        expect(find.byType(CreateOrderScreen), findsOneWidget);
+        expect(
+          find.text(
+            'Wait for Temple of Sats\'s answer before leaving: your order is being created.',
+          ),
+          findsOneWidget,
+        );
+        // Under « Create order », where the user is, not at the top of the page (functional review R7).
+        expect(
+          tester
+              .getTopLeft(find.textContaining('before leaving: your order'))
+              .dy,
+          greaterThan(tester.getTopLeft(_create).dy),
+        );
+        form.answers.single.complete(Ok(await _startedOf(tester)));
+        await settle(tester);
+        expect(opened, [TradeScreenStatuses.record]);
+      },
+    );
   });
 
   testWidgets('the French texts', (tester) async {
@@ -1138,6 +1487,98 @@ void main() {
       findsOneWidget,
     );
   });
+
+  group('captures (with P2P_CAPTURE_DIR)', () {
+    setUpAll(loadCaptureFonts);
+    for (final locale in const [Locale('fr'), Locale('en')]) {
+      testWidgets(
+        'the stop lines, the pending make and the wait of the form in ${locale.languageCode}',
+        skip: captureDirectory == null,
+        (tester) async {
+          final code = locale.languageCode;
+          Future<void> bottom() async {
+            await tester.drag(
+              find.byType(Scrollable).first,
+              const Offset(0, -3000),
+            );
+            await settle(tester);
+          }
+
+          // The Bull wallet's price read at the press, a line that warns.
+          var form = _Form()..holdPrices = true;
+          await _show(tester, form, locale: locale);
+          await _fill(tester, locale: locale);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pMakeCreateOrder),
+          );
+          await settle(tester);
+          form.heldPrices.single.complete(
+            MakePriceCheck.of(
+              currency: eur,
+              coordinatorPrice: 91711.15,
+              wallet: P2pWalletRateRead(110000),
+            ),
+          );
+          await settle(tester);
+          await capture(tester, '$code-creer-arret-prix-lu');
+          // Limits read again and changed.
+          form = _Form();
+          await _show(tester, form, locale: locale);
+          await _fill(tester, locale: locale);
+          form
+            ..now = form.now.add(const Duration(minutes: 4))
+            ..rate = const P2pWalletRateUnavailable();
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pMakeCreateOrder),
+          );
+          await settle(tester);
+          await capture(tester, '$code-creer-arret-relu');
+          // The price changed at the make.
+          form = _Form()
+            ..answer = Err(
+              MakePriceCheckChanged(
+                await tester.runAsync(() => limitsAt({2: 9171.115})) ??
+                    (throw StateError('no limits')),
+                MakePriceSeen.of(currency: eur, coordinatorPrice: 9171.115),
+              ),
+            );
+          await _show(tester, form, locale: locale);
+          await _fill(tester, locale: locale);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pMakeCreateOrder),
+          );
+          await settle(tester);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pCommonDone),
+          );
+          await settle(tester);
+          await capture(tester, '$code-creer-arret-prix-change');
+          // A pending make of the network above the form.
+          form = _Form()
+            ..listedMakes = [ActivePendingMake(_pending, neverSent: false)];
+          await _show(tester, form, locale: locale);
+          await capture(tester, '$code-creer-creation-en-attente');
+          // Going back while the make is sent.
+          form = _Form();
+          await _show(tester, form, locale: locale);
+          await _fill(tester, locale: locale);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pMakeCreateOrder),
+          );
+          await settle(tester);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pCommonDone),
+          );
+          await settle(tester);
+          await tester.state<NavigatorState>(find.byType(Navigator)).maybePop();
+          await settle(tester);
+          await capture(tester, '$code-creer-envoi-attendre');
+          await bottom();
+          await capture(tester, '$code-creer-envoi-attendre-bas');
+        },
+      );
+    }
+  });
 }
 
 final PendingMake _pending = PendingMake(
@@ -1148,3 +1589,16 @@ final PendingMake _pending = PendingMake(
   writtenAt: DateTime.utc(2026, 11, 17),
   closedAt: null,
 );
+
+/// A make confirmed: the trade of the tests at its first status.
+Future<MakeStarted> _startedOf(WidgetTester tester) async {
+  final status = await tester.runAsync(() async {
+    final statuses = await TradeScreenStatuses.make();
+    return (await statuses.bondStep()).status;
+  });
+  return MakeStarted(
+    TradeScreenStatuses.record,
+    status ?? (throw StateError('no status')),
+    stored: true,
+  );
+}

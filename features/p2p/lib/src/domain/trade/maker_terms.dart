@@ -298,6 +298,30 @@ final class MakerTerms {
   /// The maker bond the order implies, in sats at the rate of the creation, for display: an estimate, the bond invoice states the amount to lock.
   double get expectedBond => _expectedBond.toDouble();
 
+  /// What a maker buyer receives for a contract whose sats the coordinator fixed at [lastSatoshis] (`last_satoshis`, `satoshis_now` to a participant, `api/views.py:324`): its `invoice_amount`, `round(last_satoshis − last_satoshis × maker fee)` (`Logics.payout_amount`, `api/logics.py:650-669`), with the maker fee of these terms, rounded half to even as Python's `round`; computed exactly, where the coordinator computes in floating point, so a figure on a half could differ by one sat (#182: the sats of the owner's rule at 9, where the coordinator gives no `trade_satoshis`, `api/views.py:346-356`).
+  Sats payoutAt(Sats lastSatoshis) {
+    final exact =
+        ExactRatio.bigInt(lastSatoshis.value) *
+        (ExactRatio.integer(1) - _exact(makerFee));
+    final floor = exact.floor();
+    final rest = exact - ExactRatio.bigInt(floor);
+    final half = ExactRatio.integer(1) / ExactRatio.integer(2);
+    final up = rest > half || (rest == half && floor.isOdd);
+    return Sats(up ? floor + BigInt.one : floor);
+  }
+
+  /// The sats [amount] of this order's currency is worth at [price] with the order's premium, exactly (the contract's sats at the wallet's price, #182): `null` for a price outside the bounds of a price of the creation, as [bondAtPrice].
+  ExactRatio? satsAtPrice(double price, FiatAmount amount) {
+    if (!price.isFinite ||
+        price < minCreatedPrice ||
+        price >= maxCreatedPrice) {
+      return null;
+    }
+    final rate =
+        _exact(price) * (_hundred + _exact(request.premium.percent)) / _hundred;
+    return _exact(amount.value) * _satsPerBitcoin / rate;
+  }
+
   /// The maker bond the order implies at [price], a price of one bitcoin in the order's currency that is not the creation's, exactly: the bond size of the sats of the order's largest amount (the maximum of a range) at [price] with the order's premium, the formula of [_expectedBond] (`Logics.calc_sats`, `api/logics.py:256-259`; `api/logics.py:1266-1268`), before any rounding.
   ///
   /// For the owner's payment rule of 2026-11-17 (design note § 3.3, `WalletRateCheck`), at the wallet's own price at the moment of paying. `null` when [price] is not a price [create] would take for [createdPrice] (not finite, below [minCreatedPrice], not below [maxCreatedPrice]), so that every figure computed from it is finite.
