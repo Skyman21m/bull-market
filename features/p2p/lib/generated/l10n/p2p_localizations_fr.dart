@@ -3151,6 +3151,77 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Vous devez remplir le formulaire correctement';
 
   @override
+  String get p2pMakeAmountRange => 'Plage de montant';
+
+  @override
+  String get p2pMakeExactAmount => 'Montant exact';
+
+  @override
+  String get p2pMakeFrom => 'De';
+
+  @override
+  String get p2pMakeTo => 'à';
+
+  @override
+  String get p2pMakeDescription => 'Description';
+
+  @override
+  String get p2pMakeDescriptionHint =>
+      'Vous pouvez ajouter plus de détails sur votre ordre.';
+
+  @override
+  String p2pMakeDescriptionTooLong(String max) {
+    return 'Doit faire $max caractères ou moins';
+  }
+
+  @override
+  String get p2pMakePassword => 'Mot de passe';
+
+  @override
+  String get p2pMakePasswordHint =>
+      'Vous pouvez définir un mot de passe pour que seuls les robots avec qui vous le partagez puissent prendre cet ordre.';
+
+  @override
+  String get p2pMakePublicDuration => 'Durée publique (HH:mm)';
+
+  @override
+  String get p2pMakePublicDurationTitle => 'Durée de l\'ordre public';
+
+  @override
+  String get p2pMakeEscrowDuration =>
+      'Minuterie de dépôt de garantie/facture (HH:mm)';
+
+  @override
+  String get p2pMakeEscrowDurationTitle =>
+      'Durée de l’étape de garantie/facture';
+
+  @override
+  String get p2pMakeBondSize => 'Taille de la caution de fidélité';
+
+  @override
+  String get p2pMakeBondSizeHint =>
+      'Définissez votre engagement personnel, augmentez pour une meilleure assurance de sécurité';
+
+  @override
+  String p2pMakeBondSizeValue(String percent) {
+    return '$percent %';
+  }
+
+  @override
+  String get p2pMakeLocation => 'Emplacement face à face';
+
+  @override
+  String get p2pMakeLocationHint =>
+      'Ajouter une géolocalisation pour un échange en face à face';
+
+  @override
+  String get p2pMakeWhyRangeInvalid => 'La plage de montant n\'est pas valide.';
+
+  @override
+  String get p2pMakeWhyDescriptionInvalid =>
+      'La description n\'est pas valide.';
+
+  @override
   String p2pMakeRateCompare(
     String walletPrice,
     String currency,

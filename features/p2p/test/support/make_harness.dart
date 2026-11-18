@@ -251,18 +251,31 @@ final class MakeHarness {
     String? description,
     double premium = 2,
     RobosatsCurrency? currency,
+    (double, double)? range,
+    Duration publicDuration = const Duration(seconds: 86340),
+    Duration escrowDuration = const Duration(seconds: 10800),
+    double bondSize = 3,
   }) {
     T some<T>(T? value) => value ?? (throw StateError('missing'));
+    final OrderAmount asked = switch (range) {
+      (final min, final max) => some(
+        RangeOrderAmount.tryCreate(
+          some(FiatAmount.tryCreate(min)),
+          some(FiatAmount.tryCreate(max)),
+        ),
+      ),
+      null => FixedOrderAmount(some(FiatAmount.tryCreate(amount))),
+    };
     return some(
       MakeOrderRequest.tryCreate(
         type: sell ? OrderType.sell : OrderType.buy,
         currency: currency ?? some(RobosatsCurrency.fromId(2)),
-        amount: FixedOrderAmount(some(FiatAmount.tryCreate(amount))),
+        amount: asked,
         paymentMethod: 'Revolut Instant SEPA',
         premium: some(Premium.tryCreate(premium)),
-        publicDuration: const Duration(seconds: 86340),
-        escrowDuration: const Duration(seconds: 10800),
-        bondSize: some(BondSize.tryCreate(3)),
+        publicDuration: publicDuration,
+        escrowDuration: escrowDuration,
+        bondSize: some(BondSize.tryCreate(bondSize)),
         description: description,
       ),
     );

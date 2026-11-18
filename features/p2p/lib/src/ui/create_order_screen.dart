@@ -1619,10 +1619,7 @@ class _AmountRange extends StatelessWidget {
                       value.clamp(limits.min, limits.max).toDouble();
                   final start = within(check.rangeMin ?? limits.min);
                   final end = within(check.rangeMax ?? limits.max);
-                  final values = RangeValues(
-                    start <= end ? start : end,
-                    end,
-                  );
+                  final values = RangeValues(start <= end ? start : end, end);
                   String thumb(double value) =>
                       bound(value, value < 100 ? 2 : 3);
                   return RangeSlider(
@@ -1630,15 +1627,10 @@ class _AmountRange extends StatelessWidget {
                     min: limits.min,
                     max: limits.max,
                     divisions: 5000,
-                    labels: RangeLabels(
-                      thumb(values.start),
-                      thumb(values.end),
-                    ),
+                    labels: RangeLabels(thumb(values.start), thumb(values.end)),
                     onChanged: enabled
-                        ? (next) => onSlide(
-                            MakerRange(next.start, next.end),
-                            limits,
-                          )
+                        ? (next) =>
+                              onSlide(MakerRange(next.start, next.end), limits)
                         : null,
                   );
                 },
@@ -1693,9 +1685,9 @@ class _RangeField extends StatelessWidget {
           const _DecimalsFormatter(MakerFormCheck.amountDecimals),
         ],
         textAlign: TextAlign.center,
-        style: Theme.of(
-          context,
-        ).textTheme.bodyLarge?.copyWith(color: error ? colors.error : colors.text),
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+          color: error ? colors.error : colors.text,
+        ),
         onChanged: (_) => onChanged(),
         decoration: InputDecoration(
           isDense: true,
@@ -1808,7 +1800,9 @@ class _Description extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final error = check.descriptionTooLong
-        ? l10n.p2pMakeDescriptionTooLong('${MakerFormCheck.maxDescriptionLength}')
+        ? l10n.p2pMakeDescriptionTooLong(
+            '${MakerFormCheck.maxDescriptionLength}',
+          )
         : check.descriptionNotShown
         ? l10n.p2pMakeCustomMethodNotShown
         : null;
@@ -1886,10 +1880,7 @@ class _DurationField extends StatelessWidget {
   Future<void> _pick(BuildContext context) async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay(
-        hour: value.inHours,
-        minute: value.inMinutes % 60,
-      ),
+      initialTime: TimeOfDay(hour: value.inHours, minute: value.inMinutes % 60),
       helpText: title,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
@@ -1913,7 +1904,10 @@ class _DurationField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label, style: text.labelLarge?.copyWith(color: colors.textMuted)),
+          Text(
+            label,
+            style: text.labelLarge?.copyWith(color: colors.textMuted),
+          ),
           const Gap(BullSpacing.xxs),
           Material(
             color: colors.surface,

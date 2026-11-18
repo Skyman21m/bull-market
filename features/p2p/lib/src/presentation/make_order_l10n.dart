@@ -28,8 +28,7 @@ extension MakerFormBlockL10n on MakerFormBlock {
       MakerFormBlock.premiumInvalid => l10n.p2pMakeWhyPremiumInvalid,
       MakerFormBlock.premiumNotANumber => l10n.p2pMakeWhyPremiumNotANumber,
       MakerFormBlock.noPaymentMethod => l10n.p2pMakeWhyNoPaymentMethod,
-      MakerFormBlock.descriptionInvalid =>
-        l10n.p2pMakeWhyDescriptionInvalid,
+      MakerFormBlock.descriptionInvalid => l10n.p2pMakeWhyDescriptionInvalid,
       MakerFormBlock.formIncorrect => l10n.p2pMakeWhyFormIncorrect,
     };
   }

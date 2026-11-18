@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:robosats/robosats.dart';
 
+import 'exact_ratio.dart';
 import 'maker_terms.dart';
 import 'trade_make.dart';
 
@@ -372,7 +373,9 @@ final class MakerRange {
     var min = next.min;
     var max = next.max;
     final cap =
-        limits.max * MakerAmountLimits.maxThreshold / MakerFormCheck.minRangeRatio;
+        limits.max *
+        MakerAmountLimits.maxThreshold /
+        MakerFormCheck.minRangeRatio;
     if (min > cap) min = cap;
     final floor =
         MakerFormCheck.minRangeRatio *
@@ -547,7 +550,11 @@ final class MakerFormCheck {
   static Duration escrowDurationOf(Duration duration) =>
       _minutesWithin(duration, minEscrowDuration, maxEscrowDuration);
 
-  static Duration _minutesWithin(Duration duration, Duration min, Duration max) {
+  static Duration _minutesWithin(
+    Duration duration,
+    Duration min,
+    Duration max,
+  ) {
     final minutes = Duration(minutes: duration.inMinutes);
     if (minutes < min) return min;
     if (minutes > max) return max;
@@ -562,6 +569,19 @@ final class MakerFormCheck {
     if (value < minBondSize) return minBondSize;
     if (value > maxBondSize) return maxBondSize;
     return value;
+  }
+
+  /// Whether [high] is from [minRangeRatio] to [maxRangeRatio] times [low], both at least as large as each bound, compared on the decimals the fields show ([ExactRatio]), so that 200 and 320 are exactly 1.6 and allowed, where floating point could put either bound one ulp off.
+  static bool _ratioWithin(double low, double high) {
+    final min = ExactRatio.ofDouble(low);
+    final max = ExactRatio.ofDouble(high);
+    final lowest = ExactRatio.ofDouble(minRangeRatio);
+    final highest = ExactRatio.ofDouble(maxRangeRatio);
+    if (min == null || max == null || lowest == null || highest == null) {
+      return false;
+    }
+    final ratio = max / min;
+    return ratio >= lowest && ratio <= highest;
   }
 
   static bool _isDuration(Duration duration, Duration min, Duration max) =>
@@ -671,17 +691,14 @@ final class MakerFormCheck {
       if (low == null || low <= 0) rangeMinError = true;
       if (high == null || high <= 0) rangeMaxError = true;
       if (low != null && high != null && low > 0 && high > 0) {
-        final crossed =
-            high < low ||
-            low * minRangeRatio > high ||
-            low < high / maxRangeRatio;
-        if (crossed) {
+        if (!_ratioWithin(low, high)) {
           rangeMinError = true;
           rangeMaxError = true;
         }
       }
       if (limits != null) {
-        if (low != null && low < limits.min * MakerAmountLimits.rangeMinMargin) {
+        if (low != null &&
+            low < limits.min * MakerAmountLimits.rangeMinMargin) {
           rangeMinError = true;
         }
         if (high != null &&
@@ -771,7 +788,11 @@ final class MakerFormCheck {
         ? BondSize.tryCreate(bondSizePercent)
         : null;
     final durationsValid =
-        _isDuration(input.publicDuration, minPublicDuration, maxPublicDuration) &&
+        _isDuration(
+          input.publicDuration,
+          minPublicDuration,
+          maxPublicDuration,
+        ) &&
         _isDuration(input.escrowDuration, minEscrowDuration, maxEscrowDuration);
     final request =
         orderAmount == null ||

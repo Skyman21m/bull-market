@@ -4698,7 +4698,7 @@ abstract class P2pLocalizations {
   /// **'Enable advanced options'**
   String get p2pMakeEnableAdvanced;
 
-  /// Not in the RoboSats texts: the project's own: under « Enable advanced options », shown disabled in this version so that the reference's defaults apply (23:59 public, 3 hours for each step, a bond of 3 %, a fixed amount) (design note § 2.1, #181).
+  /// Not in the RoboSats texts: the project's own: under « Password » and « Face to Face Location », shown disabled until #189 (design note § 2.2; under « Enable advanced options » in #181, which #183 enabled).
   ///
   /// In en, this message translates to:
   /// **'Coming in a later version.'**
@@ -4973,6 +4973,126 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'You must fill the form correctly'**
   String get p2pMakeWhyFormIncorrect;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 478), with its French (`fr.json`, line 478) in the catalogue's case. The label of the switch of the advanced options when a range is chosen (`MakerForm.tsx:833-849`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Amount Range'**
+  String get p2pMakeAmountRange;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 491), with its French (`fr.json`, line 491). The label of the switch of the advanced options when an exact amount is chosen (`MakerForm.tsx:848`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Exact Amount'**
+  String get p2pMakeExactAmount;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 470), with its French (`fr.json`, line 470). Before the range's minimum (`AmountRange.tsx:147`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get p2pMakeFrom;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 471), with its French (`fr.json`, line 471). Between the range's minimum and maximum (`AmountRange.tsx:178`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'to'**
+  String get p2pMakeTo;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 484), with its French (`fr.json`, line 484). The label of the order's description in the advanced options (`MakerForm.tsx:1062`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get p2pMakeDescription;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 531); its `fr.json` keeps it in English, the French is the project's. The tooltip of « Description » (`MakerForm.tsx:1058`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'You can add more details about your order.'**
+  String get p2pMakeDescriptionHint;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 497), its figure 240 as a placeholder; its `fr.json` keeps it in English, the French is the project's. Under « Description » when it is longer than {max} characters (`MakerForm.tsx:1079-1083`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Must be equal to or shorter than {max} characters'**
+  String p2pMakeDescriptionTooLong(String max);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 507), with its French (`fr.json`, line 507). The label of the order's password in the advanced options (`MakerForm.tsx:1096`), shown disabled with « Coming in a later version. » until #189.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get p2pMakePassword;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 532); its `fr.json` keeps it in English, the French is the project's. The tooltip of « Password » (`MakerForm.tsx:1091-1093`).
+  ///
+  /// In en, this message translates to:
+  /// **'You can optionally set a password so that only the robots you share it with can take this order.'**
+  String get p2pMakePasswordHint;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 512), with its French (`fr.json`, line 512). The label of the time the order stays public (`MakerForm.tsx:1139`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Public Duration (HH:mm)'**
+  String get p2pMakePublicDuration;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 513), with its French (`fr.json`, line 513). The title of the picker of « Public Duration (HH:mm) » (`MakerForm.tsx:1121`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Public order length'**
+  String get p2pMakePublicDurationTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 488), with its French (`fr.json`, line 488). The label of the time each side has for its step once the order is taken (`MakerForm.tsx:1175`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Escrow/Invoice Timer (HH:mm)'**
+  String get p2pMakeEscrowDuration;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 489); its French (`fr.json`, line 489, « dépôt fiduciaire ») is replaced by the project's, in the vocabulary of the catalogue (« garantie »). The title of the picker of « Escrow/Invoice Timer (HH:mm) » (`MakerForm.tsx:1156`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Escrow/invoice step length'**
+  String get p2pMakeEscrowDurationTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 494); its French (`fr.json`, line 494, « garantie de fidélité ») says « caution » here, the word of the catalogue for a bond. The label of the bond's slider (`MakerForm.tsx:1227`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Fidelity Bond Size'**
+  String get p2pMakeBondSize;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 515), with its French (`fr.json`, line 515). The tooltip of « Fidelity Bond Size » (`MakerForm.tsx:1217`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'Set the skin-in-the-game, increase for higher safety assurance'**
+  String get p2pMakeBondSizeHint;
+
+  /// As the official client writes the bond's value and marks (`valueLabelFormat={(x) => x + '%'}`, `MakerForm.tsx:1238-1245`), {percent} the size written with the locale's separator; French puts a space before the sign, as the catalogue does (#183).
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}%'**
+  String p2pMakeBondSizeValue(String percent);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 492), with its French (`fr.json`, line 492). The button of a face-to-face trade's location (`MakerForm.tsx:1022`), shown disabled with « Coming in a later version. » until #189.
+  ///
+  /// In en, this message translates to:
+  /// **'Face to Face Location'**
+  String get p2pMakeLocation;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 477), with its French (`fr.json`, line 477). The tooltip of « Face to Face Location » (`MakerForm.tsx:1004`).
+  ///
+  /// In en, this message translates to:
+  /// **'Add geolocation for a face to face trade'**
+  String get p2pMakeLocationHint;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 524), with its French (`fr.json`, line 524). Why « Create order » is disabled (`MakerForm.tsx:543-545`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'The amount range is not valid.'**
+  String get p2pMakeWhyRangeInvalid;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 526), with its French (`fr.json`, line 526). Why « Create order » is disabled (`MakerForm.tsx:561-563`, #183).
+  ///
+  /// In en, this message translates to:
+  /// **'The description is not valid.'**
+  String get p2pMakeWhyDescriptionInvalid;
 
   /// Not in the RoboSats texts: the project's own, the owner's words of 2026-11-17, the coordinator named alone after the functional review of #181 (no « de {coordinator} », which French would elide before a vowel): under « Order current rate » in the create form (#181), the Bull wallet's price of a bitcoin beside the chosen coordinator's, both without the premium, and how far the coordinator's is from the wallet's. {walletPrice} and {coordinatorPrice} are the prices, {currency} the currency code, {coordinator} the coordinator's name, {gap} the gap with its sign and percent sign.
   ///
