@@ -583,29 +583,28 @@ void main() {
       },
     );
 
-    testWidgets(
-      'status 7: « Your info looks good! (3/5) », « Cancel » at risk',
-      (tester) async {
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-          makerOrderJson(6),
-          makerOrderJson(7),
-        ]);
-        await _show(tester, seen);
-        expect(find.textContaining('(3/5)'), findsOneWidget);
-        // The reference's « bond back automatically » is a taker's case: what happens to a maker, under it.
-        expect(
-          find.text(
-            'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.',
-          ),
-          findsOneWidget,
-        );
-        await _reveal(tester, find.text('Cancel'));
-        expect(find.text('Cancel'), findsOneWidget);
-        expect(find.text('Your maker bond is locked'), findsOneWidget);
-      },
-    );
+    testWidgets('status 7: « Your info looks good! (3/5) », « Cancel » at risk', (
+      tester,
+    ) async {
+      final seen = await _at([
+        makerOrderJson(0),
+        makerOrderJson(1),
+        makerOrderJson(6),
+        makerOrderJson(7),
+      ]);
+      await _show(tester, seen);
+      expect(find.textContaining('(3/5)'), findsOneWidget);
+      // The reference's « bond back automatically » is a taker's case: what happens to a maker, under it.
+      expect(
+        find.text(
+          'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.',
+        ),
+        findsOneWidget,
+      );
+      await _reveal(tester, find.text('Cancel'));
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Your maker bond is locked'), findsOneWidget);
+    });
 
     testWidgets(
       'status 9: « (4/5) », and « Confirm … sent » says the gap in its dialog before « Confirm »',
@@ -1067,7 +1066,10 @@ void main() {
             matching: find.textContaining('fewer sats than that'),
           );
           expect(warning, findsOneWidget);
-          expect(tester.widget<Text>(warning).style?.color, testBullTheme.error);
+          expect(
+            tester.widget<Text>(warning).style?.color,
+            testBullTheme.error,
+          );
           // The comparison shown: no gap from the creation's rate in the dialog either.
           expect(
             find.descendant(
