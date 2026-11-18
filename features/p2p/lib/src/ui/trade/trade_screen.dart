@@ -705,6 +705,16 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status, paid),
+        // A pause or an unpause that has run [TradeCubit.stillWaitingAfter]: what it waits for (#184).
+        if (pause case PauseRunning(waitedLong: true)) ...[
+          const Gap(BullSpacing.sm),
+          _Line(
+            l10n.p2pRobotStillWaiting(coordinator),
+            color: colors.textMuted,
+            center: true,
+            live: true,
+          ),
+        ],
         // What a pause or an unpause gave (#184), under the prompt of whatever status the order is now read at: the order may have been taken or expired meanwhile.
         if (pause case PauseIdle(:final notice?, :final wanted)) ...[
           const Gap(BullSpacing.md),
@@ -755,12 +765,7 @@ class _Contract extends StatelessWidget {
     seen: contract.seen,
     paused: contract.prompt == TradePrompt.paused,
     running: pause is PauseRunning,
-    waitedLong: switch (pause) {
-      PauseRunning(:final waitedLong) => waitedLong,
-      _ => false,
-    },
     blocked: actionRunning && pause is! PauseRunning,
-    coordinator: coordinator,
   );
 
   Widget _prompt(
@@ -1795,26 +1800,22 @@ class _PublicWait extends StatelessWidget {
 
 /// The pause button of a maker's public order, an icon with the reference's tooltip « Pause the public order » (`Prompts/PublicWait.tsx:116-132`), or « Unpause Order » with its icon (`Prompts/Paused.tsx:30-35`) for a paused one (#184).
 ///
-/// A tap hands [seen], the status shown, to [TradeCubit.pause], which does nothing while an action of the trade runs: a second tap, quick or not, sends nothing more. While it runs, the button spins and is off, and after [TradeCubit.stillWaitingAfter] the robot panel's « Still waiting for {coordinator}. Tor can take a minute. » shows under it.
+/// A tap hands [seen], the status shown, to [TradeCubit.pause], which does nothing while an action of the trade runs: a second tap, quick or not, sends nothing more. While it runs, the button spins and is off (after [TradeCubit.stillWaitingAfter], the prompt says what it waits for under it).
 class _PauseButton extends StatelessWidget {
   final TradeSeen seen;
 
   /// « Unpause Order » rather than the pause icon.
   final bool paused;
   final bool running;
-  final bool waitedLong;
 
   /// Another action of the trade runs (a cancel): off, not spinning.
   final bool blocked;
-  final String coordinator;
 
   const _PauseButton({
     required this.seen,
     required this.paused,
     required this.running,
-    required this.waitedLong,
     required this.blocked,
-    required this.coordinator,
   });
 
   @override
@@ -1822,7 +1823,7 @@ class _PauseButton extends StatelessWidget {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     void press() => unawaited(context.read<TradeCubit>().pause(seen));
-    final button = paused
+    return paused
         // Busy, it ignores taps and keeps its colour, as the reference's loading button.
         ? TradeButton(
             label: l10n.p2pTradeUnpauseOrder,
@@ -1846,22 +1847,6 @@ class _PauseButton extends StatelessWidget {
                   )
                 : const Icon(Icons.pause_circle),
           );
-    if (!waitedLong) return button;
-    return Column(
-      crossAxisAlignment: paused
-          ? CrossAxisAlignment.stretch
-          : CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        button,
-        const Gap(BullSpacing.xs),
-        _Line(
-          l10n.p2pRobotStillWaiting(coordinator),
-          color: colors.textMuted,
-          live: true,
-        ),
-      ],
-    );
   }
 }
 
