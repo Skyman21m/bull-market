@@ -69,6 +69,7 @@ import 'domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/make_order_usecase.dart';
+import 'domain/usecases/trade/pause_order_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
@@ -443,6 +444,15 @@ final class P2pLocator {
         locator(),
       ),
     );
+    // The pause and « Unpause Order » of a public order made here (#184), as the cancel, under the order's lock.
+    locator.registerFactory<PauseOrderUsecase>(
+      () => PauseOrderUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+      ),
+    );
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
     );
@@ -548,6 +558,7 @@ final class P2pLocator {
         undoFiatSent: locator<ChatStepActionUsecase>().undoFiatSent,
         startDispute: locator<ChatStepActionUsecase>().startDispute,
         rate: locator<ChatStepActionUsecase>().rate,
+        pause: locator<PauseOrderUsecase>().execute,
       ),
     );
     // The payout panel of one shown trade (#91), the only caller of the payout use case and of the key's hold.

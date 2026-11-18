@@ -463,8 +463,8 @@ void main() {
         await _reveal(tester, find.text('Copy URL'));
         expect(find.text('Copy URL'), findsOneWidget);
         expect(find.text('Cancel'), findsOneWidget);
-        // No pause button in this slice (#184).
-        expect(find.text('Pause the public order'), findsNothing);
+        // A cubit given no pause offers no pause button (#184: `maker_pause_screen_test.dart` gives one).
+        expect(find.byTooltip('Pause the public order'), findsNothing);
         _noInternalNames(tester);
       },
     );
@@ -577,7 +577,7 @@ void main() {
     );
 
     testWidgets(
-      'status 2, paused from another app: « Your order is paused (2/5) », the reference\'s text, unpausing coming later',
+      'status 2: « Your order is paused (2/5) », the reference\'s text, and no « Unpause Order » from a cubit given no pause (#184)',
       (tester) async {
         final seen = await _at([
           makerOrderJson(0),
@@ -592,12 +592,8 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(
-          find.text(
-            '"Unpause Order" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.text('Unpause Order'), findsNothing);
+        expect(find.textContaining('later version'), findsNothing);
         expect(find.text('Your maker bond is locked'), findsOneWidget);
       },
     );

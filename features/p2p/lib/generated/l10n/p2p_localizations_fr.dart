@@ -3420,8 +3420,55 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Votre ordre public a été mis en pause. Pour le moment, il ne peut être ni vu ni pris par d’autres robots. Vous pouvez choisir de le reprendre à tout moment.';
 
   @override
-  String get p2pTradeUnpauseLater =>
-      '« Reprendre l’ordre » arrive dans une version ultérieure : pour le reprendre maintenant, utilisez l’app officielle RoboSats avec votre clé de garage.';
+  String get p2pTradePauseOrder => 'Mettre en pause l’ordre public';
+
+  @override
+  String get p2pTradeUnpauseOrder => 'Reprendre l’ordre';
+
+  @override
+  String get p2pTradePauseNeedsRead =>
+      'Attendez que l’ordre soit relu avant de le mettre en pause ou de le reprendre.';
+
+  @override
+  String get p2pTradePauseMovedOn =>
+      'L’ordre a changé avant l’envoi de votre demande : rien n’a été envoyé. Il est affiché tel qu’il est maintenant.';
+
+  @override
+  String p2pTradePauseReadFailed(String coordinator) {
+    return 'L’ordre n’a pas pu être relu chez $coordinator : rien n’a été envoyé.';
+  }
+
+  @override
+  String p2pTradePauseNotDoneAfter(String reason) {
+    return '$reason Rien n’a changé.';
+  }
+
+  @override
+  String p2pTradePauseRefusedBy(String coordinator) {
+    return '$coordinator a refusé la demande : rien n’a changé.';
+  }
+
+  @override
+  String p2pTradePauseUnknown(String coordinator) {
+    return 'Bull Market ne sait pas encore si votre demande est arrivée chez $coordinator. Il continue de vérifier, et ne la renvoie jamais de lui-même.';
+  }
+
+  @override
+  String p2pTradePauseNotReached(String coordinator) {
+    return '$coordinator a accepté la demande, mais l’ordre relu n’est pas là où vous l’avez demandé : il est affiché tel qu’il est maintenant.';
+  }
+
+  @override
+  String get p2pTradeStillPublic =>
+      'Votre ordre est public : les robots peuvent le voir et le prendre.';
+
+  @override
+  String get p2pTradeMayBePublic =>
+      'Tant qu’une lecture ne le montre pas en pause, considérez votre ordre comme public : les robots peuvent le prendre.';
+
+  @override
+  String get p2pTradePublicAgain =>
+      'Votre ordre est de nouveau public, alors qu’il avait été mis en pause depuis cette app : les robots peuvent le voir et le prendre.';
 
   @override
   String get p2pTradeMakerBondLocked => 'Votre caution de créateur est bloquée';

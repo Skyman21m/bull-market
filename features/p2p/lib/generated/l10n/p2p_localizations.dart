@@ -5328,7 +5328,7 @@ abstract class P2pLocalizations {
   /// **'Your order is public'**
   String get p2pTradeTitleOrderPublic;
 
-  /// The official client's text: the maker's title at status 2 (`TradeBox/index.tsx:406-420`, #182), the English of its code, which neither `en.json` nor `fr.json` lists; the French is the project's. Shown only when the order was paused from another app: pausing comes with #184.
+  /// The official client's text: the maker's title at status 2 (`TradeBox/index.tsx:406-420`, #182), the English of its code, which neither `en.json` nor `fr.json` lists; the French is the project's. Since #184 the order is paused from this app too (the pause button of status 1).
   ///
   /// In en, this message translates to:
   /// **'Your order is paused'**
@@ -5370,11 +5370,77 @@ abstract class P2pLocalizations {
   /// **'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.'**
   String get p2pTradePausedText;
 
-  /// Not in the RoboSats texts: the project's own: in place of the reference's « Unpause Order » button (`Prompts/Paused.tsx`), which comes with the pause (#184); a paused order is seen only when it was paused from another app (#182).
+  /// The official client's text (`frontend/static/locales/en.json:775`, the tooltip of the pause button, `TradeBox/Prompts/PublicWait.tsx:118-130`, #184): the tooltip and the screen reader's label of the pause button of a maker's public order; the French is `fr.json:775`'s with « ordre » for « commande ».
   ///
   /// In en, this message translates to:
-  /// **'\"Unpause Order\" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.'**
-  String get p2pTradeUnpauseLater;
+  /// **'Pause the public order'**
+  String get p2pTradePauseOrder;
+
+  /// The official client's text (`frontend/static/locales/en.json:763`, `TradeBox/Prompts/Paused.tsx:30-35`, #184): the button of a maker's paused order; the French is `fr.json:763`'s with « ordre » for « commande ».
+  ///
+  /// In en, this message translates to:
+  /// **'Unpause Order'**
+  String get p2pTradeUnpauseOrder;
+
+  /// Not in the RoboSats texts: the project's own: the status shown comes from no order read, or was not stored: nothing was sent (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again before pausing or unpausing it.'**
+  String get p2pTradePauseNeedsRead;
+
+  /// Not in the RoboSats texts: the project's own: the order read just before the pause or the unpause no longer showed the status the user saw (paused or unpaused from another app, taken, expired): the request, a toggle, would have gone the other way, so nothing was sent (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'The order changed before your request left: nothing was sent. It is shown as it is now.'**
+  String get p2pTradePauseMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: the read just before the pause or the unpause failed or could not be stored (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be read again from {coordinator}: nothing was sent.'**
+  String p2pTradePauseReadFailed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: a pause or an unpause that never left, after its reason (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} Nothing changed.'**
+  String p2pTradePauseNotDoneAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator refused the pause or the unpause before acting (1032, 1033, 1047, the empty 400, the authentication's): never the coordinator's text (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} refused the request: nothing changed.'**
+  String p2pTradePauseRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the answer to a pause or an unpause was lost or unreadable, and the read after it does not show the order where the user asked (#184): the request is a toggle, so it is never sent again by itself.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether your request reached {coordinator}. It keeps checking, and never sends it again by itself.'**
+  String p2pTradePauseUnknown(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator accepted a pause or an unpause and the order is read elsewhere: toggled twice or the other way (paused or unpaused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} accepted the request, but the order is not read where you asked: it is shown as it is now.'**
+  String p2pTradePauseNotReached(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: after a pause that did not happen, while the order is read public: a public order can be taken, the maker's bond then at stake (design note § 3.4, #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Your order is public: robots can see it and take it.'**
+  String get p2pTradeStillPublic;
+
+  /// Not in the RoboSats texts: the project's own: after a pause whose outcome is not known: the order may still be public, and can then be taken (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'Until a read shows it paused, count on your order being public: robots can take it.'**
+  String get p2pTradeMayBePublic;
+
+  /// Not in the RoboSats texts: the project's own: an order this screen saw paused by its own pause, read public again with no tap here asking it (from another app with the same Garage Key, or a coordinator) (#184).
+  ///
+  /// In en, this message translates to:
+  /// **'Your order is public again, although it was paused from this app: robots can see it and take it.'**
+  String get p2pTradePublicAgain;
 
   /// The official client's text, built as `Your ${isMaker ? 'maker' : 'taker'} bond is ${status}` (`TradeBox/BondStatus.tsx:39`, #182), which `en.json` and `fr.json` do not list for a maker; the French is the project's, in the words of `p2pTradeBondLocked`.
   ///

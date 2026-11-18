@@ -359,14 +359,13 @@ void main() {
       expect(referring((r) => r == 'request CoordinatorClient.cancelOrder'), {
         '${_tradeUseCases}cancel_trade_usecase.dart',
       });
-      // The make (#179): sent by its own use case only, as the take; the pause by none before its own (#184).
+      // The make (#179): sent by its own use case only, as the take; the pause by its own too (#184).
       expect(referring((r) => r == 'request CoordinatorClient.makeOrder'), {
         _makeOrderUseCase,
       });
-      expect(
-        referring((r) => r == 'request CoordinatorClient.pauseOrder'),
-        isEmpty,
-      );
+      expect(referring((r) => r == 'request CoordinatorClient.pauseOrder'), {
+        '${_tradeUseCases}pause_order_usecase.dart',
+      });
       for (final member in ['submitPayoutInvoice', 'submitPayoutAddress']) {
         expect(referring((r) => r == 'request CoordinatorClient.$member'), {
           '${_tradeUseCases}submit_payout_usecase.dart',
