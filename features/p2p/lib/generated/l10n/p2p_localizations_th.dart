@@ -1308,6 +1308,10 @@ class P2pLocalizationsTh extends P2pLocalizations {
   }
 
   @override
+  String get p2pTradePayoutPromptNoAmount =>
+      'Before letting you send the fiat, we want to make sure you are able to receive the BTC.';
+
+  @override
   String get p2pTradeTitleInfoGood => 'Your info looks good!';
 
   @override
@@ -3172,6 +3176,34 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pMakeWhyDescriptionInvalid => 'The description is not valid.';
+
+  @override
+  String p2pMakeOptionsSentOpen(String options) {
+    return 'Advanced options sent with this order: $options.';
+  }
+
+  @override
+  String p2pMakeOptionsSentClosed(String options) {
+    return 'Advanced options closed, but still sent with this order: $options.';
+  }
+
+  @override
+  String get p2pMakeOptionSentDescription => 'a description';
+
+  @override
+  String p2pMakeOptionSentPublicDuration(String duration) {
+    return 'public duration $duration';
+  }
+
+  @override
+  String p2pMakeOptionSentEscrowDuration(String duration) {
+    return 'escrow/invoice timer $duration';
+  }
+
+  @override
+  String p2pMakeOptionSentBondSize(String percent) {
+    return 'fidelity bond $percent';
+  }
 
   @override
   String p2pMakeRateCompare(

@@ -2237,6 +2237,12 @@ abstract class P2pLocalizations {
   /// **'Before letting you send {amountFiat} {currencyCode}, we want to make sure you are able to receive the BTC.'**
   String p2pTradePayoutPrompt(String amountFiat, String currencyCode);
 
+  /// The official client's « Before letting you send {{amountFiat}} {{currencyCode}}, we want to make sure you are able to receive the BTC. » (`Prompts/Payout.tsx`) without its figure: for an order made here whose range's amount taken is not known, or is read as another than the one kept with the contract, where the app writes no figure rather than the coordinator's (security review of #183, C2). The French is the project's, after the reference's.
+  ///
+  /// In en, this message translates to:
+  /// **'Before letting you send the fiat, we want to make sure you are able to receive the BTC.'**
+  String get p2pTradePayoutPromptNoAmount;
+
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 7 for the buyer (`TradeBox/index.tsx:494`), which `fr.json` misses; the French is the project's.
   ///
   /// In en, this message translates to:
@@ -5093,6 +5099,42 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'The description is not valid.'**
   String get p2pMakeWhyDescriptionInvalid;
+
+  /// Not in the RoboSats texts: the project's own: under the create form's summary, the advanced options open, the options sent that differ from the defaults (security review of #183, C1). {options} is the list of `p2pMakeOptionSent…` joined by commas.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced options sent with this order: {options}.'**
+  String p2pMakeOptionsSentOpen(String options);
+
+  /// Not in the RoboSats texts: the project's own: under the create form's summary, in the warning colour, the advanced options closed, the options that the reference still sends (`buildOrderAttributes`, `MakerForm.tsx:257-275`) and that differ from the defaults (security review of #183, C1). {options} is the list of `p2pMakeOptionSent…` joined by commas.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced options closed, but still sent with this order: {options}.'**
+  String p2pMakeOptionsSentClosed(String options);
+
+  /// Not in the RoboSats texts: the project's own: in the list of the options sent, that a description is attached (its text is never repeated there).
+  ///
+  /// In en, this message translates to:
+  /// **'a description'**
+  String get p2pMakeOptionSentDescription;
+
+  /// Not in the RoboSats texts: the project's own: in the list of the options sent, the public duration as HH:mm.
+  ///
+  /// In en, this message translates to:
+  /// **'public duration {duration}'**
+  String p2pMakeOptionSentPublicDuration(String duration);
+
+  /// Not in the RoboSats texts: the project's own: in the list of the options sent, the escrow/invoice timer as HH:mm.
+  ///
+  /// In en, this message translates to:
+  /// **'escrow/invoice timer {duration}'**
+  String p2pMakeOptionSentEscrowDuration(String duration);
+
+  /// Not in the RoboSats texts: the project's own: in the list of the options sent, the bond size as `p2pMakeBondSizeValue` writes it.
+  ///
+  /// In en, this message translates to:
+  /// **'fidelity bond {percent}'**
+  String p2pMakeOptionSentBondSize(String percent);
 
   /// Not in the RoboSats texts: the project's own, the owner's words of 2026-11-17, the coordinator named alone after the functional review of #181 (no « de {coordinator} », which French would elide before a vowel): under « Order current rate » in the create form (#181), the Bull wallet's price of a bitcoin beside the chosen coordinator's, both without the premium, and how far the coordinator's is from the wallet's. {walletPrice} and {coordinatorPrice} are the prices, {currency} the currency code, {coordinator} the coordinator's name, {gap} the gap with its sign and percent sign.
   ///

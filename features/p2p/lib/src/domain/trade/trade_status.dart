@@ -1,4 +1,3 @@
-
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';

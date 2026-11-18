@@ -1328,6 +1328,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String get p2pTradePayoutPromptNoAmount =>
+      'Avant de vous laisser envoyer la monnaie fiat, nous voulons nous assurer que vous êtes en mesure de recevoir les BTC.';
+
+  @override
   String get p2pTradeTitleInfoGood => 'Vos informations sont correctes !';
 
   @override
@@ -3219,6 +3223,34 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakeWhyDescriptionInvalid => 'La description n’est pas valide.';
+
+  @override
+  String p2pMakeOptionsSentOpen(String options) {
+    return 'Options avancées envoyées avec cet ordre : $options.';
+  }
+
+  @override
+  String p2pMakeOptionsSentClosed(String options) {
+    return 'Options avancées refermées, mais encore envoyées avec cet ordre : $options.';
+  }
+
+  @override
+  String get p2pMakeOptionSentDescription => 'une description';
+
+  @override
+  String p2pMakeOptionSentPublicDuration(String duration) {
+    return 'durée publique $duration';
+  }
+
+  @override
+  String p2pMakeOptionSentEscrowDuration(String duration) {
+    return 'délai de dépôt/facture $duration';
+  }
+
+  @override
+  String p2pMakeOptionSentBondSize(String percent) {
+    return 'caution de fidélité $percent';
+  }
 
   @override
   String p2pMakeRateCompare(

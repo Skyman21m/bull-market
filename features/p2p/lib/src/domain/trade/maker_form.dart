@@ -477,15 +477,12 @@ final class MakerRange {
 
   static int _digitsOf(double value) => value < 100 ? 2 : 3;
 
-  static double _precise(double value) =>
-      significant(value, _digitsOf(value));
+  static double _precise(double value) => significant(value, _digitsOf(value));
 
   /// [value] to [digits] significant digits, and to the amount's decimals at most ([MakerFormCheck.amountDecimals]), so that the field writes it as it is.
   static double _significantDecimals(double value, int digits) {
     final rounded = significant(value, digits);
-    return double.parse(
-      rounded.toStringAsFixed(MakerFormCheck.amountDecimals),
-    );
+    return double.parse(rounded.toStringAsFixed(MakerFormCheck.amountDecimals));
   }
 
   /// [value] rounded up or down at [digits] significant digits (the slider's precision by default, [_precise]), and to the amount's decimals at most.
