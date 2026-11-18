@@ -1039,6 +1039,13 @@ void main() {
             ),
             findsOneWidget,
           );
+          expect(
+            tester
+                .widget<Text>(find.textContaining('but asked for an invoice of'))
+                .style
+                ?.color,
+            testBullTheme.error,
+          );
           expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
           expect(find.textContaining('fewer sats than that'), findsOneWidget);
           expect(find.textContaining('from the rate when you made it'), findsNothing);
@@ -1060,6 +1067,35 @@ void main() {
             ),
             findsOneWidget,
           );
+        },
+      );
+
+      testWidgets(
+        'an invoice of half asked at 6, an honest one at 8, then 9 honest: the smallest invoice asked is kept, the smaller compared at 9',
+        (tester) async {
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(8, last: 106900),
+            makerOrderJson(9, last: 106900),
+          ]);
+          final (_, watch) = await _show(
+            tester,
+            chain[2],
+            rate: rateOf(() => atWallet),
+          );
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('but asked for an invoice of 49,988 sats'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
         },
       );
 

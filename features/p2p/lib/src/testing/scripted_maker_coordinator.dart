@@ -483,7 +483,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     if (made.status == 6) {
       made.status = 7;
     } else {
-      // Into the chat: its deadline set from now (`Logics.update_invoice`, `api/logics.py:909-947`, `FIAT_EXCHANGE_DURATION`, 24 h in `.env-sample`).
+      // Into the chat: its deadline set from now (`Logics.update_invoice`, `api/logics.py:909-947`, `FIAT_EXCHANGE_DURATION`, 24 h in `robosats/settings.py:310`).
       _toChat(made);
     }
     return _json(200, _orderJson(made, robot, isMaker: true));
