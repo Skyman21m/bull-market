@@ -16,7 +16,9 @@ import 'maker_avatar.dart';
 class OfferRow extends StatelessWidget {
   final PublicOrder order;
   final DateTime now;
-  final VoidCallback onTap;
+
+  /// Opens the order; `null` while it cannot be opened (« Existing orders match yours! » while the form is locked, #186).
+  final VoidCallback? onTap;
 
   const OfferRow({
     super.key,

@@ -5718,6 +5718,24 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This order can no longer be renewed as it was: create a new order.'**
   String get p2pRenewNoLongerAsKept;
+
+  /// The official client's label (`basic/MakerPage/index.tsx:145`, `submitButtonLabel`, its key `Submit` in `frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): the button of the create form while orders of the book match the one being made and are not shown (#186); it only shows them.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get p2pMakeSubmit;
+
+  /// The official client's text (`components/MakerForm/MakerForm.tsx:1323`, `en.json` at commit ff1998c), with its French (`fr.json`, « l’ordre » as the reference writes it): the tooltip of the pencil beside « Create order » while the orders that match are shown, which unfolds the form's fields (#186).
+  ///
+  /// In en, this message translates to:
+  /// **'Edit order'**
+  String get p2pMakeEditOrder;
+
+  /// The official client's title (`basic/MakerPage/index.tsx:109`, `en.json` at commit ff1998c) above the orders of the book that resemble the one being made, once « Submit » is pressed (#186); its French is `fr.json`'s in the vocabulary of the P2P catalogue (« ordre », where the reference writes « Commandes existantes correspondent aux vôtres ! »).
+  ///
+  /// In en, this message translates to:
+  /// **'Existing orders match yours!'**
+  String get p2pMakeMatchesFound;
 }
 
 class _P2pLocalizationsDelegate
