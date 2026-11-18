@@ -168,8 +168,13 @@ void main() {
       // The trade screen only hands the router the record: it names neither the make nor its cubit.
       expect(
         _namesIn(
-          sources['lib/src/ui/trade/trade_screen.dart'] ?? (throw StateError('')),
-        ).intersection({'MakeOrderCubit', 'MakeOrderUsecase', 'P2pCreateRouteArgs'}),
+          sources['lib/src/ui/trade/trade_screen.dart'] ??
+              (throw StateError('')),
+        ).intersection({
+          'MakeOrderCubit',
+          'MakeOrderUsecase',
+          'P2pCreateRouteArgs',
+        }),
         isEmpty,
       );
     },

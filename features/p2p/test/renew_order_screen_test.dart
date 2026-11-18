@@ -144,6 +144,7 @@ Future<void> _showTrade(
   TradeSeen seen, {
   required TradeRecord record,
   _Pages? pages,
+  Locale locale = const Locale('en'),
 }) async {
   tester.view
     ..physicalSize = const Size(390, 1800) * 3
@@ -173,6 +174,7 @@ Future<void> _showTrade(
   await tester.pumpWidget(
     MaterialApp(
       theme: testTheme,
+      locale: locale,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
       supportedLocales: P2pLocalizations.supportedLocales,
       builder: (context, child) => MediaQuery(
@@ -185,7 +187,9 @@ Future<void> _showTrade(
             BlocProvider.value(value: trade),
             BlocProvider.value(value: page),
           ],
+          // A screen of its own at each show, so that a page opened by a show before is not kept.
           child: TradeScreen(
+            key: UniqueKey(),
             now: () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             onRenew: pages?.call,
@@ -532,53 +536,13 @@ void main() {
     );
 
     testWidgets('in French: « Renouveler l’ordre »', (tester) async {
-      tester.view
-        ..physicalSize = const Size(390, 1800) * 3
-        ..devicePixelRatio = 3;
-      addTearDown(tester.view.reset);
-      final seen = await tester.runAsync(_expired) ?? (throw StateError('x'));
-      final watch = StreamController<TradeWatchState>.broadcast();
-      addTearDown(watch.close);
-      final trade = TradeCubit(
-        _madeRecord(),
-        (record, {signals = const Stream.empty(), onScreen = true}) =>
-            watch.stream,
-        (record, seen, {bondLoss}) => Completer<Never>().future,
-      )..start();
-      addTearDown(trade.close);
-      final reads = FakeTransport();
-      final page = TradeOrderPageCubit(
-        coordinator('temple'),
-        RobosatsNetwork.mainnet,
-        FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
-        FindPublicOrderUsecase(CoordinatorClient(reads)).execute,
+      await _showTrade(
+        tester,
+        await tester.runAsync(_expired) ?? (throw StateError('none')),
+        record: _madeRecord(),
+        pages: _Pages(),
+        locale: const Locale('fr'),
       );
-      addTearDown(page.close);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: testTheme,
-          locale: const Locale('fr'),
-          localizationsDelegates: P2pLocalizations.localizationsDelegates,
-          supportedLocales: P2pLocalizations.supportedLocales,
-          home: Scaffold(
-            body: MultiBlocProvider(
-              providers: [
-                BlocProvider.value(value: trade),
-                BlocProvider.value(value: page),
-              ],
-              child: TradeScreen(
-                now: () => tradeNow,
-                coordinatorDetails: (_) => throw StateError('not opened'),
-                onRenew: _Pages().call,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      watch.add(TradeScreenStatuses.watched(seen, of: _madeRecord()));
-      await tester.pump();
-      await tester.pump();
       expect(
         find.widgetWithText(TradeButton, 'Renouveler l’ordre'),
         findsOneWidget,
@@ -739,6 +703,7 @@ void main() {
               .first,
         );
         await settle(tester);
+        await settle(tester);
         expect(find.byType(CreateOrderScreen), findsNothing);
         expect(find.text('the trade'), findsOneWidget);
         expect(renewal.made, isEmpty);
@@ -859,7 +824,6 @@ void main() {
         final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
           ..rate = P2pWalletRateRead(91711.15);
         final forms = <MakeOrderCubit>[];
-        final pendings = <PendingMakesCubit>[];
         final opened = <TradeRecord>[];
         var renewPages = 0;
         Future<void> settleBoth() async {
@@ -893,35 +857,44 @@ void main() {
                   path: 'renew',
                   builder: (context, state) {
                     final renewing = state.extra as TradeRecord;
-                    final form = MakeOrderCubit.renewal(
-                      renewing,
-                      placeholder: usd,
-                      readRenewal: harness.make.renewal,
-                      listHosts: (network) => RobotHosts(network, [
-                        RobotHost(harness.host, refusesFirstContacts: false),
-                      ]),
-                      fetchInfo: FetchCoordinatorInfoUsecase(client).execute,
-                      fetchLimits: FetchCoordinatorLimitsUsecase(
-                        client,
-                      ).execute,
-                      make: harness.make.execute,
-                      hasGarageKey: (_) async => const Ok(true),
-                      lottery: CoordinatorLottery(() => 0.5),
-                      now: () => harness.now,
-                      checkPrice: CheckMakePriceUsecase(wallet).execute,
-                    );
-                    forms.add(form);
-                    final pending = PendingMakesCubit(
-                      harness.network,
-                      harness.make.pendingMakes,
-                      harness.make.resolve,
-                      harness.make.dismiss,
-                    );
-                    pendings.add(pending);
                     return MultiBlocProvider(
                       providers: [
-                        BlocProvider(create: (_) => form..start()),
-                        BlocProvider(create: (_) => pending..start()),
+                        BlocProvider(
+                          create: (_) {
+                            final form = MakeOrderCubit.renewal(
+                              renewing,
+                              placeholder: usd,
+                              readRenewal: harness.make.renewal,
+                              listHosts: (network) => RobotHosts(network, [
+                                RobotHost(
+                                  harness.host,
+                                  refusesFirstContacts: false,
+                                ),
+                              ]),
+                              fetchInfo: FetchCoordinatorInfoUsecase(
+                                client,
+                              ).execute,
+                              fetchLimits: FetchCoordinatorLimitsUsecase(
+                                client,
+                              ).execute,
+                              make: harness.make.execute,
+                              hasGarageKey: (_) async => const Ok(true),
+                              lottery: CoordinatorLottery(() => 0.5),
+                              now: () => harness.now,
+                              checkPrice: CheckMakePriceUsecase(wallet).execute,
+                            );
+                            forms.add(form);
+                            return form..start();
+                          },
+                        ),
+                        BlocProvider(
+                          create: (_) => PendingMakesCubit(
+                            harness.network,
+                            harness.make.pendingMakes,
+                            harness.make.resolve,
+                            harness.make.dismiss,
+                          )..start(),
+                        ),
                       ],
                       child: CreateOrderScreen(
                         coordinatorDetails: (_) =>
@@ -974,16 +947,12 @@ void main() {
           harness.coordinator.order(next.orderId).body,
           harness.coordinator.order(record.orderId).body,
         );
+        // The page's cubits are closed by their providers with the page.
         await tester.pumpWidget(const SizedBox.shrink());
+        await settleBoth();
         await tester.runAsync(() async {
           await trade.close();
           await page.close();
-          for (final form in forms) {
-            await form.close();
-          }
-          for (final pending in pendings) {
-            await pending.close();
-          }
         });
       },
     );
