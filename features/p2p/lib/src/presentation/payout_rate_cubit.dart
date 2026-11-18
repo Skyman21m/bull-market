@@ -91,9 +91,12 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   /// The status last shown at that step, for « Retry ».
   TradeSeen? _seen;
 
-  PayoutRateCubit(this.record, this._check, {required DateTime Function() now})
-    : _now = now,
-      super(const PayoutRateNone());
+  PayoutRateCubit(
+    this.record,
+    this._check, {
+    required DateTime Function() now,
+  }) : _now = now,
+       super(const PayoutRateNone());
 
   /// The screen shows [seen]: its step's price is read when it was not read for that step yet, or when that read is [freshFor] old.
   Future<void> show(TradeSeen seen) async {
@@ -142,7 +145,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     emit(switch (finding) {
       null => const PayoutRateNone(),
       PayoutRateFound(:final check) => PayoutRateChecked(step, check),
-      PayoutRateSatsMissing() => PayoutRateSatsMissing(step),
+      PayoutRateNoSats() => PayoutRateSatsMissing(step),
     });
   }
 }

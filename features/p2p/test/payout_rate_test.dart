@@ -229,7 +229,7 @@ void main() {
         unawaited(cubit.show(nine));
         await pumpEventQueue();
         expect(answers, hasLength(2));
-        answers[1].complete(const PayoutRateSatsMissing());
+        answers[1].complete(const PayoutRateNoSats());
         await pumpEventQueue();
         expect(cubit.state, isA<PayoutRateSatsMissing>());
         expect((cubit.state as PayoutRateSatsMissing).step.fiatSent, isTrue);

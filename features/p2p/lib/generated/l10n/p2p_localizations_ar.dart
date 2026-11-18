@@ -3258,7 +3258,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String get p2pTradeUnpauseLater =>
-      '\"Unpause Order\" is coming in a later version.';
+      '\"Unpause Order\" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.';
 
   @override
   String get p2pTradeMakerBondLocked => 'Your maker bond is locked';
@@ -3293,7 +3293,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String p2pPendingMakeUnknown(String coordinator) {
-    return 'Not known yet whether $coordinator made this order. No bond is asked until it is known.';
+    return 'Bull Market does not know yet whether $coordinator made this order. No bond is asked until it knows.';
   }
 
   @override
@@ -3313,7 +3313,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String p2pMakeSendingStay(String coordinator) {
-    return 'Wait for the answer of $coordinator before leaving: your order is being created.';
+    return 'Wait for $coordinator\'s answer before leaving: your order is being created.';
   }
 
   @override
@@ -3355,4 +3355,17 @@ class P2pLocalizationsAr extends P2pLocalizations {
   String p2pTradeBreachWhatToDo(String coordinator) {
     return 'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact $coordinator if something looks wrong.';
   }
+
+  @override
+  String p2pPayoutRateSatsMissing(String coordinator) {
+    return 'Rate not checked: $coordinator gives no sats for this step of the trade. Check them yourself before going on.';
+  }
+
+  @override
+  String get p2pTradeNoRingYet =>
+      'Bull Market does not ring yet: keep this screen open, or come back to it often.';
+
+  @override
+  String get p2pTradeEscrowWaitMaker =>
+      'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.';
 }

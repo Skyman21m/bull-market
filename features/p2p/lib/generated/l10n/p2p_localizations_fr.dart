@@ -3303,7 +3303,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradeUnpauseLater =>
-      '« Reprendre l’ordre » arrive dans une version ultérieure.';
+      '« Reprendre l’ordre » arrive dans une version ultérieure : pour le reprendre maintenant, utilisez l’app officielle RoboSats avec votre clé de garage.';
 
   @override
   String get p2pTradeMakerBondLocked => 'Votre caution de créateur est bloquée';
@@ -3331,7 +3331,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradeWarnContractSeenLate =>
-      'Votre ordre a été repris et cet échange a avancé sans que Bull Market en voie les étapes, comme quand votre clé de garage sert dans une autre app. Vérifiez l’échange dans cette app avant d’agir ici.';
+      'Votre ordre a été pris de nouveau et cet échange a avancé sans que Bull Market en voie les étapes, comme quand votre clé de garage sert dans une autre app. Vérifiez l’échange dans cette app avant d’agir ici.';
 
   @override
   String p2pPendingMakeChecking(String coordinator) {
@@ -3340,7 +3340,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPendingMakeUnknown(String coordinator) {
-    return 'On ne sait pas encore si $coordinator a créé cet ordre. Aucune caution n’est demandée tant qu’on ne le sait pas.';
+    return 'Bull Market ne sait pas encore si $coordinator a créé cet ordre. Aucune caution n’est demandée tant qu’il ne le sait pas.';
   }
 
   @override
@@ -3351,7 +3351,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPendingMakeSetAsideText(String coordinator) {
-    return 'Bull Market cessera de le vérifier. Un ordre peut encore exister chez $coordinator : aucune caution n’a été payée pour lui depuis cette app, et il expire seul quelques minutes après sa création.';
+    return 'Bull Market cessera de le vérifier. Un ordre peut encore exister chez $coordinator : aucune caution n’a été payée pour lui depuis cette app, et il expire de lui-même quelques minutes après sa création.';
   }
 
   @override
@@ -3385,7 +3385,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String received,
     String expected,
   ) {
-    return 'Vous recevez plus de $threshold de sats en moins : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
+    return 'Vous recevez plus de $threshold de sats de moins que prévu : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
   }
 
   @override
@@ -3402,4 +3402,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pTradeBreachWhatToDo(String coordinator) {
     return 'Pour suivre cet ordre en sécurité, ouvrez-le dans l’app officielle RoboSats avec votre clé de garage, et contactez $coordinator si quelque chose vous paraît anormal.';
   }
+
+  @override
+  String p2pPayoutRateSatsMissing(String coordinator) {
+    return 'Taux non vérifié : $coordinator ne donne pas de sats pour cette étape de l’échange. Vérifiez-les vous-même avant de continuer.';
+  }
+
+  @override
+  String get p2pTradeNoRingYet =>
+      'Bull Market ne sonne pas encore : gardez cet écran ouvert, ou revenez-y souvent.';
+
+  @override
+  String get p2pTradeEscrowWaitMaker =>
+      'Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.';
 }

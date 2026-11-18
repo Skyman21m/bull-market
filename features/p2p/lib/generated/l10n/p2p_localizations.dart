@@ -5187,7 +5187,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: in place of the reference's « Unpause Order » button (`Prompts/Paused.tsx`), which comes with the pause (#184); a paused order is seen only when it was paused from another app (#182).
   ///
   /// In en, this message translates to:
-  /// **'\"Unpause Order\" is coming in a later version.'**
+  /// **'\"Unpause Order\" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.'**
   String get p2pTradeUnpauseLater;
 
   /// The official client's text, built as `Your ${isMaker ? 'maker' : 'taker'} bond is ${status}` (`TradeBox/BondStatus.tsx:39`, #182), which `en.json` and `fr.json` do not list for a maker; the French is the project's, in the words of `p2pTradeBondLocked`.
@@ -5237,7 +5237,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: a pending make that a resolution left pending (design note § 3.4, #182).
   ///
   /// In en, this message translates to:
-  /// **'Not known yet whether {coordinator} made this order. No bond is asked until it is known.'**
+  /// **'Bull Market does not know yet whether {coordinator} made this order. No bond is asked until it knows.'**
   String p2pPendingMakeUnknown(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: the way out of a pending make that does not resolve (reviews of #179, #182): the app stops checking it, never makes it again.
@@ -5267,7 +5267,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: going back while the make is sent (security review of #181, S1; #182): the page stays, so that the user is taken to the order or to its pending make.
   ///
   /// In en, this message translates to:
-  /// **'Wait for the answer of {coordinator} before leaving: your order is being created.'**
+  /// **'Wait for {coordinator}\'s answer before leaving: your order is being created.'**
   String p2pMakeSendingStay(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: the Bull wallet's price being read for the owner's payment rule on a maker buyer's side (design note § 3.3, #182).
@@ -5316,6 +5316,24 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact {coordinator} if something looks wrong.'**
   String p2pTradeBreachWhatToDo(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side when the order read gives no sats the buyer receives (#182): nothing compared, said rather than nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate not checked: {coordinator} gives no sats for this step of the trade. Check them yourself before going on.'**
+  String p2pPayoutRateSatsMissing(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own, under the reference's « This box will ring 🔊… » (#182, functional review): the app neither rings nor follows the order outside the trade's screen (the background service and notifications come at the end of the project).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not ring yet: keep this screen open, or come back to it often.'**
+  String get p2pTradeNoRingYet;
+
+  /// Not in the RoboSats texts: the project's own, under the reference's « Your info looks good! » texts at 7 for a maker (#182, functional review): the reference says the bond comes back, which is a taker's case; for a maker the order goes back to the book with its bond locked (`api/logics.py:404-421`).
+  ///
+  /// In en, this message translates to:
+  /// **'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.'**
+  String get p2pTradeEscrowWaitMaker;
 }
 
 class _P2pLocalizationsDelegate

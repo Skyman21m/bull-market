@@ -3,7 +3,6 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show FiatAmount;
 
 import '../../../../public/p2p_wallet_port.dart';
-import '../../trade/maker_terms.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_terms.dart';
 import '../../trade/trade_watch.dart';
@@ -22,7 +21,7 @@ final class CheckPayoutRateUsecase {
 
   const CheckPayoutRateUsecase(this._reader, this._wallet);
 
-  /// The finding for [seen], a status of [record]: `null` when the rule says nothing (a taker's trade, a maker seller's, a status that is not the buyer's payout at 6 or 8 or its « fiat sent » at 9, a status not marked stored, or records that cannot be read), and the price is then not read; [PayoutRateSatsMissing] when the read gives no sats the buyer receives (nothing compared, said as « rate not checked », the price not read); otherwise the comparison ([PayoutRateFound]).
+  /// The finding for [seen], a status of [record]: `null` when the rule says nothing (a taker's trade, a maker seller's, a status that is not the buyer's payout at 6 or 8 or its « fiat sent » at 9, a status not marked stored, or records that cannot be read), and the price is then not read; [PayoutRateNoSats] when the read gives no sats the buyer receives (nothing compared, said as « rate not checked », the price not read); otherwise the comparison ([PayoutRateFound]).
   ///
   /// The sats compared: at 6 and 8 the payout's `invoice_amount` (`WaitingForBoth.payoutAmount`, else the order's `trade_satoshis`, `api/views.py:345-371`); at 9, where the coordinator gives no `trade_satoshis` (its list leaves out `CHA`, `api/views.py:346-356`), the order's `satoshis_now` (its `last_satoshis`, given to a participant at every status, `api/views.py:324`) less the maker fee of the terms, as `Logics.payout_amount` computes `invoice_amount` ([MakerTerms.payoutAt]).
   Future<PayoutRateFinding?> execute(TradeRecord record, TradeSeen seen) async {
@@ -46,7 +45,7 @@ final class CheckPayoutRateUsecase {
     };
     if (maker == null) return null;
     final sats = satsOf(maker, seen);
-    if (sats == null) return const PayoutRateSatsMissing();
+    if (sats == null) return const PayoutRateNoSats();
     return PayoutRateFound(
       WalletRateCheck.ofMakerPayout(
         maker,
@@ -65,7 +64,7 @@ final class CheckPayoutRateUsecase {
   }) {
     if (stepOf(seen) == null) return null;
     final sats = satsOf(maker, seen);
-    if (sats == null) return const PayoutRateSatsMissing();
+    if (sats == null) return const PayoutRateNoSats();
     return PayoutRateFound(
       WalletRateCheck.ofMakerPayout(
         maker,
@@ -138,6 +137,6 @@ final class PayoutRateFound extends PayoutRateFinding {
 }
 
 /// The read gives no sats the buyer receives: nothing compared, and the screen says « rate not checked » rather than nothing.
-final class PayoutRateSatsMissing extends PayoutRateFinding {
-  const PayoutRateSatsMissing();
+final class PayoutRateNoSats extends PayoutRateFinding {
+  const PayoutRateNoSats();
 }
