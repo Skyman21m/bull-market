@@ -314,4 +314,64 @@ void main() {
     );
     expect(P2pWalletRateRead(71657).toString(), 'P2pWalletRateRead');
   });
+
+  group(
+    'on a maker buyer\'s side (#182): the sats received for 100 USD at 71,657 USD/BTC and +3.5 %, fewer by more than 10 % warns',
+    () {
+      // 100 USD = 134,834.4997… sats at 74,164.995 USD/BTC; 0.9 × that = 121,351.0497…
+      final made = terms();
+      final hundred = some(FiatAmount.tryCreate(100));
+      WalletRateCheck received(int sats, [P2pWalletBitcoinRate? wallet]) =>
+          WalletRateCheck.ofMakerPayout(
+            made,
+            amount: hundred,
+            received: Sats.fromInt(sats),
+            wallet: wallet ?? P2pWalletRateRead(71657),
+          );
+      WalletRateCompared compared(int sats) => switch (received(sats)) {
+        final WalletRateCompared rate => rate,
+        final other => throw StateError('not compared: $other'),
+      };
+
+      test('134,834 sats expected, the side the one that receives', () {
+        final rate = compared(134834);
+        expect(rate.expected, Sats.fromInt(134834));
+        expect(rate.side, WalletRateSide.receives);
+        expect(rate.warns, isFalse);
+        expect(rate.gapHundredths, BigInt.from(-1));
+      });
+
+      test('121,352 sats, just above 90 %: no warning, −10.00 %', () {
+        final rate = compared(121352);
+        expect(rate.warns, isFalse);
+        expect(rate.gapHundredths, BigInt.from(-1000));
+      });
+
+      test('121,351 sats, just below 90 %: the warning, −10.01 %', () {
+        final rate = compared(121351);
+        expect(rate.warns, isTrue);
+        expect(rate.gapHundredths, BigInt.from(-1001));
+      });
+
+      test('more sats than expected, by any gap, is in the buyer\'s favour: never a warning', () {
+        expect(compared(200000).warns, isFalse);
+        expect(compared(200000).gapHundredths > BigInt.zero, isTrue);
+        // The bond's side would warn there.
+        expect(check(made, 200000).warns, isTrue);
+      });
+
+      test('a currency the wallet does not price, a price not read: nothing compared', () {
+        expect(
+          received(1, const P2pWalletRateNotPriced()),
+          isA<WalletRateNotPriced>(),
+        );
+        expect(
+          received(1, const P2pWalletRateUnavailable()),
+          isA<WalletRateUnverified>(),
+        );
+        expect(received(1, P2pWalletRateRead(0)), isA<WalletRateUnverified>());
+        expect(received(1, const P2pWalletRateNotPriced()).warns, isFalse);
+      });
+    },
+  );
 }

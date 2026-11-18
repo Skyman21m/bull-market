@@ -145,6 +145,35 @@ void main() {
   );
 
   test(
+    'the owner\'s payment rule on a maker buyer\'s side never reaches « Submit », « Confirm » or a payment: only the trade screen, its lines and the dialog\'s words name it (#182)',
+    () {
+      expect(_whereNamed(sources, 'PayoutRateCubit'), {
+        'lib/src/presentation/payout_rate_cubit.dart',
+        'lib/src/p2p_locator.dart',
+        'lib/src/p2p_router.dart',
+        'lib/src/ui/trade/trade_screen.dart',
+      });
+      for (final path in [
+        'lib/src/ui/trade/payout_panel.dart',
+        'lib/src/ui/trade/payout_wallet_section.dart',
+        'lib/src/presentation/payout_cubit.dart',
+        'lib/src/presentation/trade_cubit.dart',
+      ]) {
+        expect(
+          _namesIn(sources[path] ?? (throw StateError(path))).intersection({
+            'PayoutRateCubit',
+            'PayoutRateState',
+            'WalletRateCheck',
+            'CheckPayoutRateUsecase',
+          }),
+          isEmpty,
+          reason: path,
+        );
+      }
+    },
+  );
+
+  test(
     'only the pending makes\' cubit lists, resolves or sets aside a pending make, and only its lines and the screens that hold it ask it (#182)',
     () {
       expect(_whereNamed(sources, 'PendingMakesCubit'), {

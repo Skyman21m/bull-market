@@ -656,6 +656,16 @@ class _Contract extends StatelessWidget {
             ),
           const Gap(BullSpacing.sm),
         ],
+        // An order made here whose coordinator contradicted the trade's history (a breach): what to do (design note § 6, row 8, #182).
+        if (record.origin == TradeOrigin.madeHere &&
+            (status.trail.breached || status.has<CoordinatorInconsistent>())) ...[
+          _Line(
+            l10n.p2pTradeBreachWhatToDo(coordinator),
+            color: colors.warning,
+            icon: Icons.info_outline,
+          ),
+          const Gap(BullSpacing.sm),
+        ],
         _prompt(context, status),
         // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it, and at 14 the panel of the end, under its stars, when it offers them.
         if (contract.prompt != TradePrompt.chat &&

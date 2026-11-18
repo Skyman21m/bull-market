@@ -4827,5 +4827,14 @@
         "type": "String"
       }
     }
+  },
+  "p2pTradeBreachWhatToDo": "To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact {coordinator} if something looks wrong.",
+  "@p2pTradeBreachWhatToDo": {
+    "description": "Not in the RoboSats texts: the project's own: under the warnings of an order made here once its coordinator contradicted the trade's history (a breach, `CoordinatorInconsistent`, design note § 6 row 8, #182): what to do, nothing blocked by it.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
   }
 }
