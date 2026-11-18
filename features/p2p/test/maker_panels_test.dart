@@ -893,17 +893,20 @@ void main() {
             makerOrderJson(8, last: _lowSats),
             makerOrderJson(9, last: _lowSats),
           ]);
-          final confirm = find.textContaining(code == 'fr' ? 'envoyé' : 'sent');
+          final confirm = find.text(
+            lookupP2pLocalizations(locale).p2pEndConfirmSent('100', 'EUR'),
+          );
           if (confirm.evaluate().isNotEmpty) {
             await tester.ensureVisible(confirm.last);
             await tester.pump();
             await tester.tap(confirm.last);
             await tester.pumpAndSettle();
-            await capture(tester, '$code-createur-9-dialogue-ecart');
-            await tester.tap(
-              find.text(lookupP2pLocalizations(locale).p2pCommonGoBack),
-            );
-            await tester.pumpAndSettle();
+            final dialog = find.byType(ConfirmFiatSentDialog);
+            if (dialog.evaluate().isNotEmpty) {
+              await capture(tester, '$code-createur-9-dialogue-ecart');
+              Navigator.of(tester.element(dialog)).pop(false);
+              await tester.pumpAndSettle();
+            }
           }
           final before = [
             makerOrderJson(0),
