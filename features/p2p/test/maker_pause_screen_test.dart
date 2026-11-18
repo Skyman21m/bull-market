@@ -14,6 +14,8 @@ import 'package:p2p/src/domain/trade/trade_pause.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/trade/pause_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/pauses_in_flight.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -106,15 +108,39 @@ final class _Pauses {
   /// What each pause gives, the next one first; a pause with none left never ends.
   final List<Completer<Result<PauseOutcome, PauseRefusal>>> answers = [];
 
+  /// What stays uncertain after an outcome unknown, as the use case keeps it ([PausesInFlight]).
+  final PausesInFlight registry = PausesInFlight();
+
   Future<Result<PauseOutcome, PauseRefusal>> call(
     TradeRecord record,
     TradeSeen seen,
   ) {
     asked.add(seen);
     if (answers.isEmpty) return Completer<Never>().future;
-    return answers.removeAt(0).future;
+    return answers.removeAt(0).future.then((result) {
+      if (result case Ok(value: final PauseOutcomeUnknown unknown)) {
+        registry.unknown(
+          record,
+          unknown.requestLeftAt ?? tradeNow,
+          unknown.seen,
+        );
+      }
+      return result;
+    });
   }
+
+  /// `PauseOrderUsecase.uncertainty` over [registry].
+  PauseUncertainty? uncertainty(TradeRecord record, [TradeSeen? seen]) =>
+      seen == null ? registry.uncertainty(record) : registry.observe(record, seen);
 }
+
+/// [seen], as read by a request sent at [at] (`TradeSeen.requestedAt`), the watch's reads keeping that time.
+TradeSeen _readAt(TradeSeen seen, DateTime at) => TradeSeen(
+  seen.status,
+  order: seen.order,
+  stored: seen.stored,
+  requestedAt: at,
+);
 
 /// Shows the trade screen of [_record] at [seen], over a cubit whose watch the test feeds and whose pause is [pauses] (none when `null`), with [book] for the figures of a public order.
 Future<(TradeCubit, StreamController<TradeWatchState>)> _show(
@@ -139,6 +165,7 @@ Future<(TradeCubit, StreamController<TradeWatchState>)> _show(
     },
     (record, seen, {bondLoss}) => cancel?.call() ?? Completer<Never>().future,
     pause: pauses?.call,
+    pauseUncertainty: pauses?.uncertainty,
   )..start();
   addTearDown(trade.close);
   final reads = FakeTransport();
@@ -462,29 +489,55 @@ void main() {
         await _tapPause(tester);
         await tester.pump();
         answer.complete(
-          Ok(PauseOutcomeUnknown(PauseWanted.paused, _record, public)),
+          Ok(
+            PauseOutcomeUnknown(
+              PauseWanted.paused,
+              _record,
+              public,
+              requestLeftAt: tradeNow,
+            ),
+          ),
         );
         await tester.pump();
         await tester.pump();
         expect(find.text('Your order is paused (2/5)'), findsNothing);
         expect(
           find.text(
-            'Bull Market does not know yet whether your request reached Temple of Sats. It keeps checking, and never sends it again by itself.',
+            'Bull Market does not know yet whether your request reached Temple of Sats. It checks again while this screen is open, and never sends it again by itself. Do not tap again until a read shows where your order is: a second request would undo the first if the first arrives late.',
           ),
           findsOneWidget,
         );
         expect(
           find.text(
-            'Until a read shows it paused, count on your order being public: robots can take it.',
+            'Until a read made after your request shows it paused, count on your order being public: robots can take it.',
           ),
           findsOneWidget,
         );
-        // The watch reads it paused: the notice goes.
-        watch.add(TradeScreenStatuses.watched(paused, of: _record));
+        // The watch reads it paused, by a read sent after the request: the notice goes, a reserve stays, since a request still on its way could make it public again.
+        const reserve =
+            'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+        watch.add(
+          TradeScreenStatuses.watched(
+            _readAt(paused, tradeNow.add(const Duration(seconds: 10))),
+            of: _record,
+          ),
+        );
         await tester.pump();
         await tester.pump();
         expect(find.text('Your order is paused (2/5)'), findsOneWidget);
-        expect(find.textContaining('count on your order'), findsNothing);
+        expect(find.textContaining('count on your order being'), findsNothing);
+        expect(find.textContaining('does not know yet'), findsNothing);
+        expect(find.text(reserve), findsOneWidget);
+        // Read paused again, three minutes later: settled.
+        watch.add(
+          TradeScreenStatuses.watched(
+            _readAt(paused, tradeNow.add(const Duration(minutes: 3, seconds: 10))),
+            of: _record,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(reserve), findsNothing);
         expect(pauses.asked, hasLength(1));
       },
     );
@@ -512,7 +565,9 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(
-          find.text('Temple of Sats refused the request: nothing changed.'),
+          find.text(
+            'Temple of Sats refused the request: your request changed nothing. The order is shown as it is now.',
+          ),
           findsOneWidget,
         );
         expect(
@@ -594,13 +649,20 @@ void main() {
         await tester.tap(find.byTooltip('Mettre en pause l’ordre public'));
         await tester.pump();
         answer.complete(
-          Ok(PauseOutcomeUnknown(PauseWanted.paused, _record, public)),
+          Ok(
+            PauseOutcomeUnknown(
+              PauseWanted.paused,
+              _record,
+              public,
+              requestLeftAt: tradeNow,
+            ),
+          ),
         );
         await tester.pump();
         await tester.pump();
         expect(
           find.text(
-            'Tant qu’une lecture ne le montre pas en pause, considérez votre ordre comme public : les robots peuvent le prendre.',
+            'Tant qu’une lecture faite après votre demande ne le montre pas en pause, considérez votre ordre comme public : les robots peuvent le prendre.',
           ),
           findsOneWidget,
         );
@@ -762,6 +824,7 @@ void main() {
           lastStored: harness.watch.lastStored,
           pause: pause.execute,
           pauseRunning: pause.running,
+          pauseUncertainty: pause.uncertainty,
         )..start();
         final reads = FakeTransport();
         final page = TradeOrderPageCubit(
@@ -833,9 +896,13 @@ void main() {
           );
           await tapCancel(tester);
           await settleBoth(tester, harness);
-          // Waiting behind the pause: not lost, not sent yet.
+          // Waiting behind the pause: not lost, not sent yet, and said (security review R3).
           expect(trade.state.cancel, isA<CancelRunning>());
           expect(count(harness, ScriptedMakerRequest.cancel), 0);
+          expect(
+            find.text('Your cancel will leave once the pause or unpause ends.'),
+            findsOneWidget,
+          );
           transport.release();
           await settleBoth(tester, harness);
           expect(count(harness, ScriptedMakerRequest.pause), 1);
@@ -844,7 +911,7 @@ void main() {
           expect(find.text('Your order is paused (2/5)'), findsOneWidget);
           expect(
             find.text(
-              'The order moved on before the cancel: nothing was cancelled.',
+              'The order changed state before the cancel: nothing was cancelled. Tap "Cancel" again if you still want to cancel it.',
             ),
             findsOneWidget,
           );
@@ -918,7 +985,7 @@ void main() {
           expect(transport.pausesSent, 1);
           expect(
             find.text(
-              'Until a read shows it paused, count on your order being public: robots can take it.',
+              'Until a read made after your request shows it paused, count on your order being public: robots can take it.',
             ),
             findsOneWidget,
           );
@@ -969,4 +1036,215 @@ void main() {
       );
     },
   );
+
+  group('outcomes unknown and requests that may still arrive, over the real use cases (security review of #184)', () {
+    Future<(MakeHarness, TradeRecord)> made(
+      WidgetTester tester, {
+      bool paused = false,
+    }) async {
+      tester.view
+        ..physicalSize = const Size(390, 1600) * 3
+        ..devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final harness = await tester.runAsync(MakeHarness.start);
+      if (harness == null) fail('no harness');
+      final record = await tester.runAsync(() async {
+        final made = await harness.makeOrder();
+        final record = switch (made) {
+          Ok(value: MakeStarted(:final record)) => record,
+          _ => throw StateError('$made'),
+        };
+        final first = harness.watchOf(record);
+        await harness.settle();
+        await first.subscription.cancel();
+        harness.coordinator.lockMakerBond(record.orderId);
+        if (paused) harness.coordinator.pause(record.orderId);
+        return record;
+      });
+      if (record == null) fail('no record');
+      return (harness, record);
+    }
+
+    Future<TradeCubit> mount(
+      WidgetTester tester,
+      MakeHarness harness,
+      TradeRecord record,
+      PauseOrderUsecase pause,
+    ) async {
+      final trade = TradeCubit(
+        record,
+        harness.watch.execute,
+        harness.cancel.execute,
+        lastStored: harness.watch.lastStored,
+        pause: pause.execute,
+        pauseRunning: pause.running,
+        pauseUncertainty: pause.uncertainty,
+      )..start();
+      final reads = FakeTransport();
+      final page = TradeOrderPageCubit(
+        coordinator('temple'),
+        RobosatsNetwork.testnet,
+        FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+        FindPublicOrderUsecase(
+          CoordinatorClient(reads, clock: () => testNow),
+        ).execute,
+      );
+      addTearDown(page.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MultiBlocProvider(
+              providers: [
+                BlocProvider.value(value: trade),
+                BlocProvider.value(value: page),
+              ],
+              child: TradeScreen(
+                now: () => harness.now,
+                coordinatorDetails: (_) => throw StateError('not opened'),
+              ),
+            ),
+          ),
+        ),
+      );
+      return trade;
+    }
+
+    Future<void> settleBoth(WidgetTester tester, MakeHarness harness) async {
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(harness.settle);
+        await tester.pump();
+      }
+    }
+
+    const mayBePublic =
+        'Until a read made after your request shows it paused, count on your order being public: robots can take it.';
+    const referencePaused =
+        'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.';
+    const reserve =
+        'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+
+    testWidgets(
+      '« Unpause Order », toggled, its answer lost and every read after it failing: never « cannot be seen or taken », the order counted as public (C1)',
+      (tester) async {
+        final (harness, record) = await made(tester, paused: true);
+        final trade = await mount(tester, harness, record, harness.pause);
+        await settleBoth(tester, harness);
+        expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+        expect(find.text(referencePaused), findsOneWidget);
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.answerLost,
+        );
+        harness.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            for (var i = 0; i < 6; i++) {
+              harness.coordinator.failNext(
+                ScriptedMakerRequest.order,
+                ScriptedFault.timedOut,
+              );
+            }
+          }
+        };
+        await tester.ensureVisible(_unpause);
+        await tester.pump();
+        await tester.tap(_unpause);
+        await settleBoth(tester, harness);
+        expect(harness.coordinator.order(record.orderId).status, 1);
+        // The title is the last read, from before the request; nothing says the order cannot be taken.
+        expect(find.text(referencePaused), findsNothing);
+        expect(find.text(mayBePublic), findsOneWidget);
+        expect(find.textContaining('does not know yet'), findsOneWidget);
+        // The reads come back: the order read public, still counted as public.
+        await tester.runAsync(() => harness.elapse(const Duration(minutes: 4)));
+        await settleBoth(tester, harness);
+        expect(find.text('Your order is public (2/5)'), findsOneWidget);
+        expect(find.text(mayBePublic), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(trade.close);
+      },
+    );
+
+    testWidgets(
+      'a pause unknown (its request on its way), a second tap done, then the first lands: « paused » never shown without a reserve (C2)',
+      (tester) async {
+        final (harness, record) = await made(tester);
+        final trade = await mount(tester, harness, record, harness.pause);
+        await settleBoth(tester, harness);
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.landsLate,
+        );
+        await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+        await tester.pump();
+        await tester.tap(find.byTooltip(_pauseTooltip));
+        await settleBoth(tester, harness);
+        expect(find.text(mayBePublic), findsOneWidget);
+        expect(find.textContaining('Do not tap again'), findsOneWidget);
+        // Tapped again anyway: done, read paused after the request, the reserve kept.
+        await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+        await tester.pump();
+        await tester.tap(find.byTooltip(_pauseTooltip));
+        await settleBoth(tester, harness);
+        expect(harness.coordinator.order(record.orderId).status, 2);
+        expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+        expect(find.text(reserve), findsOneWidget);
+        // The first lands: public; the screen still says the reserve until it reads again.
+        harness.coordinator.landLate();
+        expect(harness.coordinator.order(record.orderId).status, 1);
+        expect(find.text(reserve), findsOneWidget);
+        await tester.runAsync(() => harness.elapse(const Duration(seconds: 180)));
+        await settleBoth(tester, harness);
+        expect(find.text('Your order is public (2/5)'), findsOneWidget);
+        expect(
+          find.text(
+            'Your order is public again, although it was paused from this app: robots can see it and take it.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text(mayBePublic), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(trade.close);
+      },
+    );
+
+    testWidgets(
+      '« Unpause Order » then « Cancel » at once: the unpause done, the cancel refused (1020), said with what to do, and the order said public (R1)',
+      (tester) async {
+        final (harness, record) = await made(tester, paused: true);
+        final transport = HoldingTransport(harness.coordinator);
+        final pause = pauseThrough(harness, transport);
+        final trade = await mount(tester, harness, record, pause);
+        await settleBoth(tester, harness);
+        transport.holdNextPause();
+        await tester.ensureVisible(_unpause);
+        await tester.pump();
+        await tester.tap(_unpause);
+        await settleBoth(tester, harness);
+        final cancel = find.widgetWithText(TradeButton, 'Cancel');
+        await tester.ensureVisible(cancel);
+        await tester.pump();
+        await tester.tap(cancel);
+        await settleBoth(tester, harness);
+        transport.release();
+        await settleBoth(tester, harness);
+        expect(harness.coordinator.order(record.orderId).status, 1);
+        expect(find.text('Your order is public (2/5)'), findsOneWidget);
+        expect(
+          find.text(
+            'The order changed state before the cancel: nothing was cancelled. Tap "Cancel" again if you still want to cancel it.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Your order is public: robots can see it and take it.'),
+          findsOneWidget,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(trade.close);
+      },
+    );
+  });
 }

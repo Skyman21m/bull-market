@@ -362,6 +362,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         cancel: state.cancel,
                         chatStep: state.chatStep,
                         pause: state.pause,
+                        pauseUncertainty: state.pauseUncertainty,
                         actionRunning: state.actionRunning,
                         offersPause: context.read<TradeCubit>().offersPause,
                         offersFiatSent: context
@@ -533,6 +534,9 @@ class _Contract extends StatelessWidget {
 
   /// Where a pause or an unpause stands (#184), whether any action of the trade runs, and whether the screen offers the pause at all ([TradeCubit.offersPause]).
   final TradePauseState pause;
+
+  /// What stays uncertain after a pause or an unpause whose outcome was unknown (security review of #184, C1 and C2).
+  final PauseUncertainty? pauseUncertainty;
   final bool actionRunning;
   final bool offersPause;
   final bool offersFiatSent;
@@ -573,6 +577,7 @@ class _Contract extends StatelessWidget {
     required this.cancel,
     required this.chatStep,
     required this.pause,
+    required this.pauseUncertainty,
     required this.actionRunning,
     required this.offersPause,
     required this.offersFiatSent,
@@ -719,6 +724,16 @@ class _Contract extends StatelessWidget {
             live: true,
           ),
         ],
+        // A cancel waiting for a pause of the order to end, behind the order's lock: said (security review of #184, R3).
+        if (cancel is CancelRunning && pause is PauseRunning) ...[
+          const Gap(BullSpacing.sm),
+          _Line(
+            l10n.p2pTradeCancelAfterPause,
+            color: colors.textMuted,
+            center: true,
+            live: true,
+          ),
+        ],
         // A pause or an unpause that has run [TradeCubit.stillWaitingAfter]: what it waits for (#184).
         if (pause case PauseRunning(waitedLong: true)) ...[
           const Gap(BullSpacing.sm),
@@ -737,6 +752,16 @@ class _Contract extends StatelessWidget {
             wanted: wanted,
             seen: contract.seen,
             coordinator: coordinator,
+          ),
+        ],
+        // A pause or an unpause whose outcome was unknown, from this screen or another of the run, while the order is read public or paused: counted as possibly public until a read sent after the request shows it paused, then a reserve until a second read, minutes later, still does (security review of #184, C1 and C2).
+        if (_uncertainLine(l10n) case final line?) ...[
+          const Gap(BullSpacing.sm),
+          _Line(
+            line,
+            color: colors.warning,
+            icon: Icons.warning_amber_rounded,
+            live: true,
           ),
         ],
         // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it, and at 14 the panel of the end, under its stars, when it offers them.
@@ -772,6 +797,21 @@ class _Contract extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  /// Whether the order may be public although shown paused: a pause or an unpause's outcome is unknown and no read sent after the request has shown it paused (security review of #184, C1).
+  bool get _possiblyPublic => switch (pauseUncertainty) {
+    final uncertain? => !uncertain.pausedSinceRequest,
+    null => false,
+  };
+
+  /// The line of what stays uncertain, while the order is read public or paused; `null` for none.
+  String? _uncertainLine(P2pLocalizations l10n) {
+    final uncertain = pauseUncertainty;
+    if (uncertain == null || contract.status is! MakerOrderPublic) return null;
+    return uncertain.pausedSinceRequest
+        ? l10n.p2pTradePauseMayStillArrive
+        : l10n.p2pTradeMayBePublic;
   }
 
   /// The pause button of `Prompts/PublicWait.tsx` at 1, or « Unpause Order » of `Prompts/Paused.tsx` at 2 (#184): one tap, no dialog, as the reference (`TradeBox/index.tsx:310-313`); spinning while its request runs (`LoadingButton loading={pauseLoading}`), off while another action of the trade runs. It hands the cubit the status shown at the tap, which the use case reads again before sending anything.
@@ -847,7 +887,8 @@ class _Contract extends StatelessWidget {
       (TradePrompt.paused, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Line(l10n.p2pTradePausedText),
+          // « At the moment it cannot be seen or taken by other robots »: not said while the order may be public, the status shown coming from a read sent before a request whose outcome is unknown (security review of #184, C1).
+          if (!_possiblyPublic) _Line(l10n.p2pTradePausedText),
           if (offersPause) ...[
             const Gap(BullSpacing.md),
             _pauseButton(context),
@@ -1401,15 +1442,34 @@ class _CancelRowState extends State<_CancelRow> {
         if (notice != null) ...[
           const Gap(BullSpacing.sm),
           _Line(
-            notice.toText(context, coordinator: coordinator),
+            // A maker's public or paused order whose status moved before the cancel (1020, after a pause or an unpause it waited for): what to do (security review of #184, R1).
+            _movedPublicOrPaused(notice)
+                ? l10n.p2pTradeCancelMovedOnTapAgain
+                : notice.toText(context, coordinator: coordinator),
             color: colors.error,
             center: true,
             live: true,
           ),
+          if (_movedPublicOrPaused(notice) && showsPublicOrder(widget.seen)) ...[
+            const Gap(BullSpacing.sm),
+            _Line(
+              l10n.p2pTradeStillPublic,
+              color: colors.warning,
+              icon: Icons.warning_amber_rounded,
+              live: true,
+            ),
+          ],
         ],
       ],
     );
   }
+
+  /// Whether [notice] is a refusal of the coordinator because the status moved (1020), for an order made here now read public or paused.
+  bool _movedPublicOrPaused(TradeCancelNotice notice) =>
+      notice is CancelWasNotDone &&
+      notice.cause is OrderStatusChanged &&
+      widget.record.origin == TradeOrigin.madeHere &&
+      widget.seen.status is MakerOrderPublic;
 }
 
 /// A line of the trade screen, which wraps at any text size; a [live] one is read out when it changes.
@@ -1893,13 +1953,11 @@ class _PauseNoticeLines extends StatelessWidget {
         live: true,
       );
     }
-    final shownPaused = PauseWanted.paused.reachedAt(seen);
-    // Asked to pause, not done: public for sure when a stored read shows it so; perhaps when the request's outcome is unknown and no read shows it paused.
-    final publicLine = wanted != PauseWanted.paused || shownPaused
-        ? null
-        : notice is PauseWasUnknown
-        ? l10n.p2pTradeMayBePublic
-        : showsPublicOrder(seen)
+    // Asked to pause, not done, and a stored read shows it public: said. An outcome unknown says « count on your order being public » through what stays uncertain, whatever was asked (`_uncertainLine`).
+    final publicLine =
+        wanted == PauseWanted.paused &&
+            notice is! PauseWasUnknown &&
+            showsPublicOrder(seen)
         ? l10n.p2pTradeStillPublic
         : null;
     return Column(

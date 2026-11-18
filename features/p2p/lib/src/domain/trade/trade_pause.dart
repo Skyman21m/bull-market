@@ -49,6 +49,51 @@ bool showsPublicOrder(TradeSeen seen) =>
       _ => false,
     };
 
+/// What stays uncertain after a pause or an unpause whose outcome is unknown (#184, security review C1 and C2): the request may have toggled the order, or may still reach the coordinator late and toggle it then, whatever the user asked, a pause or an unpause.
+///
+/// Until a read sent after the request shows the order paused, it is to be counted as possibly public ([pausedSinceRequest] false); once one does, a request still on its way could make it public again, so a reserve stays until a second read, at least [settleAfter] after the first, still shows it paused. The transport gives no sure bound past which a request sent can no longer reach the coordinator (a request leaves once, `retries = 0` for a `POST`, but bytes already relayed over Tor may arrive after the app gave up at its deadline of 132 s), hence two reads apart rather than a delay.
+/// A read showing the order public restarts the wait; a read at another status (taken, expired, cancelled) ends it, a toggle being refused there (1033). Reads not marked stored, from no order, or sent before the request count for nothing.
+@immutable
+final class PauseUncertainty {
+  /// How far apart the two reads showing the order paused must be: a choice, past the transport's deadline of 132 s, at the reference's cadence for a paused order (180 s, `TradeCadence`).
+  static const Duration settleAfter = Duration(minutes: 3);
+
+  /// When the latest request whose outcome is unknown left.
+  final DateTime requestLeftAt;
+
+  /// When the first read sent after it showed the order paused, since the last read that showed it otherwise; `null` while none did.
+  final DateTime? pausedReadAt;
+
+  const PauseUncertainty(this.requestLeftAt, {this.pausedReadAt});
+
+  /// Whether a read sent after the request has shown the order paused.
+  bool get pausedSinceRequest => pausedReadAt != null;
+
+  /// What is left after [seen]: `null` once settled, or once the order is no longer public or paused.
+  PauseUncertainty? observe(TradeSeen seen) {
+    final readAt = seen.requestedAt;
+    if (!seen.stored || seen.order == null || readAt == null) return this;
+    if (!readAt.isAfter(requestLeftAt)) return this;
+    return switch (seen.status) {
+      MakerOrderPublic(paused: false) => PauseUncertainty(requestLeftAt),
+      MakerOrderPublic(paused: true) => switch (pausedReadAt) {
+        null => PauseUncertainty(requestLeftAt, pausedReadAt: readAt),
+        final first when readAt.difference(first) >= settleAfter => null,
+        _ => this,
+      },
+      _ => null,
+    };
+  }
+
+  /// Another request with an unknown outcome left at [leftAt]: the reads must now follow the later of the two.
+  PauseUncertainty after(DateTime leftAt) => PauseUncertainty(
+    leftAt.isAfter(requestLeftAt) ? leftAt : requestLeftAt,
+  );
+
+  @override
+  String toString() => 'PauseUncertainty(pausedSinceRequest: $pausedSinceRequest)';
+}
+
 /// Why a pause or an unpause was not sent: a type for each reason, which the screen words, never a coordinator's text.
 sealed class PauseRefusal extends Failure {
   const PauseRefusal();
@@ -206,11 +251,15 @@ final class PauseOutcomeUnknown extends PauseOutcome {
   @override
   final P2pFailure? recordProblem;
 
+  /// When the request left this device, as far as known: reads sent after it are the only ones that say where it left the order ([PauseUncertainty]).
+  final DateTime? requestLeftAt;
+
   const PauseOutcomeUnknown(
     this.wanted,
     this.record,
     this.seen, {
     this.recordProblem,
+    this.requestLeftAt,
   });
 
   @override

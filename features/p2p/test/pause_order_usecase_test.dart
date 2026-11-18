@@ -592,4 +592,99 @@ void main() {
       },
     );
   });
+
+  group('what stays uncertain after an outcome unknown (security review of #184)', () {
+    test(
+      'a status not stored never counts as paused: neither for the pause wanted nor for the uncertainty (its M12)',
+      () async {
+        final (harness, record, seen) = await shown();
+        final done = valueOf(await harness.pause.execute(record, seen));
+        final paused = done.seen;
+        expect(paused.stored, isTrue);
+        expect(PauseWanted.paused.reachedAt(paused), isTrue);
+        final notStored = TradeSeen(
+          paused.status,
+          order: paused.order,
+          requestedAt: paused.requestedAt,
+        );
+        expect(PauseWanted.paused.reachedAt(notStored), isFalse);
+        final readAt = paused.requestedAt;
+        if (readAt == null) fail('no request time');
+        final uncertain = PauseUncertainty(
+          readAt.subtract(const Duration(seconds: 1)),
+        );
+        expect(uncertain.observe(notStored)?.pausedSinceRequest, isFalse);
+        expect(uncertain.observe(paused)?.pausedSinceRequest, isTrue);
+      },
+    );
+
+    test(
+      'only reads sent after the request count; two reads paused three minutes apart settle it; a read public restarts it; another status ends it',
+      () async {
+        final (harness, record, seen) = await shown();
+        final done = valueOf(await harness.pause.execute(record, seen));
+        final paused = done.seen;
+        final readAt = paused.requestedAt;
+        if (readAt == null) fail('no request time');
+        TradeSeen at(TradeSeen of, DateTime when) =>
+            TradeSeen(of.status, order: of.order, stored: true, requestedAt: when);
+        final uncertain = PauseUncertainty(readAt);
+        // Sent as the request, not after it: nothing.
+        expect(
+          identical(uncertain.observe(at(paused, readAt)), uncertain),
+          isTrue,
+        );
+        final once = uncertain.observe(
+          at(paused, readAt.add(const Duration(seconds: 1))),
+        );
+        expect(once?.pausedSinceRequest, isTrue);
+        expect(
+          once?.observe(at(paused, readAt.add(const Duration(minutes: 2)))),
+          isNotNull,
+        );
+        expect(
+          once?.observe(
+            at(paused, readAt.add(const Duration(minutes: 3, seconds: 1))),
+          ),
+          isNull,
+        );
+        // Read public meanwhile: the wait starts again.
+        final restarted = once?.observe(
+          at(seen, readAt.add(const Duration(minutes: 1))),
+        );
+        expect(restarted?.pausedSinceRequest, isFalse);
+        // Taken: nothing left to toggle.
+        harness.coordinator
+          ..pause(record.orderId)
+          ..take(record.orderId, harness.robot(4));
+        final run = harness.watchOf(record);
+        await harness.settle();
+        final taken = run.lastStatus.seen;
+        await run.subscription.cancel();
+        expect(taken.status, isA<WaitingForBoth>());
+        expect(
+          uncertain.observe(at(taken, readAt.add(const Duration(minutes: 1)))),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'an outcome unknown is kept for every screen of the order, from the time the request left',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.timedOut,
+        );
+        final unknown = valueOf(await harness.pause.execute(record, seen));
+        expect(unknown, isA<PauseOutcomeUnknown>());
+        expect((unknown as PauseOutcomeUnknown).requestLeftAt, isNotNull);
+        final uncertain = harness.pause.uncertainty(record);
+        expect(uncertain, isNotNull);
+        // The read after it showed the order public: not settled, still counted as public.
+        expect(uncertain?.pausedSinceRequest, isFalse);
+      },
+    );
+  });
 }

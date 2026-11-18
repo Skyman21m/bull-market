@@ -39,6 +39,12 @@ final class PauseOrderUsecase {
   /// The pause of [record]'s order this process is sending now, `null` when none runs.
   PauseInFlight? running(TradeRecord record) => _inFlight.running(record);
 
+  /// What stays uncertain for [record]'s order after a pause or an unpause whose outcome was unknown, once [seen] is taken into account when given ([PauseUncertainty]); `null` when nothing does.
+  PauseUncertainty? uncertainty(TradeRecord record, [TradeSeen? seen]) =>
+      seen == null
+      ? _inFlight.uncertainty(record)
+      : _inFlight.observe(record, seen);
+
   /// Pauses or unpauses the order of [record] as [seen] showed it, the status the screen showed when the user tapped.
   ///
   /// [Err]: nothing was sent ([PauseRefusal]). [Ok]: the request was sent, or may have left; [PauseOutcome] says what it and the read after it gave.
@@ -53,7 +59,24 @@ final class PauseOrderUsecase {
         wanted == null) {
       return const Err(PauseNotOffered());
     }
-    return _inFlight.run(record, wanted, () => _open(record, shown, wanted));
+    return _inFlight.run(record, wanted, () async {
+      try {
+        final result = await _open(record, shown, wanted);
+        // An outcome unknown leaves the order uncertain for every screen of it, until reads settle it.
+        if (result case Ok(value: final PauseOutcomeUnknown unknown)) {
+          _inFlight.unknown(
+            record,
+            unknown.requestLeftAt ?? _reader.now(),
+            unknown.seen,
+          );
+        }
+        return result;
+      } on Object {
+        // A bug below: the request may have left; uncertain, from now.
+        _inFlight.unknown(record, _reader.now(), null);
+        rethrow;
+      }
+    });
   }
 
   Future<Result<PauseOutcome, PauseRefusal>> _open(
@@ -217,6 +240,7 @@ final class PauseOrderUsecase {
         current.record,
         now,
         recordProblem: problem,
+        requestLeftAt: actionTimes.leftAt,
       ),
       Ok(value: Err(failure: OrderActionRefused(:final cause))) => PauseNotDone(
         wanted,
@@ -231,6 +255,7 @@ final class PauseOrderUsecase {
           current.record,
           now,
           recordProblem: problem,
+          requestLeftAt: actionTimes.leftAt,
         ),
       // Busy every time, or the robot released: the request never reached the coordinator.
       Err(:final failure) => PauseNotDone(

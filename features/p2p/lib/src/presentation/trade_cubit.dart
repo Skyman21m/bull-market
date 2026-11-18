@@ -43,6 +43,10 @@ typedef TradePauser =
 /// [PauseOrderUsecase.running], which the locator gives the cubit: the pause of the trade's order running now, from an earlier screen (#184, functional review R1).
 typedef TradePauseRunning = PauseInFlight? Function(TradeRecord record);
 
+/// [PauseOrderUsecase.uncertainty], which the locator gives the cubit: what stays uncertain for the order after a pause whose outcome was unknown, after [seen] when given (security review of #184, C1 and C2).
+typedef TradePauseUncertainty =
+    PauseUncertainty? Function(TradeRecord record, [TradeSeen? seen]);
+
 /// [WatchTradeUsecase.lastStored], which the locator gives the cubit (#152).
 typedef TradeLastStored = TradeSeen? Function(TradeRecord record);
 
@@ -78,12 +82,16 @@ final class TradeScreenState {
   /// Where a pause or an unpause of a public order made here stands (#184).
   final TradePauseState pause;
 
+  /// What stays uncertain for the order after a pause or an unpause whose outcome was unknown, from this screen or another of the same run (security review of #184, C1 and C2); `null` when nothing does.
+  final PauseUncertainty? pauseUncertainty;
+
   const TradeScreenState(
     this.record, {
     this.watch,
     this.cancel = const CancelIdle(),
     this.chatStep = const ChatStepIdle(),
     this.pause = const PauseIdle(),
+    this.pauseUncertainty,
   });
 
   /// Whether an action of the trade runs, a cancel, an action of the chat step, a pause or an unpause: every button that could cross it is off meanwhile.
@@ -103,13 +111,20 @@ final class TradeScreenState {
     TradeCancelState? cancel,
     ChatStepState? chatStep,
     TradePauseState? pause,
+    Object? pauseUncertainty = _kept,
   }) => TradeScreenState(
     watch?.record ?? record,
     watch: watch ?? this.watch,
     cancel: cancel ?? this.cancel,
     chatStep: chatStep ?? this.chatStep,
     pause: pause ?? this.pause,
+    pauseUncertainty: identical(pauseUncertainty, _kept)
+        ? this.pauseUncertainty
+        : pauseUncertainty as PauseUncertainty?,
   );
+
+  /// [_with] keeps [pauseUncertainty] unless given, `null` included.
+  static const Object _kept = Object();
 }
 
 /// Where a pause or an unpause of the trade's public order stands (#184).
@@ -290,6 +305,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeRater? _rate;
   final TradePauser? _pause;
   final TradePauseRunning? _pauseRunning;
+  final TradePauseUncertainty? _pauseUncertainty;
   StreamSubscription<TradeWatchState>? _subscription;
 
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
@@ -311,6 +327,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._lastStored,
     this._pause,
     this._pauseRunning,
+    this._pauseUncertainty,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
@@ -343,6 +360,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
   void start() {
     if (isClosed || _subscription != null) return;
     _followPauseInFlight();
+    if (_pauseUncertainty?.call(state.record) case final uncertain?) {
+      emit(state._with(pauseUncertainty: uncertain));
+    }
     final signals = StreamController<TradeWatchSignal>();
     _signals = signals;
     late final StreamSubscription<TradeWatchState> subscription;
@@ -362,6 +382,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
                 chatStep: _chatStepAfter(kept),
                 cancel: _cancelAfter(kept),
                 pause: _pauseAfter(kept),
+                pauseUncertainty: _uncertaintyAfter(kept),
               ),
             );
           },
@@ -406,6 +427,16 @@ class TradeCubit extends Cubit<TradeScreenState> {
     };
     if (recorded || moved) return const CancelIdle();
     return null;
+  }
+
+  /// What stays uncertain once the watch gives [watch] (security review of #184, C1 and C2).
+  PauseUncertainty? _uncertaintyAfter(TradeWatchState watch) {
+    final uncertainty = _pauseUncertainty;
+    if (uncertainty == null) return null;
+    return switch (watch) {
+      TradeWatchStatus(:final seen) => uncertainty(state.record, seen),
+      _ => uncertainty(state.record),
+    };
   }
 
   /// What a pause's notice becomes once the watch gives [watch]: a pause this screen saw done whose order is now read public again is said ([PausePublicAgain]); a notice goes once the status shows another position than the one it was given at, except the words of an order public again, which stay while it is public; kept otherwise, a running pause included.
@@ -552,6 +583,11 @@ class TradeCubit extends Cubit<TradeScreenState> {
   Future<void> pause(TradeSeen seen) async {
     final send = _pause;
     if (send == null || isClosed || state.actionRunning) return;
+    // Another screen of the same order is pausing it now: this tap follows that pause, sends nothing, and says what it gives, rather than waiting for it and then saying the order changed (security review of #184, V3).
+    if (_pauseRunning?.call(state.record) case final running?) {
+      await _followPause(running.wanted, () => running.result);
+      return;
+    }
     final wanted = PauseWanted.of(seen);
     await _followPause(wanted, () => send(state.record, seen));
   }
@@ -586,6 +622,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
         emit(
           state._with(
             pause: PauseIdle(notice: const PauseWasUnknown(), wanted: wanted),
+            pauseUncertainty: _pauseUncertainty?.call(state.record),
           ),
         );
       }
@@ -610,6 +647,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
           state._with(
             watch: read,
             pause: PauseIdle(notice: PauseWasRefused(failure), wanted: wanted),
+            pauseUncertainty: _pauseUncertainty?.call(
+              state.record,
+              read?.seen,
+            ),
           ),
         );
       case Ok(value: final done):
@@ -632,6 +673,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
               pausedHere:
                   done is PauseDone && done.wanted == PauseWanted.paused,
             ),
+            pauseUncertainty: _pauseUncertainty?.call(state.record, done.seen),
           ),
         );
     }
