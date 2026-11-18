@@ -450,6 +450,17 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     await _readLimits(coordinator);
   }
 
+  /// « Retry » of a renewal whose coordinator's limits could not be read (#185, functional review R3): its page offers no « Select Host », whose choice is a creation's way of reading them again; nothing while a make runs or has run.
+  Future<void> retryLimits() async {
+    final coordinator = state.coordinator;
+    if (state.locked ||
+        coordinator == null ||
+        state.limits is! MakerFormLimitsUnreadable) {
+      return;
+    }
+    await choose(coordinator);
+  }
+
   /// Reads the chosen coordinator's limits again when the last read is older than [staleAfter], then compares their price, reading the Bull wallet's again only when its last read for the currency is that old too: called by « Create order » before its dialogs, so that the form never warns or reassures on an old rate when the user confirms; never in a loop. Whether anything was read.
   Future<bool> refreshIfStale() async {
     final coordinator = state.coordinator;

@@ -263,6 +263,26 @@ void main() {
     );
 
     test(
+      'a coordinator removed from the federation list since the order was made: refused by the renewal\'s own check, nothing read (functional review of #185, R2)',
+      () async {
+        final harness = await MakeHarness.start();
+        final record = await expiredOrder(harness);
+        final before = harness.coordinator.requests.length;
+        final without = harness.makeOn(
+          Federation([
+            for (final listed in Federation.robosats.coordinators)
+              if (listed.shortAlias != harness.host.shortAlias) listed,
+          ]),
+        );
+        expect(
+          await without.renewal(record),
+          const Err<OrderRenewal, RenewalRefusal>(RenewalCoordinatorGone()),
+        );
+        expect(harness.coordinator.requests.length, before);
+      },
+    );
+
+    test(
       'the positions of the reference: 5 and 14 for both sides, 13 and 15 for a seller only, nowhere else (`TradeBox/index.tsx:602-690`, `Prompts/Expired.tsx:40`, `Prompts/Successful.tsx:276`)',
       () {
         for (final position in TradePosition.values) {

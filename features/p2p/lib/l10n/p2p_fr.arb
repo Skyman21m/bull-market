@@ -918,5 +918,6 @@
   "p2pRenewTermsUnreadable": "Cet ordre ne peut pas être renouvelé : les termes que cet appareil en a gardés n’ont pas pu être lus.",
   "p2pRenewNotEnded": "Cet ordre ne peut pas être renouvelé : cet appareil ne l’a pas vu expiré ou terminé.",
   "p2pRenewCoordinatorGone": "Cet ordre ne peut pas être renouvelé : son coordinateur n’est plus dans la liste, ou a changé d’adresse.",
-  "p2pRenewNotAsKept": "Le formulaire ne montre pas exactement les termes gardés de cet ordre : rien ne peut être envoyé."
+  "p2pRenewNotAsKept": "Le formulaire ne montre pas exactement les termes gardés de cet ordre : rien ne peut être envoyé.",
+  "p2pRenewNoLongerAsKept": "Cet ordre ne peut plus être renouvelé tel quel : créez un nouvel ordre."
 }

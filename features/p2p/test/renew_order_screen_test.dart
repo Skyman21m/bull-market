@@ -24,6 +24,7 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_limits_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/check_make_price_usecase.dart';
+import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -208,6 +209,12 @@ Finder get _renewOrder => find.widgetWithText(TradeButton, 'Renew Order');
 Finder get _renew => find.widgetWithText(TradeButton, 'Renew');
 Finder get _create => find.widgetWithText(TradeButton, 'Create order');
 
+/// « Create order » in [locale].
+Finder _createIn(Locale locale) => find.widgetWithText(
+  TradeButton,
+  lookupP2pLocalizations(locale).p2pMakeCreateOrder,
+);
+
 Future<void> _tap(WidgetTester tester, Finder button) async {
   await tester.ensureVisible(button);
   await tester.pump();
@@ -256,6 +263,13 @@ final class _Renewal {
   final List<String> limitsAsked = [];
   final List<String> infosAsked = [];
 
+  /// The limits the coordinator answers, the tests' by default; unreadable while [limitsUnreadable].
+  CurrencyLimits? limits;
+  bool limitsUnreadable = false;
+
+  /// The page's clock, which a test moves.
+  DateTime now = DateTime.utc(2026, 11, 17);
+
   /// The network's pending makes as the records list them.
   final pendingMakes =
       StreamController<Result<List<ActivePendingMake>, P2pFailure>>();
@@ -294,7 +308,9 @@ final class _Renewal {
     },
     fetchLimits: (coordinator, network) async {
       limitsAsked.add(coordinator.shortAlias);
-      return Ok(_limits);
+      return limitsUnreadable
+          ? const Err(CoordinatorUnreachable())
+          : Ok(limits ?? _limits);
     },
     make: (request, {required coordinator, required network, required seen}) {
       made.add((request, coordinator));
@@ -307,7 +323,7 @@ final class _Renewal {
     },
     hasGarageKey: (_) async => keys,
     lottery: CoordinatorLottery(() => 0.5),
-    now: () => DateTime.utc(2026, 11, 17),
+    now: () => now,
     checkPrice: (network, currency, price) async => MakePriceCheck.of(
       currency: currency,
       coordinatorPrice: price,
@@ -319,8 +335,9 @@ final class _Renewal {
 /// Shows the renewal's page of [renewal] above a page of the test, as the trade's page opens it, by a tap; the trades it opened in the returned list.
 Future<List<TradeRecord>> _showRenewal(
   WidgetTester tester,
-  _Renewal renewal,
-) async {
+  _Renewal renewal, {
+  Locale locale = const Locale('en'),
+}) async {
   tester.view
     ..physicalSize = const Size(390 * 3, 2400 * 3)
     ..devicePixelRatio = 3;
@@ -364,7 +381,9 @@ Future<List<TradeRecord>> _showRenewal(
   );
   await tester.pumpWidget(
     MaterialApp.router(
+      key: UniqueKey(),
       theme: testTheme,
+      locale: locale,
       routerConfig: router,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
       supportedLocales: P2pLocalizations.supportedLocales,
@@ -776,185 +795,539 @@ void main() {
     }
   });
 
-  group('from the trade screen to the coordinator, over the real use cases', () {
-    testWidgets(
-      'expired: two quick taps on « Renew Order » open one page; two quick taps on « Create order » send one make, by a fresh robot, the kept terms; the new trade opened',
-      (tester) async {
-        tester.view
-          ..physicalSize = const Size(390 * 3, 2400 * 3)
-          ..devicePixelRatio = 3;
-        addTearDown(tester.view.reset);
-        final harness = await tester.runAsync(MakeHarness.start);
-        if (harness == null) fail('no harness');
-        final record = await tester.runAsync(() async {
-          final made = await harness.makeOrder();
-          final record = switch (made) {
-            Ok(value: MakeStarted(:final record)) => record,
-            _ => throw StateError('$made'),
-          };
-          final first = harness.watchOf(record);
-          await harness.settle();
-          await first.subscription.cancel();
-          harness.coordinator
-            ..lockMakerBond(record.orderId)
-            ..expire(record.orderId);
-          return record;
-        });
-        if (record == null) fail('no record');
-        int makes() => harness.coordinator.received
-            .where((kind) => kind == ScriptedMakerRequest.make)
-            .length;
-        expect(makes(), 1);
-        final trade = TradeCubit(
-          record,
-          harness.watch.execute,
-          harness.cancel.execute,
-          lastStored: harness.watch.lastStored,
-        )..start();
-        final reads = FakeTransport();
-        final page = TradeOrderPageCubit(
-          coordinator('temple'),
-          RobosatsNetwork.testnet,
-          FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
-          FindPublicOrderUsecase(
-            CoordinatorClient(reads, clock: () => testNow),
-          ).execute,
-        );
-        final client = CoordinatorClient(harness.coordinator);
-        final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
-          ..rate = P2pWalletRateRead(91711.15);
-        final forms = <MakeOrderCubit>[];
-        final opened = <TradeRecord>[];
-        var renewPages = 0;
-        Future<void> settleBoth() async {
-          for (var i = 0; i < 6; i++) {
-            await tester.runAsync(harness.settle);
-            await tester.pump(const Duration(milliseconds: 50));
-          }
-        }
+  group(
+    'the renewal\'s page: the checks of a creation, and never stuck without a word (functional review of #185, C2, R3)',
+    () {
+      testWidgets(
+        'limits and price read more than 3 minutes ago are read again at « Create order »: a line still within goes on; a line that changed stops the press, said, nothing sent, and a second press sends',
+        (tester) async {
+          final renewal = _Renewal();
+          await _showRenewal(tester, renewal);
+          expect(renewal.limitsAsked, ['temple']);
+          // Within 3 minutes: nothing read again, the make sent.
+          renewal
+            ..now = renewal.now.add(const Duration(minutes: 2))
+            ..answer = const Err(MakeCoordinatorNotOnNetwork());
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.limitsAsked, ['temple']);
+          expect(renewal.made, hasLength(1));
+          // 4 minutes on, the Bull wallet's price moved within the margin: read again, the press goes on.
+          renewal
+            ..now = renewal.now.add(const Duration(minutes: 4))
+            ..rate = P2pWalletRateRead(93000);
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.limitsAsked, ['temple', 'temple']);
+          expect(renewal.made, hasLength(2));
+          // 4 more minutes, the Bull wallet's price now more than 10 % away: read again, the press stops on the fresh warning.
+          renewal
+            ..now = renewal.now.add(const Duration(minutes: 4))
+            ..rate = P2pWalletRateRead(110000);
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.limitsAsked, ['temple', 'temple', 'temple']);
+          expect(renewal.made, hasLength(2));
+          expect(
+            find.text(
+              'The limits and prices were read again and changed. Check the form, then press "Create order" again.',
+            ),
+            findsOneWidget,
+          );
+          expect(find.textContaining('more than 10% below'), findsOneWidget);
+          // Seen: a second press sends the kept request.
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.made, hasLength(3));
+          expect(renewal.made.last.$1, _kept);
+        },
+      );
 
-        final router = GoRouter(
-          initialLocation: '/',
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (context, _) => MultiBlocProvider(
-                providers: [
-                  BlocProvider.value(value: trade),
-                  BlocProvider.value(value: page),
-                ],
-                child: TradeScreen(
-                  now: () => harness.now,
-                  coordinatorDetails: (_) => throw StateError('not opened'),
-                  onRenew: (record) async {
-                    renewPages++;
-                    await context.push('/renew', extra: record);
-                  },
+      testWidgets(
+        'the kept amount outside the coordinator\'s limits now: the reason, and what to do, in English and French; nothing to press',
+        (tester) async {
+          for (final (locale, line) in [
+            (
+              const Locale('en'),
+              'This order can no longer be renewed as it was: create a new order.',
+            ),
+            (
+              const Locale('fr'),
+              'Cet ordre ne peut plus être renouvelé tel quel : créez un nouvel ordre.',
+            ),
+          ]) {
+            final renewal = _Renewal()
+              ..limits = await tester.runAsync(
+                () => limitsAt({2: 3000000}),
+              );
+            await _showRenewal(tester, renewal, locale: locale);
+            expect(find.textContaining('630'), findsWidgets);
+            expect(find.text(line), findsOneWidget);
+            expect(_enabled(tester, _createIn(locale)), isFalse);
+            await tester.tap(_createIn(locale), warnIfMissed: false);
+            await settle(tester);
+            expect(renewal.made, isEmpty);
+          }
+        },
+      );
+
+      testWidgets(
+        'a currency the coordinator no longer prices: « The Bitcoin price is not synchronized. » and what to do',
+        (tester) async {
+          final renewal = _Renewal()
+            ..limits = await tester.runAsync(() => limitsAt({1: 98000}));
+          await _showRenewal(tester, renewal);
+          expect(
+            find.text('The Bitcoin price is not synchronized.'),
+            findsWidgets,
+          );
+          expect(
+            find.text(
+              'This order can no longer be renewed as it was: create a new order.',
+            ),
+            findsOneWidget,
+          );
+          expect(_enabled(tester, _create), isFalse);
+        },
+      );
+
+      testWidgets(
+        'a make refused for the kept amount (`MakeAmountOutsideLimits`): said, and what to do',
+        (tester) async {
+          final renewal = _Renewal();
+          renewal.next.add(
+            Err(
+              MakeAmountOutsideLimits(
+                MakerAmountLimits.of(
+                  _limits[eur] ?? (throw StateError('EUR')),
+                  premium: _kept.premium,
+                  sizeLimitSats: 1e9,
                 ),
               ),
-              routes: [
-                GoRoute(
-                  path: 'renew',
-                  builder: (context, state) {
-                    final renewing = state.extra as TradeRecord;
-                    return MultiBlocProvider(
-                      providers: [
-                        BlocProvider(
-                          create: (_) {
-                            final form = MakeOrderCubit.renewal(
-                              renewing,
-                              placeholder: usd,
-                              readRenewal: harness.make.renewal,
-                              listHosts: (network) => RobotHosts(network, [
-                                RobotHost(
-                                  harness.host,
-                                  refusesFirstContacts: false,
-                                ),
-                              ]),
-                              fetchInfo: FetchCoordinatorInfoUsecase(
-                                client,
-                              ).execute,
-                              fetchLimits: FetchCoordinatorLimitsUsecase(
-                                client,
-                              ).execute,
-                              make: harness.make.execute,
-                              hasGarageKey: (_) async => const Ok(true),
-                              lottery: CoordinatorLottery(() => 0.5),
-                              now: () => harness.now,
-                              checkPrice: CheckMakePriceUsecase(wallet).execute,
-                            );
-                            forms.add(form);
-                            return form..start();
-                          },
-                        ),
-                        BlocProvider(
-                          create: (_) => PendingMakesCubit(
-                            harness.network,
-                            harness.make.pendingMakes,
-                            harness.make.resolve,
-                            harness.make.dismiss,
-                          )..start(),
-                        ),
-                      ],
-                      child: CreateOrderScreen(
-                        coordinatorDetails: (_) =>
-                            throw StateError('not opened'),
-                        onMade: opened.add,
-                      ),
-                    );
-                  },
-                ),
-              ],
             ),
-          ],
-        );
-        await tester.pumpWidget(
-          MaterialApp.router(
-            theme: testTheme,
-            routerConfig: router,
-            localizationsDelegates: P2pLocalizations.localizationsDelegates,
-            supportedLocales: P2pLocalizations.supportedLocales,
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: child ?? const SizedBox.shrink(),
+          );
+          await _showRenewal(tester, renewal);
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.made, hasLength(1));
+          expect(
+            find.text(
+              'This order can no longer be renewed as it was: create a new order.',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'the coordinator\'s limits not read: no « create a new order », a « Retry » that reads them again, then the page goes on',
+        (tester) async {
+          final renewal = _Renewal()..limitsUnreadable = true;
+          await _showRenewal(tester, renewal);
+          expect(
+            find.text('The coordinator limits are not available.'),
+            findsWidgets,
+          );
+          expect(
+            find.textContaining('can no longer be renewed'),
+            findsNothing,
+          );
+          renewal.limitsUnreadable = false;
+          await _tap(tester, find.widgetWithText(TradeButton, 'Retry'));
+          await settle(tester);
+          expect(renewal.limitsAsked, ['temple', 'temple']);
+          expect(_enabled(tester, _create), isTrue);
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.made.single.$1, _kept);
+        },
+      );
+    },
+  );
+
+  group(
+    'from the trade screen to the coordinator, over the real use cases and the app\'s own navigation (`P2pRouter.openRenewal`, `openMade`)',
+    () {
+      testWidgets(
+        'rich terms read back otherwise by the coordinator: the page shows the kept ones; two quick taps on « Renew Order » open one page, two on « Create order » send one make, field for field the first one\'s, by a fresh robot; the new trade replaces both pages, nothing of the renewed order stays behind (functional review of #185, C1, R4)',
+        (tester) async {
+          final kept = MakeHarness.request(
+            range: (50, 200),
+            premium: -1.25,
+            publicDuration: const Duration(hours: 2),
+            escrowDuration: const Duration(hours: 5),
+            bondSize: 5.5,
+            description: 'Bank transfer only',
+            paymentMethod: 'Revolut Instant SEPA Bizum',
+          );
+          final app = await _App.start(
+            tester,
+            request: kept,
+            // What the reference's renewal would take (`TradeBox/index.tsx:162-181`): other terms read back before the expiry is read.
+            beforeExpiredRead: (harness, record) =>
+                harness.coordinator.orderChanges[record.orderId] = {
+                  'amount': '900.00000000',
+                  'has_range': false,
+                  'min_amount': '10.00000000',
+                  'max_amount': '20.00000000',
+                  'premium': '-20.00',
+                  'bond_size': '15.00',
+                  'public_duration': 600,
+                  'escrow_duration': 36000,
+                  'payment_method': 'Cash F2F',
+                  'description': 'Pay me elsewhere',
+                  'currency': 1,
+                },
+          );
+          expect(find.text('The order has expired'), findsOneWidget);
+          await _tap(tester, _renewOrder);
+          await tester.tap(_renewOrder, warnIfMissed: false);
+          await app.settle();
+          await app.settle();
+          expect(app.forms, hasLength(1));
+          expect(find.byType(CreateOrderScreen), findsOneWidget);
+          expect(_fieldEnabled(tester, '50'), isFalse);
+          expect(_fieldEnabled(tester, '200'), isFalse);
+          expect(_fieldEnabled(tester, '-1.25'), isFalse);
+          expect(_fieldEnabled(tester, 'Bank transfer only'), isFalse);
+          expect(find.text('Revolut Instant SEPA Bizum'), findsOneWidget);
+          expect(find.textContaining('Cash F2F'), findsNothing);
+          expect(find.textContaining('Pay me elsewhere'), findsNothing);
+          expect(
+            find.text('Buy BTC for 50-200 EUR at a 1.25% discount'),
+            findsOneWidget,
+          );
+          await _tap(tester, _create);
+          await tester.tap(_create, warnIfMissed: false);
+          await app.settle();
+          await app.settle();
+          expect(app.makes(), 2);
+          final orders = app.harness.coordinator.orders.values.toList();
+          final first = app.harness.coordinator.order(app.record.orderId);
+          final next = orders.singleWhere((o) => o.id != app.record.orderId);
+          expect(next.body, first.body);
+          expect(next.body, {
+            'type': 0,
+            'currency': 2,
+            'amount': null,
+            'has_range': true,
+            'min_amount': 50,
+            'max_amount': 200,
+            'payment_method': 'Revolut Instant SEPA Bizum',
+            'is_explicit': false,
+            'premium': -1.25,
+            'satoshis': null,
+            'public_duration': 7200,
+            'escrow_duration': 18000,
+            'bond_size': 5.5,
+            'latitude': null,
+            'longitude': null,
+            'password': null,
+            'description': 'Bank transfer only',
+          });
+          expect(next.maker.sessionKey, isNot(first.maker.sessionKey));
+          // The new trade in place of the renewal's page and of the renewed order's page.
+          expect(find.text('the new trade ${next.id}'), findsOneWidget);
+          expect(find.byType(CreateOrderScreen, skipOffstage: false), findsNothing);
+          expect(find.byType(TradeScreen, skipOffstage: false), findsNothing);
+          // Back from it: the tab, never the renewed order's page with a button left spinning.
+          GoRouter.of(
+            tester.element(find.text('the new trade ${next.id}')),
+          ).pop();
+          await app.settle();
+          expect(find.text('the tab'), findsOneWidget);
+          expect(find.byType(TradeScreen, skipOffstage: false), findsNothing);
+          expect(app.makes(), 2);
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'going back from the renewal\'s page with nothing sent: the renewed order\'s page again, its button usable, a new page sends one make',
+        (tester) async {
+          final app = await _App.start(tester);
+          await _tap(tester, _renewOrder);
+          await app.settle();
+          await app.back();
+          expect(find.byType(CreateOrderScreen), findsNothing);
+          expect(find.text('The order has expired'), findsOneWidget);
+          expect(_enabled(tester, _renewOrder), isTrue);
+          await _tap(tester, _renewOrder);
+          await app.settle();
+          await app.settle();
+          await _tap(tester, _create);
+          await app.settle();
+          await app.settle();
+          expect(app.forms, hasLength(2));
+          expect(app.makes(), 2);
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'a renewal whose answer is lost: the page says it, sends nothing more; back on the renewed order\'s page its button is usable, and a new page says a make is pending and sends nothing',
+        (tester) async {
+          final app = await _App.start(tester);
+          await _tap(tester, _renewOrder);
+          await app.settle();
+          await app.settle();
+          app.harness.coordinator.failNext(
+            ScriptedMakerRequest.make,
+            ScriptedFault.answerLost,
+          );
+          await _tap(tester, _create);
+          await app.settle();
+          await app.settle();
+          expect(app.makes(), 2);
+          expect(find.textContaining('does not know yet whether'), findsOneWidget);
+          await tester.tap(_create, warnIfMissed: false);
+          await app.settle();
+          expect(app.makes(), 2);
+          await app.back();
+          expect(find.text('The order has expired'), findsOneWidget);
+          expect(_enabled(tester, _renewOrder), isTrue);
+          await _tap(tester, _renewOrder);
+          await app.settle();
+          await app.settle();
+          expect(_enabled(tester, _create), isFalse);
+          await tester.tap(_create, warnIfMissed: false);
+          await app.settle();
+          expect(app.makes(), 2);
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'kept terms that cannot be read: the page says why; back, the renewed order\'s button usable',
+        (tester) async {
+          final app = await _App.start(tester);
+          app.harness.trails.readBack = (_) => null;
+          await _tap(tester, _renewOrder);
+          await app.settle();
+          await app.settle();
+          expect(
+            find.text(
+              'This order cannot be renewed: the terms this device kept of it could not be read.',
+            ),
+            findsOneWidget,
+          );
+          await app.back();
+          expect(find.text('The order has expired'), findsOneWidget);
+          expect(_enabled(tester, _renewOrder), isTrue);
+          expect(app.makes(), 1);
+          await app.close();
+        },
+      );
+    },
+  );
+}
+
+/// An order made on the coordinator played by the tests, expired, and the app's navigation over it, as `P2pRouter` builds it: the tab, the page of the trade (« Renew Order » through `P2pRouter.openRenewal`), the renewal's page (the made order through `P2pRouter.openMade`), and, for any other trade, a page that names it.
+final class _App {
+  final WidgetTester tester;
+  final MakeHarness harness;
+  final TradeRecord record;
+  final TradeCubit trade;
+  final TradeOrderPageCubit page;
+
+  /// The renewal pages' cubits, in the order they were built.
+  final List<MakeOrderCubit> forms = [];
+
+  _App._(this.tester, this.harness, this.record, this.trade, this.page);
+
+  int makes() => harness.coordinator.received
+      .where((kind) => kind == ScriptedMakerRequest.make)
+      .length;
+
+  Future<void> settle() async {
+    for (var i = 0; i < 6; i++) {
+      await tester.runAsync(harness.settle);
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  /// The top bar's back of the renewal's page.
+  Future<void> back() async {
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(CreateOrderScreen),
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
+    await settle();
+    await settle();
+  }
+
+  /// The pages' cubits closed with their providers, then the trade's.
+  Future<void> close() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await settle();
+    await tester.runAsync(() async {
+      await trade.close();
+      await page.close();
+    });
+  }
+
+  static Future<_App> start(
+    WidgetTester tester, {
+    MakeOrderRequest? request,
+    void Function(MakeHarness harness, TradeRecord record)? beforeExpiredRead,
+  }) async {
+    tester.view
+      ..physicalSize = const Size(390 * 3, 2400 * 3)
+      ..devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final harness = await tester.runAsync(MakeHarness.start);
+    if (harness == null) fail('no harness');
+    final record = await tester.runAsync(() async {
+      final made = await harness.makeOrder(request);
+      final record = switch (made) {
+        Ok(value: MakeStarted(:final record)) => record,
+        _ => throw StateError('$made'),
+      };
+      final first = harness.watchOf(record);
+      await harness.settle();
+      await first.subscription.cancel();
+      harness.coordinator
+        ..lockMakerBond(record.orderId)
+        ..expire(record.orderId);
+      beforeExpiredRead?.call(harness, record);
+      return record;
+    });
+    if (record == null) fail('no record');
+    final trade = TradeCubit(
+      record,
+      harness.watch.execute,
+      harness.cancel.execute,
+      lastStored: harness.watch.lastStored,
+    )..start();
+    final reads = FakeTransport();
+    final page = TradeOrderPageCubit(
+      coordinator('temple'),
+      RobosatsNetwork.testnet,
+      FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+      FindPublicOrderUsecase(
+        CoordinatorClient(reads, clock: () => testNow),
+      ).execute,
+    );
+    final app = _App._(tester, harness, record, trade, page);
+    final client = CoordinatorClient(harness.coordinator);
+    final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(0)))
+      ..rate = P2pWalletRateRead(91711.15);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, _) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => unawaited(
+                  context.pushNamed<Object>(
+                    P2pRouter.tradeName,
+                    extra: P2pTradeRouteArgs(record),
+                  ),
+                ),
+                child: const Text('the tab'),
+              ),
             ),
           ),
-        );
-        await settleBoth();
-        expect(find.text('The order has expired'), findsOneWidget);
-        await _tap(tester, _renewOrder);
-        await tester.tap(_renewOrder, warnIfMissed: false);
-        await settleBoth();
-        expect(renewPages, 1);
-        expect(find.byType(CreateOrderScreen), findsOneWidget);
-        expect(forms, hasLength(1));
-        await settleBoth();
-        expect(
-          find.text('Buy BTC for 100 EUR at a 2% premium'),
-          findsOneWidget,
-        );
-        expect(_enabled(tester, _create), isTrue);
-        await _tap(tester, _create);
-        await tester.tap(_create, warnIfMissed: false);
-        await settleBoth();
-        await settleBoth();
-        expect(makes(), 2);
-        expect(opened, hasLength(1));
-        final next = opened.single;
-        expect(next.orderId, isNot(record.orderId));
-        expect(next.robot, isNot(record.robot));
-        expect(
-          harness.coordinator.order(next.orderId).body,
-          harness.coordinator.order(record.orderId).body,
-        );
-        // The page's cubits are closed by their providers with the page.
-        await tester.pumpWidget(const SizedBox.shrink());
-        await settleBoth();
-        await tester.runAsync(() async {
-          await trade.close();
-          await page.close();
-        });
-      },
+          routes: [
+            GoRoute(
+              name: P2pRouter.tradeName,
+              path: 'trade',
+              builder: (context, state) {
+                final args = state.extra as P2pTradeRouteArgs;
+                if (args.record.orderId != record.orderId) {
+                  return Scaffold(
+                    body: Text('the new trade ${args.record.orderId}'),
+                  );
+                }
+                return MultiBlocProvider(
+                  providers: [
+                    BlocProvider.value(value: trade),
+                    BlocProvider.value(value: page),
+                  ],
+                  child: TradeScreen(
+                    now: () => harness.now,
+                    coordinatorDetails: (_) => throw StateError('not opened'),
+                    onRenew: (renewed) => P2pRouter.openRenewal(
+                      context,
+                      renewed,
+                      book: args.book,
+                    ),
+                  ),
+                );
+              },
+            ),
+            GoRoute(
+              name: P2pRouter.createName,
+              path: 'create',
+              builder: (context, state) {
+                final args = state.extra as P2pCreateRouteArgs;
+                final renewing = args.renewing;
+                if (renewing == null) throw StateError('a creation');
+                return MultiBlocProvider(
+                  providers: [
+                    BlocProvider(
+                      create: (_) {
+                        final form = MakeOrderCubit.renewal(
+                          renewing,
+                          placeholder: usd,
+                          readRenewal: harness.make.renewal,
+                          listHosts: (network) => RobotHosts(network, [
+                            RobotHost(harness.host, refusesFirstContacts: false),
+                          ]),
+                          fetchInfo: FetchCoordinatorInfoUsecase(client).execute,
+                          fetchLimits: FetchCoordinatorLimitsUsecase(
+                            client,
+                          ).execute,
+                          make: harness.make.execute,
+                          hasGarageKey: (_) async => const Ok(true),
+                          lottery: CoordinatorLottery(() => 0.5),
+                          now: () => harness.now,
+                          checkPrice: CheckMakePriceUsecase(wallet).execute,
+                        );
+                        app.forms.add(form);
+                        return form..start();
+                      },
+                    ),
+                    BlocProvider(
+                      create: (_) => PendingMakesCubit(
+                        harness.network,
+                        harness.make.pendingMakes,
+                        harness.make.resolve,
+                        harness.make.dismiss,
+                      )..start(),
+                    ),
+                  ],
+                  child: CreateOrderScreen(
+                    coordinatorDetails: (_) => throw StateError('not opened'),
+                    onMade: (made) => P2pRouter.openMade(context, args, made),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
     );
-  });
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: testTheme,
+        routerConfig: router,
+        localizationsDelegates: P2pLocalizations.localizationsDelegates,
+        supportedLocales: P2pLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child ?? const SizedBox.shrink(),
+        ),
+      ),
+    );
+    await tester.tap(find.text('the tab'));
+    await app.settle();
+    return app;
+  }
 }

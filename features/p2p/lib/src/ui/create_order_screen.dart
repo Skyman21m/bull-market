@@ -703,6 +703,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             state,
                             check.request,
                           ),
+                          renewing: renewing,
                           coordinator: coordinatorName,
                           onPressed: () => unawaited(_press()),
                         ),
@@ -1392,6 +1393,9 @@ class _CreateButton extends StatelessWidget {
 
   /// Whether a renewal's fields are not judged into exactly its kept request (#185): nothing can be sent, and a line says so.
   final bool renewalMismatch;
+
+  /// Whether the form renews an order (#185): its fields cannot be changed, so a refusal the user could correct in a creation says what to do instead (functional review of #185, R3).
+  final bool renewing;
   final String coordinator;
   final VoidCallback onPressed;
 
@@ -1404,6 +1408,7 @@ class _CreateButton extends StatelessWidget {
     required this.asking,
     required this.stopped,
     required this.renewalMismatch,
+    required this.renewing,
     required this.coordinator,
     required this.onPressed,
   });
@@ -1429,6 +1434,27 @@ class _CreateButton extends StatelessWidget {
         _Line(block.toText(context), live: true),
       if (block == null && renewalMismatch && progress is MakeIdle)
         _Line(l10n.p2pRenewNotAsKept, color: colors.warning, live: true),
+      // A renewal the form or the make refuses for its kept terms, which cannot be changed here: what to do (functional review of #185, R3).
+      if (renewing &&
+          progress is MakeIdle &&
+          _renewalStuck(
+            block,
+            progress,
+            limitsRead: state.limits is MakerFormLimitsRead,
+          ))
+        _Line(l10n.p2pRenewNoLongerAsKept, color: colors.warning, live: true),
+      // A renewal whose coordinator's limits could not be read: « Select Host » is not offered, so « Retry » reads them again.
+      if (renewing &&
+          progress is MakeIdle &&
+          block == MakerFormBlock.limitsUnavailable &&
+          state.coordinator != null)
+        TradeButton(
+          label: l10n.p2pCommonRetry,
+          outlined: true,
+          onPressed: () => unawaited(
+            context.read<MakeOrderCubit>().retryLimits(),
+          ),
+        ),
       // A pending make of the network first (#182): said under the button too, where the reason of a disabled button is.
       if (block == null && pendingShown && progress is MakeIdle)
         _Line(l10n.p2pMakePendingFirst, live: true),
@@ -1474,6 +1500,31 @@ class _CreateButton extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Whether a renewal is refused for its kept terms, which the user cannot change on its page (functional review of #185, R3): every reason of the form ([block]) but a wait or the coordinator's limits not read, and « The Bitcoin price is not synchronized. » once the limits were read ([limitsRead]: the coordinator gives no usable price for the order's currency); or a make refused for its terms ([progress]: the amount outside the limits, no price for the currency, terms the make refuses).
+bool _renewalStuck(
+  MakerFormBlock? block,
+  MakeIdle progress, {
+  required bool limitsRead,
+}) {
+  if (block != null) {
+    return switch (block) {
+      MakerFormBlock.loadingCoordinators ||
+      MakerFormBlock.limitsUnavailable => false,
+      MakerFormBlock.priceNotSynchronized => limitsRead,
+      _ => true,
+    };
+  }
+  return switch (progress.problem) {
+    MakeWasRefused(
+      refusal: MakeAmountOutsideLimits() ||
+          MakePriceUnknown() ||
+          MakeTermsRefused(),
+    ) =>
+      true,
+    _ => false,
+  };
 }
 
 /// « Order current rate: … {{currencyCode}}/BTC » with its tooltip (`MakerForm.tsx:1340-1363`), then the Bull wallet's indicative price for comparison and, beyond the owner's threshold either way, a red warning; for a currency the Bull wallet does not price, or a price it could not read, a line in the warning colour (with « Retry » for the latter). None of it stops « Create order ».
