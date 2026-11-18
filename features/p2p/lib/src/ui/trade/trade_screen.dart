@@ -385,6 +385,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         payoutRate: widget.checksPayoutRate
                             ? context.watch<PayoutRateCubit>().state
                             : null,
+                        rateCubit: widget.checksPayoutRate
+                            ? context.read<PayoutRateCubit>()
+                            : null,
                         onRetryRate: widget.checksPayoutRate
                             ? () => unawaited(
                                 context.read<PayoutRateCubit>().retry(),
@@ -545,6 +548,9 @@ class _Contract extends StatelessWidget {
 
   /// The owner's payment rule on a maker buyer's side (#182), `null` without the wallet's port, and its « Retry ».
   final PayoutRateState? payoutRate;
+
+  /// The rule's cubit, `null` without the wallet's port: what the dialog of « Confirm … sent » reads when it opens and follows while open (security review of #208, C1).
+  final PayoutRateCubit? rateCubit;
   final VoidCallback? onRetryRate;
 
   /// Before « Submit » and the dialog of « Confirm … sent »: the rule's price read again when old ([PayoutRateCubit.beforeAct]), `false` stopping the press; `null` without the rule.
@@ -573,6 +579,7 @@ class _Contract extends StatelessWidget {
     required this.walletBond,
     required this.book,
     required this.payoutRate,
+    required this.rateCubit,
     required this.onRetryRate,
     required this.beforeAct,
   });
@@ -890,7 +897,11 @@ class _Contract extends StatelessWidget {
             chatOptions: chatOptions == null
                 ? null
                 : () => chatOptions(context, chatRequest),
-            rateLines: _dialogLines(context, status),
+            // Built from the rule's state when the dialog opens and at each change while open, never from this build's (security review of #208, C1).
+            rateLines: LiveDialogLines(
+              of: (context) => _dialogLines(context, status, rateCubit?.state),
+              changes: rateCubit?.stream ?? const Stream.empty(),
+            ),
             beforeConfirmFiatSent: beforeAct,
           ),
         ],
@@ -950,8 +961,10 @@ class _Contract extends StatelessWidget {
   }
 
   /// The rule's state for the step shown, `null` when it is another step's or there is none: never the check of a step before.
-  PayoutRateState? get _ruleShown {
-    final state = payoutRate;
+  PayoutRateState? get _ruleShown => _ruleOf(payoutRate);
+
+  /// [state] when it is the rule's state for the step shown, `null` otherwise.
+  PayoutRateState? _ruleOf(PayoutRateState? state) {
     final shown = PayoutRateStep.of(contract.status);
     final step = switch (state) {
       PayoutRateReading(:final step) ||
@@ -965,8 +978,12 @@ class _Contract extends StatelessWidget {
   }
 
   /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
-  List<TradeDialogLine> _dialogLines(BuildContext context, TradeStatus status) {
-    final state = _ruleShown;
+  List<TradeDialogLine> _dialogLines(
+    BuildContext context,
+    TradeStatus status,
+    PayoutRateState? now,
+  ) {
+    final state = _ruleOf(now);
     final order = contract.order;
     final gap = _gapOf(context, status);
     return [

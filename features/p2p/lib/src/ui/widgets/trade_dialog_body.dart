@@ -181,3 +181,12 @@ enum TradeDialogTone { plain, warning, alert }
 
 /// A line of the app in a dialog, and its tone.
 typedef TradeDialogLine = ({String text, TradeDialogTone tone});
+
+/// Lines a dialog builds from the state of the moment it opens ([of], with the dialog's own context), and builds again at each event of [changes] while it is open: never the lines of a build before (security review of #208, C1).
+@immutable
+final class LiveDialogLines {
+  final List<TradeDialogLine> Function(BuildContext context) of;
+  final Stream<Object?> changes;
+
+  const LiveDialogLines({required this.of, required this.changes});
+}

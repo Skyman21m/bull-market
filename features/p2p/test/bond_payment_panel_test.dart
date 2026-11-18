@@ -178,11 +178,15 @@ void main() {
           ),
           WalletPaidHere.no,
         ),
-        (const BondPayFollowing(P2pWalletPaymentSent()), WalletPaidHere.yes),
+        // Sent, not yet received by the swap service: the bond may have been locked by another wallet meanwhile (security review of #208, R1).
+        (
+          const BondPayFollowing(P2pWalletPaymentSent()),
+          WalletPaidHere.cannotTell,
+        ),
         (const BondPayFollowing(P2pWalletPaymentPending()), WalletPaidHere.yes),
         (
           const BondPayFollowing(P2pWalletPaymentUnderReview()),
-          WalletPaidHere.yes,
+          WalletPaidHere.cannotTell,
         ),
         (const BondPayFollowing(P2pWalletPaymentPaid()), WalletPaidHere.yes),
         // A refund does not tell a hold invoice cancelled after its lock from the swap service failing to pay it (review of #208, C1).
@@ -196,8 +200,12 @@ void main() {
         ),
         // The wallet's own screens paid it: this wallet still.
         (
-          const BondPayPaidElsewhere(P2pWalletPaymentSent()),
+          const BondPayPaidElsewhere(P2pWalletPaymentPending()),
           WalletPaidHere.yes,
+        ),
+        (
+          const BondPayPaidElsewhere(P2pWalletPaymentSent()),
+          WalletPaidHere.cannotTell,
         ),
         (
           const BondPayPaidElsewhere(P2pWalletPaymentSigned()),
@@ -231,6 +239,12 @@ void main() {
           offered: false,
         );
         expect(find.textContaining('swap service'), findsNothing);
+        // Sent, not yet received by the swap service: a condition only (security review of #208, R1).
+        _follow(payments, const P2pWalletPaymentSent());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(maybe), findsOneWidget);
+        expect(find.text(named), findsNothing);
         _follow(payments, const P2pWalletPaymentPending());
         await tester.pump();
         await tester.pump();

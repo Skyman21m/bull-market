@@ -130,15 +130,10 @@ class BondPaymentPanel extends StatefulWidget {
   static WalletPaidHere paidHereOf(BondPayStep step) => switch (step) {
     BondPayFollowing(:final progress) ||
     BondPayPaidElsewhere(:final progress) => switch (progress) {
-      // Its funds may have left, but where the payment ended is not known.
-      P2pWalletPaymentBroadcastUnknown() ||
-      P2pWalletPaymentExpired() ||
-      P2pWalletPaymentFailed() when progress.fundsMayHaveLeft =>
-        WalletPaidHere.cannotTell,
-      // A refund does not tell a hold invoice cancelled after its lock from the swap service failing to pay it (the port's own words, `P2pWalletPaymentRefundPending`): the invoice may have been paid by another wallet meanwhile (review of #208, C1).
-      P2pWalletPaymentRefundPending() ||
-      P2pWalletPaymentRefunded() => WalletPaidHere.cannotTell,
-      _ when progress.fundsMayHaveLeft => WalletPaidHere.yes,
+      // The only states the port establishes as this wallet's swap paying the invoice: « pending », a hold invoice the coordinator holds, and « paid », one settled (`p2p_wallet_port.dart`).
+      P2pWalletPaymentPending() || P2pWalletPaymentPaid() => WalletPaidHere.yes,
+      // Funds that may have left without the invoice established as paid by them: sent but not yet received by the service (the bond perhaps locked by another wallet meanwhile, security review of #208, R1), a broadcast not known, a review, an expiry or failure after sending, a refund (which does not tell a hold invoice cancelled after its lock from the service failing to pay it, functional review of #208, C1).
+      _ when progress.fundsMayHaveLeft => WalletPaidHere.cannotTell,
       _ => WalletPaidHere.no,
     },
     BondPayUnreadable() || BondPaySending() => WalletPaidHere.cannotTell,

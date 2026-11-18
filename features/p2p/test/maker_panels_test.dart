@@ -2322,6 +2322,157 @@ void main() {
     );
   });
 
+  group(
+    '« Confirm … sent » after a price read again at the press: the dialog\'s lines are those of the read, never « Reading… » (security review of #208, C1)',
+    () {
+      final atWallet = P2pWalletRateRead(91711.15);
+
+      /// The rule's cubit whose first read answers at once, every later read held by the test until it completes it.
+      (PayoutRateCubit, List<Completer<P2pWalletBitcoinRate>>) heldCubit(
+        DateTime Function() clock,
+      ) {
+        final answers = <Completer<P2pWalletBitcoinRate>>[];
+        var first = true;
+        final maker = switch (madeTerms().side) {
+          MadeSide(:final maker) => maker,
+        };
+        final cubit = PayoutRateCubit(
+          _record,
+          terms: (_) async => maker,
+          price: (_, _) {
+            if (first) {
+              first = false;
+              return Future.value(atWallet);
+            }
+            final answer = Completer<P2pWalletBitcoinRate>();
+            answers.add(answer);
+            return answer.future;
+          },
+          memory: PayoutRateMemory(),
+          now: clock,
+        );
+        addTearDown(cubit.close);
+        return (cubit, answers);
+      }
+
+      Finder inDialog(String words) => find.descendant(
+        of: find.byType(ConfirmFiatSentDialog),
+        matching: find.textContaining(words),
+      );
+
+      /// Presses « Confirm 100 EUR sent » with a price 3 minutes old: the read is held over a frame (« Reading… » drawn), then answered with [answer].
+      Future<void> pressAfterHeldRead(
+        WidgetTester tester,
+        List<Completer<P2pWalletBitcoinRate>> answers,
+        P2pWalletBitcoinRate answer,
+      ) async {
+        final confirm = find.textContaining('Confirm 100 EUR sent');
+        await _reveal(tester, confirm);
+        await tester.tap(confirm);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.textContaining('Reading the Bull wallet'), findsOneWidget);
+        expect(find.byType(ConfirmFiatSentDialog), findsNothing);
+        expect(answers, hasLength(1));
+        answers.single.complete(answer);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+        expect(inDialog('Reading the Bull wallet'), findsNothing);
+      }
+
+      testWidgets(
+        'the red warning of the 10 % at 9 (nothing kept): in the dialog after the read (the review\'s SECU1)',
+        (tester) async {
+          var clock = tradeNow;
+          final (cubit, answers) = heldCubit(() => clock);
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+            makerOrderJson(8, last: 90000),
+            makerOrderJson(9, last: 90000),
+          ]);
+          await _show(tester, seen, rate: cubit);
+          await tester.pump();
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          clock = clock.add(const Duration(minutes: 3));
+          await pressAfterHeldRead(tester, answers, atWallet);
+          expect(inDialog('fewer sats than that'), findsOneWidget);
+          expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a contract seen late compared at 9: « has not seen this contract\'s payout invoice » in the dialog after the read (the review\'s SECU2)',
+        (tester) async {
+          var clock = tradeNow;
+          final (cubit, answers) = heldCubit(() => clock);
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(7, last: 50000),
+            makerOrderJson(9, taker: third, last: 106900),
+          ]);
+          expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+          final (_, watch) = await _show(tester, chain[2], rate: cubit);
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('has not seen this contract'),
+            findsOneWidget,
+          );
+          clock = clock.add(const Duration(minutes: 3));
+          await pressAfterHeldRead(tester, answers, atWallet);
+          expect(inDialog('has not seen this contract'), findsOneWidget);
+          expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'within the margin, no alert: the comparison in the dialog after the read; and the dialog kept current when the coordinator\'s figure moves while it is open',
+        (tester) async {
+          var clock = tradeNow;
+          final (cubit, answers) = heldCubit(() => clock);
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 106900),
+            makerOrderJson(8, last: 106900),
+            makerOrderJson(9, last: 106900),
+            makerOrderJson(9, last: 50000),
+          ]);
+          final (_, watch) = await _show(tester, chain[2], rate: cubit);
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('fewer sats than that'), findsNothing);
+          clock = clock.add(const Duration(minutes: 3));
+          await pressAfterHeldRead(tester, answers, atWallet);
+          expect(inDialog('You receive 106,873 sats'), findsOneWidget);
+          expect(inDialog('fewer sats than that'), findsNothing);
+          expect(inDialog('but asked for an invoice of'), findsNothing);
+          // The figure moves while the dialog is open: its lines follow.
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            inDialog('but asked for an invoice of 106,873'),
+            findsOneWidget,
+          );
+          expect(inDialog('fewer sats than that'), findsOneWidget);
+        },
+      );
+    },
+  );
+
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);
     for (final locale in const [Locale('fr'), Locale('en')]) {

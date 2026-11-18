@@ -398,9 +398,29 @@ void main() {
     );
 
     test(
-      'a contract seen late whose invoice was never seen here is an alert whatever else the line says (#207)',
-      () {
+      'a contract seen late whose invoice was never seen here is an alert whatever else the line says (#207), a comparison within the margin included (security review of #208, R2)',
+      () async {
         const step = PayoutRateStep(1, fiatSent: true);
+        final (harness, record, six) = await taken();
+        final maker = await termsOf(harness, record);
+        final within = CheckPayoutRateUsecase.compare(
+          maker,
+          comparedOf(CheckPayoutRateUsecase.subjectAt(record, maker, six)),
+          P2pWalletRateRead(91711.15),
+        );
+        expect(within.warns, isFalse);
+        expect(
+          PayoutRateCubit.verdictOf(
+            PayoutRateChecked(step, within, basis: const PayoutRateNotSeen()),
+          ),
+          PayoutRateVerdict.warns,
+        );
+        expect(
+          PayoutRateCubit.verdictOf(
+            PayoutRateChecked(step, within, basis: const PayoutRateAsked()),
+          ),
+          PayoutRateVerdict.within,
+        );
         for (final state in [
           const PayoutRateSatsMissing(step, notSeen: true),
           const PayoutRateAmountsDisagree(step, notSeen: true),

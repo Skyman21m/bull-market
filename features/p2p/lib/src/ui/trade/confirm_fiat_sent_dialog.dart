@@ -1,4 +1,5 @@
 import 'package:bull_ui/bull_ui.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../widgets/trade_dialog_body.dart';
@@ -12,14 +13,14 @@ class ConfirmFiatSentDialog extends StatelessWidget {
   final String amount;
   final String currencyCode;
 
-  /// A maker buyer's lines (#182): the owner's payment rule (the comparison with the Bull wallet's price, its red warning, or why it was not made) or, without a comparison, the gap from the creation's rate; information, « Confirm » unchanged; empty for a taker.
-  final List<TradeDialogLine> lines;
+  /// A maker buyer's lines (#182): the owner's payment rule (the comparison with the Bull wallet's price, its red warning, or why it was not made) or, without a comparison, the gap from the creation's rate; information, « Confirm » unchanged; none for a taker. Built from the rule's state when the dialog opens and again whenever it changes while open (security review of #208, C1).
+  final LiveDialogLines? lines;
 
   const ConfirmFiatSentDialog({
     super.key,
     required this.amount,
     required this.currencyCode,
-    this.lines = const [],
+    this.lines,
   });
 
   /// Whether the user pressed « Confirm ».
@@ -27,7 +28,7 @@ class ConfirmFiatSentDialog extends StatelessWidget {
     BuildContext context, {
     required String amount,
     required String currencyCode,
-    List<TradeDialogLine> lines = const [],
+    LiveDialogLines? lines,
   }) async =>
       await BullDialog.show<bool>(
         context: context,
@@ -41,6 +42,15 @@ class ConfirmFiatSentDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lines = this.lines;
+    if (lines == null) return _body(context, const []);
+    return StreamBuilder<Object?>(
+      stream: lines.changes,
+      builder: (context, _) => _body(context, lines.of(context)),
+    );
+  }
+
+  Widget _body(BuildContext context, List<TradeDialogLine> lines) {
     final l10n = P2pLocalizations.of(context);
     return TradeDialogBody(
       title: l10n.p2pEndConfirmSentTitle(amount, currencyCode),
