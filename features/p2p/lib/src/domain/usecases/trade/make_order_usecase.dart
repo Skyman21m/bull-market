@@ -12,7 +12,6 @@ import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
 import '../../trade/make_price_check.dart';
-import '../../trade/maker_terms.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_edges.dart';
 import '../../trade/trade_make.dart';

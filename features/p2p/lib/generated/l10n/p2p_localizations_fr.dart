@@ -3639,4 +3639,31 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pOrderRecordsUnreadable =>
       'Bull Market n’a pas pu lire ses échanges : cet ordre est peut-être le vôtre, il ne peut donc pas être pris ici. Revenez en arrière et réessayez.';
+
+  @override
+  String get p2pRenewOrder => 'Renouveler l’ordre';
+
+  @override
+  String get p2pRenew => 'Renouveler';
+
+  @override
+  String p2pRenewIntro(String orderId) {
+    return 'Renouvellement de l’ordre $orderId : un nouvel ordre est créé avec les termes que cet appareil en a gardés, sous un nouveau robot, et demande une nouvelle caution.';
+  }
+
+  @override
+  String get p2pRenewTermsUnreadable =>
+      'Cet ordre ne peut pas être renouvelé : les termes que cet appareil en a gardés n’ont pas pu être lus.';
+
+  @override
+  String get p2pRenewNotEnded =>
+      'Cet ordre ne peut pas être renouvelé : cet appareil ne l’a pas vu expiré ou terminé.';
+
+  @override
+  String get p2pRenewCoordinatorGone =>
+      'Cet ordre ne peut pas être renouvelé : son coordinateur n’est plus dans la liste, ou a changé d’adresse.';
+
+  @override
+  String get p2pRenewNotAsKept =>
+      'Le formulaire ne montre pas exactement les termes gardés de cet ordre : rien ne peut être envoyé.';
 }

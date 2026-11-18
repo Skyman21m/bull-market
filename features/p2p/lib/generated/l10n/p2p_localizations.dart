@@ -5670,6 +5670,48 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Bull Market could not read its trades: this order may be yours, so it cannot be taken here. Go back and try again.'**
   String get p2pOrderRecordsUnreadable;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 757); its `fr.json` says « Renouveler la commande », the French is the app's, which says « ordre » (design note § 1.11). The button of an order made here once it expired (`Prompts/Expired.tsx:78-96`, #185), and the title of its renewal's page.
+  ///
+  /// In en, this message translates to:
+  /// **'Renew Order'**
+  String get p2pRenewOrder;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 791), with its French (`fr.json`, line 791). The button of an order made here at « Trade finished! » (`Prompts/Successful.tsx:276-285`, #185).
+  ///
+  /// In en, this message translates to:
+  /// **'Renew'**
+  String get p2pRenew;
+
+  /// Not in the RoboSats texts: the project's own: at the top of a renewal's page (#185), which the reference does not have (its renewal sends at once): what « Create order » will make.
+  ///
+  /// In en, this message translates to:
+  /// **'Renewing order {orderId}: a new order is made with the terms this device kept of it, under a new robot, and asks for a new bond.'**
+  String p2pRenewIntro(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: a renewal's page when the records of the order cannot be read, or do not restore (#185); nothing is sent.
+  ///
+  /// In en, this message translates to:
+  /// **'This order cannot be renewed: the terms this device kept of it could not be read.'**
+  String get p2pRenewTermsUnreadable;
+
+  /// Not in the RoboSats texts: the project's own: a renewal's page when the trail this device stored of the order is not at a status where the reference offers a renewal (#185); nothing is sent.
+  ///
+  /// In en, this message translates to:
+  /// **'This order cannot be renewed: this device has not seen it expired or finished.'**
+  String get p2pRenewNotEnded;
+
+  /// Not in the RoboSats texts: the project's own: a renewal's page when the order's coordinator left the federation list on its network, or changed address (#185); nothing is sent.
+  ///
+  /// In en, this message translates to:
+  /// **'This order cannot be renewed: its coordinator is no longer in the list, or has moved.'**
+  String get p2pRenewCoordinatorGone;
+
+  /// Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when the form, filled with the kept terms, would not send exactly them (#185); never expected, said rather than a button that does nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'The form does not show exactly the terms kept of this order: nothing can be sent.'**
+  String get p2pRenewNotAsKept;
 }
 
 class _P2pLocalizationsDelegate

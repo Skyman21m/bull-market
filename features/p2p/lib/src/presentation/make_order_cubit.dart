@@ -310,7 +310,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   MakeOrderCubit.renewal(
     TradeRecord renewing, {
     required RobosatsCurrency placeholder,
-    required ReadRenewal readRenewal,
+    required ReadRenewal this._readRenewal,
     required this._listHosts,
     required this._fetchInfo,
     required this._fetchLimits,
@@ -320,7 +320,6 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     required this._now,
     this._checkPrice,
   }) : _renewing = renewing,
-       _readRenewal = readRenewal,
        super(
          MakeOrderState(
            network: renewing.network,

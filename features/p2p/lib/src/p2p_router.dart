@@ -319,7 +319,10 @@ final class P2pRouter {
                 ? (record) async {
                     final exit = await context.pushNamed<P2pOrderExit>(
                       createName,
-                      extra: P2pCreateRouteArgs.renewal(record, book: args.book),
+                      extra: P2pCreateRouteArgs.renewal(
+                        record,
+                        book: args.book,
+                      ),
                     );
                     if (exit == P2pOrderExit.garage && context.mounted) {
                       context.pop(P2pOrderExit.garage);

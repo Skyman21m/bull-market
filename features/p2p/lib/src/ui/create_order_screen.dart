@@ -539,172 +539,180 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         ),
                       ],
                       MakeRenewalNone() || MakeRenewalReady() => [
-                      if (state.renewal case MakeRenewalReady(:final renewal)) ...[
-                        _Line(l10n.p2pRenewIntro(renewal.orderId.toString())),
-                        const Gap(BullSpacing.md),
-                      ],
-                      // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
-                      if (pending.unreadable ||
-                          (pending.makes?.isNotEmpty ?? false)) ...[
-                        _Line(l10n.p2pMakePendingFirst, color: colors.warning),
-                        const PendingMakeLines(),
-                        const Gap(BullSpacing.md),
-                      ] else if (pending.closed != null) ...[
-                        // The last pending make found not made: said once, the form free again (functional review C1).
-                        const PendingMakeLines(),
-                        const Gap(BullSpacing.md),
-                      ],
-                      _AdvancedOptions(
-                        onClear: fieldsLocked ? null : _clear,
-                        advanced: _advanced,
-                        loading:
-                            !state.coordinatorsLoaded ||
-                            state.limits is MakerFormLimitsLoading,
-                        // Opened only once the coordinator's limits are read, as the reference's switch (`MakerForm.tsx:710`); closed at any time.
-                        onToggle:
-                            fieldsLocked ||
-                                (!_advanced &&
-                                    (!state.coordinatorsLoaded ||
-                                        state.limits is! MakerFormLimitsRead))
-                            ? null
-                            : () => _toggleAdvanced(state),
-                      ),
-                      const Gap(BullSpacing.md),
-                      _Side(
-                        type: _type,
-                        enabled: !fieldsLocked,
-                        // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
-                        onBuy: () => setState(() => _type = OrderType.buy),
-                      ),
-                      const Gap(BullSpacing.md),
-                      if (_advanced) ...[
-                        _RangeSwitch(
-                          range: _rangeEnabled,
-                          onChanged: fieldsLocked ? null : _toggleRange,
+                        if (state.renewal case MakeRenewalReady(
+                          :final renewal,
+                        )) ...[
+                          _Line(l10n.p2pRenewIntro(renewal.orderId.toString())),
+                          const Gap(BullSpacing.md),
+                        ],
+                        // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
+                        if (pending.unreadable ||
+                            (pending.makes?.isNotEmpty ?? false)) ...[
+                          _Line(
+                            l10n.p2pMakePendingFirst,
+                            color: colors.warning,
+                          ),
+                          const PendingMakeLines(),
+                          const Gap(BullSpacing.md),
+                        ] else if (pending.closed != null) ...[
+                          // The last pending make found not made: said once, the form free again (functional review C1).
+                          const PendingMakeLines(),
+                          const Gap(BullSpacing.md),
+                        ],
+                        _AdvancedOptions(
+                          onClear: fieldsLocked ? null : _clear,
+                          advanced: _advanced,
+                          loading:
+                              !state.coordinatorsLoaded ||
+                              state.limits is MakerFormLimitsLoading,
+                          // Opened only once the coordinator's limits are read, as the reference's switch (`MakerForm.tsx:710`); closed at any time.
+                          onToggle:
+                              fieldsLocked ||
+                                  (!_advanced &&
+                                      (!state.coordinatorsLoaded ||
+                                          state.limits is! MakerFormLimitsRead))
+                              ? null
+                              : () => _toggleAdvanced(state),
                         ),
-                        const Gap(BullSpacing.xs),
-                      ],
-                      if (check.hasRange)
-                        _AmountRange(
-                          min: _minAmount,
-                          max: _maxAmount,
-                          check: check,
-                          currency: state.currency,
+                        const Gap(BullSpacing.md),
+                        _Side(
+                          type: _type,
                           enabled: !fieldsLocked,
-                          onChanged: _amountChanged,
-                          onCurrency: () => unawaited(_chooseCurrency(state)),
-                          onSlide: _slide,
-                        )
-                      else
-                        _Amount(
-                          controller: _amount,
-                          currency: state.currency,
-                          problem: check.amountProblem,
-                          enabled: !fieldsLocked,
-                          onChanged: _amountChanged,
-                          onCurrency: () => unawaited(_chooseCurrency(state)),
+                          // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
+                          onBuy: () => setState(() => _type = OrderType.buy),
                         ),
-                      const Gap(BullSpacing.md),
-                      _Methods(
-                        methods: _methods,
-                        tooLong: check.badPaymentMethod,
-                        enabled: !fieldsLocked,
-                        onChoose: () => unawaited(_chooseMethods()),
-                        onAdd: () => unawaited(_addMethod()),
-                        onRemove: (method) =>
-                            setState(() => _methods.remove(method)),
-                      ),
-                      const Gap(BullSpacing.md),
-                      const _Location(),
-                      const Gap(BullSpacing.md),
-                      _PremiumField(
-                        controller: _premium,
-                        problem: check.premiumProblem,
-                        enabled: !fieldsLocked,
-                        onChanged: () => setState(() {}),
-                      ),
-                      const Gap(BullSpacing.md),
-                      if (_advanced) ...[
-                        _Description(
-                          controller: _description,
-                          check: check,
+                        const Gap(BullSpacing.md),
+                        if (_advanced) ...[
+                          _RangeSwitch(
+                            range: _rangeEnabled,
+                            onChanged: fieldsLocked ? null : _toggleRange,
+                          ),
+                          const Gap(BullSpacing.xs),
+                        ],
+                        if (check.hasRange)
+                          _AmountRange(
+                            min: _minAmount,
+                            max: _maxAmount,
+                            check: check,
+                            currency: state.currency,
+                            enabled: !fieldsLocked,
+                            onChanged: _amountChanged,
+                            onCurrency: () => unawaited(_chooseCurrency(state)),
+                            onSlide: _slide,
+                          )
+                        else
+                          _Amount(
+                            controller: _amount,
+                            currency: state.currency,
+                            problem: check.amountProblem,
+                            enabled: !fieldsLocked,
+                            onChanged: _amountChanged,
+                            onCurrency: () => unawaited(_chooseCurrency(state)),
+                          ),
+                        const Gap(BullSpacing.md),
+                        _Methods(
+                          methods: _methods,
+                          tooLong: check.badPaymentMethod,
+                          enabled: !fieldsLocked,
+                          onChoose: () => unawaited(_chooseMethods()),
+                          onAdd: () => unawaited(_addMethod()),
+                          onRemove: (method) =>
+                              setState(() => _methods.remove(method)),
+                        ),
+                        const Gap(BullSpacing.md),
+                        const _Location(),
+                        const Gap(BullSpacing.md),
+                        _PremiumField(
+                          controller: _premium,
+                          problem: check.premiumProblem,
                           enabled: !fieldsLocked,
                           onChanged: () => setState(() {}),
                         ),
                         const Gap(BullSpacing.md),
-                        const _Password(),
-                        const Gap(BullSpacing.md),
-                        _DurationField(
-                          label: l10n.p2pMakePublicDuration,
-                          title: l10n.p2pMakePublicDurationTitle,
-                          value: _publicDuration,
-                          enabled: !fieldsLocked,
-                          onPicked: (picked) => setState(
-                            () => _publicDuration =
-                                MakerFormCheck.publicDurationOf(picked),
+                        if (_advanced) ...[
+                          _Description(
+                            controller: _description,
+                            check: check,
+                            enabled: !fieldsLocked,
+                            onChanged: () => setState(() {}),
                           ),
-                        ),
-                        const Gap(BullSpacing.md),
-                        _DurationField(
-                          label: l10n.p2pMakeEscrowDuration,
-                          title: l10n.p2pMakeEscrowDurationTitle,
-                          value: _escrowDuration,
-                          enabled: !fieldsLocked,
-                          onPicked: (picked) => setState(
-                            () => _escrowDuration =
-                                MakerFormCheck.escrowDurationOf(picked),
+                          const Gap(BullSpacing.md),
+                          const _Password(),
+                          const Gap(BullSpacing.md),
+                          _DurationField(
+                            label: l10n.p2pMakePublicDuration,
+                            title: l10n.p2pMakePublicDurationTitle,
+                            value: _publicDuration,
+                            enabled: !fieldsLocked,
+                            onPicked: (picked) => setState(
+                              () => _publicDuration =
+                                  MakerFormCheck.publicDurationOf(picked),
+                            ),
                           ),
-                        ),
-                        const Gap(BullSpacing.md),
-                        _BondSizeSlider(
-                          value: _bondSize,
-                          onChanged: fieldsLocked
-                              ? null
-                              : (value) => setState(
-                                  () => _bondSize = MakerFormCheck.bondSizeOf(
-                                    value,
+                          const Gap(BullSpacing.md),
+                          _DurationField(
+                            label: l10n.p2pMakeEscrowDuration,
+                            title: l10n.p2pMakeEscrowDurationTitle,
+                            value: _escrowDuration,
+                            enabled: !fieldsLocked,
+                            onPicked: (picked) => setState(
+                              () => _escrowDuration =
+                                  MakerFormCheck.escrowDurationOf(picked),
+                            ),
+                          ),
+                          const Gap(BullSpacing.md),
+                          _BondSizeSlider(
+                            value: _bondSize,
+                            onChanged: fieldsLocked
+                                ? null
+                                : (value) => setState(
+                                    () => _bondSize = MakerFormCheck.bondSizeOf(
+                                      value,
+                                    ),
                                   ),
-                                ),
+                          ),
+                          const Gap(BullSpacing.md),
+                        ],
+                        _Coordinator(
+                          state: state,
+                          name: coordinatorName,
+                          enabled: !locked && state.coordinatorsLoaded,
+                          // A renewal goes to its order's coordinator, with no « Select Host » (#185); « Retry » stays.
+                          chooses: !renewing,
+                          onTap: () => unawaited(_chooseHost(state)),
                         ),
                         const Gap(BullSpacing.md),
+                        _Summary(
+                          type: _type,
+                          check: check,
+                          state: state,
+                          advanced: _advanced,
+                        ),
+                        const Gap(BullSpacing.md),
+                        _CreateButton(
+                          check: check,
+                          state: state,
+                          pendingFirst: pending.blocksMaking,
+                          pendingShown:
+                              pending.unreadable ||
+                              (pending.makes?.isNotEmpty ?? false),
+                          leaveTried: sending && _leaveTried,
+                          asking: _asking,
+                          stopped: _stopped,
+                          renewalMismatch: _renewalMismatch(
+                            state,
+                            check.request,
+                          ),
+                          coordinator: coordinatorName,
+                          onPressed: () => unawaited(_press()),
+                        ),
+                        const Gap(BullSpacing.md),
+                        _Rate(
+                          check: check,
+                          state: state,
+                          coordinator: coordinatorName,
+                        ),
                       ],
-                      _Coordinator(
-                        state: state,
-                        name: coordinatorName,
-                        enabled: !locked && state.coordinatorsLoaded,
-                        // A renewal goes to its order's coordinator, with no « Select Host » (#185); « Retry » stays.
-                        chooses: !renewing,
-                        onTap: () => unawaited(_chooseHost(state)),
-                      ),
-                      const Gap(BullSpacing.md),
-                      _Summary(
-                        type: _type,
-                        check: check,
-                        state: state,
-                        advanced: _advanced,
-                      ),
-                      const Gap(BullSpacing.md),
-                      _CreateButton(
-                        check: check,
-                        state: state,
-                        pendingFirst: pending.blocksMaking,
-                        pendingShown:
-                            pending.unreadable ||
-                            (pending.makes?.isNotEmpty ?? false),
-                        leaveTried: sending && _leaveTried,
-                        asking: _asking,
-                        stopped: _stopped,
-                        renewalMismatch: _renewalMismatch(state, check.request),
-                        coordinator: coordinatorName,
-                        onPressed: () => unawaited(_press()),
-                      ),
-                      const Gap(BullSpacing.md),
-                      _Rate(
-                        check: check,
-                        state: state,
-                        coordinator: coordinatorName,
-                      ),
-                    ],
                     },
                   ),
                 ),
@@ -1407,7 +1415,10 @@ class _CreateButton extends StatelessWidget {
     final progress = state.progress;
     final block = check.block;
     final ready =
-        block == null && progress is MakeIdle && !pendingFirst && !renewalMismatch;
+        block == null &&
+        progress is MakeIdle &&
+        !pendingFirst &&
+        !renewalMismatch;
     final button = TradeButton(
       label: l10n.p2pMakeCreateOrder,
       busy: asking || progress is MakeSending,

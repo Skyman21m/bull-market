@@ -3588,4 +3588,31 @@ class P2pLocalizationsEs extends P2pLocalizations {
   @override
   String get p2pOrderRecordsUnreadable =>
       'Bull Market could not read its trades: this order may be yours, so it cannot be taken here. Go back and try again.';
+
+  @override
+  String get p2pRenewOrder => 'Renew Order';
+
+  @override
+  String get p2pRenew => 'Renew';
+
+  @override
+  String p2pRenewIntro(String orderId) {
+    return 'Renewing order $orderId: a new order is made with the terms this device kept of it, under a new robot, and asks for a new bond.';
+  }
+
+  @override
+  String get p2pRenewTermsUnreadable =>
+      'This order cannot be renewed: the terms this device kept of it could not be read.';
+
+  @override
+  String get p2pRenewNotEnded =>
+      'This order cannot be renewed: this device has not seen it expired or finished.';
+
+  @override
+  String get p2pRenewCoordinatorGone =>
+      'This order cannot be renewed: its coordinator is no longer in the list, or has moved.';
+
+  @override
+  String get p2pRenewNotAsKept =>
+      'The form does not show exactly the terms kept of this order: nothing can be sent.';
 }

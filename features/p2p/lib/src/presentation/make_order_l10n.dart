@@ -40,8 +40,8 @@ extension RenewalRefusalL10n on RenewalRefusal {
   String toText(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
-      RenewalNotMadeHere() || RenewalTermsUnreadable() =>
-        l10n.p2pRenewTermsUnreadable,
+      RenewalNotMadeHere() ||
+      RenewalTermsUnreadable() => l10n.p2pRenewTermsUnreadable,
       RenewalNotEnded() => l10n.p2pRenewNotEnded,
       RenewalCoordinatorGone() => l10n.p2pRenewCoordinatorGone,
     };
