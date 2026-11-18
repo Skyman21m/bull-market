@@ -40,7 +40,6 @@ import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
-import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
@@ -1051,14 +1050,24 @@ void main() {
             for (final (status, before) in [
               (6, <Map<String, Object?>>[]),
               (8, [makerOrderJson(8, last: 90000)]),
-              (9, [makerOrderJson(8, last: 90000), makerOrderJson(9, last: 90000)]),
+              (
+                9,
+                [
+                  makerOrderJson(8, last: 90000),
+                  makerOrderJson(9, last: 90000),
+                ],
+              ),
             ]) {
               final seen = (await _chain([
                 ...start,
                 ...before,
                 makerOrderJson(status, last: 90000, changes: {'amount': shown}),
               ])).last;
-              expect(seen.status.has<TradeTermsChanged>(), isTrue, reason: '$status');
+              expect(
+                seen.status.has<TradeTermsChanged>(),
+                isTrue,
+                reason: '$status',
+              );
               expect(seen.contractAmountMoved, isTrue, reason: '$status');
               await _show(
                 tester,
@@ -1067,7 +1076,11 @@ void main() {
               );
               await tester.pump();
               await tester.pump();
-              expect(find.textContaining('are worth'), findsNothing, reason: '$status');
+              expect(
+                find.textContaining('are worth'),
+                findsNothing,
+                reason: '$status',
+              );
               expect(
                 find.textContaining('from the rate when you made it'),
                 findsNothing,
@@ -1090,9 +1103,15 @@ void main() {
                 await tester.pumpAndSettle();
                 final dialog = find.byType(ConfirmFiatSentDialog);
                 expect(dialog, findsOneWidget);
-                for (final text in ['are worth', 'from the rate when you made it']) {
+                for (final text in [
+                  'are worth',
+                  'from the rate when you made it',
+                ]) {
                   expect(
-                    find.descendant(of: dialog, matching: find.textContaining(text)),
+                    find.descendant(
+                      of: dialog,
+                      matching: find.textContaining(text),
+                    ),
                     findsNothing,
                     reason: text,
                   );
@@ -1147,7 +1166,11 @@ void main() {
               [makerOrderJson(8, last: 90000)],
               [makerOrderJson(8, last: 90000), makerOrderJson(9, last: 90000)],
             ]) {
-              final status = before.isEmpty ? 6 : before.length == 1 ? 8 : 9;
+              final status = before.isEmpty
+                  ? 6
+                  : before.length == 1
+                  ? 8
+                  : 9;
               final chain = await _chain([
                 ...start,
                 ...before,
@@ -1155,7 +1178,11 @@ void main() {
               ]);
               final seen = chain.last;
               // Without what was asked carried by the read, the terms the rule holds say it too.
-              final bare = TradeSeen(seen.status, order: seen.order, stored: true);
+              final bare = TradeSeen(
+                seen.status,
+                order: seen.order,
+                stored: true,
+              );
               for (final asked in [null, Sats.fromInt(89978)]) {
                 for (final read in [seen, bare]) {
                   final subject = CheckPayoutRateUsecase.subjectAt(

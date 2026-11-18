@@ -669,6 +669,46 @@ void main() {
       },
     );
 
+    test(
+      'limits with no room for a range (the largest under about 1.65 times the smallest): the reference\'s range, rounded as it writes it, which the form says is not valid (security review of #183, R7)',
+      () async {
+        final tight = await limitsOf({2: (50000, 100, 150)});
+        for (final premium in ['', '7.5']) {
+          final limits = checkOf(limits: tight, premium: premium).limits;
+          if (limits == null) fail('no limits');
+          final low = limits.min;
+          final high = limits.max;
+          for (var step = 0; step <= 40; step++) {
+            final value = low + (high - low) * step / 40;
+            for (final (moved, next) in [
+              (RangeThumb.min, MakerRange(value, high)),
+              (RangeThumb.max, MakerRange(low, value)),
+            ]) {
+              final range = MakerRange.slid(
+                moved: moved,
+                next: next,
+                limits: limits,
+              );
+              for (final bound in [range.min, range.max]) {
+                expect(
+                  bound,
+                  significant(bound, bound < 100 ? 2 : 3),
+                  reason: '$bound',
+                );
+              }
+              final check = checkOf(
+                min: '${range.min}',
+                max: '${range.max}',
+                limits: tight,
+                premium: premium,
+              );
+              expect(check.block, MakerFormBlock.amountRangeInvalid);
+            }
+          }
+        }
+      },
+    );
+
     test('what the slider sets is a range the form takes', () {
       final limits = checkOf().limits;
       if (limits == null) fail('no limits');

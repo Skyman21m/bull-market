@@ -1,9 +1,7 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
-import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
-import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_tolerances.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade/wallet_rate_check.dart';

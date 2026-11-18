@@ -1008,7 +1008,6 @@ class _Contract extends StatelessWidget {
     PayoutRateState? now,
   ) {
     final state = _ruleOf(now);
-    final order = contract.order;
     final gap = _gapOf(context, status);
     return [
       if (state != null)
