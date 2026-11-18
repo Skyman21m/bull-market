@@ -341,30 +341,4 @@ void main() {
       });
     },
   );
-
-  test(
-    'the reference\'s defect, reproduced: its table shows as many rows as it counts 55 points in its height, its pagination hidden (`MakerPage/index.tsx:82`, `BookTable/index.tsx:157-174`)',
-    () {
-      // A phone 800 points high: 1 of 1, 1 of 2, 2 of 3, 3 of 4, 3 of 5, 6 of 8, 8 of 10 and of 100 (68 % of the screen).
-      for (final (count, shown) in [
-        (0, 0),
-        (1, 1),
-        (2, 1),
-        (3, 2),
-        (4, 3),
-        (5, 3),
-        (8, 6),
-        (10, 8),
-        (100, 8),
-      ]) {
-        expect(
-          MatchingOrders.rowsShown(count, 800),
-          shown,
-          reason: '$count orders',
-        );
-      }
-      // At least one, however small the screen.
-      expect(MatchingOrders.rowsShown(5, 100), 1);
-    },
-  );
 }

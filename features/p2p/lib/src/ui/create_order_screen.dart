@@ -1628,8 +1628,13 @@ bool _renewalStuck(
   };
 }
 
-/// « Existing orders match yours! » and the orders that match (#186, `MakerPage/index.tsx:105-125`): the reference's title, then its table's rows as the book shows its offers ([OfferRow]), in the reference's order and as many as its table shows ([MatchingOrders.rowsShown]); a tap opens the order, to take it instead.
+/// « Existing orders match yours! » and the orders that match (#186, `MakerPage/index.tsx:105-125`): the reference's title, then every order that matches, as the book shows its offers ([OfferRow]), in the reference's order; a tap opens the order, to take it instead.
+///
+/// The rows scroll in a box at most [heightShare] of the screen high, as the reference's table scrolls in a box at most 68 % of its window (`MakerPage/index.tsx:82`, its `Paper` with `overflow: 'auto'`, `BookTable/index.tsx:991-1013`), so that however many match, the page goes on below it with the coordinator, the summary, « Create order » and « Edit order ». The reference's table shows as many rows as it counts in its height and lets the others be reached by sorting a column (its header is kept); here every row that matches is listed, the list bounded by the book's own read bounds (`read_bounds.dart`, 1,000 orders per coordinator).
 class _Matches extends StatelessWidget {
+  /// The highest share of the screen the rows take (`windowSize.height * 0.68`, `MakerPage/index.tsx:82`).
+  static const double heightShare = 0.68;
+
   final List<PublicOrder> orders;
   final DateTime now;
 
@@ -1643,12 +1648,6 @@ class _Matches extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    final shown = orders.take(
-      MatchingOrders.rowsShown(
-        orders.length,
-        MediaQuery.sizeOf(context).height,
-      ),
-    );
     final open = onOpen;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1663,15 +1662,27 @@ class _Matches extends StatelessWidget {
           ),
         ),
         const Gap(BullSpacing.xs),
-        for (final (index, order) in shown.indexed) ...[
-          if (index > 0) Divider(height: 1, color: colors.outlineVariant),
-          OfferRow(
-            key: ValueKey((order.coordinator.shortAlias, order.id)),
-            order: order,
-            now: now,
-            onTap: open == null ? null : () => open(order),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * heightShare,
           ),
-        ],
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: orders.length,
+            itemBuilder: (context, index) {
+              final order = orders[index];
+              return OfferRow(
+                key: ValueKey((order.coordinator.shortAlias, order.id)),
+                order: order,
+                now: now,
+                onTap: open == null ? null : () => open(order),
+              );
+            },
+            separatorBuilder: (_, _) =>
+                Divider(height: 1, color: colors.outlineVariant),
+          ),
+        ),
       ],
     );
   }

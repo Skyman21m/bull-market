@@ -122,22 +122,4 @@ final class MatchingOrders {
       });
     return [for (final (_, order) in ranked) order];
   }
-
-  /// The reference's font size, in points (`models/Settings.model.ts:36`, `:79`): its sizes below are in em of it.
-  static const double referenceFontSize = 14;
-
-  /// How many of [count] matching orders the reference's table shows on a screen [screenHeight] points high, the others out of reach.
-  ///
-  /// A defect of the reference, reproduced as it is (#186, declared in its pull request): the table is given the height of `count × 3.25 + 3` em, at most 68 % of the screen (`MakerPage/index.tsx:82`), but counts 55 points for its header and for each row (`BookTable/index.tsx:157-174`, `55 / fontSize` em), and pages its rows by that count with its footer, the pagination, hidden (`showFooter={false}`, `:1031`): it shows one row of two, two of three, three of four, at least one, and never the rest. The screen's height in em is its height over the font size, as the reference measures it (`utils/theme.ts:18-24`).
-  static int rowsShown(int count, double screenHeight) {
-    if (count <= 0) return 0;
-    final windowHeight = screenHeight / referenceFontSize;
-    final tableHeight = math.min(count * 3.25 + 3, windowHeight * 0.68);
-    const rowHeight = 55 / referenceFontSize;
-    final pageSize = math.max(
-      ((tableHeight - rowHeight) / rowHeight).floor(),
-      1,
-    );
-    return math.min(pageSize, count);
-  }
 }

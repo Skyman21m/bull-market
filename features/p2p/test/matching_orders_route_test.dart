@@ -144,8 +144,8 @@ void main() {
       await tester.tap(inForm(find.text('Submit')));
       await settle(tester);
       expect(inForm(find.text('Existing orders match yours!')), findsOneWidget);
-      // Two match, of which the reference's table shows one (`MatchingOrders.rowsShown`): the lowest premium.
-      expect(shown(tester), [11]);
+      // Both orders that match, the lowest premium first.
+      expect(shown(tester), [11, 12]);
       expect(inForm(find.text('Create order')), findsOneWidget);
       expect(inForm(find.byTooltip('Edit order')), findsOneWidget);
       // The search and « Submit » asked nothing of anyone.
@@ -167,7 +167,7 @@ void main() {
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsNothing);
       expect(inForm(find.text('Existing orders match yours!')), findsOneWidget);
-      expect(shown(tester), [11]);
+      expect(shown(tester), [11, 12]);
     },
   );
 

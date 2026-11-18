@@ -8,7 +8,6 @@ import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/coordinator_lottery.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
-import 'package:p2p/src/domain/matching_orders.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_host.dart';
@@ -1999,7 +1998,14 @@ void main() {
   group('« Existing orders match yours! » (#186)', () {
     // The book the tab received, read by the package's parser (`support/fakes.dart`): EUR sell orders but #2 (a buy order) and #5 (USD); #1, #3, #4 and #6 match « Buy », 100 EUR, Revolut, 2 %; #7 is at 2.5 %.
     late List<PublicOrder> book;
+
+    // 300 sell orders that all match « Buy », 100 EUR, Revolut, 2 %, at premiums 0 to 1.495 %, #399 the last one listed.
+    late List<PublicOrder> many;
     setUpAll(() async {
+      many = await parseOrders([
+        for (var id = 100; id < 400; id++)
+          bookOrder(id: id, premium: (id - 100) / 200),
+      ]);
       book = await parseOrders([
         bookOrder(id: 1, premium: 1.5),
         bookOrder(id: 2, type: 0),
@@ -2084,9 +2090,8 @@ void main() {
         await tester.tap(submit());
         await settle(tester);
         expect(title(), findsOneWidget);
-        // Four match (#3, #6, #1, #4, the lowest premium first): on the tall test screen (2,400 points) the reference's table shows three, its pagination hiding the rest (`MatchingOrders.rowsShown`).
-        expect(MatchingOrders.rowsShown(4, 2400), 3);
-        expect(shown(tester), [3, 6, 1]);
+        // All four that match, the lowest premium first.
+        expect(shown(tester), [3, 6, 1, 4]);
         // Folded away as in the reference: the side, the amount, the methods, the premium, « Clear form » and the options' switch.
         for (final text in [
           'Buy or Sell Bitcoin? *',
@@ -2123,13 +2128,71 @@ void main() {
         expect(find.text('Premium over Market (%) *'), findsOneWidget);
         expect(submit(), findsOneWidget);
         expect(edit(), findsNothing);
-        // Typing changes what matches: at 1 %, #3 and #6, of which the table shows one.
+        // Typing changes what matches: at 1 %, #3 and #6.
         await tester.enterText(_premiumField, '1');
         await settle(tester);
         await tester.tap(submit());
         await settle(tester);
-        expect(shown(tester), [3]);
+        expect(shown(tester), [3, 6]);
         expect(asked(form), before);
+      },
+    );
+
+    testWidgets(
+      'hundreds match, on a phone: every one is listed in a box that scrolls by itself, at most 68 % of the screen; « Create order » and « Edit order » are below it, reached by dragging the page from the title',
+      (tester) async {
+        final form = _Form()..answer = const Err(MakePriceUnknown());
+        await _show(tester, form, book: many, activeTrades: none);
+        await _fill(tester);
+        // A phone 844 points high from here.
+        tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+        await settle(tester);
+        await tester.dragUntilVisible(
+          submit(),
+          find.byType(ListView).first,
+          const Offset(0, -300),
+        );
+        await tester.tap(submit());
+        await settle(tester);
+        expect(title(), findsOneWidget);
+        // The rows' own list, the only one that shrinks to its rows.
+        final rows = find
+            .descendant(
+              of: find.byWidgetPredicate((w) => w is ListView && w.shrinkWrap),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        expect(tester.getSize(rows).height, lessThanOrEqualTo(844 * 0.68));
+        expect(shown(tester).first, 100);
+        // The last of the 300, reached by dragging the rows.
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey(('temple', 399))),
+          400,
+          scrollable: rows,
+          maxScrolls: 200,
+        );
+        expect(find.byKey(const ValueKey(('temple', 399))), findsOneWidget);
+        // The page, dragged from the title, shows « Edit order » and « Create order » under the box.
+        await tester.drag(title(), const Offset(0, -300));
+        await settle(tester);
+        expect(tester.getRect(edit()).bottom, lessThan(844));
+        await tester.tap(edit());
+        await settle(tester);
+        expect(title(), findsNothing);
+        await tester.dragUntilVisible(
+          submit(),
+          find.byType(ListView).first,
+          const Offset(0, -300),
+        );
+        await tester.tap(submit());
+        await settle(tester);
+        await tester.drag(title(), const Offset(0, -300));
+        await settle(tester);
+        expect(tester.getRect(_create).bottom, lessThan(844));
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+        expect(tester.takeException(), isNull);
       },
     );
 
@@ -2182,7 +2245,7 @@ void main() {
         await _fill(tester);
         await tester.tap(submit());
         await settle(tester);
-        expect(shown(tester), [3, 6]);
+        expect(shown(tester), [3, 6, 4]);
         for (final active in [
           const ActiveTradesLoading(),
           const ActiveTradesUnreadable(),
@@ -2243,7 +2306,7 @@ void main() {
         await tester.tap(submit());
         await settle(tester);
         expect(find.text(closed), findsOneWidget);
-        expect(shown(tester), [3, 6, 1]);
+        expect(shown(tester), [3, 6, 1, 4]);
       },
     );
   });
