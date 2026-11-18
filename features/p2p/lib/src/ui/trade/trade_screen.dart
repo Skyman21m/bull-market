@@ -978,16 +978,27 @@ class _Contract extends StatelessWidget {
     return state;
   }
 
-  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount kept with the contract (a range's amount taken, `TradeTrail.takenAmount`, or the fixed amount, which the state machine checks), never a figure read alone; none, and the prompt without a figure, when a range's contract has no amount kept or the order read shows it with another (`TradeSeen.contractAmountMoved`, the state machine then saying the terms changed; security review of #183, C2). A taker's as before: the amount its take chose, or the order's.
+  /// [status] with the order of the contract shown and what was asked here ([TradeSeen.asked]).
+  TradeSeen _seenAt(TradeStatus status) =>
+      TradeSeen(status, order: contract.order, asked: contract.seen.asked);
+
+  /// The contract's amount of a trade made here at [status], as asked here (a range's amount kept with the contract, or the terms' fixed amount), never a figure read alone; `null` while the order read does not agree with it, or none is known (security review of #183, C2, C4). Where nothing was asked here is known ([TradeSeen.asked] unset), the order's fixed amount, as before.
+  FiatAmount? _contractAmountOf(TradeStatus status) {
+    final seen = _seenAt(status);
+    if (seen.contractAmountMoved) return null;
+    if (seen.contractAmount case final amount?) return amount;
+    return switch ((seen.asked, contract.order?.amount)) {
+      (null, FixedOrderAmount(:final amount)) => amount,
+      _ => null,
+    };
+  }
+
+  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([_contractAmountOf]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
   double? _payoutPromptAmount(TradeStatus status, CoordinatorOrder order) {
     if (!contract.maker) {
       return (order.takenAmount ?? order.amount.max).value;
     }
-    if (TradeSeen(status, order: order).contractAmountMoved) return null;
-    return switch (order.amount) {
-      FixedOrderAmount(:final amount) => amount.value,
-      RangeOrderAmount() => status.trail.takenAmount,
-    };
+    return _contractAmountOf(status)?.value;
   }
 
   /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
@@ -1005,7 +1016,7 @@ class _Contract extends StatelessWidget {
           context,
           state,
           coordinator: coordinator,
-          amount: PayoutRateLines.amountOf(context, order, status),
+          amount: PayoutRateLines.amountOf(context, _seenAt(status)),
         ),
       if (gap != null && !PayoutRateLines.hidesGap(state))
         (
@@ -1026,11 +1037,7 @@ class _Contract extends StatelessWidget {
       child: PayoutRateLines(
         state: state,
         coordinator: coordinator,
-        amount: PayoutRateLines.amountOf(
-          context,
-          contract.order,
-          contract.seen.status,
-        ),
+        amount: PayoutRateLines.amountOf(context, contract.seen),
         onRetry: onRetryRate,
       ),
     );
@@ -1050,19 +1057,15 @@ class _Contract extends StatelessWidget {
     TradeStatus status,
   ) {
     final order = contract.order;
-    // A range's contract shown with another amount than the one kept: the state machine's alert alone, no gap beside it (C5 of #183).
-    if (TradeSeen(status, order: order).contractAmountMoved) return null;
+    // A contract shown with another amount than the one asked here: the state machine's alert alone, no gap beside it (C5 and C4 of #183).
+    if (_seenAt(status).contractAmountMoved) return null;
     final (gap, role, amount) = switch (status) {
       WaitingForBoth(:final rateGap, :final role) ||
       WaitingForPayout(:final rateGap, :final role) => (
         rateGap,
         role,
-        // The contract's amount the gap is computed with: for a range, the one the trail keeps with the contract (#183), never the read's alone.
-        switch ((status.trail.takenAmount, order?.amount)) {
-          (final kept?, _) => FiatAmount.tryCreate(kept),
-          (null, FixedOrderAmount(:final amount)) => amount,
-          _ => null,
-        },
+        // The contract's amount the gap is computed with, as asked here (#183), never the read's alone.
+        _contractAmountOf(status),
       ),
       Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
         rateGap,

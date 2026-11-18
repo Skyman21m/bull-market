@@ -68,13 +68,13 @@ final class CheckPayoutRateUsecase {
     if (!seen.stored) return null;
     final order = seen.order;
     final status = seen.status;
-    // The contract's amount is the one the trail keeps with the contract (a range's amount taken, kept from the contract's first read, #178), never the read's alone: a coordinator that shows another amount within the contract has the state machine say it (`TradeTermsChanged`), and the comparison stays on the amount of the contract the user saw taken (#183). A range without one kept, or with one outside its bounds, gives no amount: « rate not checked », never a comparison.
+    // The contract's amount is the one the trail keeps with the contract (a range's amount taken, kept from the contract's first read, #178), or the terms' fixed amount, never the read's alone: a coordinator that shows another amount within the contract has the state machine say it (`TradeTermsChanged`), and the comparison stays on the amount of the contract the user saw taken (#183). A range without one kept, or with one outside its bounds, gives no amount: « rate not checked », never a comparison.
     final kept = status.trail.takenAmount;
     final amount = maker.contractAmount(
       kept == null ? null : FiatAmount.tryCreate(kept),
     );
     // Another amount than the contract's kept one: the state machine's alert alone (`TradeSeen.contractAmountMoved`, C5 of #183).
-    final moved = seen.contractAmountMoved;
+    final moved = seen.contractAmountMovedFrom(maker.amount);
     switch (status) {
       case WaitingForBoth(role: TradeRole.buyer) ||
           WaitingForPayout(role: TradeRole.buyer):

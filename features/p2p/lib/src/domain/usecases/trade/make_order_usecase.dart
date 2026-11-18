@@ -519,7 +519,7 @@ final class MakeOrderUsecase {
           order: null,
         ),
       ),
-      TradeSeen(status, order: order),
+      TradeSeen(status, order: order, asked: TradeReader.askedOf(terms)),
       showsTaker: false,
       request: times,
       answer: answer,

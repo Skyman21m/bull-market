@@ -426,7 +426,10 @@ final class MakerRange {
           : rounded;
     }
     final room = _within(leading, minMoved: minMoved, limits: limits);
+    // Limits so close that no range is taken beside the bound moved (the form's largest amount under about 1.65 times its smallest, never a coordinator's own): the reference's range, rounded as it writes it, which the form marks in error, as the reference's own check does (`AmountRange.tsx:57-77`; it has nothing else for such limits).
+    if (room.low > room.high) return reference;
     var following = followerOf(leading);
+    // Held within [room]: what the rounding below rests on to always find a range taken. Without it the rounding at more digits usually lands inside anyway (so removing either line is not caught by the sweep of the tests), but not by construction.
     if (following < room.low) following = room.low;
     if (following > room.high) following = room.high;
     MakerRange pair(double other) =>
@@ -441,8 +444,8 @@ final class MakerRange {
         if (_fits(range, limits)) return range;
       }
     }
-    // Not reached: [following] lies strictly inside [room], so 15 significant digits keep it there.
-    return pair(following);
+    // Not reached: [following] lies strictly inside [room], so 15 significant digits keep it there; were it reached, the bound rounded as the slider writes it.
+    return pair(_precise(following));
   }
 
   /// Where the bound that follows may lie beside [leading], the bound moved, for the form's check to take the range ([MakerFormCheck.rangeErrorsOf]), held a millionth of a millionth inside so that a rounding at many digits stays in: for a minimum moved, a maximum from 1.5 times it to 14.95 times it and to 1.01 × the form's largest amount; for a maximum moved, a minimum from it divided by 14.95, and 0.99 × the form's smallest amount, to it divided by 1.5.
