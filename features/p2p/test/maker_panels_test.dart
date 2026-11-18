@@ -408,6 +408,13 @@ void main() {
           ),
           findsOneWidget,
         );
+        // A bond paid with this wallet comes back through the swap service: said under the reference's « will return to you ».
+        expect(
+          find.text(
+            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.',
+          ),
+          findsOneWidget,
+        );
         expect(find.text('3'), findsOneWidget);
         expect(find.text('Public orders for EUR'), findsOneWidget);
         expect(find.text('Premium rank 50%'), findsOneWidget);
@@ -435,6 +442,44 @@ void main() {
       expect(find.text('Public orders for EUR'), findsNothing);
       expect(find.textContaining('Premium rank'), findsNothing);
     });
+
+    testWidgets(
+      'status 1 before the order\'s first read: « Bull Market does not ring yet » said too',
+      (tester) async {
+        final read = await _at([makerOrderJson(0), makerOrderJson(1)]);
+        await _show(tester, TradeSeen(read.status, order: null, stored: true));
+        expect(find.textContaining('Your order is public'), findsOneWidget);
+        expect(
+          find.text(
+            'Bull Market does not ring yet: keep this screen open, or come back to it often.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'status 13, the buyer being paid: « Your maker bond is unlocked », and how a bond paid with this wallet comes back',
+      (tester) async {
+        final seen = await _at([
+          makerOrderJson(0),
+          makerOrderJson(1),
+          makerOrderJson(6),
+          makerOrderJson(8),
+          makerOrderJson(9),
+          makerOrderJson(10),
+          makerOrderJson(13),
+        ]);
+        await _show(tester, seen);
+        expect(find.text('Your maker bond is unlocked'), findsOneWidget);
+        expect(
+          find.text(
+            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets(
       '« Cancel » at 1 cancels at once, with no dialog, for the status shown (`CancelButton.tsx:30`, `:79-80`)',
@@ -918,6 +963,210 @@ void main() {
         },
       );
 
+      testWidgets(
+        'the security review\'s attack A: 6 honest, then 8 with a payout of half: compared again at 8 with the price read, in red',
+        (tester) async {
+          final reads = <Object>[];
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 106900),
+            makerOrderJson(8, last: 50000),
+          ]);
+          final (_, watch) = await _show(
+            tester,
+            chain[2],
+            rate: rateOf(() => atWallet, reads: reads),
+          );
+          await tester.pump();
+          expect(find.textContaining('You receive 106,873 sats'), findsOneWidget);
+          expect(find.textContaining('fewer sats than that'), findsNothing);
+          watch.add(TradeScreenStatuses.watched(chain[3], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('You receive 106,873 sats'), findsNothing);
+          expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          // The price read at 6, less than 3 minutes old: not read again.
+          expect(reads, hasLength(1));
+        },
+      );
+
+      testWidgets(
+        'the security review\'s attack D: at 6 an `invoice_amount` honest but an invoice asked of half: no comparison, the state machine\'s warning alone',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 106900, changes: {'trade_satoshis': 49988}),
+          ]);
+          expect(seen.status.has<PayoutAmountMismatch>(), isTrue);
+          await _show(tester, seen, rate: rateOf(() => atWallet));
+          await tester.pump();
+          expect(
+            find.text('The amounts Temple of Sats gives do not add up.'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('At the Bull wallet\'s price'), findsNothing);
+          expect(find.textContaining('from the rate when you made it'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'the security review\'s attack B: an invoice of half asked at 6 and 8, then 9 with `satoshis_now` back up: the smaller compared, both figures said, in red, in « Confirm … sent » too',
+        (tester) async {
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(8, last: 50000),
+            makerOrderJson(9, last: 106900),
+          ]);
+          final (_, watch) = await _show(
+            tester,
+            chain[2],
+            rate: rateOf(() => atWallet),
+          );
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text(
+              'Temple of Sats now gives 106,873 sats for this contract, but asked for an invoice of 49,988 sats before: Bull Market compares the smaller. Check the invoice you gave before going on.',
+            ),
+            findsOneWidget,
+          );
+          expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          expect(find.textContaining('from the rate when you made it'), findsNothing);
+          final confirm = find.textContaining('Confirm 100 EUR sent');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining('but asked for an invoice of 49,988'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining('fewer sats than that'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'at 9 with nothing kept (the app started again between 8 and 9): the coordinator\'s figure of now, said as such',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(8, last: 50000),
+            makerOrderJson(9, last: 106900),
+          ]);
+          await _show(tester, seen, rate: rateOf(() => atWallet));
+          await tester.pump();
+          expect(
+            find.text(
+              'Compared with the figure Temple of Sats gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        '« Confirm … sent » with a price 3 minutes old: read first; a line that changed stops the press and is shown, the second press opens the dialog with the line read',
+        (tester) async {
+          var clock = tradeNow;
+          P2pWalletBitcoinRate rate = atWallet;
+          final reads = <Object>[];
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+            makerOrderJson(8, last: 90000),
+            makerOrderJson(9, last: 90000),
+          ]);
+          await _show(
+            tester,
+            seen,
+            rate: rateOf(() => rate, reads: reads, now: () => clock),
+          );
+          await tester.pump();
+          expect(reads, hasLength(1));
+          clock = clock.add(const Duration(minutes: 3));
+          rate = const P2pWalletRateNotPriced();
+          final confirm = find.textContaining('Confirm 100 EUR sent');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(reads, hasLength(2));
+          expect(find.byType(ConfirmFiatSentDialog), findsNothing);
+          expect(find.textContaining('has no price for EUR'), findsOneWidget);
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(reads, hasLength(2));
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining('has no price for EUR'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'hidden, nothing is read, not even when the app comes back; shown again, the price is read',
+        (tester) async {
+          var clock = tradeNow;
+          final reads = <Object>[];
+          final shown = ValueNotifier(true);
+          addTearDown(shown.dispose);
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ]);
+          await _show(
+            tester,
+            seen,
+            rate: rateOf(() => atWallet, reads: reads, now: () => clock),
+            onScreen: shown,
+          );
+          await tester.pump();
+          expect(reads, hasLength(1));
+          shown.value = false;
+          await tester.pump();
+          clock = clock.add(const Duration(minutes: 4));
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.paused,
+          );
+          await tester.pump();
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(1));
+          shown.value = true;
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(2));
+        },
+      );
+
       testWidgets('within 10 %: the line alone, no warning', (tester) async {
         final seen = await _at([
           makerOrderJson(0),
@@ -1131,6 +1380,9 @@ void main() {
         WidgetTester tester,
         TradeSeen seen, {
         Locale locale = const Locale('en'),
+        P2pWalletBitcoinRate Function()? wallet,
+        DateTime Function()? clock,
+        List<Object>? reads,
       }) async {
         tester.view
           ..physicalSize = const Size(390, 2400) * 3
@@ -1197,9 +1449,13 @@ void main() {
             (record, _) => PayoutRateCubit(
               record,
               terms: (_) async => maker,
-              price: (_, _) async => P2pWalletRateRead(91711.15),
+              price: (_, _) async {
+                final price = wallet?.call() ?? P2pWalletRateRead(91711.15);
+                reads?.add(price);
+                return price;
+              },
               memory: PayoutRateMemory(),
-              now: () => tradeNow,
+              now: clock ?? () => tradeNow,
             ),
           );
         await tester.pumpWidget(
@@ -1261,6 +1517,87 @@ void main() {
           },
         );
       }
+
+      testWidgets(
+        '« Submit » with a price 3 minutes old: read again first, « Submit » busy; a line that changed stops the press and is shown, a second press sends',
+        (tester) async {
+          var clock = tradeNow;
+          P2pWalletBitcoinRate rate = P2pWalletRateRead(91711.15);
+          final reads = <Object>[];
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ]);
+          final sent = await page(
+            tester,
+            seen,
+            wallet: () => rate,
+            clock: () => clock,
+            reads: reads,
+          );
+          expect(reads, hasLength(1));
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          await tester.enterText(
+            find.byKey(PayoutPanel.invoiceField),
+            _payoutInvoice(seen).text,
+          );
+          await tester.pump();
+          clock = clock.add(const Duration(minutes: 3));
+          rate = const P2pWalletRateNotPriced();
+          final submit = find.widgetWithText(TradeButton, 'Submit');
+          await tester.ensureVisible(submit);
+          await tester.pump();
+          await tester.tap(submit);
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(2));
+          expect(sent, isEmpty);
+          expect(find.textContaining('has no price for EUR'), findsOneWidget);
+          await tester.ensureVisible(submit);
+          await tester.pump();
+          await tester.tap(submit);
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(2));
+          expect(sent, hasLength(1));
+          await tester.pump(const Duration(seconds: 31));
+        },
+      );
+
+      testWidgets(
+        '« Submit » with a price 3 minutes old that says the same: read again, and sent at once',
+        (tester) async {
+          var clock = tradeNow;
+          final reads = <Object>[];
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ]);
+          final sent = await page(
+            tester,
+            seen,
+            clock: () => clock,
+            reads: reads,
+          );
+          await tester.enterText(
+            find.byKey(PayoutPanel.invoiceField),
+            _payoutInvoice(seen).text,
+          );
+          await tester.pump();
+          clock = clock.add(const Duration(minutes: 3));
+          final submit = find.widgetWithText(TradeButton, 'Submit');
+          await tester.ensureVisible(submit);
+          await tester.pump();
+          await tester.tap(submit);
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(2));
+          expect(sent, hasLength(1));
+          await tester.pump(const Duration(seconds: 31));
+        },
+      );
 
       testWidgets(
         'captures of the payout panel at 6 and 8, the invoice submitted under the red warning (with P2P_CAPTURE_DIR)',

@@ -61,8 +61,12 @@ void main() {
   Future<(GetIt, GoRouter)> open(
     WidgetTester tester, {
     List<ActiveTrade> active = const [],
+    Stream<Result<List<ActiveTrade>, P2pFailure>> Function()? activeStream,
     List<ActivePendingMake> pending = const [],
+    Stream<Result<List<ActivePendingMake>, P2pFailure>> Function()?
+    pendingStream,
     List<PendingMake>? resolved,
+    Map<String, List<Map<String, Object?>>>? books,
   }) async {
     usePhoneScreen(tester);
     FakeSecureStoragePlatform().install();
@@ -73,9 +77,11 @@ void main() {
     setUpP2pForTesting(
       locator,
       transport: FakeTransport(
-        books: {
-          'temple': [bookOrder(id: 48213)],
-        },
+        books:
+            books ??
+            {
+              'temple': [bookOrder(id: 48213)],
+            },
       ),
       torStates: () => tor.stream,
       clock: () => DateTime.utc(2026, 11, 17),
@@ -86,14 +92,16 @@ void main() {
       ..registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(
         (network, _) => ActiveTradesCubit(
           network,
-          (network) => Stream.value(Ok(List.of(active))),
+          (network) =>
+              activeStream?.call() ?? Stream.value(Ok(List.of(active))),
         ),
       )
       ..unregister<PendingMakesCubit>()
       ..registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(
         (network, _) => PendingMakesCubit(
           network,
-          (network) => Stream.value(Ok(List.of(pending))),
+          (network) =>
+              pendingStream?.call() ?? Stream.value(Ok(List.of(pending))),
           (make) async {
             resolved?.add(make);
             return MakePending(make, MakePendingReason.unread);
@@ -132,13 +140,88 @@ void main() {
     },
   );
 
+  testWidgets(
+    'an order of another coordinator with the number of the order this device made opens its details (the coordinator compared too)',
+    (tester) async {
+      await open(
+        tester,
+        active: [ActiveTrade(made, const ActiveTradeTakeNeverSent())],
+        books: {
+          'temple': const [],
+          'lake': [bookOrder(id: 48213, amount: 77)],
+        },
+      );
+      await tester.tap(find.text('77 EUR', findRichText: true).first);
+      await settle(tester);
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(find.byType(TradeScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'tapped while the active trades are being read: their read awaited, the order this device made opens its trade, never « Take Order » (security review of #182, R3)',
+    (tester) async {
+      final records = StreamController<Result<List<ActiveTrade>, P2pFailure>>();
+      addTearDown(records.close);
+      await open(tester, activeStream: () => records.stream);
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+      expect(find.byType(OrderDetailsScreen), findsNothing);
+      records.add(Ok([ActiveTrade(made, const ActiveTradeTakeNeverSent())]));
+      await settle(tester);
+      expect(find.byType(TradeScreen), findsOneWidget);
+      expect(find.byType(OrderDetailsScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'records that cannot be read: the order\'s page without « Take Order », since the order may be this device\'s',
+    (tester) async {
+      await open(
+        tester,
+        activeStream: () => Stream.value(const Err(P2pStorageFailure())),
+      );
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(
+        tester.widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen)).canTake,
+        isFalse,
+      );
+    },
+  );
+
   testWidgets('another order of the book opens its details', (tester) async {
     await open(tester);
     await tester.tap(find.text('100 EUR', findRichText: true).first);
     await settle(tester);
     expect(find.byType(OrderDetailsScreen), findsOneWidget);
     expect(find.byType(TradeScreen), findsNothing);
+    expect(
+      tester.widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen)).canTake,
+      isTrue,
+    );
   });
+
+  testWidgets(
+    'while the pending makes are being read, « Create » does not open the form (functional review N11)',
+    (tester) async {
+      final never =
+          StreamController<
+            Result<List<ActivePendingMake>, P2pFailure>
+          >.broadcast();
+      addTearDown(never.close);
+      await open(tester, pendingStream: () => never.stream);
+      await tester.tap(find.text('Create'), warnIfMissed: false);
+      await settle(tester);
+      expect(find.byType(CreateOrderScreen), findsNothing);
+      never.add(const Ok([]));
+      await settle(tester);
+      await tester.tap(find.text('Create'));
+      await settle(tester);
+      expect(find.byType(CreateOrderScreen), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'a pending make alone: the middle entry is « Order », which opens the list with « Create order »',

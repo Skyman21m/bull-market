@@ -1340,6 +1340,53 @@ void main() {
     }
 
     testWidgets(
+      'the make being sent, the network\'s pending makes emptied (the make confirmed or closed meanwhile): the form stays locked, no second make (security review of #182, M17)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.answers, hasLength(1));
+        // The make written pending, then confirmed or closed before its answer reaches the form.
+        form.pendingMakes.add(
+          Ok([ActivePendingMake(_pending, neverSent: false)]),
+        );
+        await settle(tester);
+        form.pendingMakes.add(const Ok([]));
+        await settle(tester);
+        expect(_createEnabled(tester), isFalse);
+        expect(tester.widget<TextField>(_amountField).enabled, isFalse);
+        await tester.tap(_create, warnIfMissed: false);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(form.made, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'a press drawn before a pending make of the network reached the button: the press\'s own guard sends nothing (security review of #182, M04)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        expect(_createEnabled(tester), isTrue);
+        form.pendingMakes.add(
+          Ok([ActivePendingMake(_pending, neverSent: false)]),
+        );
+        // The list reaches the cubit, not yet a frame: the button drawn is still the enabled one.
+        await tester.idle();
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(form.keysAsked, 0);
+        expect(form.made, isEmpty);
+      },
+    );
+
+    testWidgets(
       'while the records are not read yet: « Create order » off, and no line says a make is pending (functional review R6)',
       (tester) async {
         final form = _Form()..listsAtOnce = false;

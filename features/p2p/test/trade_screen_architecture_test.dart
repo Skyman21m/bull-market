@@ -156,6 +156,8 @@ void main() {
       for (final path in [
         'lib/src/ui/trade/payout_panel.dart',
         'lib/src/ui/trade/payout_wallet_section.dart',
+        // « Confirm … sent » is told what to await before its dialog, never what it is (#182, second review).
+        'lib/src/ui/trade/chat_step_panel.dart',
         'lib/src/presentation/payout_cubit.dart',
         'lib/src/presentation/trade_cubit.dart',
       ]) {

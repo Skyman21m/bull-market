@@ -90,6 +90,11 @@ void main() {
         );
         expect(locator.isRegistered<PendingMakesCubit>(), isTrue);
         expect(locator.isRegistered<PayoutRateCubit>(), isTrue);
+        // One memory for every page of a trade, until the app stops (security review of #182, C2).
+        expect(
+          identical(locator<PayoutRateMemory>(), locator<PayoutRateMemory>()),
+          isTrue,
+        );
         await tester.tap(find.text('Create'));
         await settle(tester);
         expect(find.byType(CreateOrderScreen), findsOneWidget);
