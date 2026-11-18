@@ -5,6 +5,7 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/trade/trade_cancel.dart';
 import '../domain/trade/trade_chat_step.dart';
+import '../domain/trade/trade_pause.dart';
 import '../domain/trade/trade_storable.dart';
 import '../domain/trade/trade_take.dart';
 import '../domain/trade/trade_terms.dart';
@@ -239,6 +240,54 @@ extension TradeCancelNoticeL10n on TradeCancelNotice {
         l10n.p2pTradeCancelNotDoneAfter(failure.toTranslated(context)),
       CancelWasNotDone() => l10n.p2pTradeCancelNotDoneAfter(l10n.p2pBookError),
       CancelWasUnknown() => l10n.p2pTradeCancelUnknown,
+    };
+  }
+}
+
+/// What a pause or an unpause gave, when it says something (#184): a text of the app, never the coordinator's (the reference shows nothing, its button only stops spinning, `TradeBox/index.tsx:226-241`).
+extension TradePauseNoticeL10n on TradePauseNotice {
+  String toText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      PauseWasRefused(:final refusal) => switch (refusal) {
+        PauseNotOffered() => l10n.p2pTradePauseNeedsRead,
+        // The status moved before anything was sent: the screen shows the fresh status, and its button.
+        PauseStatusMoved() => l10n.p2pTradePauseMovedOn,
+        PauseReadFailed() => l10n.p2pTradePauseReadFailed(coordinator),
+        PauseOfAnotherTrade() => l10n.p2pTradeUnavailable,
+        PauseTradeUnavailable(
+          failure: GarageKeyMissingFailure() || TradeKeyMissingFailure(),
+        ) =>
+          l10n.p2pTradeKeyMissing,
+        PauseTradeUnavailable() => l10n.p2pTradeUnavailable,
+        PauseTradeUnrestorable(reason: TradeCoordinatorGone()) =>
+          l10n.p2pTradeCoordinatorGone(coordinator),
+        PauseTradeUnrestorable() => l10n.p2pTradeUnrestorable,
+      },
+      // Decided by the package from the fresh read, nothing sent: as the read before sending would have said.
+      PauseWasNotDone(
+        cause: TradeActionRefused(fromLastRead: true) || OrderReadElsewhere(),
+      ) =>
+        l10n.p2pTradePauseMovedOn,
+      // The request never left: a busy transport or robot.
+      PauseWasNotDone(
+        cause: CoordinatorTransportBusy() ||
+            RobotCoordinatorBusyFailure() ||
+            RobotReleasedFailure(),
+      ) =>
+        l10n.p2pTradePauseNotDoneAfter(l10n.p2pRobotBusy),
+      // Never left either, the coordinator not on the trade's network (unreachable here, the read just before having reached it): the generic words.
+      PauseWasNotDone(cause: CoordinatorNotOnNetwork()) =>
+        l10n.p2pTradePauseNotDoneAfter(l10n.p2pBookError),
+      // Any other refusal left and changed nothing (1032, 1033, 1047, the empty 400 of the form check, the authentication's): the coordinator's, never its text.
+      PauseWasNotDone(cause: CoordinatorFailure()) => l10n
+          .p2pTradePauseRefusedBy(coordinator),
+      PauseWasNotDone(cause: final P2pFailure failure) =>
+        l10n.p2pTradePauseNotDoneAfter(failure.toTranslated(context)),
+      PauseWasNotDone() => l10n.p2pTradePauseNotDoneAfter(l10n.p2pBookError),
+      PauseWasUnknown() => l10n.p2pTradePauseUnknown(coordinator),
+      PauseWasNotReached() => l10n.p2pTradePauseNotReached(coordinator),
+      PausePublicAgain() => l10n.p2pTradePublicAgain,
     };
   }
 }

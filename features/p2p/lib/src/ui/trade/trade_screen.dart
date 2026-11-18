@@ -13,6 +13,7 @@ import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
 import '../../domain/trade/maker_terms.dart';
 import '../../domain/trade/trade_chat_step.dart';
+import '../../domain/trade/trade_pause.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/trade_watch.dart';
@@ -360,6 +361,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         record: record,
                         cancel: state.cancel,
                         chatStep: state.chatStep,
+                        pause: state.pause,
+                        actionRunning: state.actionRunning,
+                        offersPause: context.read<TradeCubit>().offersPause,
                         offersFiatSent: context
                             .read<TradeCubit>()
                             .offersFiatSent,
@@ -526,6 +530,11 @@ class _Contract extends StatelessWidget {
   final TradeRecord record;
   final TradeCancelState cancel;
   final ChatStepState chatStep;
+
+  /// Where a pause or an unpause stands (#184), whether any action of the trade runs, and whether the screen offers the pause at all ([TradeCubit.offersPause]).
+  final TradePauseState pause;
+  final bool actionRunning;
+  final bool offersPause;
   final bool offersFiatSent;
   final bool offersUndoFiatSent;
   final bool offersFiatReceived;
@@ -563,6 +572,9 @@ class _Contract extends StatelessWidget {
     required this.record,
     required this.cancel,
     required this.chatStep,
+    required this.pause,
+    required this.actionRunning,
+    required this.offersPause,
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
     required this.offersFiatReceived,
@@ -693,6 +705,16 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status, paid),
+        // What a pause or an unpause gave (#184), under the prompt of whatever status the order is now read at: the order may have been taken or expired meanwhile.
+        if (pause case PauseIdle(:final notice?, :final wanted)) ...[
+          const Gap(BullSpacing.md),
+          _PauseNoticeLines(
+            notice: notice,
+            wanted: wanted,
+            seen: contract.seen,
+            coordinator: coordinator,
+          ),
+        ],
         // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it, and at 14 the panel of the end, under its stars, when it offers them.
         if (contract.prompt != TradePrompt.chat &&
             !(contract.prompt == TradePrompt.finished && offersRating))
@@ -727,6 +749,19 @@ class _Contract extends StatelessWidget {
       ],
     );
   }
+
+  /// The pause button of `Prompts/PublicWait.tsx` at 1, or « Unpause Order » of `Prompts/Paused.tsx` at 2 (#184): one tap, no dialog, as the reference (`TradeBox/index.tsx:310-313`); spinning while its request runs (`LoadingButton loading={pauseLoading}`), off while another action of the trade runs. It hands the cubit the status shown at the tap, which the use case reads again before sending anything.
+  Widget _pauseButton(BuildContext context) => _PauseButton(
+    seen: contract.seen,
+    paused: contract.prompt == TradePrompt.paused,
+    running: pause is PauseRunning,
+    waitedLong: switch (pause) {
+      PauseRunning(:final waitedLong) => waitedLong,
+      _ => false,
+    },
+    blocked: actionRunning && pause is! PauseRunning,
+    coordinator: coordinator,
+  );
 
   Widget _prompt(
     BuildContext context,
@@ -781,20 +816,23 @@ class _Contract extends StatelessWidget {
           walletPayment: walletPayment,
         ),
       (TradePrompt.lockEscrow, _) => const SizedBox.shrink(),
-      // A maker's public order (#182): `Prompts/PublicWait.tsx`, without the pause button (#184).
+      // A maker's public order (#182): `Prompts/PublicWait.tsx`, with its pause button (#184).
       (TradePrompt.publicWait, _) => _PublicWait(
         order: order,
         book: book,
         escrowDuration: order?.escrowDuration,
         swapLine: _backThroughSwap(l10n, paid),
+        pauseButton: offersPause ? _pauseButton(context) : null,
       ),
-      // A maker's order paused from another app (#182): `Prompts/Paused.tsx`'s text; « Unpause Order » comes with the pause (#184).
+      // A maker's paused order (#182): `Prompts/Paused.tsx`'s text and « Unpause Order » (#184).
       (TradePrompt.paused, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Line(l10n.p2pTradePausedText),
-          const Gap(BullSpacing.sm),
-          _Line(l10n.p2pTradeUnpauseLater, color: colors.textMuted),
+          if (offersPause) ...[
+            const Gap(BullSpacing.md),
+            _pauseButton(context),
+          ],
         ],
       ),
       (TradePrompt.payoutWait, _) => Column(
@@ -1646,7 +1684,7 @@ class _DisputePrompt extends StatelessWidget {
   }
 }
 
-/// « Your order is public » (`TradeBox/Prompts/PublicWait.tsx:80-147`, #182): the reference's two lines, then « Public orders for {{currencyCode}} » with its count and « Premium rank » with its share, computed from the book of the tab ([PublicWaitStanding]); without the pause button, which comes with the pause (#184). Without an order read, the lines alone; without a book received, no figure.
+/// « Your order is public » (`TradeBox/Prompts/PublicWait.tsx:80-147`, #182): the reference's two lines, then « Public orders for {{currencyCode}} » with its count and the pause button (#184), and « Premium rank » with its share, computed from the book of the tab ([PublicWaitStanding]). Without an order read, the lines alone; without a book received, no figure, the pause button alone under the lines.
 class _PublicWait extends StatelessWidget {
   final CoordinatorOrder? order;
   final List<PublicOrder>? book;
@@ -1655,11 +1693,15 @@ class _PublicWait extends StatelessWidget {
   /// The line under « your bond will return to you » of a bond paid with this wallet ([_backThroughSwap]), `null` for none.
   final String? swapLine;
 
+  /// The pause button (#184), beside « Public orders for {{currencyCode}} » as the reference puts it (`Prompts/PublicWait.tsx:101-133`), or under the lines when that figure is not shown; `null` where the screen offers no pause.
+  final Widget? pauseButton;
+
   const _PublicWait({
     required this.order,
     required this.book,
     required this.escrowDuration,
     required this.swapLine,
+    required this.pauseButton,
   });
 
   @override
@@ -1724,16 +1766,159 @@ class _PublicWait extends StatelessWidget {
         ],
         if (order != null && standing != null) ...[
           Divider(height: BullSpacing.lg, color: colors.outlineVariant),
-          figure(
-            Icons.storefront,
-            formats.count(standing.similarOrders),
-            l10n.p2pTradePublicOrdersFor(order.currency.code),
+          Row(
+            children: [
+              Expanded(
+                child: figure(
+                  Icons.storefront,
+                  formats.count(standing.similarOrders),
+                  l10n.p2pTradePublicOrdersFor(order.currency.code),
+                ),
+              ),
+              ?pauseButton,
+            ],
           ),
           Divider(height: BullSpacing.lg, color: colors.outlineVariant),
           figure(
             Icons.percent,
             l10n.p2pTradePremiumRank(formats.number(standing.premiumRank)),
             l10n.p2pTradePremiumRankAmong(order.currency.code),
+          ),
+        ] else if (pauseButton case final pauseButton?) ...[
+          Divider(height: BullSpacing.lg, color: colors.outlineVariant),
+          Align(alignment: AlignmentDirectional.centerEnd, child: pauseButton),
+        ],
+      ],
+    );
+  }
+}
+
+/// The pause button of a maker's public order, an icon with the reference's tooltip « Pause the public order » (`Prompts/PublicWait.tsx:116-132`), or « Unpause Order » with its icon (`Prompts/Paused.tsx:30-35`) for a paused one (#184).
+///
+/// A tap hands [seen], the status shown, to [TradeCubit.pause], which does nothing while an action of the trade runs: a second tap, quick or not, sends nothing more. While it runs, the button spins and is off, and after [TradeCubit.stillWaitingAfter] the robot panel's « Still waiting for {coordinator}. Tor can take a minute. » shows under it.
+class _PauseButton extends StatelessWidget {
+  final TradeSeen seen;
+
+  /// « Unpause Order » rather than the pause icon.
+  final bool paused;
+  final bool running;
+  final bool waitedLong;
+
+  /// Another action of the trade runs (a cancel): off, not spinning.
+  final bool blocked;
+  final String coordinator;
+
+  const _PauseButton({
+    required this.seen,
+    required this.paused,
+    required this.running,
+    required this.waitedLong,
+    required this.blocked,
+    required this.coordinator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    void press() => unawaited(context.read<TradeCubit>().pause(seen));
+    final button = paused
+        // Busy, it ignores taps and keeps its colour, as the reference's loading button.
+        ? TradeButton(
+            label: l10n.p2pTradeUnpauseOrder,
+            icon: Icons.play_circle,
+            outlined: true,
+            busy: running,
+            onPressed: blocked ? null : press,
+          )
+        : IconButton(
+            tooltip: l10n.p2pTradePauseOrder,
+            iconSize: 36,
+            color: colors.primary,
+            onPressed: running || blocked ? null : press,
+            icon: running
+                ? SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.primary,
+                    ),
+                  )
+                : const Icon(Icons.pause_circle),
+          );
+    if (!waitedLong) return button;
+    return Column(
+      crossAxisAlignment: paused
+          ? CrossAxisAlignment.stretch
+          : CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button,
+        const Gap(BullSpacing.xs),
+        _Line(
+          l10n.p2pRobotStillWaiting(coordinator),
+          color: colors.textMuted,
+          live: true,
+        ),
+      ],
+    );
+  }
+}
+
+/// What a pause or an unpause gave (#184), in the app's words: the notice, then, when the user asked to pause, whether the order is public, so that an order the user believes paused and that can be taken is seen (design note § 3.4).
+class _PauseNoticeLines extends StatelessWidget {
+  final TradePauseNotice notice;
+  final PauseWanted? wanted;
+
+  /// The status shown now.
+  final TradeSeen seen;
+  final String coordinator;
+
+  const _PauseNoticeLines({
+    required this.notice,
+    required this.wanted,
+    required this.seen,
+    required this.coordinator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    final notice = this.notice;
+    if (notice is PausePublicAgain) {
+      return _Line(
+        notice.toText(context, coordinator: coordinator),
+        color: colors.warning,
+        icon: Icons.warning_amber_rounded,
+        live: true,
+      );
+    }
+    final shownPaused = PauseWanted.paused.reachedAt(seen);
+    // Asked to pause, not done: public for sure when a stored read shows it so; perhaps when the request's outcome is unknown and no read shows it paused.
+    final publicLine = wanted != PauseWanted.paused || shownPaused
+        ? null
+        : notice is PauseWasUnknown
+        ? l10n.p2pTradeMayBePublic
+        : showsPublicOrder(seen)
+        ? l10n.p2pTradeStillPublic
+        : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Line(
+          notice.toText(context, coordinator: coordinator),
+          color: colors.error,
+          center: true,
+          live: true,
+        ),
+        if (publicLine != null) ...[
+          const Gap(BullSpacing.sm),
+          _Line(
+            publicLine,
+            color: colors.warning,
+            icon: Icons.warning_amber_rounded,
+            live: true,
           ),
         ],
       ],

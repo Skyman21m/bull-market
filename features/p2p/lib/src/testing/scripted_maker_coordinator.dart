@@ -33,6 +33,9 @@ enum ScriptedMakerRequest {
 
   /// `POST /api/order/` with the action `confirm`: a maker buyer's « fiat sent » (#182).
   confirm,
+
+  /// `POST /api/order/` with the action `pause`: the maker's pause or « Unpause Order » (#184).
+  pause,
 }
 
 /// One order made by a robot of the test on [ScriptedMakerCoordinator], as the coordinator stores it.
@@ -109,7 +112,8 @@ final class ScriptedMadeOrder {
 /// A coordinator of the federation list that the maker tests make orders on (#179), as the reference backend at commit ff1998c answers a maker (`api/views.py`, `api/logics.py`; design note `docs/design/phase-3-making-an-order.md` § 1.2 to § 1.7, § 5): never a real coordinator, never money.
 ///
 /// It answers `GET /api/info/` (the maker fee [makerFee], the DevFund [devfund]), `GET /api/limits/` (the price of each currency in [prices], the bounds from 20,000 to 5,000,000 sats at it, `LimitView`, `api/views.py:1177-1197`), `GET /api/robot/` (a first contact keeps the robot with its key pair; its `active_order_id` while it is the maker of an order at 0 to 3, 6 to 11 or 16, else its `last_order_id`, `api/views.py:725-737`, `Logics.validate_already_maker_or_taker`, `api/logics.py:75-135`), `POST /api/make/` (`MakerView.post`, `api/views.py:90-216`: one active order per robot, 409 with 1000; the size at the price now, 1004 and 1005; the order saved at 0 with 300 s to lock its bond; answered `201` with `ListOrderSerializer`'s fields, `api/serializers.py:83-107`), `GET /api/order/` as the maker reads its order (the bond made at its first read at 0 and given again, error 1022 once past the 300 s then the order at 5 with reason 1, `api/logics.py:1252-1318`; 1043 once cancelled; 1044 to a robot that is no participant of an order that is not public), and the maker's `cancel` (`Logics.cancel_order`, `api/logics.py:1006-1181`: guarded by `cancel_status` against the stored status, 1020 otherwise; at 0 cancelled, at 1 or 2 cancelled with the bond returned, at 6 or 7 cancelled with the bond settled, answered with the short body of `api/views.py:604-615`; 1021 elsewhere).
-/// The test moves an order along by itself ([lockMakerBond], [take], [pause], [backToBook], [expire]), lets the cleaner run ([clean]), makes requests fail ([failNext], [landLate]) or be refused ([refuseNextMake]), and plays a coordinator that lies ([makeAnswerChanges], [orderChanges], [robotAnswerHas], [cancelAnswersWholeOrder], [hideOrders]).
+/// It also answers the maker's `pause` (#184, `api/views.py:617-619`, `:686-695`, `Logics.pause_unpause_public_order`, `api/logics.py:1758-1783`): 1047 to a robot that is no participant, 1032 to one that is not the maker, 1033 at a status other than 1 or 2, else 1 → 2 or 2 → 1 and the maker's read of the order.
+/// The test moves an order along by itself ([lockMakerBond], [take], [pause], [backToBook], [expire]), lets the cleaner run ([clean]), makes requests fail ([failNext], [landLate]) or be refused ([refuseNextMake], [pauseRefusals]), and plays a coordinator that lies ([makeAnswerChanges], [orderChanges], [robotAnswerHas], [cancelAnswersWholeOrder], [hideOrders], [pauseAnswerChanges], [pauseNotToggled]).
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
 final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// The coordinator's bounds of an order, in sats (`MIN_ORDER_SIZE`, `MAX_ORDER_SIZE`).
@@ -162,6 +166,15 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
 
   /// A hostile coordinator: it says the robot named no order, whatever it made.
   bool hideOrders = false;
+
+  /// A hostile coordinator: what the answer of the next pauses says otherwise, a `null` value removing its key, in order (#184); the order itself is toggled as the reference does, unless [pauseNotToggled].
+  final List<Map<String, Object?>> pauseAnswerChanges = [];
+
+  /// A hostile coordinator: the maker's pause is answered as the reference answers it, the order read after the toggle, but nothing is toggled (#184).
+  bool pauseNotToggled = false;
+
+  /// A coordinator's refusals of the next pauses, in order, each answered `400` with its code before anything is toggled, as `api/views.py:686-689` answers 1032 and 1033 (#184): 1032 comes from the reference only to a taker, so for a maker it plays a coordinator that answers falsely.
+  final List<int> pauseRefusals = [];
 
   /// A hostile coordinator: the next make saves its order, then answers with this refusal code, as if it had refused before making anything.
   int? refuseAfterMaking;
@@ -399,6 +412,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     ScriptedMakerRequest.cancel => _cancel(_robotOf(request), request),
     ScriptedMakerRequest.payout => _payout(_robotOf(request), request),
     ScriptedMakerRequest.confirm => _confirm(_robotOf(request), request),
+    ScriptedMakerRequest.pause => _pause(_robotOf(request), request),
   };
 
   /// The maker's made order [request] names, if [robot] is its maker.
@@ -725,6 +739,44 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     });
   }
 
+  /// The maker's pause, or « Unpause Order » (#184), as the reference answers it: `OrderView.take_update_confirm_dispute_cancel` with the action `pause` (`api/views.py:686-695`): a robot that is neither the maker nor the taker is refused with 1047 and `403` before the action (`:617-619`); then `Logics.pause_unpause_public_order` (`api/logics.py:1758-1783`): another robot than the maker 1032, 1 → 2, 2 → 1, any other status 1033, each refusal answered `400` (`api/views.py:688-689`); once toggled, the answer is the maker's read of the order (`return self.get(request)`, `:695`). The toggle moves no deadline (`Order.update_status`, `api/models/order.py:363-371`, writes the status only).
+  CoordinatorResponse _pause(RobotIdentity robot, CoordinatorRequest request) {
+    final id = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final made = id == null ? null : orders[id];
+    if (made == null) return _json(404, {'bad_request': 'Invalid Order Id'});
+    final isMaker = made.maker.sessionKey == robot.sessionKey;
+    final isTaker = made.taker?.sessionKey == robot.sessionKey;
+    if (!isMaker && !isTaker) {
+      return _json(403, {
+        'error_code': 1047,
+        'bad_request': 'You are not a participant in this order',
+      });
+    }
+    if (pauseRefusals.isNotEmpty) {
+      final code = pauseRefusals.removeAt(0);
+      return _json(400, {'error_code': code, 'bad_request': 'refused'});
+    }
+    if (!isMaker) {
+      return _json(400, {
+        'error_code': 1032,
+        'bad_request': 'You cannot pause or unpause an order you did not make',
+      });
+    }
+    if (made.status != 1 && made.status != 2) {
+      return _json(400, {
+        'error_code': 1033,
+        'bad_request':
+            'You can only pause/unpause an order that is either public or paused',
+      });
+    }
+    if (!pauseNotToggled) made.status = made.status == 1 ? 2 : 1;
+    final answer = _read(robot, request);
+    if (pauseAnswerChanges.isEmpty || answer.statusCode != 200) return answer;
+    final data = jsonDecode(utf8.decode(answer.body)) as Map<String, Object?>;
+    _apply(data, pauseAnswerChanges.removeAt(0));
+    return _json(200, data);
+  }
+
   /// The order [made] as `OrderView.get` describes it to [robot], its maker when [isMaker], with the JSON types the reference writes.
   Map<String, Object?> _orderJson(
     ScriptedMadeOrder made,
@@ -923,6 +975,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
           switch (_actionOf(request)) {
             'update_invoice' => ScriptedMakerRequest.payout,
             'confirm' => ScriptedMakerRequest.confirm,
+            'pause' => ScriptedMakerRequest.pause,
             _ => ScriptedMakerRequest.cancel,
           },
         _ => ScriptedMakerRequest.order,

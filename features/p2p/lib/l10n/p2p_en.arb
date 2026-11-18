@@ -4779,7 +4779,7 @@
   },
   "p2pTradeTitleOrderPaused": "Your order is paused",
   "@p2pTradeTitleOrderPaused": {
-    "description": "The official client's text: the maker's title at status 2 (`TradeBox/index.tsx:406-420`, #182), the English of its code, which neither `en.json` nor `fr.json` lists; the French is the project's. Shown only when the order was paused from another app: pausing comes with #184."
+    "description": "The official client's text: the maker's title at status 2 (`TradeBox/index.tsx:406-420`, #182), the English of its code, which neither `en.json` nor `fr.json` lists; the French is the project's. Since #184 the order is paused from this app too (the pause button of status 1)."
   },
   "p2pTradePublicWait": "Be patient while robots check the book. This box will ring 🔊 once a robot takes your order, then you will have {hours}h {minutes}m to reply. If you do not reply, you risk losing your bond.",
   "@p2pTradePublicWait": {
@@ -4828,9 +4828,78 @@
   "@p2pTradePausedText": {
     "description": "The official client's text (`frontend/static/locales/en.json:764`, `TradeBox/Prompts/Paused.tsx:23-33`, #182); the French is `fr.json:764`'s with « ordre » for « commande »."
   },
-  "p2pTradeUnpauseLater": "\"Unpause Order\" is coming in a later version: to unpause it now, use the official RoboSats app with your Garage Key.",
-  "@p2pTradeUnpauseLater": {
-    "description": "Not in the RoboSats texts: the project's own: in place of the reference's « Unpause Order » button (`Prompts/Paused.tsx`), which comes with the pause (#184); a paused order is seen only when it was paused from another app (#182)."
+  "p2pTradePauseOrder": "Pause the public order",
+  "@p2pTradePauseOrder": {
+    "description": "The official client's text (`frontend/static/locales/en.json:775`, the tooltip of the pause button, `TradeBox/Prompts/PublicWait.tsx:118-130`, #184): the tooltip and the screen reader's label of the pause button of a maker's public order; the French is `fr.json:775`'s with « ordre » for « commande »."
+  },
+  "p2pTradeUnpauseOrder": "Unpause Order",
+  "@p2pTradeUnpauseOrder": {
+    "description": "The official client's text (`frontend/static/locales/en.json:763`, `TradeBox/Prompts/Paused.tsx:30-35`, #184): the button of a maker's paused order; the French is `fr.json:763`'s with « ordre » for « commande »."
+  },
+  "p2pTradePauseNeedsRead": "Wait until the order is read again before pausing or unpausing it.",
+  "@p2pTradePauseNeedsRead": {
+    "description": "Not in the RoboSats texts: the project's own: the status shown comes from no order read, or was not stored: nothing was sent (#184)."
+  },
+  "p2pTradePauseMovedOn": "The order changed before your request left: nothing was sent. It is shown as it is now.",
+  "@p2pTradePauseMovedOn": {
+    "description": "Not in the RoboSats texts: the project's own: the order read just before the pause or the unpause no longer showed the status the user saw (paused or unpaused from another app, taken, expired): the request, a toggle, would have gone the other way, so nothing was sent (#184)."
+  },
+  "p2pTradePauseReadFailed": "The order could not be read again from {coordinator}: nothing was sent.",
+  "@p2pTradePauseReadFailed": {
+    "description": "Not in the RoboSats texts: the project's own: the read just before the pause or the unpause failed or could not be stored (#184).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePauseNotDoneAfter": "{reason} Nothing changed.",
+  "@p2pTradePauseNotDoneAfter": {
+    "description": "Not in the RoboSats texts: the project's own: a pause or an unpause that never left, after its reason (#184).",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePauseRefusedBy": "{coordinator} refused the request: nothing changed.",
+  "@p2pTradePauseRefusedBy": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator refused the pause or the unpause before acting (1032, 1033, 1047, the empty 400, the authentication's): never the coordinator's text (#184).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePauseUnknown": "Bull Market does not know yet whether your request reached {coordinator}. It keeps checking, and never sends it again by itself.",
+  "@p2pTradePauseUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: the answer to a pause or an unpause was lost or unreadable, and the read after it does not show the order where the user asked (#184): the request is a toggle, so it is never sent again by itself.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePauseNotReached": "{coordinator} accepted the request, but the order is not read where you asked: it is shown as it is now.",
+  "@p2pTradePauseNotReached": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator accepted a pause or an unpause and the order is read elsewhere: toggled twice or the other way (paused or unpaused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeStillPublic": "Your order is public: robots can see it and take it.",
+  "@p2pTradeStillPublic": {
+    "description": "Not in the RoboSats texts: the project's own: after a pause that did not happen, while the order is read public: a public order can be taken, the maker's bond then at stake (design note § 3.4, #184)."
+  },
+  "p2pTradeMayBePublic": "Until a read shows it paused, count on your order being public: robots can take it.",
+  "@p2pTradeMayBePublic": {
+    "description": "Not in the RoboSats texts: the project's own: after a pause whose outcome is not known: the order may still be public, and can then be taken (#184)."
+  },
+  "p2pTradePublicAgain": "Your order is public again, although it was paused from this app: robots can see it and take it.",
+  "@p2pTradePublicAgain": {
+    "description": "Not in the RoboSats texts: the project's own: an order this screen saw paused by its own pause, read public again with no tap here asking it (from another app with the same Garage Key, or a coordinator) (#184)."
   },
   "p2pTradeMakerBondLocked": "Your maker bond is locked",
   "@p2pTradeMakerBondLocked": {
