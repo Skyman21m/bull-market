@@ -1125,6 +1125,43 @@ void main() {
       );
 
       testWidgets(
+        'captures of the figure moved at 9 and of nothing kept, in French and English (with P2P_CAPTURE_DIR)',
+        skip: captureDirectory == null,
+        (tester) async {
+          await loadCaptureFonts();
+          for (final locale in const [Locale('fr'), Locale('en')]) {
+            final code = locale.languageCode;
+            final chain = await tester.runAsync(
+              () => _chain([
+                makerOrderJson(0),
+                makerOrderJson(1),
+                makerOrderJson(6, last: 50000),
+                makerOrderJson(8, last: 50000),
+                makerOrderJson(9, last: 106900),
+              ]),
+            );
+            if (chain == null) throw StateError('no chain');
+            final (_, watch) = await _show(
+              tester,
+              chain[2],
+              locale: locale,
+              rate: rateOf(() => atWallet),
+            );
+            await tester.pump();
+            watch
+              ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+              ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+            await tester.pump();
+            await tester.pump();
+            await capture(tester, '$code-createur-9-chiffre-change');
+            await _show(tester, chain[4], locale: locale, rate: rateOf(() => atWallet));
+            await tester.pump();
+            await capture(tester, '$code-createur-9-rien-garde');
+          }
+        },
+      );
+
+      testWidgets(
         'at 9 with nothing kept (the app started again between 8 and 9): the coordinator\'s figure of now, said as such',
         (tester) async {
           final seen = await _at([
