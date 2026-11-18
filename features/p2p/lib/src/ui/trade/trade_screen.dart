@@ -1450,7 +1450,8 @@ class _CancelRowState extends State<_CancelRow> {
             center: true,
             live: true,
           ),
-          if (_movedPublicOrPaused(notice) && showsPublicOrder(widget.seen)) ...[
+          if (_movedPublicOrPaused(notice) &&
+              showsPublicOrder(widget.seen)) ...[
             const Gap(BullSpacing.sm),
             _Line(
               l10n.p2pTradeStillPublic,

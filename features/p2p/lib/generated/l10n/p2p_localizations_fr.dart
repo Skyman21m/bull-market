@@ -3440,17 +3440,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pTradePauseNotDoneAfter(String reason) {
-    return '$reason Rien n’a changé.';
+    return '$reason Votre demande n’a rien changé.';
   }
 
   @override
   String p2pTradePauseRefusedBy(String coordinator) {
-    return '$coordinator a refusé la demande : rien n’a changé.';
+    return '$coordinator a refusé la demande : votre demande n’a rien changé. L’ordre est affiché tel qu’il est maintenant.';
   }
 
   @override
   String p2pTradePauseUnknown(String coordinator) {
-    return 'Bull Market ne sait pas encore si votre demande est arrivée chez $coordinator. Il continue de vérifier, et ne la renvoie jamais de lui-même.';
+    return 'Bull Market ne sait pas encore si votre demande est arrivée chez $coordinator. Il vérifie de nouveau tant que cet écran est ouvert, et ne la renvoie jamais de lui-même. Ne réappuyez pas avant qu’une lecture montre où en est votre ordre : une seconde demande annulerait la première si celle-ci arrivait en retard.';
   }
 
   @override
@@ -3468,12 +3468,24 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'L’ordre est en cours d’annulation : attendez la fin.';
 
   @override
+  String get p2pTradePauseMayStillArrive =>
+      'Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public : tant qu’il n’a pas été lu en pause deux fois, à quelques minutes d’intervalle, cet écran ouvert, considérez qu’il peut être public.';
+
+  @override
+  String get p2pTradeCancelAfterPause =>
+      'Votre annulation partira une fois la mise en pause ou la reprise terminée.';
+
+  @override
+  String get p2pTradeCancelMovedOnTapAgain =>
+      'L’ordre a changé d’état avant l’annulation : rien n’a été annulé. Appuyez de nouveau sur « Annuler » si vous voulez toujours l’annuler.';
+
+  @override
   String get p2pTradeStillPublic =>
       'Votre ordre est public : les robots peuvent le voir et le prendre.';
 
   @override
   String get p2pTradeMayBePublic =>
-      'Tant qu’une lecture ne le montre pas en pause, considérez votre ordre comme public : les robots peuvent le prendre.';
+      'Tant qu’une lecture faite après votre demande ne le montre pas en pause, considérez votre ordre comme public : les robots peuvent le prendre.';
 
   @override
   String get p2pTradePublicAgain =>

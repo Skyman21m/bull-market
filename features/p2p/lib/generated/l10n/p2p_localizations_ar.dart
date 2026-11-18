@@ -3391,17 +3391,17 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String p2pTradePauseNotDoneAfter(String reason) {
-    return '$reason Nothing changed.';
+    return '$reason Your request changed nothing.';
   }
 
   @override
   String p2pTradePauseRefusedBy(String coordinator) {
-    return '$coordinator refused the request: nothing changed.';
+    return '$coordinator refused the request: your request changed nothing. The order is shown as it is now.';
   }
 
   @override
   String p2pTradePauseUnknown(String coordinator) {
-    return 'Bull Market does not know yet whether your request reached $coordinator. It keeps checking, and never sends it again by itself.';
+    return 'Bull Market does not know yet whether your request reached $coordinator. It checks again while this screen is open, and never sends it again by itself. Do not tap again until a read shows where your order is: a second request would undo the first if the first arrives late.';
   }
 
   @override
@@ -3419,12 +3419,24 @@ class P2pLocalizationsAr extends P2pLocalizations {
       'The order is being cancelled: wait until it ends.';
 
   @override
+  String get p2pTradePauseMayStillArrive =>
+      'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+
+  @override
+  String get p2pTradeCancelAfterPause =>
+      'Your cancel will leave once the pause or unpause ends.';
+
+  @override
+  String get p2pTradeCancelMovedOnTapAgain =>
+      'The order changed state before the cancel: nothing was cancelled. Tap \"Cancel\" again if you still want to cancel it.';
+
+  @override
   String get p2pTradeStillPublic =>
       'Your order is public: robots can see it and take it.';
 
   @override
   String get p2pTradeMayBePublic =>
-      'Until a read shows it paused, count on your order being public: robots can take it.';
+      'Until a read made after your request shows it paused, count on your order being public: robots can take it.';
 
   @override
   String get p2pTradePublicAgain =>

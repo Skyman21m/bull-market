@@ -647,10 +647,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
           state._with(
             watch: read,
             pause: PauseIdle(notice: PauseWasRefused(failure), wanted: wanted),
-            pauseUncertainty: _pauseUncertainty?.call(
-              state.record,
-              read?.seen,
-            ),
+            pauseUncertainty: _pauseUncertainty?.call(state.record, read?.seen),
           ),
         );
       case Ok(value: final done):

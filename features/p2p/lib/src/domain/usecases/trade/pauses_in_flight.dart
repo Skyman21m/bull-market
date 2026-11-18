@@ -22,7 +22,9 @@ final class PausesInFlight {
   void unknown(TradeRecord record, DateTime leftAt, TradeSeen? seen) {
     final key = record.robot;
     final before = _uncertain[key];
-    final now = before == null ? PauseUncertainty(leftAt) : before.after(leftAt);
+    final now = before == null
+        ? PauseUncertainty(leftAt)
+        : before.after(leftAt);
     _uncertain[key] = now;
     if (seen != null) observe(record, seen);
   }

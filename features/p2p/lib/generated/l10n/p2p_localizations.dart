@@ -5403,19 +5403,19 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: a pause or an unpause that never left, after its reason (#184).
   ///
   /// In en, this message translates to:
-  /// **'{reason} Nothing changed.'**
+  /// **'{reason} Your request changed nothing.'**
   String p2pTradePauseNotDoneAfter(String reason);
 
   /// Not in the RoboSats texts: the project's own: the coordinator refused the pause or the unpause before acting (1032, 1033, 1047, the empty 400, the authentication's): never the coordinator's text (#184).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} refused the request: nothing changed.'**
+  /// **'{coordinator} refused the request: your request changed nothing. The order is shown as it is now.'**
   String p2pTradePauseRefusedBy(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: the answer to a pause or an unpause was lost or unreadable, and the read after it does not show the order where the user asked (#184): the request is a toggle, so it is never sent again by itself.
   ///
   /// In en, this message translates to:
-  /// **'Bull Market does not know yet whether your request reached {coordinator}. It keeps checking, and never sends it again by itself.'**
+  /// **'Bull Market does not know yet whether your request reached {coordinator}. It checks again while this screen is open, and never sends it again by itself. Do not tap again until a read shows where your order is: a second request would undo the first if the first arrives late.'**
   String p2pTradePauseUnknown(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: the coordinator accepted a pause and the read after it does not show the order paused: toggled twice (paused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184; named after the functional review, R5).
@@ -5436,16 +5436,34 @@ abstract class P2pLocalizations {
   /// **'The order is being cancelled: wait until it ends.'**
   String get p2pTradePauseWhileCancel;
 
+  /// Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2).
+  ///
+  /// In en, this message translates to:
+  /// **'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.'**
+  String get p2pTradePauseMayStillArrive;
+
+  /// Not in the RoboSats texts: the project's own: a cancel tapped while a pause or an unpause of the order runs waits for it behind the order's lock (security review of #184, R3).
+  ///
+  /// In en, this message translates to:
+  /// **'Your cancel will leave once the pause or unpause ends.'**
+  String get p2pTradeCancelAfterPause;
+
+  /// Not in the RoboSats texts: the project's own: the coordinator refused a maker's cancel of its public or paused order because the status moved (1020), as after a pause or an unpause the cancel waited for: what to do (security review of #184, R1).
+  ///
+  /// In en, this message translates to:
+  /// **'The order changed state before the cancel: nothing was cancelled. Tap \"Cancel\" again if you still want to cancel it.'**
+  String get p2pTradeCancelMovedOnTapAgain;
+
   /// Not in the RoboSats texts: the project's own: after a pause that did not happen, while the order is read public: a public order can be taken, the maker's bond then at stake (design note § 3.4, #184).
   ///
   /// In en, this message translates to:
   /// **'Your order is public: robots can see it and take it.'**
   String get p2pTradeStillPublic;
 
-  /// Not in the RoboSats texts: the project's own: after a pause whose outcome is not known: the order may still be public, and can then be taken (#184).
+  /// Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome is not known, until a read sent after the request shows the order paused: the order may be public, and can then be taken; shown in place of the reference's « it cannot be seen or taken » (#184, security review C1).
   ///
   /// In en, this message translates to:
-  /// **'Until a read shows it paused, count on your order being public: robots can take it.'**
+  /// **'Until a read made after your request shows it paused, count on your order being public: robots can take it.'**
   String get p2pTradeMayBePublic;
 
   /// Not in the RoboSats texts: the project's own: an order this screen saw paused by its own pause, read public again with no tap here asking it (from another app with the same Garage Key, or a coordinator) (#184).

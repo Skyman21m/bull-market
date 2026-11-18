@@ -626,8 +626,12 @@ void main() {
         final paused = done.seen;
         final readAt = paused.requestedAt;
         if (readAt == null) fail('no request time');
-        TradeSeen at(TradeSeen of, DateTime when) =>
-            TradeSeen(of.status, order: of.order, stored: true, requestedAt: when);
+        TradeSeen at(TradeSeen of, DateTime when) => TradeSeen(
+          of.status,
+          order: of.order,
+          stored: true,
+          requestedAt: when,
+        );
         final uncertain = PauseUncertainty(readAt);
         // Sent as the request, not after it: nothing.
         expect(

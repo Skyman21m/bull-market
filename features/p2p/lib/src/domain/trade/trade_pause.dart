@@ -86,12 +86,12 @@ final class PauseUncertainty {
   }
 
   /// Another request with an unknown outcome left at [leftAt]: the reads must now follow the later of the two.
-  PauseUncertainty after(DateTime leftAt) => PauseUncertainty(
-    leftAt.isAfter(requestLeftAt) ? leftAt : requestLeftAt,
-  );
+  PauseUncertainty after(DateTime leftAt) =>
+      PauseUncertainty(leftAt.isAfter(requestLeftAt) ? leftAt : requestLeftAt);
 
   @override
-  String toString() => 'PauseUncertainty(pausedSinceRequest: $pausedSinceRequest)';
+  String toString() =>
+      'PauseUncertainty(pausedSinceRequest: $pausedSinceRequest)';
 }
 
 /// Why a pause or an unpause was not sent: a type for each reason, which the screen words, never a coordinator's text.
