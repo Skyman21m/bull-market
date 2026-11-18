@@ -79,6 +79,7 @@ final class PayoutRateSatsMissing extends PayoutRateState {
 class PayoutRateCubit extends Cubit<PayoutRateState> {
   final TradeRecord record;
   final PayoutRateChecker _check;
+
   /// The clock of the reads' age.
   final DateTime Function() now;
 
@@ -92,11 +93,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   /// The status last shown at that step, for « Retry ».
   TradeSeen? _seen;
 
-  PayoutRateCubit(
-    this.record,
-    this._check, {
-    required this.now,
-  }) : super(const PayoutRateNone());
+  PayoutRateCubit(this.record, this._check, {required this.now})
+    : super(const PayoutRateNone());
 
   /// The screen shows [seen]: its step's price is read when it was not read for that step yet, or when that read is [freshFor] old.
   Future<void> show(TradeSeen seen) async {
@@ -113,8 +111,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     }
     _seen = seen;
     final readAt = _readAt;
-    final stale =
-        readAt != null && !now().isBefore(readAt.add(freshFor));
+    final stale = readAt != null && !now().isBefore(readAt.add(freshFor));
     // No sats in the last read: looked at again at each show, which reads no price until the read gives sats.
     final missing = state is PayoutRateSatsMissing;
     if (step == _asked && !stale && !missing) return;

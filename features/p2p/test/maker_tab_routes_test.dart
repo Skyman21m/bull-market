@@ -26,12 +26,14 @@ import 'support/trade_harness.dart' show tradeKey;
 
 /// What the tab of the real composition does with an order made here and a pending make (#182, functional review C3): the book opens an order this device made as its trade, never « Take Order »; « Order » is the middle entry while the network has only a pending make; the create form resolves the network's pending makes when it opens. The records' lists are played by the test (the cubits' listers replaced in the composition), everything else is the composition's.
 void main() {
-  final slot = RobotSlot(RobosatsNetwork.mainnet, switch (GarageKeyFingerprint.of(
-    tradeKey,
-  )) {
-    Ok(:final value) => value,
-    Err(:final failure) => throw StateError('$failure'),
-  }, 3);
+  final slot = RobotSlot(
+    RobosatsNetwork.mainnet,
+    switch (GarageKeyFingerprint.of(tradeKey)) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    },
+    3,
+  );
   final onion =
       Federation.robosats.byAlias('temple')?.mainnet.onion ??
       (throw StateError('temple'));

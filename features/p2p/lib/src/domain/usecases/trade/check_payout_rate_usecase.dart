@@ -83,8 +83,7 @@ final class CheckPayoutRateUsecase {
     final step = stepOf(seen);
     if (step == null) return null;
     final last = step.last;
-    final received =
-        step.given ?? (last == null ? null : maker.payoutAt(last));
+    final received = step.given ?? (last == null ? null : maker.payoutAt(last));
     final amount = maker.contractAmount(step.rangeAmount);
     if (received == null || amount == null) return null;
     return (received: received, amount: amount);

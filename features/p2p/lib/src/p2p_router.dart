@@ -533,38 +533,40 @@ class _P2pPageState extends State<_P2pPage> {
           : null,
     );
     // The middle entry: « Order » while the network has an active trade or a pending make, which opens them; else « Create », which opens the form where an order can be made (#182).
-    Widget middleEntry(BuildContext context, PendingMakesCubit? pending) =>
-        BlocBuilder<ActiveTradesCubit, ActiveTradesState>(
-          builder: (context, active) {
-            final pendingState = pending == null
-                ? null
-                : context.watch<PendingMakesCubit>().state;
-            final hasPending =
-                pendingState != null &&
-                (pendingState.unreadable ||
-                    (pendingState.makes?.isNotEmpty ?? false));
-            final opens = switch (active) {
-              ActiveTradesListed(active: []) => hasPending,
-              ActiveTradesLoading() => false,
-              _ => true,
-            };
-            return tab(
-              context,
-              active: active,
-              onOpenTrades: opens
-                  ? () => _openTrades(context, active, pending)
-                  : null,
-              // Not while the records are being read: « Create » is for a network known to have no active trade nor pending make (functional review R8).
-              onCreate:
-                  pending != null &&
-                      !opens &&
-                      active is! ActiveTradesLoading &&
-                      pendingState?.makes != null
-                  ? () => unawaited(_openCreate(context))
-                  : null,
-            );
-          },
+    Widget middleEntry(
+      BuildContext context,
+      PendingMakesCubit? pending,
+    ) => BlocBuilder<ActiveTradesCubit, ActiveTradesState>(
+      builder: (context, active) {
+        final pendingState = pending == null
+            ? null
+            : context.watch<PendingMakesCubit>().state;
+        final hasPending =
+            pendingState != null &&
+            (pendingState.unreadable ||
+                (pendingState.makes?.isNotEmpty ?? false));
+        final opens = switch (active) {
+          ActiveTradesListed(active: []) => hasPending,
+          ActiveTradesLoading() => false,
+          _ => true,
+        };
+        return tab(
+          context,
+          active: active,
+          onOpenTrades: opens
+              ? () => _openTrades(context, active, pending)
+              : null,
+          // Not while the records are being read: « Create » is for a network known to have no active trade nor pending make (functional review R8).
+          onCreate:
+              pending != null &&
+                  !opens &&
+                  active is! ActiveTradesLoading &&
+                  pendingState?.makes != null
+              ? () => unawaited(_openCreate(context))
+              : null,
         );
+      },
+    );
     return BlocProvider(
       key: ValueKey(current),
       create: (_) => locator<BookCubit>(param1: current)..start(),

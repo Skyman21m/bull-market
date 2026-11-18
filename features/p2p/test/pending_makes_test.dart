@@ -281,7 +281,7 @@ void main() {
         expect(find.text('Temple of Sats'), findsOneWidget);
         expect(
           find.text(
-            'Not known yet whether Temple of Sats made this order. No bond is asked until it is known.',
+            'Bull Market does not know yet whether Temple of Sats made this order. No bond is asked until it knows.',
           ),
           findsOneWidget,
         );

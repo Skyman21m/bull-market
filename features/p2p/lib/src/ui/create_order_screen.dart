@@ -352,10 +352,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     padding: const EdgeInsets.all(BullSpacing.md),
                     children: [
                       // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
-                      if (pending.blocksMaking &&
-                          (pending.unreadable ||
-                              (pending.makes?.isNotEmpty ?? false))) ...[
+                      if (pending.unreadable ||
+                          (pending.makes?.isNotEmpty ?? false)) ...[
                         _Line(l10n.p2pMakePendingFirst, color: colors.warning),
+                        const PendingMakeLines(),
+                        const Gap(BullSpacing.md),
+                      ] else if (pending.closed != null) ...[
+                        // The last pending make found not made: said once, the form free again (functional review C1).
                         const PendingMakeLines(),
                         const Gap(BullSpacing.md),
                       ],

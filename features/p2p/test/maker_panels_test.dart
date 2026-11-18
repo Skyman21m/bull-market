@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
-import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
@@ -38,7 +37,6 @@ import 'package:p2p/src/ui/trade/trade_order_details.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
-import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
@@ -950,10 +948,7 @@ void main() {
             matching: find.textContaining('+5.85% from the rate'),
           );
           expect(gap, findsOneWidget);
-          expect(
-            tester.widget<Text>(gap).style?.color,
-            testBullTheme.warning,
-          );
+          expect(tester.widget<Text>(gap).style?.color, testBullTheme.warning);
         },
       );
 
@@ -1051,148 +1046,149 @@ void main() {
     },
   );
 
-  group('the payout panel of a maker buyer, built as the route builds it (#182, functional review)', () {
-    /// The trade page of [_record] as `P2pRouter.tradePage` builds it over the real composition with the wallet's port, the watch, the payout's sends and the rule's price played by the test; returns the payouts sent.
-    Future<List<CheckedPayout>> page(
-      WidgetTester tester,
-      TradeSeen seen, {
-      Locale locale = const Locale('en'),
-    }) async {
-      tester.view
-        ..physicalSize = const Size(390, 2400) * 3
-        ..devicePixelRatio = 3;
-      addTearDown(tester.view.reset);
-      FakeSecureStoragePlatform().install();
-      final locator = GetIt.asNewInstance();
-      addTearDown(locator.reset);
-      final tor = StreamController<P2pTorState>.broadcast();
-      addTearDown(tor.close);
-      setUpP2pForTesting(
-        locator,
-        transport: FakeTransport(),
-        torStates: () => tor.stream,
-        clock: () => tradeNow,
-        garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
-        wallet: FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
-          ..rate = P2pWalletRateRead(91711.15),
-      );
-      final watch = StreamController<TradeWatchState>.broadcast();
-      addTearDown(watch.close);
-      final sent = <CheckedPayout>[];
-      final maker = switch (madeTerms().side) {
-        MadeSide(:final maker) => maker,
-      };
-      final invoice = _payoutInvoice(seen);
-      final reader = Bolt11Reader(Bolt11TestDecoder([invoice]));
-      locator
-        ..unregister<TradeCubit>()
-        ..registerFactoryParam<TradeCubit, TradeRecord, void>(
-          (record, _) => TradeCubit(
-            record,
-            (record, {signals = const Stream.empty(), onScreen = true}) {
+  group(
+    'the payout panel of a maker buyer, built as the route builds it (#182, functional review)',
+    () {
+      /// The trade page of [_record] as `P2pRouter.tradePage` builds it over the real composition with the wallet's port, the watch, the payout's sends and the rule's price played by the test; returns the payouts sent.
+      Future<List<CheckedPayout>> page(
+        WidgetTester tester,
+        TradeSeen seen, {
+        Locale locale = const Locale('en'),
+      }) async {
+        tester.view
+          ..physicalSize = const Size(390, 2400) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        addTearDown(locator.reset);
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        setUpP2pForTesting(
+          locator,
+          transport: FakeTransport(),
+          torStates: () => tor.stream,
+          clock: () => tradeNow,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          wallet: FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
+            ..rate = P2pWalletRateRead(91711.15),
+        );
+        final watch = StreamController<TradeWatchState>.broadcast();
+        addTearDown(watch.close);
+        final sent = <CheckedPayout>[];
+        final maker = switch (madeTerms().side) {
+          MadeSide(:final maker) => maker,
+        };
+        final invoice = _payoutInvoice(seen);
+        final reader = Bolt11Reader(Bolt11TestDecoder([invoice]));
+        locator
+          ..unregister<TradeCubit>()
+          ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+            (record, _) => TradeCubit(record, (
+              record, {
+              signals = const Stream.empty(),
+              onScreen = true,
+            }) {
               signals.listen((_) {});
               return watch.stream;
-            },
-            (record, seen, {bondLoss}) => Completer<Never>().future,
-          ),
-        )
-        ..unregister<PayoutCubit>()
-        ..registerFactoryParam<PayoutCubit, TradeRecord, void>(
-          (record, _) => PayoutCubit(
-            record,
-            PayoutAsk.of,
-            (record, seen, destination) => switch (PayoutAsk.of(
+            }, (record, seen, {bondLoss}) => Completer<Never>().future),
+          )
+          ..unregister<PayoutCubit>()
+          ..registerFactoryParam<PayoutCubit, TradeRecord, void>(
+            (record, _) => PayoutCubit(
               record,
-              seen,
-            )) {
-              Err(:final failure) => Err(failure),
-              Ok(:final value) => value.check(
-                destination,
-                now: tradeNow,
-                reader: reader,
-              ),
-            },
-            (record, shown, {onProgress}) async {
-              sent.add(shown);
-              return Ok(PayoutGiven(record, seen));
-            },
-            (_) => () {},
-            now: () => tradeNow,
-          ),
-        )
-        ..unregister<PayoutRateCubit>()
-        ..registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
-          (record, _) => PayoutRateCubit(
-            record,
-            (record, seen) async => CheckPayoutRateUsecase.findingAt(
-              maker,
-              seen,
-              wallet: P2pWalletRateRead(91711.15),
+              PayoutAsk.of,
+              (record, seen, destination) =>
+                  switch (PayoutAsk.of(record, seen)) {
+                    Err(:final failure) => Err(failure),
+                    Ok(:final value) => value.check(
+                      destination,
+                      now: tradeNow,
+                      reader: reader,
+                    ),
+                  },
+              (record, shown, {onProgress}) async {
+                sent.add(shown);
+                return Ok(PayoutGiven(record, seen));
+              },
+              (_) => () {},
+              now: () => tradeNow,
             ),
-            now: () => tradeNow,
+          )
+          ..unregister<PayoutRateCubit>()
+          ..registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
+            (record, _) => PayoutRateCubit(
+              record,
+              (record, seen) async => CheckPayoutRateUsecase.findingAt(
+                maker,
+                seen,
+                wallet: P2pWalletRateRead(91711.15),
+              ),
+              now: () => tradeNow,
+            ),
+          );
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: captureFrame,
+            child: MaterialApp(
+              theme: testTheme,
+              locale: locale,
+              localizationsDelegates: P2pLocalizations.localizationsDelegates,
+              supportedLocales: P2pLocalizations.supportedLocales,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                child: child ?? const SizedBox.shrink(),
+              ),
+              home: Scaffold(
+                body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+              ),
+            ),
           ),
         );
-      await tester.pumpWidget(
-        RepaintBoundary(
-          key: captureFrame,
-          child: MaterialApp(
-            theme: testTheme,
-            locale: locale,
-            localizationsDelegates: P2pLocalizations.localizationsDelegates,
-            supportedLocales: P2pLocalizations.supportedLocales,
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: child ?? const SizedBox.shrink(),
-            ),
-            home: Scaffold(
-              body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      watch.add(TradeScreenStatuses.watched(seen, of: _record));
-      for (var i = 0; i < 6; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pump();
+        watch.add(TradeScreenStatuses.watched(seen, of: _record));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        return sent;
       }
-      return sent;
-    }
 
-    for (final status in [6, 8]) {
-      testWidgets(
-        'at $status: « Generate Invoice » of the wallet and « Submit »; with the red warning shown, « Submit » stays on and sends',
-        (tester) async {
-          final seen = await _at([
-            makerOrderJson(0),
-            makerOrderJson(1),
-            makerOrderJson(6, last: 90000),
-            if (status == 8) makerOrderJson(8, last: 90000),
-          ]);
-          final sent = await page(tester, seen);
-          expect(find.textContaining('fewer sats than that'), findsOneWidget);
-          expect(find.text('Generate Invoice'), findsOneWidget);
-          final submit = find.widgetWithText(TradeButton, 'Submit');
-          expect(submit, findsOneWidget);
-          await tester.enterText(
-            find.byKey(PayoutPanel.invoiceField),
-            _payoutInvoice(seen).text,
-          );
-          await tester.pump();
-          expect(tester.widget<TradeButton>(submit).onPressed, isNotNull);
-          await tester.ensureVisible(submit);
-          await tester.pump();
-          await tester.tap(submit);
-          await tester.pump();
-          await tester.pump();
-          expect(sent, hasLength(1));
-          // The red warning still there: nothing was stopped by it.
-          expect(find.textContaining('fewer sats than that'), findsOneWidget);
-          await capture(tester, 'en-createur-$status-panneau-paiement');
-          await tester.pump(const Duration(seconds: 31));
-        },
-      );
-    }
-  });
+      for (final status in [6, 8]) {
+        testWidgets(
+          'at $status: « Generate Invoice » of the wallet and « Submit »; with the red warning shown, « Submit » stays on and sends',
+          (tester) async {
+            final seen = await _at([
+              makerOrderJson(0),
+              makerOrderJson(1),
+              makerOrderJson(6, last: 90000),
+              if (status == 8) makerOrderJson(8, last: 90000),
+            ]);
+            final sent = await page(tester, seen);
+            expect(find.textContaining('fewer sats than that'), findsOneWidget);
+            expect(find.text('Generate Invoice'), findsOneWidget);
+            final submit = find.widgetWithText(TradeButton, 'Submit');
+            expect(submit, findsOneWidget);
+            await tester.enterText(
+              find.byKey(PayoutPanel.invoiceField),
+              _payoutInvoice(seen).text,
+            );
+            await tester.pump();
+            expect(tester.widget<TradeButton>(submit).onPressed, isNotNull);
+            await tester.ensureVisible(submit);
+            await tester.pump();
+            await tester.tap(submit);
+            await tester.pump();
+            await tester.pump();
+            expect(sent, hasLength(1));
+            // The red warning still there: nothing was stopped by it.
+            expect(find.textContaining('fewer sats than that'), findsOneWidget);
+            await capture(tester, 'en-createur-$status-panneau-paiement');
+            await tester.pump(const Duration(seconds: 31));
+          },
+        );
+      }
+    },
+  );
 
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);
