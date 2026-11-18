@@ -199,6 +199,71 @@ void main() {
     }
 
     test(
+      'a contract kept, then read with no amount: the alert alone, nothing compared at 6, 8 and 9 (security review of #183, C3)',
+      () async {
+        final (harness, record, maker, _) = await taken(250);
+        final order = harness.coordinator.order(record.orderId);
+        Future<TradeSeen> readWithout() async {
+          order.takenAmount = null;
+          final seen = await readOf(harness, record);
+          order.takenAmount = 250;
+          return seen;
+        }
+
+        final six = await readWithout();
+        expect(six.order, isNotNull);
+        expect(six.order?.takenAmount, isNull);
+        expect(six.status.trail.takenAmount, 250);
+        expect(six.status.has<TradeTermsChanged>(), isTrue);
+        expect(six.contractAmountMoved, isTrue);
+        expect(
+          CheckPayoutRateUsecase.subjectAt(record, maker, six),
+          isA<PayoutRateMismatch>(),
+        );
+        harness.coordinator.lockEscrow(record.orderId);
+        expect((await readOf(harness, record)).status, isA<WaitingForPayout>());
+        final eight = await readWithout();
+        expect(eight.contractAmountMoved, isTrue);
+        expect(
+          CheckPayoutRateUsecase.subjectAt(record, maker, eight),
+          isA<PayoutRateMismatch>(),
+        );
+        order.status = 9;
+        expect((await readOf(harness, record)).status, isA<Chatting>());
+        final nine = await readWithout();
+        expect(nine.contractAmountMoved, isTrue);
+        for (final asked in [null, Sats.fromInt(250000)]) {
+          expect(
+            CheckPayoutRateUsecase.subjectAt(record, maker, nine, asked: asked),
+            isA<PayoutRateMismatch>(),
+            reason: '$asked',
+          );
+        }
+      },
+    );
+
+    test(
+      'the alert and the silence of the rule follow one comparison, at its very tolerance both ways (security review of #183, R1)',
+      () async {
+        // Kept 100; read 5·10⁻⁷ lower is another amount (beyond 5·10⁻⁹ of the read), 4·10⁻⁷ higher the same.
+        for (final (read, moved) in [(99.9999995, true), (100.0000004, false)]) {
+          final (harness, record, maker, _) = await taken(100);
+          harness.coordinator.order(record.orderId).takenAmount = read;
+          final seen = await readOf(harness, record);
+          expect(seen.status, isA<WaitingForBoth>(), reason: '$read');
+          expect(seen.status.has<TradeTermsChanged>(), moved, reason: '$read');
+          expect(seen.contractAmountMoved, moved, reason: '$read');
+          final subject = CheckPayoutRateUsecase.subjectAt(record, maker, seen);
+          expect(
+            subject,
+            moved ? isA<PayoutRateMismatch>() : isA<PayoutRateCompared>(),
+            reason: '$read',
+          );
+        }
+      },
+    );
+
+    test(
       'an amount outside the range is refused, never compared (`api/logics.py:190-194`)',
       () async {
         final (_, record, maker, seen) = await taken(500);

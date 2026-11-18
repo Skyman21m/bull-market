@@ -391,8 +391,8 @@ final class MakerRange {
         MakerFormCheck.minRangeRatio *
         limits.min *
         MakerAmountLimits.minThreshold;
-    var min = next.min > cap ? cap : next.min;
-    var max = next.max < floor ? floor : next.max;
+    final min = next.min > cap ? cap : next.min;
+    final max = next.max < floor ? floor : next.max;
     // The ratio the reference keeps here, if any: 1.6 when the range is too narrow, 14.8 when too wide.
     double? ratio;
     if (min > max / MakerFormCheck.minRangeRatio) {

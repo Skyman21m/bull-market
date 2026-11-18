@@ -969,6 +969,81 @@ void main() {
       );
 
       testWidgets(
+        '« Before letting you send … »: the amount kept with a range\'s contract; no figure once the order shows another, or none (security review of #183, C2, C3)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final start = [
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+          ];
+          final kept = (await _chain(start, terms: terms)).last;
+          await _show(tester, kept);
+          expect(
+            find.text(
+              'Before letting you send 120 EUR, we want to make sure you are able to receive the BTC.',
+            ),
+            findsOneWidget,
+          );
+          const noFigure =
+              'Before letting you send the fiat, we want to make sure you are able to receive the BTC.';
+          for (final reread in [
+            makerOrderJson(8, range: true, last: 90000, taken: 60),
+            makerOrderJson(8, range: true, last: 90000, changes: {'amount': null}),
+            makerOrderJson(6, range: true, last: 90000, changes: {'amount': null}),
+          ]) {
+            final seen = (await _chain([...start, reread], terms: terms)).last;
+            expect(seen.status.has<TradeTermsChanged>(), isTrue);
+            expect(seen.contractAmountMoved, isTrue);
+            await _show(
+              tester,
+              seen,
+              rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+            );
+            await tester.pump();
+            await tester.pump();
+            expect(find.text(noFigure), findsOneWidget);
+            for (final figure in ['60 EUR', '120 EUR', '200 EUR']) {
+              expect(find.textContaining(figure), findsNothing, reason: figure);
+            }
+            // Neither a comparison nor a gap beside the alert.
+            expect(find.textContaining('are worth'), findsNothing);
+            expect(
+              find.textContaining('from the rate when you made it'),
+              findsNothing,
+            );
+          }
+        },
+      );
+
+      testWidgets(
+        'a range\'s contract read with no amount at 9: the alert alone, no comparison nor gap (security review of #183, C3)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+            makerOrderJson(9, range: true, last: 90000),
+            makerOrderJson(9, range: true, last: 90000, changes: {'amount': null}),
+          ], terms: terms)).last;
+          expect(seen.contractAmountMoved, isTrue);
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('are worth'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
         'a range\'s contract shown with another amount: the state machine\'s alert alone, no comparison (#183, functional review C5)',
         (tester) async {
           final terms = madeTerms(range: true);

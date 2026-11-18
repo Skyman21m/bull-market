@@ -360,6 +360,39 @@ void main() {
     });
   });
 
+  group('the options sent, said under the summary (security review of #183, C1)', () {
+    test('none at the defaults', () {
+      expect(checkOf().optionsSent.any, isFalse);
+      expect(checkOf(advanced: false, amount: '200').optionsSent.any, isFalse);
+    });
+
+    test(
+      'a description (never its text), each duration and the bond size away from their defaults',
+      () {
+        final sent = checkOf(
+          advanced: false,
+          amount: '200',
+          description: 'Call me',
+          escrowDuration: const Duration(hours: 1),
+          bondSize: 15,
+        ).optionsSent;
+        expect(sent.any, isTrue);
+        expect(sent.description, isTrue);
+        expect(sent.publicDuration, isNull);
+        expect(sent.escrowDuration, const Duration(hours: 1));
+        expect(sent.bondSizePercent, 15);
+        expect(
+          checkOf(publicDuration: const Duration(minutes: 10))
+              .optionsSent
+              .publicDuration,
+          const Duration(minutes: 10),
+        );
+        // Only spaces is no description.
+        expect(checkOf(description: '   ').optionsSent.any, isFalse);
+      },
+    );
+  });
+
   group('the range the form sets', () {
     test(
       'opening the options: half the amount and the amount, else a quarter and three quarters of the coordinator\'s largest order',
@@ -564,38 +597,67 @@ void main() {
     );
 
     test(
-      'every range the slider writes is one the form takes, each thumb across the slider, for three coordinators\' limits',
-      () {
-        for (final market in [narrow, wide, tiny]) {
-          final limits = checkOf(limits: market).limits;
-          if (limits == null) fail('no limits');
-          final low = limits.min;
-          final high = limits.max;
-          final start = MakerRange(
-            significant(low * 2, 3),
-            significant(low * 6, 3),
-          );
-          for (var step = 0; step <= 400; step++) {
-            final value = low + (high - low) * step / 400;
-            for (final next in [
-              if (value <= start.max) MakerRange(value, start.max),
-              if (value >= start.min) MakerRange(start.min, value),
-            ]) {
-              final range = slide(previous: start, next: next, limits: limits);
-              final errors = MakerFormCheck.rangeErrorsOf(
-                range.min,
-                range.max,
-                limits,
-              );
-              expect(
-                errors.min || errors.max,
-                isFalse,
-                reason:
-                    '$low-$high: $start → ${next.min}-${next.max}: ${range.min}-${range.max}',
-              );
+      'every range the slider writes is one the form takes: each thumb across the slider, the other anywhere, for coordinators\' limits round and not, small and large, with and without a premium (security review of #183)',
+      () async {
+        final markets = [
+          narrow,
+          wide,
+          tiny,
+          odd,
+          await limitsOf({2: (37.123, 0.77, 3.3)}),
+          await limitsOf({2: (1234.5678, 13.37, 999.99)}),
+          await limitsOf({2: (50000, 2.5, 6.1)}),
+          await limitsOf({2: (91711.15, 18.34223, 4585.5575)}),
+          await limitsOf({2: (64000, 0.0123, 0.5)}),
+          await limitsOf({2: (50000, 123456, 9876543)}),
+        ];
+        var ranges = 0;
+        for (final market in markets) {
+          for (final premium in ['', '7.5', '-12.25']) {
+            final limits = checkOf(limits: market, premium: premium).limits;
+            if (limits == null) fail('no limits');
+            final low = limits.min;
+            final high = limits.max;
+            double at(int step, int of) => low + (high - low) * step / of;
+            for (var other = 0; other <= 12; other++) {
+              for (var step = 0; step <= 120; step++) {
+                final value = at(step, 120);
+                final fixed = at(other, 12);
+                for (final (moved, next) in [
+                  if (value <= fixed) (RangeThumb.min, MakerRange(value, fixed)),
+                  if (value >= fixed) (RangeThumb.max, MakerRange(fixed, value)),
+                ]) {
+                  final range = MakerRange.slid(
+                    moved: moved,
+                    next: next,
+                    limits: limits,
+                  );
+                  ranges++;
+                  final errors = MakerFormCheck.rangeErrorsOf(
+                    range.min,
+                    range.max,
+                    limits,
+                  );
+                  expect(
+                    errors.min || errors.max,
+                    isFalse,
+                    reason:
+                        '$low-$high, $moved: ${next.min}-${next.max} gave ${range.min}-${range.max}',
+                  );
+                  // As the field writes it back: no more than the amount's decimals.
+                  for (final bound in [range.min, range.max]) {
+                    expect(
+                      double.parse(bound.toStringAsFixed(8)),
+                      bound,
+                      reason: '$bound',
+                    );
+                  }
+                }
+              }
             }
           }
         }
+        expect(ranges, greaterThan(40000));
       },
     );
 

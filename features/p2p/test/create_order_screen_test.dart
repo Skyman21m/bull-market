@@ -1687,6 +1687,56 @@ void main() {
       },
     );
 
+    testWidgets(
+      'the options sent are said under the summary: as information while open, in the warning colour once closed; nothing at the defaults (security review of #183, C1)',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        expect(find.textContaining('sent with this order'), findsNothing);
+        await _open(tester);
+        // Opened, all at their defaults: no line either.
+        expect(find.textContaining('sent with this order'), findsNothing);
+        await tester.enterText(_descriptionField, 'Call me');
+        await settle(tester);
+        tester.widget<Slider>(find.byType(Slider)).onChanged?.call(15);
+        await settle(tester);
+        // The escrow timer at 01:00, typed in the picker's keyboard mode.
+        await tester.ensureVisible(find.text('03:00'));
+        await tester.pump();
+        await tester.tap(find.text('03:00'));
+        await settle(tester);
+        await tester.tap(find.byIcon(Icons.keyboard_outlined));
+        await settle(tester);
+        final picker = find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(picker.at(0), '01');
+        await tester.enterText(picker.at(1), '00');
+        await tester.tap(find.text('OK'));
+        await settle(tester);
+        const open =
+            'Advanced options sent with this order: a description, escrow/invoice timer 01:00, fidelity bond 15%.';
+        expect(find.text(open), findsOneWidget);
+        final colors = tester.element(find.text(open)).bull;
+        expect(tester.widget<Text>(find.text(open)).style?.color, colors.textMuted);
+        await tester.ensureVisible(_advancedSwitch);
+        await tester.pump();
+        await tester.tap(_advancedSwitch);
+        await settle(tester);
+        const closed =
+            'Advanced options closed, but still sent with this order: a description, escrow/invoice timer 01:00, fidelity bond 15%.';
+        expect(find.text(closed), findsOneWidget);
+        expect(tester.widget<Text>(find.text(closed)).style?.color, colors.warning);
+        // The description itself is never repeated there.
+        expect(find.textContaining('Call me'), findsNothing);
+        // « Clear form »: the defaults again, no line.
+        await tester.tap(find.byTooltip('Clear form'));
+        await settle(tester);
+        expect(find.textContaining('sent with this order'), findsNothing);
+      },
+    );
+
     group('the slider, by a real drag (functional review of #183, C1)', () {
       /// Drags the thumb of [from] to [to], values of the slider over the form's limits 105.06 to 999.6 (100 to 1,000 EUR at 2 %); the track taken to run inside 24 points at each end, the drag starting on the thumb.
       Future<void> drag(WidgetTester tester, double from, double to) async {
