@@ -65,6 +65,7 @@ import 'domain/usecases/trade/bond_payments_in_flight.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
+import 'domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/make_order_usecase.dart';
@@ -96,6 +97,7 @@ import 'presentation/garage_cubit.dart';
 import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
+import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
@@ -394,6 +396,14 @@ final class P2pLocator {
             ? locator<CheckMakePriceUsecase>().execute
             : null,
       ),
+    );
+    // The owner's payment rule on a maker buyer's side (#182): one cubit per shown trade, built only where the wallet's port was lent.
+    locator.registerFactory<CheckPayoutRateUsecase>(
+      () => CheckPayoutRateUsecase(locator(), locator<P2pWalletPort>()),
+    );
+    locator.registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
+      (record, _) =>
+          PayoutRateCubit(record, locator<CheckPayoutRateUsecase>().execute),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(

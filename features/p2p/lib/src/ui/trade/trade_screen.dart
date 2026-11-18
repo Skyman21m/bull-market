@@ -19,6 +19,7 @@ import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
+import '../../presentation/payout_rate_cubit.dart';
 import '../../presentation/public_wait.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/take_order_cubit.dart';
@@ -39,6 +40,7 @@ import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'host_rating_section.dart';
 import 'payout_panel.dart';
+import 'payout_rate_line.dart';
 import 'rate_gap_line.dart';
 import 'successful_panel.dart';
 import 'trade_order_details.dart';
@@ -99,6 +101,9 @@ class TradeScreen extends StatefulWidget {
   /// Every order the book of the tab received when the trade was opened (`BookState.receivedOrders`), for the figures of a maker's public order (« Public orders for … », « Premium rank », `Prompts/PublicWait.tsx:52-78`, #182); `null` when no book was received, and those figures are not shown.
   final List<PublicOrder>? book;
 
+  /// Whether a [PayoutRateCubit] is above the screen (the wallet's port was lent): the owner's payment rule on a maker buyer's side (#182) is then read when its step is shown.
+  final bool checksPayoutRate;
+
   const TradeScreen({
     super.key,
     required this.now,
@@ -116,6 +121,7 @@ class TradeScreen extends StatefulWidget {
     this.onOpenGarage,
     this.onTaken,
     this.book,
+    this.checksPayoutRate = false,
   });
 
   @override
@@ -147,7 +153,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     );
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _findIfPublic(context.read<TradeCubit>().state);
+      if (!mounted) return;
+      final state = context.read<TradeCubit>().state;
+      _findIfPublic(state);
+      _checkRate(state);
     });
   }
 
@@ -155,6 +164,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
   void _findIfPublic(TradeScreenState state) {
     if (TradeView.of(state.watch) case TradeOrderOnly(:final order)) {
       unawaited(context.read<TradeOrderPageCubit>().findPublic(order));
+    }
+  }
+
+  /// The owner's payment rule on a maker buyer's side (#182): the Bull wallet's price read once per contract and step when the screen shows the buyer's payout or « fiat sent » ([PayoutRateCubit.show]).
+  void _checkRate(TradeScreenState state) {
+    if (!widget.checksPayoutRate) return;
+    if (state.watch case TradeWatchStatus(:final seen)) {
+      unawaited(context.read<PayoutRateCubit>().show(seen));
     }
   }
 
@@ -212,7 +229,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     final coordinator = _coordinatorName(state);
     final lines = _lines(context, state, coordinator);
     return BlocListener<TradeCubit, TradeScreenState>(
-      listener: (context, state) => _findIfPublic(state),
+      listener: (context, state) {
+        _findIfPublic(state);
+        _checkRate(state);
+      },
       child: Material(
         color: colors.background,
         child: SafeArea(
@@ -353,6 +373,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                             widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
                         book: widget.book,
+                        payoutRate: widget.checksPayoutRate
+                            ? context.watch<PayoutRateCubit>().state
+                            : null,
+                        onRetryRate: widget.checksPayoutRate
+                            ? () => unawaited(
+                                context.read<PayoutRateCubit>().retry(),
+                              )
+                            : null,
                       ),
                     },
                   ],
@@ -503,6 +531,10 @@ class _Contract extends StatelessWidget {
   /// The book of the tab, for a maker's public order ([TradeScreen.book]).
   final List<PublicOrder>? book;
 
+  /// The owner's payment rule on a maker buyer's side (#182), `null` without the wallet's port, and its « Retry ».
+  final PayoutRateState? payoutRate;
+  final VoidCallback? onRetryRate;
+
   const _Contract({
     super.key,
     required this.contract,
@@ -525,6 +557,8 @@ class _Contract extends StatelessWidget {
     required this.moneyActionRunning,
     required this.walletBond,
     required this.book,
+    required this.payoutRate,
+    required this.onRetryRate,
   });
 
   @override
@@ -748,6 +782,8 @@ class _Contract extends StatelessWidget {
             gap,
             const Gap(BullSpacing.sm),
           ],
+          // The owner's payment rule on a maker buyer's side, before « Submit » (#182).
+          ?_rateLines(context),
           ?_payoutPanel(context),
         ],
       ),
@@ -767,7 +803,12 @@ class _Contract extends StatelessWidget {
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
       // The chat step (#95; the seller's, #96), with the chat panel (#93) in its place when the screen was given one.
-      (TradePrompt.chat, _) => ChatStepPanel(
+      (TradePrompt.chat, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // The owner's payment rule on a maker buyer's side, before « Confirm … sent » (#182), with its « Retry ».
+          ?_rateLines(context),
+          ChatStepPanel(
         seen: contract.seen,
         order: order,
         coordinator: coordinator,
@@ -791,6 +832,23 @@ class _Contract extends StatelessWidget {
         chatOptions: chatOptions == null
             ? null
             : () => chatOptions(context, chatRequest),
+        rateLines: switch (payoutRate) {
+          PayoutRateChecked(:final check, :final step)
+              when step == PayoutRateStep.of(status) =>
+            PayoutRateLines.linesOf(
+              context,
+              check,
+              coordinator: coordinator,
+              amount: PayoutRateLines.amountOf(context, order),
+            ),
+          PayoutRateReading(:final step)
+              when step == PayoutRateStep.of(status) => [
+            (text: l10n.p2pPayoutRateReading, alert: false),
+          ],
+          _ => const [],
+        },
+      ),
+        ],
       ),
       (TradePrompt.sendingSats, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -844,6 +902,27 @@ class _Contract extends StatelessWidget {
         ),
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
+  }
+
+  /// The lines of the owner's payment rule for the step shown, with their « Retry » (#182); `null` where there are none.
+  Widget? _rateLines(BuildContext context) {
+    final state = payoutRate;
+    // Only the check of the step shown: never one of a step before.
+    final shown = PayoutRateStep.of(contract.status);
+    final step = switch (state) {
+      PayoutRateReading(:final step) || PayoutRateChecked(:final step) => step,
+      _ => null,
+    };
+    if (state == null || step == null || step != shown) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: BullSpacing.sm),
+      child: PayoutRateLines(
+        state: state,
+        coordinator: coordinator,
+        amount: PayoutRateLines.amountOf(context, contract.order),
+        onRetry: onRetryRate,
+      ),
+    );
   }
 
   /// The line of the gap of a maker's contract at 6 and 8 ([RateGapLine]), from the status's own figure and the order it was read from; `null` for a taker, whose statuses carry no gap.

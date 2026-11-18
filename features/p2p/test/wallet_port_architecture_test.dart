@@ -60,6 +60,8 @@ void main() {
         {
           'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart',
           'lib/src/domain/usecases/trade/check_make_price_usecase.dart',
+          // The same rule on a maker buyer's side (#182): the payout's sats compared with the wallet's price before « Submit » and « fiat sent », which pays nothing.
+          'lib/src/domain/usecases/trade/check_payout_rate_usecase.dart',
         },
       );
     },

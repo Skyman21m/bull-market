@@ -23,6 +23,7 @@ import 'presentation/host_rating_cubit.dart';
 import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
+import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
@@ -192,6 +193,11 @@ final class P2pRouter {
             create: (_) =>
                 locator<BondPaymentCubit>(param1: args.record)..start(),
           ),
+        // The owner's payment rule on a maker buyer's side (#182), on the same condition: the Bull wallet's price is read through the port.
+        if (P2pLocator.paysBondFromWallet(locator))
+          BlocProvider(
+            create: (_) => locator<PayoutRateCubit>(param1: args.record),
+          ),
         // The wallet's payment of a seller's escrow (#97), on the same condition.
         if (P2pLocator.paysBondFromWallet(locator))
           BlocProvider(
@@ -283,6 +289,7 @@ final class P2pRouter {
               extra: P2pTradeRouteArgs(record),
             ),
             book: args.book,
+            checksPayoutRate: P2pLocator.paysBondFromWallet(locator),
           ),
         ),
       ),

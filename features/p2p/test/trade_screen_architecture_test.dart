@@ -65,6 +65,11 @@ void main() {
         // The create form's cubit (#181), the only caller of the make and of the form's price check.
         ('MakeOrderUsecase', 'lib/src/presentation/make_order_cubit.dart'),
         ('CheckMakePriceUsecase', 'lib/src/presentation/make_order_cubit.dart'),
+        // The owner's payment rule on a maker buyer's side (#182).
+        (
+          'CheckPayoutRateUsecase',
+          'lib/src/presentation/payout_rate_cubit.dart',
+        ),
         (
           'FetchCoordinatorLimitsUsecase',
           'lib/src/presentation/make_order_cubit.dart',

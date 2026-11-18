@@ -68,6 +68,9 @@ class ChatStepPanel extends StatefulWidget {
   /// « Audit Chat » and « Export » of « Order options » (#157), built when « … » is pressed, over the cubit of [chat]; `null` with it, and « Order options » is shown without them.
   final ChatOptions Function()? chatOptions;
 
+  /// The lines of the owner's payment rule on a maker buyer's side (#182), said in « Confirm … sent »; empty for a taker.
+  final List<({String text, bool alert})> rateLines;
+
   const ChatStepPanel({
     super.key,
     required this.seen,
@@ -84,6 +87,7 @@ class ChatStepPanel extends StatefulWidget {
     required this.now,
     this.chat,
     this.chatOptions,
+    this.rateLines = const [],
   });
 
   @override
@@ -196,6 +200,7 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
           amount: amount,
           currencyCode: currencyCode,
           gap: _gapOf(seen),
+          lines: widget.rateLines,
         )) {
           await cubit.confirmFiatSent(seen);
         }

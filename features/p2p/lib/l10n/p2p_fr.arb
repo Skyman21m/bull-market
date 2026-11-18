@@ -846,5 +846,10 @@
   "p2pPendingMakeSetAsideTitle": "Écarter cet ordre ?",
   "p2pPendingMakeSetAsideText": "Bull Market cessera de le vérifier. Un ordre peut encore exister chez {coordinator} : aucune caution n’a été payée pour lui depuis cette app, et il expire seul quelques minutes après sa création.",
   "p2pMakePendingFirst": "Un de vos ordres est encore en cours de création. Vérifiez-le de nouveau ou écartez-le avant d’en créer un autre.",
-  "p2pMakeSendingStay": "Attendez la réponse de {coordinator} avant de quitter : votre ordre est en cours de création."
+  "p2pMakeSendingStay": "Attendez la réponse de {coordinator} avant de quitter : votre ordre est en cours de création.",
+  "p2pPayoutRateReading": "Lecture du prix du portefeuille Bull pour comparaison…",
+  "p2pPayoutRateWallet": "Au prix du portefeuille Bull, {price} {currency}/BTC, avec la prime de l’ordre, {amount} {currency} valent {expected} sats. Vous recevez {received} sats : écart {gap}.",
+  "p2pPayoutRateWarning": "Vous recevez plus de {threshold} de sats en moins : {received} sats reçus, {expected} sats attendus. Vérifiez avant de continuer.",
+  "p2pPayoutRateNotPriced": "Le portefeuille Bull n’a pas de prix pour {currency} : taux non vérifié. Vous faites confiance au prix annoncé par {coordinator} : vérifiez-le vous-même avant de continuer.",
+  "p2pPayoutRateUnverified": "Le portefeuille Bull n’a pas pu lire son prix du bitcoin en {currency} : taux non vérifié. Vous pouvez réessayer, ou continuer sans cette vérification."
 }

@@ -15,11 +15,15 @@ class ConfirmFiatSentDialog extends StatelessWidget {
   /// A maker buyer's line of the gap from the rate when the order was made (design note § 3.3, #182), said under the reference's texts: information, « Confirm » unchanged; `null` for a taker.
   final String? gap;
 
+  /// The lines of the owner's payment rule on a maker buyer's side (#182): the comparison with the Bull wallet's price, its red warning, or why it was not made; information, « Confirm » unchanged.
+  final List<({String text, bool alert})> lines;
+
   const ConfirmFiatSentDialog({
     super.key,
     required this.amount,
     required this.currencyCode,
     this.gap,
+    this.lines = const [],
   });
 
   /// Whether the user pressed « Confirm ».
@@ -28,6 +32,7 @@ class ConfirmFiatSentDialog extends StatelessWidget {
     required String amount,
     required String currencyCode,
     String? gap,
+    List<({String text, bool alert})> lines = const [],
   }) async =>
       await BullDialog.show<bool>(
         context: context,
@@ -35,6 +40,7 @@ class ConfirmFiatSentDialog extends StatelessWidget {
           amount: amount,
           currencyCode: currencyCode,
           gap: gap,
+          lines: lines,
         ),
       ) ??
       false;
@@ -52,6 +58,7 @@ class ConfirmFiatSentDialog extends StatelessWidget {
       semanticWarning: withoutLeadingEmoji(l10n.p2pEndCannotBeUndone),
       afterWarning: l10n.p2pEndFalseConfirmRisk,
       note: gap,
+      lines: lines,
       backLabel: l10n.p2pCommonGoBack,
       onBack: () => Navigator.of(context).pop(false),
       goLabel: l10n.p2pEndConfirm,

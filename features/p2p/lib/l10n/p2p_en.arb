@@ -4763,5 +4763,69 @@
         "type": "String"
       }
     }
+  },
+  "p2pPayoutRateReading": "Reading the Bull wallet's price for comparison…",
+  "@p2pPayoutRateReading": {
+    "description": "Not in the RoboSats texts: the project's own: the Bull wallet's price being read for the owner's payment rule on a maker buyer's side (design note § 3.3, #182)."
+  },
+  "p2pPayoutRateWallet": "At the Bull wallet's price, {price} {currency}/BTC, with the order's premium, {amount} {currency} are worth {expected} sats. You receive {received} sats: gap {gap}.",
+  "@p2pPayoutRateWallet": {
+    "description": "Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side (decided on 2026-11-17, design note § 3.3, #182), before « Submit » of the payout and in « Confirm … sent »: information. {price} is the Bull wallet's price of a bitcoin without the premium, written as « Order current rate »; {expected} the sats {amount} is worth at it with the premium, rounded down; {received} the sats the coordinator gives the buyer (`trade_satoshis`); {gap} their gap in percent with its sign.",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "expected": {
+        "type": "String"
+      },
+      "received": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutRateWarning": "You receive more than {threshold} fewer sats than that: {received} sats received, {expected} sats expected. Check it before going on.",
+  "@p2pPayoutRateWarning": {
+    "description": "Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule on a maker buyer's side (#182), beyond the threshold, nothing blocked. {threshold} is the threshold as a percentage, such as « 10% ».",
+    "placeholders": {
+      "threshold": {
+        "type": "String"
+      },
+      "received": {
+        "type": "String"
+      },
+      "expected": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutRateNotPriced": "The Bull wallet has no price for {currency}: rate not checked. You are trusting {coordinator}'s price: check it yourself before going on.",
+  "@p2pPayoutRateNotPriced": {
+    "description": "Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side for a currency the Bull wallet does not price (#182, as `p2pPayRateNotPriced` for the bond): no figure, no « Retry ».",
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutRateUnverified": "The Bull wallet's price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or go on without the check.",
+  "@p2pPayoutRateUnverified": {
+    "description": "Not in the RoboSats texts: the project's own: the Bull wallet's price could not be read for the owner's payment rule on a maker buyer's side (#182), with « Retry ».",
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
   }
 }

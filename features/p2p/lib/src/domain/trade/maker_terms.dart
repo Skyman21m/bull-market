@@ -298,6 +298,18 @@ final class MakerTerms {
   /// The maker bond the order implies, in sats at the rate of the creation, for display: an estimate, the bond invoice states the amount to lock.
   double get expectedBond => _expectedBond.toDouble();
 
+  /// The sats [amount] of this order's currency is worth at [price] with the order's premium, exactly (the contract's sats at the wallet's price, #182): `null` for a price outside the bounds of a price of the creation, as [bondAtPrice].
+  ExactRatio? satsAtPrice(double price, FiatAmount amount) {
+    if (!price.isFinite ||
+        price < minCreatedPrice ||
+        price >= maxCreatedPrice) {
+      return null;
+    }
+    final rate =
+        _exact(price) * (_hundred + _exact(request.premium.percent)) / _hundred;
+    return _exact(amount.value) * _satsPerBitcoin / rate;
+  }
+
   /// The maker bond the order implies at [price], a price of one bitcoin in the order's currency that is not the creation's, exactly: the bond size of the sats of the order's largest amount (the maximum of a range) at [price] with the order's premium, the formula of [_expectedBond] (`Logics.calc_sats`, `api/logics.py:256-259`; `api/logics.py:1266-1268`), before any rounding.
   ///
   /// For the owner's payment rule of 2026-11-17 (design note § 3.3, `WalletRateCheck`), at the wallet's own price at the moment of paying. `null` when [price] is not a price [create] would take for [createdPrice] (not finite, below [minCreatedPrice], not below [maxCreatedPrice]), so that every figure computed from it is finite.

@@ -26,6 +26,9 @@ class TradeDialogBody extends StatelessWidget {
   /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
   final String? note;
 
+  /// Lines of the app under [note] (#182: the owner's payment rule on the buyer's side), each in the text colour, or in the error colour when [alert]; empty for a dialog without them.
+  final List<({String text, bool alert})> lines;
+
   /// What the button that goes on does; `null` while it waits (« Wait ({{time}}) », `TradeBox/Dialogs/ConfirmUndoFiatSent.tsx`).
   final VoidCallback? onGo;
 
@@ -57,6 +60,7 @@ class TradeDialogBody extends StatelessWidget {
     this.afterWarning,
     this.bullets = const [],
     this.note,
+    this.lines = const [],
   });
 
   @override
@@ -132,6 +136,16 @@ class TradeDialogBody extends StatelessWidget {
             WordFitText(
               note,
               style: styles.bodyMedium?.copyWith(color: colors.text),
+            ),
+          ],
+          for (final line in lines) ...[
+            const Gap(BullSpacing.sm),
+            WordFitText(
+              line.text,
+              style: styles.bodyMedium?.copyWith(
+                color: line.alert ? colors.error : colors.text,
+                fontWeight: line.alert ? FontWeight.bold : null,
+              ),
             ),
           ],
           const Gap(BullSpacing.lg),
