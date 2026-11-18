@@ -369,6 +369,13 @@ void main() {
           ),
           findsOneWidget,
         );
+        // The reference's box rings; this app does not: said under it.
+        expect(
+          find.text(
+            'Bull Market does not ring yet: keep this screen open, or come back to it often.',
+          ),
+          findsOneWidget,
+        );
         expect(find.text('3'), findsOneWidget);
         expect(find.text('Public orders for EUR'), findsOneWidget);
         expect(find.text('Premium rank 50%'), findsOneWidget);
@@ -579,6 +586,13 @@ void main() {
         ]);
         await _show(tester, seen);
         expect(find.textContaining('(3/5)'), findsOneWidget);
+        // The reference's « bond back automatically » is a taker's case: what happens to a maker, under it.
+        expect(
+          find.text(
+            'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.',
+          ),
+          findsOneWidget,
+        );
         await _reveal(tester, find.text('Cancel'));
         expect(find.text('Cancel'), findsOneWidget);
         expect(find.text('Your maker bond is locked'), findsOneWidget);
@@ -1004,12 +1018,19 @@ void main() {
           await _reveal(tester, confirm);
           await tester.tap(confirm);
           await tester.pumpAndSettle();
+          final warning = find.descendant(
+            of: find.byType(ConfirmFiatSentDialog),
+            matching: find.textContaining('fewer sats than that'),
+          );
+          expect(warning, findsOneWidget);
+          expect(tester.widget<Text>(warning).style?.color, testBullTheme.error);
+          // The comparison shown: no gap from the creation's rate in the dialog either.
           expect(
             find.descendant(
               of: find.byType(ConfirmFiatSentDialog),
-              matching: find.textContaining('fewer sats than that'),
+              matching: find.textContaining('from the rate when you made it'),
             ),
-            findsOneWidget,
+            findsNothing,
           );
           await tester.tap(
             find.descendant(
@@ -1203,6 +1224,8 @@ void main() {
                 ]),
               );
               if (seen == null) throw StateError('no status');
+              // A new page, not the last one's state kept by the same tree.
+              await tester.pumpWidget(const SizedBox.shrink());
               final sent = await page(tester, seen, locale: locale);
               await tester.enterText(
                 find.byKey(PayoutPanel.invoiceField),
@@ -1213,12 +1236,18 @@ void main() {
                 TradeButton,
                 locale.languageCode == 'fr' ? 'Soumettre' : 'Submit',
               );
+              expect(submit, findsOneWidget, reason: '$locale $status');
+              expect(
+                tester.widget<TradeButton>(submit).onPressed,
+                isNotNull,
+                reason: '$locale $status',
+              );
               await tester.ensureVisible(submit);
               await tester.pump();
               await tester.tap(submit);
               await tester.pump();
               await tester.pump();
-              expect(sent, hasLength(1));
+              expect(sent, hasLength(1), reason: '$locale $status');
               await capture(
                 tester,
                 '${locale.languageCode}-createur-$status-panneau-paiement',

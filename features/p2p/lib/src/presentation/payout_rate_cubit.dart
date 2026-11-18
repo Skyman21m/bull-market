@@ -75,7 +75,7 @@ final class PayoutRateSatsMissing extends PayoutRateState {
   const PayoutRateSatsMissing(this.step);
 }
 
-/// The owner's payment rule on a maker buyer's side (#182, design note § 3.3), on the trade screen: the only caller of [CheckPayoutRateUsecase], for an order made here whose user buys only (a taker's trade never sees it, not even « reading »). It reads the Bull wallet's price when the screen shows a step of the rule (the payout at 6 or 8, « fiat sent » at 9) and no read of that step's contract is younger than [freshFor]: so once per step, and again at a later show once the last read is [freshFor] old (8 shown hours after 6), never more often, and on « Retry » after a price that could not be read; never in a loop of its own.
+/// The owner's payment rule on a maker buyer's side (#182, design note § 3.3), on the trade screen: the only caller of [CheckPayoutRateUsecase], for an order made here whose user buys only (a taker's trade never sees it, not even « reading »). It reads the Bull wallet's price when the screen shows a step of the rule (the payout at 6 or 8, « fiat sent » at 9) for the first time; again when that step appears anew (the screen built, shown again, the app back) or moves to another status (8 after 6) while the last read is [freshFor] old; and on « Retry » after a price that could not be read. A new read of the same status, which the trade's watch brings at its own cadence, never reads the price again: never in a loop.
 class PayoutRateCubit extends Cubit<PayoutRateState> {
   final TradeRecord record;
   final PayoutRateChecker _check;
@@ -90,14 +90,17 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   PayoutRateStep? _asked;
   DateTime? _readAt;
 
+  /// The status last shown, so that 8 after 6 is a new show of the same step.
+  Type? _status;
+
   /// The status last shown at that step, for « Retry ».
   TradeSeen? _seen;
 
   PayoutRateCubit(this.record, this._check, {required this.now})
     : super(const PayoutRateNone());
 
-  /// The screen shows [seen]: its step's price is read when it was not read for that step yet, or when that read is [freshFor] old.
-  Future<void> show(TradeSeen seen) async {
+  /// The screen shows [seen]: its step's price is read when it was not read for that step yet, or, when the read is [freshFor] old, if the step [appeared] anew (the screen built, shown again, the app back) or its status moved (8 after 6).
+  Future<void> show(TradeSeen seen, {bool appeared = false}) async {
     if (record.origin != TradeOrigin.madeHere ||
         record.role != TradeRole.buyer) {
       return;
@@ -110,12 +113,14 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       return;
     }
     _seen = seen;
+    final moved = _status != null && _status != seen.status.runtimeType;
+    _status = seen.status.runtimeType;
     final readAt = _readAt;
     final stale = readAt != null && !now().isBefore(readAt.add(freshFor));
     // No sats in the last read: looked at again at each show, which reads no price until the read gives sats.
     final missing = state is PayoutRateSatsMissing;
-    if (step == _asked && !stale && !missing) return;
     if (step == _asked && state is PayoutRateReading) return;
+    if (step == _asked && !missing && !(stale && (appeared || moved))) return;
     _asked = step;
     await _read(step, seen);
   }

@@ -193,7 +193,7 @@ Map<String, Object?> makerOrderJson(
     ..['is_disputed'] = status == 11 || status >= 16
     ..['ur_nick'] = us.nickname
     ..['satoshis_now'] = last
-    // Whether each hold invoice is LOCKED now (`api/views.py:326-343`): the maker bond from the publication to the trade's end, returned or settled at 4, 5 and 11 to 18 (`Logics.return_bond`, `settle_bond`, `api/logics.py:1561-1600`; a dispute settles the escrow and both bonds, `:503-506`; the seller's « confirm » returns both bonds before paying the buyer, `:1724-1727`); the taker bond from the contract (6) to 10; the escrow from its lock (8, or 9 after 7) to 10.
+    // Whether each hold invoice is LOCKED now (`api/views.py:327-343`): the maker bond from the publication to the trade's end, returned or settled at 4, 5 and 11 to 18 (`Logics.return_bond`, `settle_bond`, `api/logics.py:1561-1600`; a dispute settles the escrow and both bonds, `:503-506`; the seller's « confirm » returns both bonds before paying the buyer, `:1724-1727`); the taker bond from the contract (6) to 10; the escrow from its lock (8, or 9 after 7) to 10.
     ..['maker_locked'] = const [1, 2, 3, 6, 7, 8, 9, 10].contains(status)
     ..['taker_locked'] = status >= 6 && status <= 10
     ..['escrow_locked'] = status >= 8 && status <= 10;
@@ -223,7 +223,7 @@ Map<String, Object?> makerOrderJson(
         ..['invoice_amount'] = makerPayoutOf(last)
         ..['swap_allowed'] = false
         ..['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
-    // The chat's fields at 8 for the seller (the buyer's 8 is the payout's branch, above), 9 and 10 (`api/views.py:438-460`).
+    // The chat's fields at 8 for the seller (the buyer's 8 is the payout's branch, above), 9 and 10 (`api/views.py:430-457`).
     case 8 || 9 || 10:
       data
         ..['asked_for_cancel'] = false
@@ -244,7 +244,7 @@ Map<String, Object?> makerOrderJson(
             ? 'Invoice not submitted'
             : 'Expired not taken';
   }
-  // The renewal's fields (`api/views.py:489-498`), not for the buyer at 15, whose branch is the routing's (`:466-487`); the trade summary of 13 to 15 (`Logics.summarize_trade`) is not played.
+  // The renewal's fields (`api/views.py:490-498`), not for the buyer at 15, whose branch is the routing's (`:470-488`); the trade summary of 13 to 15 (`Logics.summarize_trade`) is not played.
   if (const [5, 13, 14].contains(status) || (status == 15 && !buyer)) {
     data
       ..['public_duration'] = 86340

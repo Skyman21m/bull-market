@@ -22,6 +22,7 @@ void main() {
     double premium = 3.5,
     double bond = 3,
     double createdPrice = 71657,
+    double makerFee = 0.00025,
   }) {
     final fiat = some(FiatAmount.tryCreate(amount));
     final request = some(
@@ -48,7 +49,7 @@ void main() {
       coordinator: coordinator('temple'),
       request: request,
       createdPrice: createdPrice,
-      makerFee: 0.00025,
+      makerFee: makerFee,
     )) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
@@ -74,6 +75,22 @@ void main() {
     final WalletRateCompared compared => compared,
     final other => throw StateError('not compared: $other'),
   };
+
+  group(
+    'what a maker buyer receives at 9, from `last_satoshis`: `round(last − last × fee)`, a half to the even one as Python\'s `round` (`Logics.payout_amount`, `api/logics.py:650-669`)',
+    () {
+      test('the figures of the captures: 90,000 → 89,978; 106,900 → 106,873', () {
+        expect(terms().payoutAt(Sats.fromInt(90000)), Sats.fromInt(89978));
+        expect(terms().payoutAt(Sats.fromInt(106900)), Sats.fromInt(106873));
+      });
+
+      test('a half goes to the even one: 999.5 → 1,000, 2,998.5 → 2,998', () {
+        final half = terms(makerFee: 0.0005);
+        expect(half.payoutAt(Sats.fromInt(1000)), Sats.fromInt(1000));
+        expect(half.payoutAt(Sats.fromInt(3000)), Sats.fromInt(2998));
+      });
+    },
+  );
 
   test('the threshold is the owner\'s, 10 %', () {
     expect(TradeTolerances.walletRateGap, 0.10);

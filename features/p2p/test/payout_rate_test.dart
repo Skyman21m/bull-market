@@ -184,7 +184,7 @@ void main() {
     );
 
     test(
-      'shown again once the last read is 3 minutes old (8 shown hours after 6): read again, never more often',
+      'read again only when the step appears anew (the screen built or shown again, the app back) or its status moves (8 an hour after 6) with a read 3 minutes old; a new read of the same status never reads again',
       () async {
         final (harness, record, six) = await taken();
         final asked = <TradeSeen>[];
@@ -197,15 +197,29 @@ void main() {
           return usecase.execute(record, seen);
         }, now: () => harness.now);
         addTearDown(cubit.close);
-        await cubit.show(six);
+        await cubit.show(six, appeared: true);
+        expect(asked, hasLength(1));
         await harness.elapse(const Duration(minutes: 2, seconds: 59));
-        await cubit.show(six);
+        await cubit.show(six, appeared: true);
         expect(asked, hasLength(1));
         await harness.elapse(const Duration(seconds: 1));
+        // The watch's next read of the same status: never a read by itself.
         await cubit.show(six);
+        expect(asked, hasLength(1));
+        // The screen shown again: read again, once.
+        await cubit.show(six, appeared: true);
         expect(asked, hasLength(2));
-        await cubit.show(six);
+        await cubit.show(six, appeared: true);
         expect(asked, hasLength(2));
+        // 8 an hour later, the same step at another status.
+        harness.coordinator.lockEscrow(record.orderId);
+        await harness.elapse(const Duration(hours: 1));
+        final eight = await readOf(harness, record);
+        expect(eight.status, isA<WaitingForPayout>());
+        await cubit.show(eight);
+        expect(asked, hasLength(3));
+        await cubit.show(eight);
+        expect(asked, hasLength(3));
       },
     );
 

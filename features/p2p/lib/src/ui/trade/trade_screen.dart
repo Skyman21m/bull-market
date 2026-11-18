@@ -158,7 +158,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final state = context.read<TradeCubit>().state;
       _findIfPublic(state);
-      _checkRate(state);
+      _checkRate(state, appeared: true);
     });
   }
 
@@ -169,11 +169,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// The owner's payment rule on a maker buyer's side (#182): the Bull wallet's price read once per contract and step when the screen shows the buyer's payout or « fiat sent » ([PayoutRateCubit.show]).
-  void _checkRate(TradeScreenState state) {
+  /// The owner's payment rule on a maker buyer's side (#182): the Bull wallet's price read once per contract and step when the screen shows the buyer's payout or « fiat sent », and again when the step [appeared] anew with a read 3 minutes old ([PayoutRateCubit.show]).
+  void _checkRate(TradeScreenState state, {bool appeared = false}) {
     if (!widget.checksPayoutRate) return;
     if (state.watch case TradeWatchStatus(:final seen)) {
-      unawaited(context.read<PayoutRateCubit>().show(seen));
+      unawaited(context.read<PayoutRateCubit>().show(seen, appeared: appeared));
     }
   }
 
@@ -186,9 +186,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     _shown = shown;
     // The watch starts as shown; only a change is told.
     if (first && shown) return;
-    context.read<TradeCubit>().signal(
-      shown ? TradeWatchSignal.onScreen : TradeWatchSignal.offScreen,
-    );
+    final cubit = context.read<TradeCubit>()
+      ..signal(shown ? TradeWatchSignal.onScreen : TradeWatchSignal.offScreen);
+    // Shown again: the rule's step appeared anew, told after the frame, out of the build.
+    if (shown) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkRate(cubit.state, appeared: true);
+      });
+    }
   }
 
   @override
@@ -202,6 +207,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         // The clock first, so that an invoice that expired while the app was away is not drawn for a frame.
         setState(() => _now = widget.now());
+        _checkRate(cubit.state, appeared: true);
         if (_suspended) {
           _suspended = false;
           cubit.resume();
