@@ -857,9 +857,7 @@ void main() {
             ),
           ]) {
             final renewal = _Renewal()
-              ..limits = await tester.runAsync(
-                () => limitsAt({2: 3000000}),
-              );
+              ..limits = await tester.runAsync(() => limitsAt({2: 3000000}));
             await _showRenewal(tester, renewal, locale: locale);
             expect(find.textContaining('630'), findsWidgets);
             expect(find.text(line), findsOneWidget);
@@ -928,10 +926,7 @@ void main() {
             find.text('The coordinator limits are not available.'),
             findsWidgets,
           );
-          expect(
-            find.textContaining('can no longer be renewed'),
-            findsNothing,
-          );
+          expect(find.textContaining('can no longer be renewed'), findsNothing);
           renewal.limitsUnreadable = false;
           await _tap(tester, find.widgetWithText(TradeButton, 'Retry'));
           await settle(tester);
@@ -1028,7 +1023,10 @@ void main() {
           expect(next.maker.sessionKey, isNot(first.maker.sessionKey));
           // The new trade in place of the renewal's page and of the renewed order's page.
           expect(find.text('the new trade ${next.id}'), findsOneWidget);
-          expect(find.byType(CreateOrderScreen, skipOffstage: false), findsNothing);
+          expect(
+            find.byType(CreateOrderScreen, skipOffstage: false),
+            findsNothing,
+          );
           expect(find.byType(TradeScreen, skipOffstage: false), findsNothing);
           // Back from it: the tab, never the renewed order's page with a button left spinning.
           GoRouter.of(
@@ -1079,7 +1077,10 @@ void main() {
           await app.settle();
           await app.settle();
           expect(app.makes(), 2);
-          expect(find.textContaining('does not know yet whether'), findsOneWidget);
+          expect(
+            find.textContaining('does not know yet whether'),
+            findsOneWidget,
+          );
           await tester.tap(_create, warnIfMissed: false);
           await app.settle();
           expect(app.makes(), 2);
@@ -1278,9 +1279,14 @@ final class _App {
                           placeholder: usd,
                           readRenewal: harness.make.renewal,
                           listHosts: (network) => RobotHosts(network, [
-                            RobotHost(harness.host, refusesFirstContacts: false),
+                            RobotHost(
+                              harness.host,
+                              refusesFirstContacts: false,
+                            ),
                           ]),
-                          fetchInfo: FetchCoordinatorInfoUsecase(client).execute,
+                          fetchInfo: FetchCoordinatorInfoUsecase(
+                            client,
+                          ).execute,
                           fetchLimits: FetchCoordinatorLimitsUsecase(
                             client,
                           ).execute,

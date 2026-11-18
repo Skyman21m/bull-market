@@ -3615,4 +3615,8 @@ class P2pLocalizationsKo extends P2pLocalizations {
   @override
   String get p2pRenewNotAsKept =>
       'The form does not show exactly the terms kept of this order: nothing can be sent.';
+
+  @override
+  String get p2pRenewNoLongerAsKept =>
+      'This order can no longer be renewed as it was: create a new order.';
 }

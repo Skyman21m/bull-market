@@ -3666,4 +3666,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pRenewNotAsKept =>
       'Le formulaire ne montre pas exactement les termes gardés de cet ordre : rien ne peut être envoyé.';
+
+  @override
+  String get p2pRenewNoLongerAsKept =>
+      'Cet ordre ne peut plus être renouvelé tel quel : créez un nouvel ordre.';
 }

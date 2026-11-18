@@ -5712,6 +5712,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'The form does not show exactly the terms kept of this order: nothing can be sent.'**
   String get p2pRenewNotAsKept;
+
+  /// Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page (#185, functional review R3) when the form or the make refuses the kept terms (an amount outside the coordinator's limits now, a currency it no longer prices, a payment method or option no longer accepted), which cannot be changed on that page; the reference sends and shows the coordinator's refusal, leaving the user with nothing to do.
+  ///
+  /// In en, this message translates to:
+  /// **'This order can no longer be renewed as it was: create a new order.'**
+  String get p2pRenewNoLongerAsKept;
 }
 
 class _P2pLocalizationsDelegate

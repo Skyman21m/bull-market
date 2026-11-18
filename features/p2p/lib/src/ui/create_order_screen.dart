@@ -1451,9 +1451,8 @@ class _CreateButton extends StatelessWidget {
         TradeButton(
           label: l10n.p2pCommonRetry,
           outlined: true,
-          onPressed: () => unawaited(
-            context.read<MakeOrderCubit>().retryLimits(),
-          ),
+          onPressed: () =>
+              unawaited(context.read<MakeOrderCubit>().retryLimits()),
         ),
       // A pending make of the network first (#182): said under the button too, where the reason of a disabled button is.
       if (block == null && pendingShown && progress is MakeIdle)
