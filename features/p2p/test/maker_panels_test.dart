@@ -787,192 +787,199 @@ void main() {
     });
   });
 
-  group('the owner\'s payment rule on a maker buyer\'s side (#182, design note § 3.3)', () {
-    /// The rule's cubit over the terms of the tests, the Bull wallet's price being [wallet] at each read, its reads counted in [reads].
-    PayoutRateCubit rateOf(
-      P2pWalletBitcoinRate Function() wallet, {
-      List<TradeSeen>? reads,
-    }) {
-      final maker = switch (madeTerms().side) {
-        MadeSide(:final maker) => maker,
-      };
-      final cubit = PayoutRateCubit(_record, (record, seen) async {
-        reads?.add(seen);
-        final contract = CheckPayoutRateUsecase.contractOf(seen);
-        if (contract == null) return null;
-        return WalletRateCheck.ofMakerPayout(
-          maker,
-          amount: maker.contractAmount(contract.rangeAmount) ??
-              (throw StateError('no amount')),
-          received: contract.received,
-          wallet: wallet(),
+  group(
+    'the owner\'s payment rule on a maker buyer\'s side (#182, design note § 3.3)',
+    () {
+      /// The rule's cubit over the terms of the tests, the Bull wallet's price being [wallet] at each read, its reads counted in [reads].
+      PayoutRateCubit rateOf(
+        P2pWalletBitcoinRate Function() wallet, {
+        List<TradeSeen>? reads,
+      }) {
+        final maker = switch (madeTerms().side) {
+          MadeSide(:final maker) => maker,
+        };
+        final cubit = PayoutRateCubit(_record, (record, seen) async {
+          reads?.add(seen);
+          final contract = CheckPayoutRateUsecase.contractOf(seen);
+          if (contract == null) return null;
+          return WalletRateCheck.ofMakerPayout(
+            maker,
+            amount:
+                maker.contractAmount(contract.rangeAmount) ??
+                (throw StateError('no amount')),
+            received: contract.received,
+            wallet: wallet(),
+          );
+        });
+        addTearDown(cubit.close);
+        return cubit;
+      }
+
+      // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,899.996 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
+      final atWallet = P2pWalletRateRead(91711.15);
+
+      testWidgets(
+        'at 6, more than 10 % fewer sats: the line and the red warning with both amounts before « Submit », read once',
+        (tester) async {
+          final reads = <TradeSeen>[];
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ]);
+          await _show(tester, seen, rate: rateOf(() => atWallet, reads: reads));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining(
+              'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, 100 EUR are worth 106,899 sats. You receive 89,978 sats: gap -15.83%.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              'You receive more than 10% fewer sats than that: 89,978 sats received, 106,899 sats expected. Check it before going on.',
+            ),
+            findsOneWidget,
+          );
+          expect(reads, hasLength(1));
+        },
+      );
+
+      testWidgets('within 10 %: the line alone, no warning', (tester) async {
+        final seen = await _at([
+          makerOrderJson(0),
+          makerOrderJson(1),
+          makerOrderJson(6),
+        ]);
+        await _show(tester, seen, rate: rateOf(() => atWallet));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.textContaining('At the Bull wallet\'s price'),
+          findsOneWidget,
         );
+        expect(find.textContaining('fewer sats than that'), findsNothing);
       });
-      addTearDown(cubit.close);
-      return cubit;
-    }
 
-    // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,899.996 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
-    final atWallet = P2pWalletRateRead(91711.15);
+      testWidgets(
+        'a currency the Bull wallet does not price: one line, no figure, no « Retry »',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+          ]);
+          await _show(
+            tester,
+            seen,
+            rate: rateOf(() => const P2pWalletRateNotPriced()),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text(
+              'The Bull wallet has no price for EUR: rate not checked. You are trusting Temple of Sats\'s price: check it yourself before going on.',
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('Retry'), findsNothing);
+        },
+      );
 
-    testWidgets(
-      'at 6, more than 10 % fewer sats: the line and the red warning with both amounts before « Submit », read once',
-      (tester) async {
-        final reads = <TradeSeen>[];
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-          makerOrderJson(6, last: 90000),
-        ]);
-        await _show(tester, seen, rate: rateOf(() => atWallet, reads: reads));
-        await tester.pump();
-        await tester.pump();
-        expect(
-          find.textContaining(
-            'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, 100 EUR are worth 106,899 sats. You receive 89,978 sats: gap -15.83%.',
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.text(
-            'You receive more than 10% fewer sats than that: 89,978 sats received, 106,899 sats expected. Check it before going on.',
-          ),
-          findsOneWidget,
-        );
-        expect(reads, hasLength(1));
-      },
-    );
+      testWidgets(
+        'a price that could not be read: « rate not checked », « Retry » reads it again',
+        (tester) async {
+          var wallet = const P2pWalletRateUnavailable() as P2pWalletBitcoinRate;
+          final reads = <TradeSeen>[];
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ]);
+          await _show(tester, seen, rate: rateOf(() => wallet, reads: reads));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text(
+              'The Bull wallet\'s price of a bitcoin in EUR could not be read: rate not checked. You can try again, or go on without the check.',
+            ),
+            findsOneWidget,
+          );
+          wallet = atWallet;
+          await _reveal(tester, find.text('Retry'));
+          await tester.tap(find.text('Retry'));
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(2));
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+        },
+      );
 
-    testWidgets('within 10 %: the line alone, no warning', (tester) async {
-      final seen = await _at([
-        makerOrderJson(0),
-        makerOrderJson(1),
-        makerOrderJson(6),
-      ]);
-      await _show(tester, seen, rate: rateOf(() => atWallet));
-      await tester.pump();
-      await tester.pump();
-      expect(find.textContaining('At the Bull wallet\'s price'), findsOneWidget);
-      expect(find.textContaining('fewer sats than that'), findsNothing);
-    });
+      testWidgets(
+        'at 9, the red warning in « Confirm … sent », and « Confirm » still sends',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+            makerOrderJson(8, last: 90000),
+            makerOrderJson(9, last: 90000),
+          ]);
+          final (asked, _) = await _show(
+            tester,
+            seen,
+            rate: rateOf(() => atWallet),
+          );
+          await tester.pump();
+          await tester.pump();
+          // Before the chat step too, with its « Retry » when it has one.
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          final confirm = find.textContaining('Confirm 100 EUR sent');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining('fewer sats than that'),
+            ),
+            findsOneWidget,
+          );
+          await tester.tap(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.text('Confirm'),
+            ),
+          );
+          await tester.pump();
+          expect(asked.fiatSent, hasLength(1));
+          await tester.pump(const Duration(seconds: 31));
+        },
+      );
 
-    testWidgets(
-      'a currency the Bull wallet does not price: one line, no figure, no « Retry »',
-      (tester) async {
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-          makerOrderJson(6),
-        ]);
-        await _show(
-          tester,
-          seen,
-          rate: rateOf(() => const P2pWalletRateNotPriced()),
-        );
-        await tester.pump();
-        await tester.pump();
-        expect(
-          find.text(
-            'The Bull wallet has no price for EUR: rate not checked. You are trusting Temple of Sats\'s price: check it yourself before going on.',
-          ),
-          findsOneWidget,
-        );
-        expect(find.text('Retry'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'a price that could not be read: « rate not checked », « Retry » reads it again',
-      (tester) async {
-        var wallet = const P2pWalletRateUnavailable() as P2pWalletBitcoinRate;
-        final reads = <TradeSeen>[];
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-          makerOrderJson(6, last: 90000),
-        ]);
-        await _show(tester, seen, rate: rateOf(() => wallet, reads: reads));
-        await tester.pump();
-        await tester.pump();
-        expect(
-          find.text(
-            'The Bull wallet\'s price of a bitcoin in EUR could not be read: rate not checked. You can try again, or go on without the check.',
-          ),
-          findsOneWidget,
-        );
-        wallet = atWallet;
-        await _reveal(tester, find.text('Retry'));
-        await tester.tap(find.text('Retry'));
-        await tester.pump();
-        await tester.pump();
-        expect(reads, hasLength(2));
-        expect(find.textContaining('fewer sats than that'), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'at 9, the red warning in « Confirm … sent », and « Confirm » still sends',
-      (tester) async {
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-          makerOrderJson(6, last: 90000),
-          makerOrderJson(8, last: 90000),
-          makerOrderJson(9, last: 90000),
-        ]);
-        final (asked, _) = await _show(
-          tester,
-          seen,
-          rate: rateOf(() => atWallet),
-        );
-        await tester.pump();
-        await tester.pump();
-        // Before the chat step too, with its « Retry » when it has one.
-        expect(find.textContaining('fewer sats than that'), findsOneWidget);
-        final confirm = find.textContaining('Confirm 100 EUR sent');
-        await _reveal(tester, confirm);
-        await tester.tap(confirm);
-        await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: find.byType(ConfirmFiatSentDialog),
-            matching: find.textContaining('fewer sats than that'),
-          ),
-          findsOneWidget,
-        );
-        await tester.tap(
-          find.descendant(
-            of: find.byType(ConfirmFiatSentDialog),
-            matching: find.text('Confirm'),
-          ),
-        );
-        await tester.pump();
-        expect(asked.fiatSent, hasLength(1));
-        await tester.pump(const Duration(seconds: 31));
-      },
-    );
-
-    testWidgets(
-      'an order made here whose coordinator contradicted the trade: what to do',
-      (tester) async {
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-          makerOrderJson(6),
-          // Another taker under the same deadline: a breach.
-          makerOrderJson(7, taker: third),
-        ]);
-        expect(seen.status.trail.breached, isTrue);
-        await _show(tester, seen);
-        expect(
-          find.text(
-            'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact Temple of Sats if something looks wrong.',
-          ),
-          findsOneWidget,
-        );
-      },
-    );
-  });
+      testWidgets(
+        'an order made here whose coordinator contradicted the trade: what to do',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            // Another taker under the same deadline: a breach.
+            makerOrderJson(7, taker: third),
+          ]);
+          expect(seen.status.trail.breached, isTrue);
+          await _show(tester, seen);
+          expect(
+            find.text(
+              'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact Temple of Sats if something looks wrong.',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+    },
+  );
 
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);

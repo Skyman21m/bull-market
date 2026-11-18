@@ -658,7 +658,8 @@ class _Contract extends StatelessWidget {
         ],
         // An order made here whose coordinator contradicted the trade's history (a breach): what to do (design note § 6, row 8, #182).
         if (record.origin == TradeOrigin.madeHere &&
-            (status.trail.breached || status.has<CoordinatorInconsistent>())) ...[
+            (status.trail.breached ||
+                status.has<CoordinatorInconsistent>())) ...[
           _Line(
             l10n.p2pTradeBreachWhatToDo(coordinator),
             color: colors.warning,
@@ -819,45 +820,44 @@ class _Contract extends StatelessWidget {
           // The owner's payment rule on a maker buyer's side, before « Confirm … sent » (#182), with its « Retry ».
           ?_rateLines(context),
           ChatStepPanel(
-        seen: contract.seen,
-        order: order,
-        coordinator: coordinator,
-        chatStep: chatStep,
-        cancel: cancel,
-        otherActionRunning: moneyActionRunning,
-        offersFiatSent: offersFiatSent,
-        offersUndoFiatSent: offersUndoFiatSent,
-        offersFiatReceived: offersFiatReceived,
-        offersCollaborativeCancel: true,
-        offersDispute: offersDispute,
-        now: clock,
-        // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
-        chat: chat == null
-            ? null
-            : KeyedSubtree(
-                key: const ValueKey('trade-chat-panel'),
-                child: chat(context, chatRequest),
-              ),
-        // « Audit Chat » and « Export » in « Order options » (#157), over the chat panel's cubit.
-        chatOptions: chatOptions == null
-            ? null
-            : () => chatOptions(context, chatRequest),
-        rateLines: switch (payoutRate) {
-          PayoutRateChecked(:final check, :final step)
-              when step == PayoutRateStep.of(status) =>
-            PayoutRateLines.linesOf(
-              context,
-              check,
-              coordinator: coordinator,
-              amount: PayoutRateLines.amountOf(context, order),
-            ),
-          PayoutRateReading(:final step)
-              when step == PayoutRateStep.of(status) => [
-            (text: l10n.p2pPayoutRateReading, alert: false),
-          ],
-          _ => const [],
-        },
-      ),
+            seen: contract.seen,
+            order: order,
+            coordinator: coordinator,
+            chatStep: chatStep,
+            cancel: cancel,
+            otherActionRunning: moneyActionRunning,
+            offersFiatSent: offersFiatSent,
+            offersUndoFiatSent: offersUndoFiatSent,
+            offersFiatReceived: offersFiatReceived,
+            offersCollaborativeCancel: true,
+            offersDispute: offersDispute,
+            now: clock,
+            // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
+            chat: chat == null
+                ? null
+                : KeyedSubtree(
+                    key: const ValueKey('trade-chat-panel'),
+                    child: chat(context, chatRequest),
+                  ),
+            // « Audit Chat » and « Export » in « Order options » (#157), over the chat panel's cubit.
+            chatOptions: chatOptions == null
+                ? null
+                : () => chatOptions(context, chatRequest),
+            rateLines: switch (payoutRate) {
+              PayoutRateChecked(:final check, :final step)
+                  when step == PayoutRateStep.of(status) =>
+                PayoutRateLines.linesOf(
+                  context,
+                  check,
+                  coordinator: coordinator,
+                  amount: PayoutRateLines.amountOf(context, order),
+                ),
+              PayoutRateReading(:final step)
+                  when step == PayoutRateStep.of(status) =>
+                [(text: l10n.p2pPayoutRateReading, alert: false)],
+              _ => const [],
+            },
+          ),
         ],
       ),
       (TradePrompt.sendingSats, _) => Column(

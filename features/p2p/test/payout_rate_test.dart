@@ -149,8 +149,7 @@ void main() {
 
     test('a step outside the rule shows nothing and reads nothing', () async {
       final harness = await MakeHarness.start();
-      final record =
-          (valueOf(await harness.makeOrder()) as MakeStarted).record;
+      final record = (valueOf(await harness.makeOrder()) as MakeStarted).record;
       final atZero = await readOf(harness, record);
       var asked = 0;
       final cubit = PayoutRateCubit(record, (record, seen) async {

@@ -22,10 +22,9 @@ final class PayoutRateStep {
   /// The step of [status], `null` where the rule says nothing.
   static PayoutRateStep? of(TradeStatus status) => switch (status) {
     WaitingForBoth(role: TradeRole.buyer) ||
-    WaitingForPayout(role: TradeRole.buyer) => PayoutRateStep(
-      status.trail.take,
-      fiatSent: false,
-    ),
+    WaitingForPayout(
+      role: TradeRole.buyer,
+    ) => PayoutRateStep(status.trail.take, fiatSent: false),
     Chatting(role: TradeRole.buyer, fiatSent: false) => PayoutRateStep(
       status.trail.take,
       fiatSent: true,
@@ -35,7 +34,9 @@ final class PayoutRateStep {
 
   @override
   bool operator ==(Object other) =>
-      other is PayoutRateStep && other.take == take && other.fiatSent == fiatSent;
+      other is PayoutRateStep &&
+      other.take == take &&
+      other.fiatSent == fiatSent;
 
   @override
   int get hashCode => Object.hash(take, fiatSent);
@@ -84,7 +85,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   Future<void> show(TradeSeen seen) async {
     final step = PayoutRateStep.of(seen.status);
     if (step == null || !seen.stored) {
-      if (state is! PayoutRateNone && step != _asked) emit(const PayoutRateNone());
+      if (state is! PayoutRateNone && step != _asked)
+        emit(const PayoutRateNone());
       return;
     }
     _seen = seen;
@@ -110,6 +112,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     emit(PayoutRateReading(step));
     final check = await _check(record, seen);
     if (isClosed || _asked != step) return;
-    emit(check == null ? const PayoutRateNone() : PayoutRateChecked(step, check));
+    emit(
+      check == null ? const PayoutRateNone() : PayoutRateChecked(step, check),
+    );
   }
 }

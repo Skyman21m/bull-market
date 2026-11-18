@@ -239,7 +239,10 @@ void main() {
       final given = valueOf(
         await PayoutFromWalletUsecase(wallet).invoice(ask, amount),
       );
-      expect(wallet.invoicesAsked.single.$3, PayoutFromWalletUsecase.payoutKey(ask));
+      expect(
+        wallet.invoicesAsked.single.$3,
+        PayoutFromWalletUsecase.payoutKey(ask),
+      );
       final checked = valueOf(
         harness.payout.check(
           record,

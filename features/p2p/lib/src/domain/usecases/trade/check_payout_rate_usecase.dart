@@ -52,17 +52,22 @@ final class CheckPayoutRateUsecase {
   }
 
   /// What a buyer's step of [seen] compares: the sats given (`trade_satoshis`), and a range's amount taken; `null` at any other status.
-  static ({Sats received, FiatAmount? rangeAmount})? contractOf(TradeSeen seen) {
+  static ({Sats received, FiatAmount? rangeAmount})? contractOf(
+    TradeSeen seen,
+  ) {
     final order = seen.order;
     final rangeAmount = order?.takenAmount;
     final received = switch (seen.status) {
-      WaitingForBoth(role: TradeRole.buyer, :final payoutAmount, :final tradeSatoshis) ||
+      WaitingForBoth(
+        role: TradeRole.buyer,
+        :final payoutAmount,
+        :final tradeSatoshis,
+      ) ||
       WaitingForPayout(
         role: TradeRole.buyer,
         :final payoutAmount,
         :final tradeSatoshis,
-      ) =>
-        payoutAmount ?? tradeSatoshis,
+      ) => payoutAmount ?? tradeSatoshis,
       Chatting(role: TradeRole.buyer, fiatSent: false) => order?.tradeSatoshis,
       _ => null,
     };

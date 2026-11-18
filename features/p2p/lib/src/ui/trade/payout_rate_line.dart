@@ -38,28 +38,29 @@ class PayoutRateLines extends StatelessWidget {
     final formats = P2pFormats.of(context);
     final code = check.currency.code;
     return switch (check) {
-      WalletRateCompared(:final price, :final expected, :final gapHundredths) => [
-        (
-          text: l10n.p2pPayoutRateWallet(
-            formats.orderRate(price),
-            code,
-            amount,
-            formats.bigSats(expected.value),
-            formats.bigSats(check.asked.value),
-            formats.gap(gapHundredths),
-          ),
-          alert: false,
-        ),
-        if (check.warns)
+      WalletRateCompared(:final price, :final expected, :final gapHundredths) =>
+        [
           (
-            text: l10n.p2pPayoutRateWarning(
-              formats.threshold(TradeTolerances.walletRateGap),
-              formats.bigSats(check.asked.value),
+            text: l10n.p2pPayoutRateWallet(
+              formats.orderRate(price),
+              code,
+              amount,
               formats.bigSats(expected.value),
+              formats.bigSats(check.asked.value),
+              formats.gap(gapHundredths),
             ),
-            alert: true,
+            alert: false,
           ),
-      ],
+          if (check.warns)
+            (
+              text: l10n.p2pPayoutRateWarning(
+                formats.threshold(TradeTolerances.walletRateGap),
+                formats.bigSats(check.asked.value),
+                formats.bigSats(expected.value),
+              ),
+              alert: true,
+            ),
+        ],
       WalletRateNotPriced() => [
         (text: l10n.p2pPayoutRateNotPriced(code, coordinator), alert: true),
       ],
@@ -74,7 +75,9 @@ class PayoutRateLines extends StatelessWidget {
     if (order == null) return '';
     final formats = P2pFormats.of(context);
     final taken = order.takenAmount;
-    return taken == null ? formats.orderAmount(order.amount) : formats.amount(taken);
+    return taken == null
+        ? formats.orderAmount(order.amount)
+        : formats.amount(taken);
   }
 
   @override
@@ -114,9 +117,13 @@ class PayoutRateLines extends StatelessWidget {
               children: [
                 ExcludeSemantics(
                   child: Icon(
-                    line.alert ? Icons.warning_amber_rounded : Icons.info_outline,
+                    line.alert
+                        ? Icons.warning_amber_rounded
+                        : Icons.info_outline,
                     size: 18,
-                    color: line.alert ? _alertColour(context, state) : colors.text,
+                    color: line.alert
+                        ? _alertColour(context, state)
+                        : colors.text,
                   ),
                 ),
                 const Gap(BullSpacing.xs),
@@ -124,7 +131,9 @@ class PayoutRateLines extends StatelessWidget {
                   child: Text(
                     line.text,
                     style: text.bodyMedium?.copyWith(
-                      color: line.alert ? _alertColour(context, state) : colors.text,
+                      color: line.alert
+                          ? _alertColour(context, state)
+                          : colors.text,
                       fontWeight: line.alert ? FontWeight.bold : null,
                     ),
                   ),

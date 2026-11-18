@@ -399,7 +399,10 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   };
 
   /// The maker's made order [request] names, if [robot] is its maker.
-  ScriptedMadeOrder? _ownOrder(RobotIdentity robot, CoordinatorRequest request) {
+  ScriptedMadeOrder? _ownOrder(
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
     final id = int.tryParse(request.url.queryParameters['order_id'] ?? '');
     final made = id == null ? null : orders[id];
     if (made == null || made.maker.sessionKey != robot.sessionKey) return null;
@@ -463,7 +466,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       });
     }
     if (facts.amount.value.toInt() != asked) {
-      return _json(400, {'bad_invoice': 'The invoice provided is not for $asked Sats'});
+      return _json(400, {
+        'bad_invoice': 'The invoice provided is not for $asked Sats',
+      });
     }
     if (made.payoutHashes.contains(facts.paymentHash)) {
       return _json(400, {
@@ -478,7 +483,10 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   }
 
   /// A maker buyer's « fiat sent » (#182): `confirm` at 9 (→ 10), the step's deadline kept (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); refused elsewhere (1027).
-  CoordinatorResponse _confirm(RobotIdentity robot, CoordinatorRequest request) {
+  CoordinatorResponse _confirm(
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
     final made = _ownOrder(robot, request);
     if (made == null) {
       return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});

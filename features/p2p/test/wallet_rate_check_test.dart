@@ -353,26 +353,35 @@ void main() {
         expect(rate.gapHundredths, BigInt.from(-1001));
       });
 
-      test('more sats than expected, by any gap, is in the buyer\'s favour: never a warning', () {
-        expect(compared(200000).warns, isFalse);
-        expect(compared(200000).gapHundredths > BigInt.zero, isTrue);
-        // The bond's side would warn there.
-        expect(check(made, 200000).warns, isTrue);
-      });
+      test(
+        'more sats than expected, by any gap, is in the buyer\'s favour: never a warning',
+        () {
+          expect(compared(200000).warns, isFalse);
+          expect(compared(200000).gapHundredths > BigInt.zero, isTrue);
+          // The bond's side would warn there.
+          expect(check(made, 200000).warns, isTrue);
+        },
+      );
 
-      test('a currency the wallet does not price, a price not read: nothing compared', () {
-        expect(
-          received(1, const P2pWalletRateNotPriced()),
-          isA<WalletRateNotPriced>(),
-        );
-        expect(
-          received(1, const P2pWalletRateUnavailable()),
-          isA<WalletRateUnverified>(),
-        );
-        // A price no coordinator could give (not below `MakerTerms.maxCreatedPrice`).
-        expect(received(1, P2pWalletRateRead(1e16)), isA<WalletRateUnverified>());
-        expect(received(1, const P2pWalletRateNotPriced()).warns, isFalse);
-      });
+      test(
+        'a currency the wallet does not price, a price not read: nothing compared',
+        () {
+          expect(
+            received(1, const P2pWalletRateNotPriced()),
+            isA<WalletRateNotPriced>(),
+          );
+          expect(
+            received(1, const P2pWalletRateUnavailable()),
+            isA<WalletRateUnverified>(),
+          );
+          // A price no coordinator could give (not below `MakerTerms.maxCreatedPrice`).
+          expect(
+            received(1, P2pWalletRateRead(1e16)),
+            isA<WalletRateUnverified>(),
+          );
+          expect(received(1, const P2pWalletRateNotPriced()).warns, isFalse);
+        },
+      );
     },
   );
 }

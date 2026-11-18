@@ -115,13 +115,13 @@ sealed class WalletRateCompared extends WalletRateCheck {
     RobosatsCurrency currency, {
     required WalletRateSide side,
   }) : expected = Sats(exact.floor()),
-      gapHundredths = _gapOf(asked, exact),
-      _warns = switch (side) {
-        WalletRateSide.pays => ExactRatio.bigInt(asked.value) > exact * _limit,
-        WalletRateSide.receives =>
-          ExactRatio.bigInt(asked.value) < exact * _floor,
-      },
-      super._(asked, currency, side: side);
+       gapHundredths = _gapOf(asked, exact),
+       _warns = switch (side) {
+         WalletRateSide.pays => ExactRatio.bigInt(asked.value) > exact * _limit,
+         WalletRateSide.receives =>
+           ExactRatio.bigInt(asked.value) < exact * _floor,
+       },
+       super._(asked, currency, side: side);
 
   /// [TradeTolerances.walletRateGap], exactly.
   static final ExactRatio _gap =
