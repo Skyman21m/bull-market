@@ -5334,6 +5334,24 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.'**
   String get p2pTradeEscrowWaitMaker;
+
+  /// Not in the RoboSats texts: the project's own: at 9, the coordinator's figure of now (`satoshis_now` less the maker fee) differs from the invoice's sats it asked at 6 or 8 for the same contract, which this app kept in memory (#182, security review C2): the smaller compared, said in the alert colour. {told} and {asked} are sats amounts as written by the app.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} now gives {told} sats for this contract, but asked for an invoice of {asked} sats before: Bull Market compares the smaller. Check the invoice you gave before going on.'**
+  String p2pPayoutRateToldMoved(String coordinator, String told, String asked);
+
+  /// Not in the RoboSats texts: the project's own: at 9, no invoice's sats kept in memory for the contract (the app started again between 8 and 9; #204 will keep it, schema 9): what is compared is the coordinator's figure of now, said as such (#182, security review C2).
+  ///
+  /// In en, this message translates to:
+  /// **'Compared with the figure {coordinator} gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.'**
+  String p2pPayoutRateToldNow(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked ») (#182, second review): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised.
+  ///
+  /// In en, this message translates to:
+  /// **'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.'**
+  String get p2pTradeBondBackThroughSwap;
 }
 
 class _P2pLocalizationsDelegate

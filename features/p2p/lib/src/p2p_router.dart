@@ -52,7 +52,10 @@ final class P2pOrderRouteArgs {
   final PublicOrder order;
   final RobosatsNetwork network;
 
-  const P2pOrderRouteArgs(this.order, this.network);
+  /// Whether « Take Order » may be offered: not when the records of the active trades could not be read, which may hold an order this device made (security review of #182, R3).
+  final bool takeable;
+
+  const P2pOrderRouteArgs(this.order, this.network, {this.takeable = true});
 }
 
 /// What the page of a trade needs: the trade's record, from a take, a make or the list of the active trades.
@@ -352,7 +355,7 @@ final class P2pRouter {
 
   /// The page of an order: « Take Order » takes it when the feature holds robots (the vault's handle was given), and a take that was sent replaces the page by its trade, as the official client's order page becomes the trade at the same address.
   static Widget _orderPage(GetIt locator, P2pOrderRouteArgs args) {
-    final canTake = locator.isRegistered<TakeOrderCubit>();
+    final canTake = args.takeable && locator.isRegistered<TakeOrderCubit>();
     final details = Builder(
       builder: (context) => OrderDetailsScreen(
         now: locator<P2pClock>().now,
@@ -408,24 +411,43 @@ class _P2pPage extends StatefulWidget {
 class _P2pPageState extends State<_P2pPage> {
   P2pDestination _destination = P2pDestination.offers;
 
+  /// How long a tap on an order of the book waits for the active trades' read.
+  static const Duration _activeTradesWait = Duration(seconds: 10);
+
   void _show(P2pDestination destination) =>
       setState(() => _destination = destination);
 
-  /// Opens the page of [order], and the Garage when that page is left for it (« I have a Garage Key »); an order this device made opens its trade instead, never « Take Order » ([ActiveTradesListed.madeHere], design note § 3.7, #182).
+  /// Opens the page of [order], and the Garage when that page is left for it (« I have a Garage Key »); an order this device made opens its trade instead, never « Take Order » ([ActiveTradesListed.madeHere], design note § 3.7, #182). While the active trades are being read, their read is awaited first (at most [_activeTradesWait]); records that cannot be read (or a read that does not end) open the order's page without « Take Order », since the order may be this device's (security review of #182, R3).
   Future<void> _openOrder(
     BuildContext context,
     PublicOrder order,
     RobosatsNetwork network,
     ActiveTradesState? active,
   ) async {
-    if (active case ActiveTradesListed()) {
-      if (active.madeHere(order, network) case final record?) {
+    var known = active;
+    if (known is ActiveTradesLoading) {
+      final cubit = context.read<ActiveTradesCubit>();
+      known = cubit.state;
+      if (known is ActiveTradesLoading) {
+        known = await cubit.stream
+            .firstWhere((state) => state is! ActiveTradesLoading)
+            .timeout(_activeTradesWait, onTimeout: () => cubit.state)
+            .catchError((Object _) => cubit.state);
+      }
+      if (!mounted || !context.mounted) return;
+    }
+    if (known case ActiveTradesListed()) {
+      if (known.madeHere(order, network) case final record?) {
         return _openTrade(context, record);
       }
     }
     final exit = await context.pushNamed<P2pOrderExit>(
       P2pRouter.orderName,
-      extra: P2pOrderRouteArgs(order, network),
+      extra: P2pOrderRouteArgs(
+        order,
+        network,
+        takeable: known == null || known is ActiveTradesListed,
+      ),
     );
     if (exit == P2pOrderExit.garage && mounted) _show(P2pDestination.garage);
   }

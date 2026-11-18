@@ -39,12 +39,16 @@ final class PayoutPanelRequest {
   /// Whether a cancel of the trade runs: « Submit » is off meanwhile, as « Cancel » is while a payout is given.
   final bool cancelling;
 
+  /// A check the screen runs when « Submit » is pressed, before the payout is given, « Submit » busy meanwhile: `false` stops the press (the screen then shows what changed, and a second press goes on); `null` gives it at once.
+  final Future<bool> Function()? beforeSubmit;
+
   const PayoutPanelRequest({
     required this.record,
     required this.seen,
     required this.coordinator,
     required this.now,
     this.cancelling = false,
+    this.beforeSubmit,
   });
 }
 
@@ -136,6 +140,22 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
   bool _tickerEnabled = true;
 
   bool _copied = false;
+
+  /// Whether « Submit » waits for [PayoutPanelRequest.beforeSubmit].
+  bool _checking = false;
+
+  /// « Submit » of [kind]'s tab drawn with [payout]: the screen's check first, then [payout] given only if the tab still offers that very payout (the cubit's own rule).
+  Future<void> _press(PayoutKind kind, CheckedPayout payout) async {
+    final before = widget.request.beforeSubmit;
+    if (before != null) {
+      setState(() => _checking = true);
+      final goOn = await before();
+      if (!mounted) return;
+      setState(() => _checking = false);
+      if (!goOn) return;
+    }
+    await _cubit.submit(kind, shown: payout);
+  }
 
   late final PayoutCubit _cubit;
 
@@ -705,10 +725,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final payout = state.submittable(kind);
     final button = TradeButton(
       label: l10n.p2pPayoutSubmit,
-      busy: sending,
-      onPressed: cancelling || payout == null
+      busy: sending || _checking,
+      onPressed: cancelling || payout == null || _checking
           ? null
-          : () => unawaited(_cubit.submit(kind, shown: payout)),
+          : () => unawaited(_press(kind, payout)),
     );
     return cancelling
         ? Tooltip(message: l10n.p2pPayoutSubmitWhileCancelling, child: button)

@@ -3368,4 +3368,18 @@ class P2pLocalizationsAs extends P2pLocalizations {
   @override
   String get p2pTradeEscrowWaitMaker =>
       'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.';
+
+  @override
+  String p2pPayoutRateToldMoved(String coordinator, String told, String asked) {
+    return '$coordinator now gives $told sats for this contract, but asked for an invoice of $asked sats before: Bull Market compares the smaller. Check the invoice you gave before going on.';
+  }
+
+  @override
+  String p2pPayoutRateToldNow(String coordinator) {
+    return 'Compared with the figure $coordinator gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.';
+  }
+
+  @override
+  String get p2pTradeBondBackThroughSwap =>
+      'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
 }

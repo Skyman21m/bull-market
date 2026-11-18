@@ -4853,5 +4853,33 @@
   "p2pTradeEscrowWaitMaker": "For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.",
   "@p2pTradeEscrowWaitMaker": {
     "description": "Not in the RoboSats texts: the project's own, under the reference's « Your info looks good! » texts at 7 for a maker (#182, functional review): the reference says the bond comes back, which is a taker's case; for a maker the order goes back to the book with its bond locked (`api/logics.py:404-421`)."
+  },
+  "p2pPayoutRateToldMoved": "{coordinator} now gives {told} sats for this contract, but asked for an invoice of {asked} sats before: Bull Market compares the smaller. Check the invoice you gave before going on.",
+  "@p2pPayoutRateToldMoved": {
+    "description": "Not in the RoboSats texts: the project's own: at 9, the coordinator's figure of now (`satoshis_now` less the maker fee) differs from the invoice's sats it asked at 6 or 8 for the same contract, which this app kept in memory (#182, security review C2): the smaller compared, said in the alert colour. {told} and {asked} are sats amounts as written by the app.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "told": {
+        "type": "String"
+      },
+      "asked": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutRateToldNow": "Compared with the figure {coordinator} gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.",
+  "@p2pPayoutRateToldNow": {
+    "description": "Not in the RoboSats texts: the project's own: at 9, no invoice's sats kept in memory for the contract (the app started again between 8 and 9; #204 will keep it, schema 9): what is compared is the coordinator's figure of now, said as such (#182, security review C2).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeBondBackThroughSwap": "A bond paid with this wallet comes back through the swap service, less its fees, after a delay.",
+  "@p2pTradeBondBackThroughSwap": {
+    "description": "Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked ») (#182, second review): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised."
   }
 }

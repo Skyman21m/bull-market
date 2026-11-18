@@ -5,6 +5,7 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_tolerances.dart';
 import '../../domain/trade/wallet_rate_check.dart';
+import '../../domain/usecases/trade/check_payout_rate_usecase.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_rate_cubit.dart';
 import '../widgets/trade_dialog_body.dart';
@@ -48,7 +49,20 @@ class PayoutRateLines extends StatelessWidget {
           tone: TradeDialogTone.warning,
         ),
       ],
-      PayoutRateChecked(:final check) => switch (check) {
+      // The state machine's warning says it alone: no comparison beside amounts that do not agree (security review of #182, C1 bis).
+      PayoutRateAmountsDisagree() => const [],
+      PayoutRateChecked(:final check, :final basis) => [
+        // At 9, a coordinator's figure that moved since the invoice it asked: said first, in the alert colour (security review of #182, C2).
+        if (basis case PayoutRateTold(:final told, :final asked))
+          (
+            text: l10n.p2pPayoutRateToldMoved(
+              coordinator,
+              formats.bigSats(told.value),
+              formats.bigSats(asked.value),
+            ),
+            tone: TradeDialogTone.alert,
+          ),
+        ...switch (check) {
         WalletRateCompared(
           :final price,
           :final expected,
@@ -66,6 +80,12 @@ class PayoutRateLines extends StatelessWidget {
               ),
               tone: TradeDialogTone.plain,
             ),
+            // At 9 with nothing kept: the figure compared is the coordinator's of now.
+            if (basis is PayoutRateToldNow)
+              (
+                text: l10n.p2pPayoutRateToldNow(coordinator),
+                tone: TradeDialogTone.warning,
+              ),
             if (check.warns)
               (
                 text: l10n.p2pPayoutRateWarning(
@@ -88,13 +108,18 @@ class PayoutRateLines extends StatelessWidget {
             tone: TradeDialogTone.warning,
           ),
         ],
-      },
+        },
+      ],
     };
   }
 
-  /// Whether [state] holds a comparison with the Bull wallet's price: the gap from the creation's rate is then not shown (decided by the coordinator of the work after the functional review of #182: one figure for one question).
-  static bool compares(PayoutRateState? state) =>
-      state is PayoutRateChecked && state.check is WalletRateCompared;
+  /// Whether the gap from the creation's rate is not shown beside [state]: a comparison with the Bull wallet's price (decided by the coordinator of the work after the functional review of #182: one figure for one question), amounts that do not agree, or a coordinator's figure that moved at 9 (the gap would read it as fixed, security review of #182).
+  static bool hidesGap(PayoutRateState? state) => switch (state) {
+    PayoutRateAmountsDisagree() => true,
+    PayoutRateChecked(:final check, :final basis) =>
+      check is WalletRateCompared || basis is PayoutRateTold,
+    _ => false,
+  };
 
   /// The contract's amount of [order] as the payout's prompt writes it.
   static String amountOf(BuildContext context, CoordinatorOrder? order) {

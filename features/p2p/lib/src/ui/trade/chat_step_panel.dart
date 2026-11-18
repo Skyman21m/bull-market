@@ -71,6 +71,9 @@ class ChatStepPanel extends StatefulWidget {
   /// A maker buyer's lines said in « Confirm … sent » (#182): the owner's payment rule, or the gap from the creation's rate without it; empty for a taker.
   final List<TradeDialogLine> rateLines;
 
+  /// Run when « Confirm … sent » is pressed, before its dialog opens, the button busy meanwhile: `false` stops the press (the screen then shows what changed, and a second press goes on); `null` opens the dialog at once (#182).
+  final Future<bool> Function()? beforeConfirmFiatSent;
+
   const ChatStepPanel({
     super.key,
     required this.seen,
@@ -88,6 +91,7 @@ class ChatStepPanel extends StatefulWidget {
     this.chat,
     this.chatOptions,
     this.rateLines = const [],
+    this.beforeConfirmFiatSent,
   });
 
   @override
@@ -97,6 +101,9 @@ class ChatStepPanel extends StatefulWidget {
 class _ChatStepPanelState extends State<ChatStepPanel> {
   /// Whether a dialog is open: a second press meanwhile opens nothing more.
   bool _asking = false;
+
+  /// Whether « Confirm … sent » waits for [ChatStepPanel.beforeConfirmFiatSent] before its dialog.
+  bool _checking = false;
 
   /// The undo dialog's counter, kept for this page as the reference's dialog keeps it (it stays mounted with the page): 60 seconds at first, running only while the dialog is open, 300 after « Confirm ».
   final ValueNotifier<int> _undoWait = ValueNotifier(
@@ -195,6 +202,15 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
 
   Future<void> _confirmFiatSent(String amount, String currencyCode) =>
       _once((cubit, seen) async {
+        final before = widget.beforeConfirmFiatSent;
+        if (before != null) {
+          setState(() => _checking = true);
+          final goOn = await before();
+          if (!mounted) return;
+          setState(() => _checking = false);
+          if (!goOn) return;
+        }
+        // The lines of the build after the check: never older than the press.
         if (await ConfirmFiatSentDialog.show(
           context,
           amount: amount,
@@ -420,8 +436,8 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
               Expanded(
                 child: TradeButton(
                   label: l10n.p2pEndConfirmSent(amount.$1, amount.$2),
-                  busy: running == ChatStepAction.confirmFiatSent,
-                  onPressed: !confirmOffered || busy
+                  busy: running == ChatStepAction.confirmFiatSent || _checking,
+                  onPressed: !confirmOffered || busy || _checking
                       ? null
                       : () => unawaited(_confirmFiatSent(amount.$1, amount.$2)),
                 ),

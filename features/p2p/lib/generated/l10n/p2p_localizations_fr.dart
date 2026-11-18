@@ -3415,4 +3415,18 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pTradeEscrowWaitMaker =>
       'Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.';
+
+  @override
+  String p2pPayoutRateToldMoved(String coordinator, String told, String asked) {
+    return '$coordinator annonce maintenant $told sats pour ce contrat, mais a demandé avant une facture de $asked sats : Bull Market compare le plus petit des deux. Vérifiez la facture donnée avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateToldNow(String coordinator) {
+    return 'Comparé au chiffre que $coordinator donne maintenant : après un redémarrage de l’app, Bull Market ne garde plus le montant de la facture donnée.';
+  }
+
+  @override
+  String get p2pTradeBondBackThroughSwap =>
+      'Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.';
 }

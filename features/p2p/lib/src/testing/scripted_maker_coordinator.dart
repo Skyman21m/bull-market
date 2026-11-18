@@ -74,8 +74,8 @@ final class ScriptedMadeOrder {
   /// Whether the buyer confirmed the fiat sent (`order.is_fiat_sent`, `api/logics.py:1696`).
   bool fiatSent = false;
 
-  /// The payment hashes of the payout invoices given (#182): one is never taken twice.
-  final Set<String> payoutHashes = {};
+  /// The payment hash of the last payout invoice taken (#182): the same invoice is refused again (3002), as the reference compares a new invoice with `order.payout` only (`api/logics.py:877-879`), never with earlier ones.
+  String? payoutHash;
   bool bondSettled = false;
 
   ScriptedMadeOrder._({
@@ -473,13 +473,13 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         'bad_invoice': 'The invoice provided is not for $asked Sats',
       });
     }
-    if (made.payoutHashes.contains(facts.paymentHash)) {
+    if (made.payoutHash == facts.paymentHash) {
       return _json(400, {
         'error_code': 3002,
         'bad_invoice': 'You must submit a NEW invoice',
       });
     }
-    made.payoutHashes.add(facts.paymentHash);
+    made.payoutHash = facts.paymentHash;
     if (made.status == 6) {
       made.status = 7;
     } else {

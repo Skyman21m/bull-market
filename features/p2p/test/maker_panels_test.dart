@@ -22,7 +22,6 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
-import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
 import 'package:p2p/src/presentation/payout_rate_cubit.dart';
@@ -208,6 +207,31 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
   await tester.pump();
   await tester.pump();
   return (asked, watch);
+}
+
+/// The rule's cubit over [_record] and the terms of the tests, the Bull wallet's price being [wallet] at each read (each read added to [reads]), with a memory of its own unless [memory] is given.
+PayoutRateCubit _rateCubit(
+  P2pWalletBitcoinRate Function() wallet, {
+  List<Object>? reads,
+  DateTime Function()? now,
+  PayoutRateMemory? memory,
+}) {
+  final maker = switch (madeTerms().side) {
+    MadeSide(:final maker) => maker,
+  };
+  final cubit = PayoutRateCubit(
+    _record,
+    terms: (_) async => maker,
+    price: (_, _) async {
+      final price = wallet();
+      reads?.add(price);
+      return price;
+    },
+    memory: memory ?? PayoutRateMemory(),
+    now: now ?? () => tradeNow,
+  );
+  addTearDown(cubit.close);
+  return cubit;
 }
 
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
@@ -824,23 +848,9 @@ void main() {
       /// The rule's cubit over the terms of the tests, the Bull wallet's price being [wallet] at each read, its reads counted in [reads].
       PayoutRateCubit rateOf(
         P2pWalletBitcoinRate Function() wallet, {
-        List<TradeSeen>? reads,
+        List<Object>? reads,
         DateTime Function()? now,
-      }) {
-        final maker = switch (madeTerms().side) {
-          MadeSide(:final maker) => maker,
-        };
-        final cubit = PayoutRateCubit(_record, (record, seen) async {
-          reads?.add(seen);
-          return CheckPayoutRateUsecase.findingAt(
-            maker,
-            seen,
-            wallet: wallet(),
-          );
-        }, now: now ?? () => tradeNow);
-        addTearDown(cubit.close);
-        return cubit;
-      }
+      }) => _rateCubit(wallet, reads: reads, now: now);
 
       // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,899.996 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
       final atWallet = P2pWalletRateRead(91711.15);
@@ -848,7 +858,7 @@ void main() {
       testWidgets(
         'at 6, more than 10 % fewer sats: the line and the red warning with both amounts before « Submit », read once',
         (tester) async {
-          final reads = <TradeSeen>[];
+          final reads = <Object>[];
           final seen = await _at([
             makerOrderJson(0),
             makerOrderJson(1),
@@ -877,7 +887,7 @@ void main() {
         'the screen shown again with a read 3 minutes old reads the price again; the watch\'s next read of the same status does not',
         (tester) async {
           var clock = tradeNow;
-          final reads = <TradeSeen>[];
+          final reads = <Object>[];
           final shown = ValueNotifier(true);
           addTearDown(shown.dispose);
           final seen = await _at([
@@ -1013,7 +1023,7 @@ void main() {
         'a price that could not be read: « rate not checked », « Retry » reads it again',
         (tester) async {
           var wallet = const P2pWalletRateUnavailable() as P2pWalletBitcoinRate;
-          final reads = <TradeSeen>[];
+          final reads = <Object>[];
           final seen = await _at([
             makerOrderJson(0),
             makerOrderJson(1),
@@ -1186,11 +1196,9 @@ void main() {
           ..registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
             (record, _) => PayoutRateCubit(
               record,
-              (record, seen) async => CheckPayoutRateUsecase.findingAt(
-                maker,
-                seen,
-                wallet: P2pWalletRateRead(91711.15),
-              ),
+              terms: (_) async => maker,
+              price: (_, _) async => P2pWalletRateRead(91711.15),
+              memory: PayoutRateMemory(),
               now: () => tradeNow,
             ),
           );
@@ -1330,19 +1338,7 @@ void main() {
           }) async {
             final seen = await tester.runAsync(() => _at(answers));
             if (seen == null) throw StateError(name);
-            final maker = switch (madeTerms().side) {
-              MadeSide(:final maker) => maker,
-            };
-            final rate = wallet == null
-                ? null
-                : PayoutRateCubit(_record, (record, seen) async {
-                    return CheckPayoutRateUsecase.findingAt(
-                      maker,
-                      seen,
-                      wallet: wallet,
-                    );
-                  }, now: () => tradeNow);
-            if (rate != null) addTearDown(rate.close);
+            final rate = wallet == null ? null : _rateCubit(() => wallet);
             await _show(
               tester,
               seen,

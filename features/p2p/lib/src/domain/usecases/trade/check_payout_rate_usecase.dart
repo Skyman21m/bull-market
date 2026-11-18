@@ -3,35 +3,32 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show FiatAmount;
 
 import '../../../../public/p2p_wallet_port.dart';
+import '../../trade/trade_payout.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_terms.dart';
+import '../../trade/trade_warning.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade/wallet_rate_check.dart';
 import '../../trade_record.dart';
 import 'trade_reader.dart';
 
-/// The owner's payment rule on the buyer's side (#182, decided on 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3): for an order made here whose user buys, the sats the coordinator fixed for the contract against the sats the contract's amount is worth at the Bull wallet's own price read now, with the order's premium ([WalletRateCheck.ofMakerPayout]). Information and a warning: it never stops « Submit » nor « Confirm … sent », and moves nothing.
+/// The owner's payment rule on the buyer's side (#182, decided on 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3): for an order made here whose user buys, the sats the buyer receives against the sats the contract's amount is worth at the Bull wallet's own price, with the order's premium ([WalletRateCheck.ofMakerPayout]). Information and a warning: it never stops « Submit » nor « Confirm … sent », and moves nothing.
 ///
-/// The sats compared are what the buyer receives, `Logics.payout_amount`'s `invoice_amount` (`api/logics.py:650-669`): at 6 and 8 the payout invoice's amount the coordinator asks (`WaitingForBoth.payoutAmount`, checked by the state machine, `PayoutAmountMismatch`); at 9, where the coordinator gives no `trade_satoshis` (`api/views.py:346-356` lists 6, 7, 8, 10 to 15, not 9), the same figure computed from the order's `satoshis_now`, its `last_satoshis` (`api/views.py:324`), and the maker fee of the terms ([MakerTerms.payoutAt]).
+/// What is compared ([subjectAt], pure): at 6 and 8 the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`, the order's `trade_satoshis`), so that the comparison and « Submit invoice for … » speak of the same invoice (security review of #182, C1 bis); at 9, where the coordinator gives no `trade_satoshis` (`api/views.py:346-356` leaves out `CHA`), the order's `satoshis_now` (its `last_satoshis`, `api/views.py:324`) less the maker fee of the terms ([MakerTerms.payoutAt]), which nothing checks: it is compared with the invoice's sats this app kept for the contract ([PayoutRateAsked]), the smaller of the two compared, and without them said as the coordinator's figure of now (security review of #182, C2). Nothing is compared while the state machine says the amounts do not agree ([PayoutRateMismatch]).
 ///
-/// The price is read through the wallet's port ([P2pWalletPort.bitcoinRate]), outside Tor, as the wallet's own screens read it, unless the wallet's pricer holds it from less than a minute before or is already reading it: the request carries the currency's code and the user's IP address, nothing of the trade (accepted by the owner on 2026-11-17 for the maker bond, the same read). The screen asks it once per contract and step (the payout at 6 or 8, « fiat sent » at 9) when the panel is shown, and again only on « Retry »; never in a loop. The shell bounds a read to 15 s (`ReadWalletRateUsecase.readBound`), past which the price is unavailable.
+/// The price is read through the wallet's port ([priceOf], [P2pWalletPort.bitcoinRate]), outside Tor, as the wallet's own screens read it, unless the wallet's pricer holds it from less than a minute before or is already reading it: the request carries the currency's code and the user's IP address, nothing of the trade (accepted by the owner on 2026-11-17 for the maker bond, the same read). When the screen asks it is `PayoutRateCubit`'s. The shell bounds a read to 15 s (`ReadWalletRateUsecase.readBound`), past which the price is unavailable.
 final class CheckPayoutRateUsecase {
   final TradeReader _reader;
   final P2pWalletPort _wallet;
 
   const CheckPayoutRateUsecase(this._reader, this._wallet);
 
-  /// The finding for [seen], a status of [record]: `null` when the rule says nothing (a taker's trade, a maker seller's, a status that is not the buyer's payout at 6 or 8 or its « fiat sent » at 9, a status not marked stored, or records that cannot be read), and the price is then not read; [PayoutRateNoSats] when the read gives no sats the buyer receives (nothing compared, said as « rate not checked », the price not read); otherwise the comparison ([PayoutRateFound]).
-  ///
-  /// The sats compared: at 6 and 8 the payout's `invoice_amount` (`WaitingForBoth.payoutAmount`, else the order's `trade_satoshis`, `api/views.py:345-371`); at 9, where the coordinator gives no `trade_satoshis` (its list leaves out `CHA`, `api/views.py:346-356`), the order's `satoshis_now` (its `last_satoshis`, given to a participant at every status, `api/views.py:324`) less the maker fee of the terms, as `Logics.payout_amount` computes `invoice_amount` ([MakerTerms.payoutAt]).
-  Future<PayoutRateFinding?> execute(TradeRecord record, TradeSeen seen) async {
-    if (!seen.stored ||
-        record.origin != TradeOrigin.madeHere ||
+  /// The terms of [record] when the rule applies to it: an order made here whose user buys, its terms readable; `null` otherwise (a taker's trade, a maker seller's, records that cannot be read), and nothing is ever compared nor read for it.
+  Future<MakerTerms?> termsOf(TradeRecord record) async {
+    if (record.origin != TradeOrigin.madeHere ||
         record.role != TradeRole.buyer) {
       return null;
     }
-    final step = stepOf(seen);
-    if (step == null) return null;
     final TradeTerms terms;
     switch (await _reader.open(record)) {
       case TradeOpened(:final trade):
@@ -39,103 +36,212 @@ final class CheckPayoutRateUsecase {
       case _:
         return null;
     }
-    final maker = switch (terms.side) {
+    return switch (terms.side) {
       MadeSide(:final maker) when terms.role == TradeRole.buyer => maker,
       _ => null,
     };
-    if (maker == null) return null;
-    final sats = satsOf(maker, seen);
-    if (sats == null) return const PayoutRateNoSats();
-    return PayoutRateFound(
-      WalletRateCheck.ofMakerPayout(
-        maker,
-        amount: sats.amount,
-        received: sats.received,
-        wallet: await _wallet.bitcoinRate(record.network, maker.currency),
-      ),
-    );
   }
 
-  /// The finding for [seen] of an order of [maker], at the wallet's price [wallet], as [execute] makes it once it has the terms and the price: `null` outside the rule's steps.
-  static PayoutRateFinding? findingAt(
+  /// The Bull wallet's price of a bitcoin in the currency of [maker], for [record]'s network: one request outside Tor, or none when the wallet's pricer holds it from less than a minute before.
+  Future<P2pWalletBitcoinRate> priceOf(TradeRecord record, MakerTerms maker) =>
+      _wallet.bitcoinRate(record.network, maker.currency);
+
+  /// The warnings of the state machine that say the amounts of a contract do not agree with each other or with the terms: while one is raised, nothing is compared, the warning alone said (security review of #182, C1 bis).
+  static bool amountsDisagree(TradeStatus status) => status.warnings.any(
+    (warning) =>
+        warning is PayoutAmountMismatch ||
+        warning is MakerFeeAboveAnnounced ||
+        warning is TakerFeeAboveAnnounced ||
+        warning is TradePriceOutsideOrder ||
+        warning is InvoiceAmountMismatch,
+  );
+
+  /// What the rule compares at [seen], a status of [record] whose terms are [maker]: `null` outside its steps (the payout at 6 or 8, « fiat sent » at 9) or for a status not marked stored.
+  ///
+  /// [asked] is the smallest invoice's sats this app saw asked at 6 or 8 for the contract, when it kept one (in memory only: not after a restart, #204).
+  static PayoutRateSubject? subjectAt(
+    TradeRecord record,
     MakerTerms maker,
     TradeSeen seen, {
-    required P2pWalletBitcoinRate wallet,
+    Sats? asked,
   }) {
-    if (stepOf(seen) == null) return null;
-    final sats = satsOf(maker, seen);
-    if (sats == null) return const PayoutRateNoSats();
-    return PayoutRateFound(
-      WalletRateCheck.ofMakerPayout(
-        maker,
-        amount: sats.amount,
-        received: sats.received,
-        wallet: wallet,
-      ),
-    );
-  }
-
-  /// The sats the buyer receives at [seen] and the contract's amount, for an order of [maker]: the payout's at 6 and 8, the order's `last_satoshis` less the maker fee where the coordinator gives no `trade_satoshis` (9); `null` when the read gives neither, or outside the rule's steps.
-  static ({Sats received, FiatAmount amount})? satsOf(
-    MakerTerms maker,
-    TradeSeen seen,
-  ) {
-    final step = stepOf(seen);
-    if (step == null) return null;
-    final last = step.last;
-    final received = step.given ?? (last == null ? null : maker.payoutAt(last));
-    final amount = maker.contractAmount(step.rangeAmount);
-    if (received == null || amount == null) return null;
-    return (received: received, amount: amount);
-  }
-
-  /// What a buyer's step of [seen] gives: the payout's sats at 6 and 8 ([given]), the order's `last_satoshis` ([last]), and a range's amount taken; `null` at any other status.
-  static ({Sats? given, Sats? last, FiatAmount? rangeAmount})? stepOf(
-    TradeSeen seen,
-  ) {
+    if (!seen.stored) return null;
     final order = seen.order;
-    final last = order?.satoshisNow;
-    final rangeAmount = order?.takenAmount;
-    return switch (seen.status) {
-      WaitingForBoth(
-        role: TradeRole.buyer,
-        :final payoutAmount,
-        :final tradeSatoshis,
-      ) ||
-      WaitingForPayout(
-        role: TradeRole.buyer,
-        :final payoutAmount,
-        :final tradeSatoshis,
-      ) => (
-        given: payoutAmount ?? tradeSatoshis,
-        last: last,
-        rangeAmount: rangeAmount,
-      ),
-      // No `trade_satoshis` at 9 (`api/views.py:346-356`): the order's `last_satoshis` only.
-      Chatting(role: TradeRole.buyer, fiatSent: false) => (
-        given: null,
-        last: last,
-        rangeAmount: rangeAmount,
-      ),
-      _ => null,
-    };
+    final status = seen.status;
+    final amount = maker.contractAmount(order?.takenAmount);
+    switch (status) {
+      case WaitingForBoth(role: TradeRole.buyer) ||
+          WaitingForPayout(role: TradeRole.buyer):
+        final invoice = switch (PayoutAsk.of(record, seen)) {
+          Ok(:final value) => value.buyerSats,
+          Err() => null,
+        };
+        // Every figure the coordinator gave for what the buyer receives: the smallest is the one kept for 9.
+        final payout = order?.payoutInvoiceAmount;
+        final keep = switch ((invoice, payout)) {
+          (final a?, final b?) => a.value <= b.value ? a : b,
+          (final a?, null) => a,
+          (null, final b?) => b,
+          _ => null,
+        };
+        if (amountsDisagree(status)) return PayoutRateMismatch(keep);
+        if (invoice == null || amount == null) return const PayoutRateNoSats();
+        return PayoutRateCompared(
+          received: invoice,
+          amount: amount,
+          basis: const PayoutRateAskedNow(),
+          keep: keep,
+        );
+      case Chatting(role: TradeRole.buyer, fiatSent: false):
+        final last = order?.satoshisNow;
+        // No sats at all is said as such (the state machine's fee warning then only says the same).
+        if (last == null || amount == null) return const PayoutRateNoSats();
+        if (amountsDisagree(status)) return const PayoutRateMismatch(null);
+        final told = maker.payoutAt(last);
+        if (asked == null) {
+          return PayoutRateCompared(
+            received: told,
+            amount: amount,
+            basis: const PayoutRateToldNow(),
+          );
+        }
+        final gap = told.value - asked.value;
+        // One sat either way is the rounding of a half (`MakerTerms.payoutAt`, exact, against the coordinator's floats).
+        if (gap.abs() <= BigInt.one) {
+          return PayoutRateCompared(
+            received: told.value <= asked.value ? told : asked,
+            amount: amount,
+            basis: const PayoutRateAsked(),
+          );
+        }
+        return PayoutRateCompared(
+          received: told.value <= asked.value ? told : asked,
+          amount: amount,
+          basis: PayoutRateTold(told: told, asked: asked),
+        );
+      case _:
+        return null;
+    }
   }
+
+  /// The comparison of [subject] for an order of [maker] at the wallet's price [wallet].
+  static WalletRateCheck compare(
+    MakerTerms maker,
+    PayoutRateCompared subject,
+    P2pWalletBitcoinRate wallet,
+  ) => WalletRateCheck.ofMakerPayout(
+    maker,
+    amount: subject.amount,
+    received: subject.received,
+    wallet: wallet,
+  );
 }
 
-/// What the owner's rule on a maker buyer's side found for a step.
+/// What the rule compares at a status.
 @immutable
-sealed class PayoutRateFinding {
-  const PayoutRateFinding();
+sealed class PayoutRateSubject {
+  const PayoutRateSubject();
 }
 
-/// The sats the buyer receives compared with the contract's amount at the Bull wallet's price.
-final class PayoutRateFound extends PayoutRateFinding {
-  final WalletRateCheck check;
+/// The sats the buyer receives, [received], for [amount] of the contract, and where they come from ([basis]); at 6 and 8 the invoice's sats to keep for 9 ([keep]).
+final class PayoutRateCompared extends PayoutRateSubject {
+  final Sats received;
+  final FiatAmount amount;
+  final PayoutRateBasis basis;
+  final Sats? keep;
 
-  const PayoutRateFound(this.check);
+  const PayoutRateCompared({
+    required this.received,
+    required this.amount,
+    required this.basis,
+    this.keep,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is PayoutRateCompared &&
+      other.received == received &&
+      other.amount == amount &&
+      other.basis == basis;
+
+  @override
+  int get hashCode => Object.hash(received, amount, basis);
 }
 
 /// The read gives no sats the buyer receives: nothing compared, and the screen says « rate not checked » rather than nothing.
-final class PayoutRateNoSats extends PayoutRateFinding {
+final class PayoutRateNoSats extends PayoutRateSubject {
   const PayoutRateNoSats();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateNoSats;
+
+  @override
+  int get hashCode => 0;
+}
+
+/// The state machine says the contract's amounts do not agree: nothing compared, its warning said alone; at 6 and 8 the smallest figure to keep for 9 ([keep]).
+final class PayoutRateMismatch extends PayoutRateSubject {
+  final Sats? keep;
+
+  const PayoutRateMismatch(this.keep);
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateMismatch;
+
+  @override
+  int get hashCode => 1;
+}
+
+/// Where the sats compared come from.
+@immutable
+sealed class PayoutRateBasis {
+  const PayoutRateBasis();
+}
+
+/// At 6 and 8: the invoice the payout panel asks now.
+final class PayoutRateAskedNow extends PayoutRateBasis {
+  const PayoutRateAskedNow();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateAskedNow;
+
+  @override
+  int get hashCode => 2;
+}
+
+/// At 9: the coordinator's figure of now agrees with the invoice's sats this app kept for the contract.
+final class PayoutRateAsked extends PayoutRateBasis {
+  const PayoutRateAsked();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateAsked;
+
+  @override
+  int get hashCode => 3;
+}
+
+/// At 9: the coordinator now tells [told] sats where the invoice it asked for the contract was of [asked]: the smaller compared, and said.
+final class PayoutRateTold extends PayoutRateBasis {
+  final Sats told;
+  final Sats asked;
+
+  const PayoutRateTold({required this.told, required this.asked});
+
+  @override
+  bool operator ==(Object other) =>
+      other is PayoutRateTold && other.told == told && other.asked == asked;
+
+  @override
+  int get hashCode => Object.hash(told, asked);
+}
+
+/// At 9 with no invoice's sats kept for the contract (the app started again between 8 and 9, #204): the coordinator's figure of now, said as such.
+final class PayoutRateToldNow extends PayoutRateBasis {
+  const PayoutRateToldNow();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateToldNow;
+
+  @override
+  int get hashCode => 4;
 }

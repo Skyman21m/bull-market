@@ -855,5 +855,8 @@
   "p2pTradeBreachWhatToDo": "Pour suivre cet ordre en sécurité, ouvrez-le dans l’app officielle RoboSats avec votre clé de garage, et contactez {coordinator} si quelque chose vous paraît anormal.",
   "p2pPayoutRateSatsMissing": "Taux non vérifié : {coordinator} ne donne pas de sats pour cette étape de l’échange. Vérifiez-les vous-même avant de continuer.",
   "p2pTradeNoRingYet": "Bull Market ne sonne pas encore : gardez cet écran ouvert, ou revenez-y souvent.",
-  "p2pTradeEscrowWaitMaker": "Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée."
+  "p2pTradeEscrowWaitMaker": "Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.",
+  "p2pPayoutRateToldMoved": "{coordinator} annonce maintenant {told} sats pour ce contrat, mais a demandé avant une facture de {asked} sats : Bull Market compare le plus petit des deux. Vérifiez la facture donnée avant de continuer.",
+  "p2pPayoutRateToldNow": "Comparé au chiffre que {coordinator} donne maintenant : après un redémarrage de l’app, Bull Market ne garde plus le montant de la facture donnée.",
+  "p2pTradeBondBackThroughSwap": "Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai."
 }

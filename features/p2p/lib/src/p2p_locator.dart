@@ -401,10 +401,14 @@ final class P2pLocator {
     locator.registerFactory<CheckPayoutRateUsecase>(
       () => CheckPayoutRateUsecase(locator(), locator<P2pWalletPort>()),
     );
+    // What the rule keeps beyond one page of a trade, until the app stops: the invoice's sats asked per contract, the last price read (security review of #182, C2).
+    locator.registerLazySingleton<PayoutRateMemory>(PayoutRateMemory.new);
     locator.registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
       (record, _) => PayoutRateCubit(
         record,
-        locator<CheckPayoutRateUsecase>().execute,
+        terms: locator<CheckPayoutRateUsecase>().termsOf,
+        price: locator<CheckPayoutRateUsecase>().priceOf,
+        memory: locator<PayoutRateMemory>(),
         now: clock,
       ),
     );

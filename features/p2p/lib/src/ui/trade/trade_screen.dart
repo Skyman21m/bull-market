@@ -171,7 +171,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
 
   /// The owner's payment rule on a maker buyer's side (#182): the Bull wallet's price read once per contract and step when the screen shows the buyer's payout or « fiat sent », and again when the step [appeared] anew with a read 3 minutes old ([PayoutRateCubit.show]).
   void _checkRate(TradeScreenState state, {bool appeared = false}) {
-    if (!widget.checksPayoutRate) return;
+    // Hidden (another tab, a page above it): nothing is read, the step appears anew when shown again.
+    if (!widget.checksPayoutRate || _shown == false) return;
     if (state.watch case TradeWatchStatus(:final seen)) {
       unawaited(context.read<PayoutRateCubit>().show(seen, appeared: appeared));
     }
@@ -389,6 +390,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                                 context.read<PayoutRateCubit>().retry(),
                               )
                             : null,
+                        beforeAct: widget.checksPayoutRate
+                            ? context.read<PayoutRateCubit>().beforeAct
+                            : null,
                       ),
                     },
                   ],
@@ -543,6 +547,9 @@ class _Contract extends StatelessWidget {
   final PayoutRateState? payoutRate;
   final VoidCallback? onRetryRate;
 
+  /// Before « Submit » and the dialog of « Confirm … sent »: the rule's price read again when old ([PayoutRateCubit.beforeAct]), `false` stopping the press; `null` without the rule.
+  final Future<bool> Function()? beforeAct;
+
   const _Contract({
     super.key,
     required this.contract,
@@ -567,6 +574,7 @@ class _Contract extends StatelessWidget {
     required this.book,
     required this.payoutRate,
     required this.onRetryRate,
+    required this.beforeAct,
   });
 
   @override
@@ -777,6 +785,12 @@ class _Contract extends StatelessWidget {
           _Line(l10n.p2pTradePayoutWait),
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pTradePayoutWaitHangOn),
+          const Gap(BullSpacing.sm),
+          _Line(
+            l10n.p2pTradeBondBackThroughSwap,
+            color: colors.textMuted,
+            icon: Icons.info_outline,
+          ),
         ],
       ),
       (TradePrompt.payout, _) => Column(
@@ -819,6 +833,13 @@ class _Contract extends StatelessWidget {
             _Line(
               l10n.p2pTradeEscrowWaitMaker,
               color: colors.warning,
+              icon: Icons.info_outline,
+            ),
+          ] else ...[
+            const Gap(BullSpacing.sm),
+            _Line(
+              l10n.p2pTradeBondBackThroughSwap,
+              color: colors.textMuted,
               icon: Icons.info_outline,
             ),
           ],
@@ -864,6 +885,7 @@ class _Contract extends StatelessWidget {
                 ? null
                 : () => chatOptions(context, chatRequest),
             rateLines: _dialogLines(context, status),
+            beforeConfirmFiatSent: beforeAct,
           ),
         ],
       ),
@@ -928,7 +950,8 @@ class _Contract extends StatelessWidget {
     final step = switch (state) {
       PayoutRateReading(:final step) ||
       PayoutRateChecked(:final step) ||
-      PayoutRateSatsMissing(:final step) => step,
+      PayoutRateSatsMissing(:final step) ||
+      PayoutRateAmountsDisagree(:final step) => step,
       _ => null,
     };
     if (step == null || step != shown) return null;
@@ -948,7 +971,7 @@ class _Contract extends StatelessWidget {
           coordinator: coordinator,
           amount: PayoutRateLines.amountOf(context, order),
         ),
-      if (gap != null && !PayoutRateLines.compares(state))
+      if (gap != null && !PayoutRateLines.hidesGap(state))
         (
           text: gap.text,
           tone: gap.gap.effectFor(gap.role) == RateGapEffect.unfavourable
@@ -975,7 +998,7 @@ class _Contract extends StatelessWidget {
 
   /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only when the owner's rule shows no comparison with the Bull wallet's price (a currency it does not price, a price not read, no rule without the wallet's port); `null` for a taker, whose statuses carry no gap.
   Widget? _gapLine(BuildContext context, TradeStatus status) {
-    if (PayoutRateLines.compares(_ruleShown)) return null;
+    if (PayoutRateLines.hidesGap(_ruleShown)) return null;
     final gap = _gapOf(context, status);
     if (gap == null) return null;
     return RateGapLine(gap: gap.gap, role: gap.role, text: gap.text);
@@ -1050,6 +1073,7 @@ class _Contract extends StatelessWidget {
       coordinator: coordinator,
       now: now,
       cancelling: cancel is CancelRunning,
+      beforeSubmit: beforeAct,
     ),
   )) {
     final panel? => KeyedSubtree(
@@ -1088,7 +1112,7 @@ class _BondLine extends StatelessWidget {
         maker ? l10n.p2pTradeMakerBondLocked : l10n.p2pTradeBondLocked,
       ),
     };
-    return Row(
+    final row = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         ExcludeSemantics(child: Icon(icon, size: 18, color: color)),
@@ -1101,6 +1125,20 @@ class _BondLine extends StatelessWidget {
               context,
             ).textTheme.headlineMedium?.copyWith(color: color),
           ),
+        ),
+      ],
+    );
+    if (line != TradeBondLine.unlocked) return row;
+    // A bond « unlocked » by the coordinator comes back to this wallet through the swap service (#182, second review).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        const Gap(BullSpacing.xs),
+        _Line(
+          l10n.p2pTradeBondBackThroughSwap,
+          color: colors.textMuted,
+          center: true,
         ),
       ],
     );
@@ -1594,15 +1632,21 @@ class _PublicWait extends StatelessWidget {
             ),
           ),
           const Gap(BullSpacing.sm),
-          // The reference's box rings; this app neither rings nor follows the order outside this screen (#182, functional review).
-          _Line(
-            l10n.p2pTradeNoRingYet,
-            color: colors.warning,
-            icon: Icons.info_outline,
-          ),
-          const Gap(BullSpacing.sm),
         ],
+        // The reference's box rings; this app neither rings nor follows the order outside this screen (#182, functional review), said before the order's first read too.
+        _Line(
+          l10n.p2pTradeNoRingYet,
+          color: colors.warning,
+          icon: Icons.info_outline,
+        ),
+        const Gap(BullSpacing.sm),
         _Line(l10n.p2pTradePublicExpiresUntaken),
+        const Gap(BullSpacing.sm),
+        _Line(
+          l10n.p2pTradeBondBackThroughSwap,
+          color: colors.textMuted,
+          icon: Icons.info_outline,
+        ),
         if (order != null && standing != null) ...[
           Divider(height: BullSpacing.lg, color: colors.outlineVariant),
           figure(
