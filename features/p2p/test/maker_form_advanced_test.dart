@@ -360,38 +360,44 @@ void main() {
     });
   });
 
-  group('the options sent, said under the summary (security review of #183, C1)', () {
-    test('none at the defaults', () {
-      expect(checkOf().optionsSent.any, isFalse);
-      expect(checkOf(advanced: false, amount: '200').optionsSent.any, isFalse);
-    });
-
-    test(
-      'a description (never its text), each duration and the bond size away from their defaults',
-      () {
-        final sent = checkOf(
-          advanced: false,
-          amount: '200',
-          description: 'Call me',
-          escrowDuration: const Duration(hours: 1),
-          bondSize: 15,
-        ).optionsSent;
-        expect(sent.any, isTrue);
-        expect(sent.description, isTrue);
-        expect(sent.publicDuration, isNull);
-        expect(sent.escrowDuration, const Duration(hours: 1));
-        expect(sent.bondSizePercent, 15);
+  group(
+    'the options sent, said under the summary (security review of #183, C1)',
+    () {
+      test('none at the defaults', () {
+        expect(checkOf().optionsSent.any, isFalse);
         expect(
-          checkOf(publicDuration: const Duration(minutes: 10))
-              .optionsSent
-              .publicDuration,
-          const Duration(minutes: 10),
+          checkOf(advanced: false, amount: '200').optionsSent.any,
+          isFalse,
         );
-        // Only spaces is no description.
-        expect(checkOf(description: '   ').optionsSent.any, isFalse);
-      },
-    );
-  });
+      });
+
+      test(
+        'a description (never its text), each duration and the bond size away from their defaults',
+        () {
+          final sent = checkOf(
+            advanced: false,
+            amount: '200',
+            description: 'Call me',
+            escrowDuration: const Duration(hours: 1),
+            bondSize: 15,
+          ).optionsSent;
+          expect(sent.any, isTrue);
+          expect(sent.description, isTrue);
+          expect(sent.publicDuration, isNull);
+          expect(sent.escrowDuration, const Duration(hours: 1));
+          expect(sent.bondSizePercent, 15);
+          expect(
+            checkOf(
+              publicDuration: const Duration(minutes: 10),
+            ).optionsSent.publicDuration,
+            const Duration(minutes: 10),
+          );
+          // Only spaces is no description.
+          expect(checkOf(description: '   ').optionsSent.any, isFalse);
+        },
+      );
+    },
+  );
 
   group('the range the form sets', () {
     test(
@@ -624,8 +630,10 @@ void main() {
                 final value = at(step, 120);
                 final fixed = at(other, 12);
                 for (final (moved, next) in [
-                  if (value <= fixed) (RangeThumb.min, MakerRange(value, fixed)),
-                  if (value >= fixed) (RangeThumb.max, MakerRange(fixed, value)),
+                  if (value <= fixed)
+                    (RangeThumb.min, MakerRange(value, fixed)),
+                  if (value >= fixed)
+                    (RangeThumb.max, MakerRange(fixed, value)),
                 ]) {
                   final range = MakerRange.slid(
                     moved: moved,

@@ -1719,7 +1719,10 @@ void main() {
             'Advanced options sent with this order: a description, escrow/invoice timer 01:00, fidelity bond 15%.';
         expect(find.text(open), findsOneWidget);
         final colors = tester.element(find.text(open)).bull;
-        expect(tester.widget<Text>(find.text(open)).style?.color, colors.textMuted);
+        expect(
+          tester.widget<Text>(find.text(open)).style?.color,
+          colors.textMuted,
+        );
         await tester.ensureVisible(_advancedSwitch);
         await tester.pump();
         await tester.tap(_advancedSwitch);
@@ -1727,7 +1730,10 @@ void main() {
         const closed =
             'Advanced options closed, but still sent with this order: a description, escrow/invoice timer 01:00, fidelity bond 15%.';
         expect(find.text(closed), findsOneWidget);
-        expect(tester.widget<Text>(find.text(closed)).style?.color, colors.warning);
+        expect(
+          tester.widget<Text>(find.text(closed)).style?.color,
+          colors.warning,
+        );
         // The description itself is never repeated there.
         expect(find.textContaining('Call me'), findsNothing);
         // « Clear form »: the defaults again, no line.

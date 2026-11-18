@@ -199,7 +199,7 @@ void main() {
     }
 
     test(
-      'a contract kept, then read with no amount: the alert alone, nothing compared at 6, 8 and 9 (security review of #183, C3)',
+      'a contract kept, then read with no amount at 6, 8 and 9: never compared (security review of #183, C3; the trade screen\'s own tests read it in one session, `maker_panels_test.dart`)',
       () async {
         final (harness, record, maker, _) = await taken(250);
         final order = harness.coordinator.order(record.orderId);
@@ -210,44 +210,43 @@ void main() {
           return seen;
         }
 
-        final six = await readWithout();
-        expect(six.order, isNotNull);
-        expect(six.order?.takenAmount, isNull);
-        expect(six.status.trail.takenAmount, 250);
-        expect(six.status.has<TradeTermsChanged>(), isTrue);
-        expect(six.contractAmountMoved, isTrue);
-        expect(
-          CheckPayoutRateUsecase.subjectAt(record, maker, six),
-          isA<PayoutRateMismatch>(),
-        );
+        void neverCompared(TradeSeen seen) {
+          expect(seen.order, isNotNull);
+          expect(seen.order?.takenAmount, isNull);
+          expect(seen.status.has<TradeTermsChanged>(), isTrue);
+          expect(seen.contractAmountMoved, isTrue);
+          for (final asked in [null, Sats.fromInt(250000)]) {
+            expect(
+              CheckPayoutRateUsecase.subjectAt(
+                record,
+                maker,
+                seen,
+                asked: asked,
+              ),
+              isNot(isA<PayoutRateCompared>()),
+            );
+          }
+        }
+
+        neverCompared(await readWithout());
         harness.coordinator.lockEscrow(record.orderId);
         expect((await readOf(harness, record)).status, isA<WaitingForPayout>());
-        final eight = await readWithout();
-        expect(eight.contractAmountMoved, isTrue);
-        expect(
-          CheckPayoutRateUsecase.subjectAt(record, maker, eight),
-          isA<PayoutRateMismatch>(),
-        );
+        neverCompared(await readWithout());
         order.status = 9;
         expect((await readOf(harness, record)).status, isA<Chatting>());
-        final nine = await readWithout();
-        expect(nine.contractAmountMoved, isTrue);
-        for (final asked in [null, Sats.fromInt(250000)]) {
-          expect(
-            CheckPayoutRateUsecase.subjectAt(record, maker, nine, asked: asked),
-            isA<PayoutRateMismatch>(),
-            reason: '$asked',
-          );
-        }
+        neverCompared(await readWithout());
       },
     );
 
     test(
       'the alert and the silence of the rule follow one comparison, at its very tolerance both ways (security review of #183, R1)',
       () async {
-        // Kept 100; read 5·10⁻⁷ lower is another amount (beyond 5·10⁻⁹ of the read), 4·10⁻⁷ higher the same.
-        for (final (read, moved) in [(99.9999995, true), (100.0000004, false)]) {
-          final (harness, record, maker, _) = await taken(100);
+        // Kept 200; read 1.1·10⁻⁶ lower is another amount (beyond 5·10⁻⁹ of the read, about 10⁻⁶), 9·10⁻⁷ higher the same.
+        for (final (read, moved) in [
+          (199.9999989, true),
+          (200.0000009, false),
+        ]) {
+          final (harness, record, maker, _) = await taken(200);
           harness.coordinator.order(record.orderId).takenAmount = read;
           final seen = await readOf(harness, record);
           expect(seen.status, isA<WaitingForBoth>(), reason: '$read');

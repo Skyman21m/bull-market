@@ -989,8 +989,18 @@ void main() {
               'Before letting you send the fiat, we want to make sure you are able to receive the BTC.';
           for (final reread in [
             makerOrderJson(8, range: true, last: 90000, taken: 60),
-            makerOrderJson(8, range: true, last: 90000, changes: {'amount': null}),
-            makerOrderJson(6, range: true, last: 90000, changes: {'amount': null}),
+            makerOrderJson(
+              8,
+              range: true,
+              last: 90000,
+              changes: {'amount': null},
+            ),
+            makerOrderJson(
+              6,
+              range: true,
+              last: 90000,
+              changes: {'amount': null},
+            ),
           ]) {
             final seen = (await _chain([...start, reread], terms: terms)).last;
             expect(seen.status.has<TradeTermsChanged>(), isTrue);
@@ -1025,7 +1035,12 @@ void main() {
             makerOrderJson(1, range: true),
             makerOrderJson(6, range: true, last: 90000),
             makerOrderJson(9, range: true, last: 90000),
-            makerOrderJson(9, range: true, last: 90000, changes: {'amount': null}),
+            makerOrderJson(
+              9,
+              range: true,
+              last: 90000,
+              changes: {'amount': null},
+            ),
           ], terms: terms)).last;
           expect(seen.contractAmountMoved, isTrue);
           await _show(
