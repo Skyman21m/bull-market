@@ -1,9 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/matching_orders.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/maker_form.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/presentation/active_trades_cubit.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
+import 'support/trade_harness.dart' show tradeKey;
 
 final _eur = RobosatsCurrency.fromCode('EUR') ?? (throw StateError('EUR'));
 
@@ -253,6 +260,48 @@ void main() {
     () async {
       final book = [await _order(1), await _order(2), await _order(3)];
       expect(_kept(_of(), book, own: {2}), [1, 3]);
+    },
+  );
+
+  test(
+    'the device holds an order when an open record of its network names its coordinator and number, whatever the record\'s origin (`ActiveTradesListed.holds`)',
+    () async {
+      final order = await _order(5);
+      final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      TradeRecord record({
+        RobosatsNetwork network = RobosatsNetwork.mainnet,
+        String alias = 'temple',
+        int id = 5,
+        TradeOrigin origin = TradeOrigin.takenHere,
+        DateTime? closedAt,
+      }) => TradeRecord(
+        robot: RobotSlot(network, fingerprint, 1),
+        coordinatorAlias: alias,
+        coordinatorOnion: 'unused.onion',
+        orderId: id,
+        role: TradeRole.buyer,
+        origin: origin,
+        takenAt: testNow,
+        confirmedAt: testNow,
+        closedAt: closedAt,
+      );
+      bool holds(TradeRecord record) => ActiveTradesListed([
+        ActiveTrade(record, const ActiveTradeTakeNeverSent()),
+      ]).holds(order, RobosatsNetwork.mainnet);
+      for (final origin in TradeOrigin.values) {
+        expect(holds(record(origin: origin)), isTrue, reason: '$origin');
+      }
+      expect(holds(record(network: RobosatsNetwork.testnet)), isFalse);
+      expect(holds(record(alias: 'lake')), isFalse);
+      expect(holds(record(id: 6)), isFalse);
+      expect(holds(record(closedAt: testNow)), isFalse);
+      expect(
+        const ActiveTradesListed([]).holds(order, RobosatsNetwork.mainnet),
+        isFalse,
+      );
     },
   );
 
