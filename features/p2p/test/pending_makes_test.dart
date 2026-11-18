@@ -357,33 +357,32 @@ void main() {
       },
     );
 
-    testWidgets(
-      'a make no resolution has read yet shows no « Set aside »',
-      (tester) async {
-        usePhoneScreen(tester);
-        final makes = _Makes();
-        final cubit = makes.cubit()..start();
-        addTearDown(cubit.close);
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: testTheme,
-            localizationsDelegates: P2pLocalizations.localizationsDelegates,
-            supportedLocales: P2pLocalizations.supportedLocales,
-            home: Scaffold(
-              body: BlocProvider.value(
-                value: cubit,
-                child: const PendingMakeLines(),
-              ),
+    testWidgets('a make no resolution has read yet shows no « Set aside »', (
+      tester,
+    ) async {
+      usePhoneScreen(tester);
+      final makes = _Makes();
+      final cubit = makes.cubit()..start();
+      addTearDown(cubit.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Scaffold(
+            body: BlocProvider.value(
+              value: cubit,
+              child: const PendingMakeLines(),
             ),
           ),
-        );
-        await settle(tester);
-        expect(find.text('Creating your order…'), findsOneWidget);
-        expect(makes.resolved, isEmpty);
-        expect(find.text('Set aside'), findsNothing);
-        expect(find.text('Retry'), findsOneWidget);
-      },
-    );
+        ),
+      );
+      await settle(tester);
+      expect(find.text('Creating your order…'), findsOneWidget);
+      expect(makes.resolved, isEmpty);
+      expect(find.text('Set aside'), findsNothing);
+      expect(find.text('Retry'), findsOneWidget);
+    });
 
     testWidgets('a resolution that confirms the make opens its trade', (
       tester,
