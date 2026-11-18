@@ -148,7 +148,7 @@ void main() {
         final under = checkOf(min: '200', max: '299.99');
         expect(under.block, MakerFormBlock.amountRangeInvalid);
         expect(under.rangeMinError && under.rangeMaxError, isTrue);
-        expect(checkOf(min: '100', max: '155').block, isNull);
+        expect(checkOf(min: '100', max: '155', limits: wide).block, isNull);
         expect(checkOf(min: '100', max: '1495', limits: wide).block, isNull);
         expect(
           checkOf(min: '100', max: '1495.01', limits: wide).block,

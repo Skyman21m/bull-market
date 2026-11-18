@@ -33,11 +33,13 @@ final class TradeSeen {
     this.requestedAt,
   });
 
-  /// Whether the read gives a range's contract another amount than the one kept with the contract (`TradeTrail.takenAmount`, kept from the contract's first read), or none: the state machine then says the terms changed (`TradeTermsChanged`), and nothing compares or words a figure with either amount while it lasts, so that no line reassures beside that alert (#183, after its functional review, C5). Never for a fixed amount, whose other amount the state machine refuses.
+  /// Whether the order read gives a range's contract another amount than the one kept with the contract (`TradeTrail.takenAmount`, kept from the contract's first read), or none: the state machine then says the terms changed (`TradeTermsChanged`), and nothing compares or words a figure with either amount while it lasts, so that no line reassures beside that alert (#183, after its functional review, C5). Never for a fixed amount, whose other amount the state machine refuses.
   bool get contractAmountMoved {
     final kept = status.trail.takenAmount;
-    if (kept == null) return false;
-    final read = order?.takenAmount?.value;
+    final order = this.order;
+    // A status from no order (a read refused as a whole, a trail not read yet) shows no amount: nothing moved.
+    if (kept == null || order == null) return false;
+    final read = order.takenAmount?.value;
     return read == null ||
         (read - kept).abs() >
             TradeTolerances.fiatAmount * math.max(1, kept.abs());
