@@ -2257,7 +2257,11 @@ void main() {
         await tester.tap(find.text(l10n.p2pNavOffers));
         await settle();
         await capture('echange-entree-ordre');
+        // « Order » opens « Active trades », « Create order » at its top (#182), then the trade.
         await tester.tap(find.text(l10n.p2pNavOrder));
+        await settle();
+        await capture('echange-liste-ordres');
+        await tester.tap(find.text(l10n.p2pActiveOrder('${coordinator.orderId}')));
         await waitFor(find.text(l10n.p2pTradeTabContract));
 
         coordinator.moveTo(7);
