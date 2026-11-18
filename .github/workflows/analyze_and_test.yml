@@ -122,9 +122,9 @@ jobs:
     if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
     name: Static checks and unit tests
     runs-on: ubuntu-24.04
-    # A normal run takes 34-44 min in this fork (set-up 9-16 min, unit tests 18-26 min), more than upstream's 22-29 min: Troc adds the robosats and p2p test suites.
-    # At 45 min a slow set-up cut a run during the unit tests with no test failing, so the limit leaves room for that.
-    timeout-minutes: 60
+    # A normal run takes 50-61 min in this fork (set-up 17-22 min, of which the code generation 13 min; unit tests 32-38 min), more than upstream's 22-29 min: the fork adds the robosats and p2p test suites, which grow with each phase (3,248 p2p tests on 2026-11-18).
+    # At 45 min, then at 60 min, a run was cut during the unit tests with no test failing (the second 40 s before its end), so the limit leaves room for that.
+    timeout-minutes: 90
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

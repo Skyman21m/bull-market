@@ -10,6 +10,7 @@ import 'package:p2p/src/domain/coordinator_lottery.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_host.dart';
 import 'package:p2p/src/domain/trade/make_price_check.dart';
+import 'package:p2p/src/domain/trade/maker_form.dart';
 import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -250,6 +251,19 @@ Future<void> _fill(
   await settle(tester);
 }
 
+/// The switches and fields of the advanced options (#183), once they are open with a range: « From », « to », the premium, « Description », « Password ».
+Finder get _advancedSwitch => find.byType(Switch).first;
+Finder get _rangeSwitch => find.byType(Switch).at(1);
+Finder get _minField => find.byType(TextField).at(0);
+Finder get _maxField => find.byType(TextField).at(1);
+Finder get _descriptionField => find.byType(TextField).at(3);
+
+/// Opens the advanced options (#183).
+Future<void> _open(WidgetTester tester) async {
+  await tester.tap(_advancedSwitch);
+  await settle(tester);
+}
+
 void main() {
   setUpAll(() async {
     _limits = await limitsAt({2: 91711.15, 1: 100000});
@@ -258,7 +272,7 @@ void main() {
 
   group('the form, field by field', () {
     testWidgets(
-      'the reference\'s fields and texts, « Sell » and the advanced options disabled with their lines, the reason of the disabled button',
+      'the reference\'s fields and texts, « Sell » and the location disabled with their lines, the reason of the disabled button',
       (tester) async {
         await _show(tester, _Form());
         for (final text in [
@@ -277,10 +291,24 @@ void main() {
           'Create order',
           'Please select if you want to buy or sell.',
           'Order current rate: 91,711 EUR/BTC',
+          'Face to Face Location',
         ]) {
           expect(find.text(text), findsOneWidget, reason: text);
         }
-        expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+        // « Enable advanced options » can be used once the limits are read (#183), and is off.
+        final advanced = tester.widget<Switch>(find.byType(Switch));
+        expect(advanced.value, isFalse);
+        expect(advanced.onChanged, isNotNull);
+        // Nothing of the advanced options while they are closed.
+        for (final text in [
+          'Amount Range',
+          'Description',
+          'Password',
+          'Public Duration (HH:mm)',
+          'Fidelity Bond Size',
+        ]) {
+          expect(find.text(text), findsNothing, reason: text);
+        }
         expect(_createEnabled(tester), isFalse);
         // « Sell » cannot be chosen.
         expect(
@@ -1237,6 +1265,45 @@ void main() {
       );
     });
 
+    for (final (reason, text) in [
+      (
+        OrderSizeRefusal.rangeTooNarrow,
+        'Maximum range amount must be at least 50 percent higher than the minimum amount. The order was not created.',
+      ),
+      (
+        OrderSizeRefusal.rangeMaximumTooBig,
+        'Your order maximum amount is too big. The order was not created.',
+      ),
+      (
+        OrderSizeRefusal.rangeMinimumTooSmall,
+        'Your order minimum amount is too small. The order was not created.',
+      ),
+      (
+        OrderSizeRefusal.rangeTooWide,
+        'Your order amount range is too large. Max amount can only be 15 times bigger than min amount. The order was not created.',
+      ),
+    ]) {
+      testWidgets(
+        'a range refused by the coordinator (${reason.code}): its message, as the reference shows it (#183)',
+        (tester) async {
+          final form = _Form()
+            ..answer = Ok(
+              MakeNotMade(_pending, refusal: OrderSizeRefused(reason)),
+            );
+          await _show(tester, form);
+          await _fill(tester);
+          await _open(tester);
+          await tester.ensureVisible(_create);
+          await tester.pump();
+          await tester.tap(_create);
+          await settle(tester);
+          await tester.tap(find.text('Done'));
+          await settle(tester);
+          expect(find.text(text), findsOneWidget);
+        },
+      );
+    }
+
     testWidgets('an outcome unknown: said, the form locked, nothing made again', (
       tester,
     ) async {
@@ -1464,6 +1531,432 @@ void main() {
         expect(opened, [TradeScreenStatuses.record]);
       },
     );
+  });
+
+  group('the advanced options (#183)', () {
+    Future<void> tapShown(WidgetTester tester, Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.pump();
+      await tester.tap(finder);
+      await settle(tester);
+    }
+
+    testWidgets(
+      'not usable before the limits are read, as the reference\'s switch (`MakerForm.tsx:710`)',
+      (tester) async {
+        final form = _Form()..unreadable.add('temple');
+        await _show(tester, form);
+        expect(tester.widget<Switch>(_advancedSwitch).onChanged, isNull);
+      },
+    );
+
+    testWidgets(
+      'opened: « Amount Range » on, the range from the amount typed (half and the amount), the reference\'s defaults, the bond on the maximum',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        await _open(tester);
+        for (final text in [
+          'Amount Range',
+          'From',
+          'to',
+          'Description',
+          'Password',
+          'Public Duration (HH:mm)',
+          '23:59',
+          'Escrow/Invoice Timer (HH:mm)',
+          '03:00',
+          'Fidelity Bond Size',
+          'Buy BTC for 50-100 EUR at a 2% premium',
+        ]) {
+          expect(find.text(text), findsOneWidget, reason: text);
+        }
+        // Under « Face to Face Location » and « Password ».
+        expect(find.text('Coming in a later version.'), findsNWidgets(2));
+        expect(tester.widget<TextField>(_minField).controller?.text, '50');
+        expect(tester.widget<TextField>(_maxField).controller?.text, '100');
+        // The password cannot be typed before #189.
+        expect(
+          tester.widget<TextField>(find.byType(TextField).at(4)).enabled,
+          isFalse,
+        );
+        // The bond on the maximum, as with 100 typed: (100 / 93,545) × 10^8 × 3 %.
+        expect(find.text('Estimated Bond: 3,207 Sats'), findsOneWidget);
+        expect(tester.widget<Slider>(find.byType(Slider)).value, 3);
+        expect(find.byType(RangeSlider), findsOneWidget);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'without an amount typed: a quarter and three quarters of the coordinator\'s largest order',
+      (tester) async {
+        final form = _Form()..limits = await limitsOf({2: (50000, 100, 1000)});
+        await _show(tester, form);
+        await _open(tester);
+        expect(tester.widget<TextField>(_minField).controller?.text, '250');
+        expect(tester.widget<TextField>(_maxField).controller?.text, '750');
+      },
+    );
+
+    testWidgets(
+      '« Exact Amount »: the amount field again, the range\'s bounds kept for later',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        await _open(tester);
+        await tester.tap(_rangeSwitch);
+        await settle(tester);
+        expect(find.text('Exact Amount'), findsOneWidget);
+        expect(find.text('From'), findsNothing);
+        expect(
+          find.text('Buy BTC for 100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
+        await tester.tap(_rangeSwitch);
+        await settle(tester);
+        expect(
+          find.text('Buy BTC for 50-100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'a range out of the form\'s rules: the fields in error and the reference\'s reason',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        await _open(tester);
+        await tester.enterText(_minField, '90');
+        await settle(tester);
+        expect(find.text('The amount range is not valid.'), findsWidgets);
+        expect(_createEnabled(tester), isFalse);
+        await tester.enterText(_minField, '62.5');
+        await settle(tester);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'a range typed: the Bull wallet\'s price read for its maximum, with no exact amount typed (functional review of #183, C6, M1)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        expect(form.pricesAsked, isEmpty);
+        // Opened with no amount: the range from the coordinator's largest order, its maximum above 0.
+        await _open(tester);
+        expect(form.pricesAsked, [eur]);
+      },
+    );
+
+    testWidgets(
+      'another currency whose orders exclude the range: the range set again, as the reference (functional review of #183, C6, M2)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        await _open(tester);
+        await tester.enterText(_minField, '15');
+        await settle(tester);
+        final expected = MakerRange.afterCurrency(
+          min: 15,
+          max: 100,
+          limit: _limits[usd],
+        );
+        expect(expected, isNotNull);
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        await tester.tap(find.text('USD'));
+        await settle(tester);
+        double fieldOf(Finder field) => double.parse(
+          tester.widget<TextField>(field).controller?.text ?? '',
+        );
+        expect(fieldOf(_minField), expected?.min);
+        expect(fieldOf(_maxField), expected?.max);
+        // Within the new currency's orders, a range is kept as typed.
+        await tester.enterText(_minField, '50');
+        await tester.enterText(_maxField, '100');
+        await settle(tester);
+        await tester.tap(find.text('USD'));
+        await settle(tester);
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        expect(fieldOf(_minField), 50);
+        expect(fieldOf(_maxField), 100);
+      },
+    );
+
+    testWidgets(
+      'the options sent are said under the summary: as information while open, in the warning colour once closed; nothing at the defaults (security review of #183, C1)',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        expect(find.textContaining('sent with this order'), findsNothing);
+        await _open(tester);
+        // Opened, all at their defaults: no line either.
+        expect(find.textContaining('sent with this order'), findsNothing);
+        await tester.enterText(_descriptionField, 'Call me');
+        await settle(tester);
+        tester.widget<Slider>(find.byType(Slider)).onChanged?.call(15);
+        await settle(tester);
+        // The escrow timer at 01:00, typed in the picker's keyboard mode.
+        await tester.ensureVisible(find.text('03:00'));
+        await tester.pump();
+        await tester.tap(find.text('03:00'));
+        await settle(tester);
+        await tester.tap(find.byIcon(Icons.keyboard_outlined));
+        await settle(tester);
+        final picker = find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(picker.at(0), '01');
+        await tester.enterText(picker.at(1), '00');
+        await tester.tap(find.text('OK'));
+        await settle(tester);
+        const open =
+            'Advanced options sent with this order: a description, escrow/invoice timer 01:00, fidelity bond 15%.';
+        expect(find.text(open), findsOneWidget);
+        final colors = tester.element(find.text(open)).bull;
+        expect(
+          tester.widget<Text>(find.text(open)).style?.color,
+          colors.textMuted,
+        );
+        await tester.ensureVisible(_advancedSwitch);
+        await tester.pump();
+        await tester.tap(_advancedSwitch);
+        await settle(tester);
+        const closed =
+            'Advanced options closed, but still sent with this order: a description, escrow/invoice timer 01:00, fidelity bond 15%.';
+        expect(find.text(closed), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.text(closed)).style?.color,
+          colors.warning,
+        );
+        // The description itself is never repeated there.
+        expect(find.textContaining('Call me'), findsNothing);
+        // « Clear form »: the defaults again, no line.
+        await tester.tap(find.byTooltip('Clear form'));
+        await settle(tester);
+        expect(find.textContaining('sent with this order'), findsNothing);
+      },
+    );
+
+    group('the slider, by a real drag (functional review of #183, C1)', () {
+      /// Drags the thumb of [from] to [to], values of the slider over the form's limits 105.06 to 999.6 (100 to 1,000 EUR at 2 %); the track taken to run inside 24 points at each end, the drag starting on the thumb.
+      Future<void> drag(WidgetTester tester, double from, double to) async {
+        final slider = find.byType(RangeSlider);
+        await tester.ensureVisible(slider);
+        await tester.pump();
+        final rect = tester.getRect(slider);
+        const low = 105.06;
+        const high = 999.6;
+        double x(double value) =>
+            rect.left + 24 + (rect.width - 48) * (value - low) / (high - low);
+        final y = rect.center.dy;
+        final gesture = await tester.startGesture(Offset(x(from), y));
+        await tester.pump();
+        for (var i = 1; i <= 10; i++) {
+          await gesture.moveTo(Offset(x(from + (to - from) * i / 10), y));
+          await tester.pump();
+        }
+        await gesture.up();
+        await settle(tester);
+      }
+
+      double fieldOf(WidgetTester tester, Finder field) =>
+          double.parse(tester.widget<TextField>(field).controller?.text ?? '');
+
+      Future<void> start(WidgetTester tester) async {
+        final form = _Form()..limits = await limitsOf({2: (50000, 100, 1000)});
+        await _show(tester, form);
+        await _fill(tester, amount: '400');
+        await _open(tester);
+        expect(fieldOf(tester, _minField), 200);
+        expect(fieldOf(tester, _maxField), 400);
+      }
+
+      testWidgets('« to » pulled down to about 280: « From » follows, at 1.6', (
+        tester,
+      ) async {
+        await start(tester);
+        await drag(tester, 400, 280);
+        final min = fieldOf(tester, _minField);
+        final max = fieldOf(tester, _maxField);
+        // The reference: 175-280 (`AmountRange.tsx:101-102`); the drag lands within a few euros.
+        expect(max, inInclusiveRange(260, 300));
+        expect(min, lessThan(200));
+        expect(max / min, closeTo(1.6, 0.02));
+        expect(_createEnabled(tester), isTrue);
+      });
+
+      testWidgets('« From » pulled up to about 300: « to » follows, at 1.6', (
+        tester,
+      ) async {
+        await start(tester);
+        await drag(tester, 200, 300);
+        final min = fieldOf(tester, _minField);
+        final max = fieldOf(tester, _maxField);
+        // The reference: 300-480.
+        expect(min, inInclusiveRange(280, 320));
+        expect(max, greaterThan(400));
+        expect(max / min, closeTo(1.6, 0.02));
+        expect(_createEnabled(tester), isTrue);
+      });
+    });
+
+    testWidgets(
+      'the description: the reference\'s line when too long, the app\'s when not seen as written',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        await _open(tester);
+        await tester.enterText(_descriptionField, 'x' * 241);
+        await settle(tester);
+        expect(
+          find.text('Must be equal to or shorter than 240 characters'),
+          findsOneWidget,
+        );
+        expect(find.text('The description is not valid.'), findsWidgets);
+        expect(_createEnabled(tester), isFalse);
+        await tester.enterText(_descriptionField, 'a${char(0x200B)}b');
+        await settle(tester);
+        expect(
+          find.text(
+            'Others would not see this text as you typed it. Use visible characters only.',
+          ),
+          findsOneWidget,
+        );
+        expect(_createEnabled(tester), isFalse);
+      },
+    );
+
+    testWidgets(
+      '« Create order » sends the range, the description, the durations and the bond size shown',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        await _open(tester);
+        await tester.enterText(_descriptionField, '  Revolut only  ');
+        await settle(tester);
+        final bond = tester.widget<Slider>(find.byType(Slider)).onChanged;
+        bond?.call(5.1);
+        await settle(tester);
+        expect(tester.widget<Slider>(find.byType(Slider)).value, 5);
+        // The public duration chosen in the picker, typed in its keyboard mode: 00:05 becomes the reference's shortest, 00:10.
+        await tapShown(tester, find.text('23:59'));
+        expect(find.text('Public order length'), findsOneWidget);
+        await tester.tap(find.byIcon(Icons.keyboard_outlined));
+        await settle(tester);
+        final picker = find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(picker.at(0), '00');
+        await tester.enterText(picker.at(1), '05');
+        await tester.tap(find.text('OK'));
+        await settle(tester);
+        expect(find.text('00:10'), findsOneWidget);
+        expect(find.text('Estimated Bond: 5,345 Sats'), findsOneWidget);
+        await tapShown(tester, _create);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        final request = form.made.single;
+        final amount = request.amount;
+        expect(amount, isA<RangeOrderAmount>());
+        expect(amount.min.value, 50);
+        expect(amount.max.value, 100);
+        expect(request.description, 'Revolut only');
+        expect(request.publicDuration, const Duration(minutes: 10));
+        expect(request.escrowDuration, const Duration(hours: 3));
+        expect(request.bondSize.percent, 5);
+        // Locked while it is sent.
+        expect(tester.widget<Switch>(_advancedSwitch).onChanged, isNull);
+        expect(tester.widget<Slider>(find.byType(Slider)).onChanged, isNull);
+      },
+    );
+
+    testWidgets(
+      'closed again: the exact amount, the other options kept and sent, as the reference sends them',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        await _open(tester);
+        await tester.enterText(_descriptionField, 'Fast');
+        await settle(tester);
+        tester.widget<Slider>(find.byType(Slider)).onChanged?.call(10);
+        await settle(tester);
+        await tester.tap(_advancedSwitch);
+        await settle(tester);
+        expect(find.text('Description'), findsNothing);
+        expect(
+          find.text('Buy BTC for 100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
+        // The estimate shows the bond size kept: (100 / 93,545) × 10^8 × 10 %.
+        expect(find.text('Estimated Bond: 10,690 Sats'), findsOneWidget);
+        await tapShown(tester, _create);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        final request = form.made.single;
+        expect(request.amount, isA<FixedOrderAmount>());
+        expect(request.description, 'Fast');
+        expect(request.bondSize.percent, 10);
+      },
+    );
+
+    testWidgets(
+      '« Clear form »: the options closed and at their defaults, « Amount Range » as it was',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        await _open(tester);
+        await tester.tap(_rangeSwitch);
+        await settle(tester);
+        await tester.enterText(find.byType(TextField).at(2), 'Fast');
+        tester.widget<Slider>(find.byType(Slider)).onChanged?.call(10);
+        await settle(tester);
+        await tester.tap(find.byTooltip('Clear form'));
+        await settle(tester);
+        expect(tester.widget<Switch>(_advancedSwitch).value, isFalse);
+        expect(find.text('Description'), findsNothing);
+        await _fill(tester);
+        await _open(tester);
+        expect(find.text('Exact Amount'), findsOneWidget);
+        expect(tester.widget<Slider>(find.byType(Slider)).value, 3);
+        expect(find.text('23:59'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextField>(find.byType(TextField).at(2))
+              .controller
+              ?.text,
+          '',
+        );
+      },
+    );
+
+    testWidgets('the French texts of the options', (tester) async {
+      await _show(tester, _Form(), locale: const Locale('fr'));
+      await _fill(tester, locale: const Locale('fr'));
+      await _open(tester);
+      for (final text in [
+        'Activer les options avancées',
+        'Plage de montant',
+        'De',
+        'à',
+        'Description',
+        'Mot de passe',
+        'Durée publique (HH:mm)',
+        'Minuterie de dépôt de garantie/facture (HH:mm)',
+        'Taille de la caution de fidélité',
+        'Emplacement face à face',
+      ]) {
+        expect(find.text(text), findsOneWidget, reason: text);
+      }
+    });
   });
 
   testWidgets('the French texts', (tester) async {

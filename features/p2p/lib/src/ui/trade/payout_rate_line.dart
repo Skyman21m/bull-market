@@ -1,9 +1,9 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
-import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_tolerances.dart';
+import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/usecases/trade/check_payout_rate_usecase.dart';
 import '../../presentation/p2p_formats.dart';
@@ -152,10 +152,14 @@ class PayoutRateLines extends StatelessWidget {
     _ => false,
   };
 
-  /// The contract's amount of [order] as the payout's prompt writes it.
-  static String amountOf(BuildContext context, CoordinatorOrder? order) {
-    if (order == null) return '';
+  /// The contract's amount as the rule's line writes it: the one the rule compares, as asked here ([TradeSeen.contractAmount]: a range's amount kept with the contract, or the terms' fixed amount), never the read's alone (#183, its security review C4); the order's own only where nothing was asked here ([TradeSeen.asked] unknown), as before; nothing while the amount read does not agree, when no line names it.
+  static String amountOf(BuildContext context, TradeSeen seen) {
     final formats = P2pFormats.of(context);
+    if (seen.contractAmount case final amount?) return formats.amount(amount);
+    final order = seen.order;
+    if (order == null || seen.asked != null || seen.contractAmountMoved) {
+      return '';
+    }
     final taken = order.takenAmount;
     return taken == null
         ? formats.orderAmount(order.amount)

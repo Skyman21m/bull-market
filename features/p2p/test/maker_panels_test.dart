@@ -17,6 +17,7 @@ import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
+import 'package:p2p/src/domain/trade/trade_tolerances.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -108,7 +109,17 @@ Future<List<TradeSeen>> _chain(
             now: tradeNow,
             reader: _reader,
           );
-    seen.add(TradeSeen(status, order: order, stored: true));
+    // What was asked here, as the trade reader gives it (`TradeReader.askedOf`).
+    seen.add(
+      TradeSeen(
+        status,
+        order: order,
+        stored: true,
+        asked: switch (made.side) {
+          MadeSide(:final maker) => maker.amount,
+        },
+      ),
+    );
   }
   return seen;
 }
@@ -657,6 +668,33 @@ void main() {
     );
 
     testWidgets(
+      'a range taken for 120 EUR, then shown taken for 60 within the same contract: the change said, no gap beside it (#183, functional review C5)',
+      (tester) async {
+        final terms = madeTerms(range: true);
+        final chain = await _chain([
+          makerOrderJson(0, range: true),
+          makerOrderJson(1, range: true),
+          makerOrderJson(6, range: true, last: _lowSats),
+          makerOrderJson(6, range: true, last: _lowSats, taken: 60),
+        ], terms: terms);
+        final kept = chain[2];
+        expect(kept.contractAmountMoved, isFalse);
+        await _show(tester, kept);
+        // Before the change, the gap of the contract kept, 120 EUR.
+        expect(find.textContaining('sats for 120 EUR'), findsOneWidget);
+        final seen = chain.last;
+        expect(seen.status, isA<WaitingForBoth>());
+        expect(seen.status.has<TradeTermsChanged>(), isTrue);
+        expect(seen.status.trail.takenAmount, 120);
+        expect(seen.order?.takenAmount?.value, 60);
+        expect(seen.contractAmountMoved, isTrue);
+        await _show(tester, seen);
+        expect(find.textContaining('sats for 120 EUR'), findsNothing);
+        expect(find.textContaining('sats for 60 EUR'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'a gap in the maker buyer\'s favour is said in the text colour, never as a warning',
       (tester) async {
         final seen = await _at([
@@ -920,6 +958,307 @@ void main() {
         List<Object>? reads,
         DateTime Function()? now,
       }) => _rateCubit(wallet, reads: reads, now: now);
+
+      testWidgets(
+        'a range\'s contract: the line names the amount taken, the one kept with the contract (#183, functional review C6)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+          ], terms: terms)).last;
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('120 EUR are worth'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        '« Before letting you send … »: the amount kept with a range\'s contract; no figure once the order shows another, or none (security review of #183, C2, C3)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final start = [
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+          ];
+          final kept = (await _chain(start, terms: terms)).last;
+          await _show(tester, kept);
+          expect(
+            find.text(
+              'Before letting you send 120 EUR, we want to make sure you are able to receive the BTC.',
+            ),
+            findsOneWidget,
+          );
+          const noFigure =
+              'Before letting you send the fiat, we want to make sure you are able to receive the BTC.';
+          for (final reread in [
+            makerOrderJson(8, range: true, last: 90000, taken: 60),
+            makerOrderJson(
+              8,
+              range: true,
+              last: 90000,
+              changes: {'amount': null},
+            ),
+            makerOrderJson(
+              6,
+              range: true,
+              last: 90000,
+              changes: {'amount': null},
+            ),
+          ]) {
+            final seen = (await _chain([...start, reread], terms: terms)).last;
+            expect(seen.status.has<TradeTermsChanged>(), isTrue);
+            expect(seen.contractAmountMoved, isTrue);
+            await _show(
+              tester,
+              seen,
+              rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+            );
+            await tester.pump();
+            await tester.pump();
+            expect(find.text(noFigure), findsOneWidget);
+            for (final figure in ['60 EUR', '120 EUR', '200 EUR']) {
+              expect(find.textContaining(figure), findsNothing, reason: figure);
+            }
+            // Neither a comparison nor a gap beside the alert.
+            expect(find.textContaining('are worth'), findsNothing);
+            expect(
+              find.textContaining('from the rate when you made it'),
+              findsNothing,
+            );
+          }
+        },
+      );
+
+      for (final shown in ['1000.00000000', '10.00000000']) {
+        testWidgets(
+          'an order made here for 100 EUR read with ${shown.split('.').first} EUR at 6, 8 and 9: the alert alone, no figure read, no comparison nor gap, « Confirm 100 EUR sent » from the terms (security review of #183, C4, a defect of #182)',
+          (tester) async {
+            final start = [
+              makerOrderJson(0),
+              makerOrderJson(1),
+              makerOrderJson(6, last: 90000),
+            ];
+            final other = shown.startsWith('1000') ? '1,000 EUR' : '10 EUR';
+            for (final (status, before) in [
+              (6, <Map<String, Object?>>[]),
+              (8, [makerOrderJson(8, last: 90000)]),
+              (
+                9,
+                [
+                  makerOrderJson(8, last: 90000),
+                  makerOrderJson(9, last: 90000),
+                ],
+              ),
+            ]) {
+              final seen = (await _chain([
+                ...start,
+                ...before,
+                makerOrderJson(status, last: 90000, changes: {'amount': shown}),
+              ])).last;
+              expect(
+                seen.status.has<TradeTermsChanged>(),
+                isTrue,
+                reason: '$status',
+              );
+              expect(seen.contractAmountMoved, isTrue, reason: '$status');
+              await _show(
+                tester,
+                seen,
+                rate: _rateCubit(() => P2pWalletRateRead(91711.15)),
+              );
+              await tester.pump();
+              await tester.pump();
+              expect(
+                find.textContaining('are worth'),
+                findsNothing,
+                reason: '$status',
+              );
+              expect(
+                find.textContaining('from the rate when you made it'),
+                findsNothing,
+                reason: '$status',
+              );
+              if (status != 9) {
+                expect(
+                  find.text(
+                    'Before letting you send the fiat, we want to make sure you are able to receive the BTC.',
+                  ),
+                  findsOneWidget,
+                  reason: '$status',
+                );
+                expect(find.textContaining('send $other'), findsNothing);
+                expect(find.textContaining('send 100 EUR'), findsNothing);
+              } else {
+                final confirm = find.textContaining('Confirm 100 EUR sent');
+                await _reveal(tester, confirm);
+                await tester.tap(confirm);
+                await tester.pumpAndSettle();
+                final dialog = find.byType(ConfirmFiatSentDialog);
+                expect(dialog, findsOneWidget);
+                for (final text in [
+                  'are worth',
+                  'from the rate when you made it',
+                ]) {
+                  expect(
+                    find.descendant(
+                      of: dialog,
+                      matching: find.textContaining(text),
+                    ),
+                    findsNothing,
+                    reason: text,
+                  );
+                }
+              }
+            }
+          },
+        );
+      }
+
+      testWidgets(
+        'kept 100, read 99.9999995: the alert and the rule\'s silence together, at the very window where the order of the arguments of `sameFiat` matters (5·10⁻⁹ of the read is 4.99999998·10⁻⁷, of the kept 5·10⁻⁷, the gap 4.99999999·10⁻⁷; security review of #183, R5)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000, taken: 100),
+            makerOrderJson(6, range: true, last: 90000, taken: 99.9999995),
+          ], terms: terms)).last;
+          // The state machine's comparison, the read first: another amount; the other way round it would be the same one.
+          expect(TradeTolerances.sameFiat(99.9999995, 100), isFalse);
+          expect(TradeTolerances.sameFiat(100, 99.9999995), isTrue);
+          expect(seen.status.has<TradeTermsChanged>(), isTrue);
+          expect(seen.contractAmountMoved, isTrue);
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('are worth'), findsNothing);
+        },
+      );
+
+      test(
+        'the rule compares nothing for an order made here for 100 EUR read with another fixed amount, at 6, 8 and 9 (security review of #183, C4)',
+        () async {
+          final terms = madeTerms();
+          final maker = switch (terms.side) {
+            MadeSide(:final maker) => maker,
+          };
+          final start = [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ];
+          for (final shown in ['1000.00000000', '10.00000000']) {
+            for (final before in [
+              <Map<String, Object?>>[],
+              [makerOrderJson(8, last: 90000)],
+              [makerOrderJson(8, last: 90000), makerOrderJson(9, last: 90000)],
+            ]) {
+              final status = before.isEmpty
+                  ? 6
+                  : before.length == 1
+                  ? 8
+                  : 9;
+              final chain = await _chain([
+                ...start,
+                ...before,
+                makerOrderJson(status, last: 90000, changes: {'amount': shown}),
+              ]);
+              final seen = chain.last;
+              // Without what was asked carried by the read, the terms the rule holds say it too.
+              final bare = TradeSeen(
+                seen.status,
+                order: seen.order,
+                stored: true,
+              );
+              for (final asked in [null, Sats.fromInt(89978)]) {
+                for (final read in [seen, bare]) {
+                  final subject = CheckPayoutRateUsecase.subjectAt(
+                    _record,
+                    maker,
+                    read,
+                    asked: asked,
+                  );
+                  expect(
+                    subject,
+                    isA<PayoutRateMismatch>(),
+                    reason: '$shown at $status, $asked',
+                  );
+                }
+              }
+            }
+          }
+        },
+      );
+
+      testWidgets(
+        'a range\'s contract read with no amount at 9: the alert alone, no comparison nor gap (security review of #183, C3)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+            makerOrderJson(9, range: true, last: 90000),
+            makerOrderJson(
+              9,
+              range: true,
+              last: 90000,
+              changes: {'amount': null},
+            ),
+          ], terms: terms)).last;
+          expect(seen.contractAmountMoved, isTrue);
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('are worth'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'a range\'s contract shown with another amount: the state machine\'s alert alone, no comparison (#183, functional review C5)',
+        (tester) async {
+          final terms = madeTerms(range: true);
+          final seen = (await _chain([
+            makerOrderJson(0, range: true),
+            makerOrderJson(1, range: true),
+            makerOrderJson(6, range: true, last: 90000),
+            makerOrderJson(6, range: true, last: 150000, taken: 190),
+          ], terms: terms)).last;
+          await _show(
+            tester,
+            seen,
+            rate: _rateCubit(() => P2pWalletRateRead(91711.15), terms: terms),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('are worth'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
 
       // At the creation's price the contract of 90,000 sats gives the buyer 89,978 sats, where 100 EUR are worth 106,899.996 at the Bull wallet's 91,711.15 EUR/BTC with +2 %: more than 10 % fewer.
       final atWallet = P2pWalletRateRead(91711.15);

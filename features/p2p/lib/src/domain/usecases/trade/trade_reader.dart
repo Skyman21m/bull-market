@@ -492,6 +492,12 @@ final class TradeReader {
     return seen;
   }
 
+  /// The order's amount as the maker of [terms] asked it ([TradeSeen.asked]), `null` for a taker.
+  static OrderAmount? askedOf(TradeTerms terms) => switch (terms.side) {
+    MadeSide(:final maker) => maker.amount,
+    _ => null,
+  };
+
   /// The status after [answer] read at [at], from [previous], with the order it was read from when the status comes from it (an answer refused as a whole leaves the last status, whose order is no longer known).
   TradeSeen _seenAfter(
     TradeStatus previous,
@@ -514,6 +520,7 @@ final class TradeReader {
         _ => null,
       },
       requestedAt: status.seenAt == at ? requestedAt : null,
+      asked: askedOf(terms),
     );
   }
 
@@ -565,6 +572,7 @@ final class TradeReader {
             order: attempt.order,
             stored: true,
             requestedAt: attempt.requestedAt,
+            asked: attempt.asked,
           );
           onDisk = true;
         case Err(:final failure):
@@ -585,6 +593,7 @@ final class TradeReader {
                 attempt.status,
                 order: attempt.order,
                 requestedAt: attempt.requestedAt,
+                asked: attempt.asked,
               );
             } else if (round == 0 &&
                 answer != null &&

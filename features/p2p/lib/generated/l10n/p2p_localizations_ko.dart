@@ -1308,6 +1308,10 @@ class P2pLocalizationsKo extends P2pLocalizations {
   }
 
   @override
+  String get p2pTradePayoutPromptNoAmount =>
+      'Before letting you send the fiat, we want to make sure you are able to receive the BTC.';
+
+  @override
   String get p2pTradeTitleInfoGood => 'Your info looks good!';
 
   @override
@@ -3107,6 +3111,101 @@ class P2pLocalizationsKo extends P2pLocalizations {
   String get p2pMakeWhyFormIncorrect => 'You must fill the form correctly';
 
   @override
+  String get p2pMakeAmountRange => 'Amount Range';
+
+  @override
+  String get p2pMakeExactAmount => 'Exact Amount';
+
+  @override
+  String get p2pMakeFrom => 'From';
+
+  @override
+  String get p2pMakeTo => 'to';
+
+  @override
+  String get p2pMakeDescription => 'Description';
+
+  @override
+  String get p2pMakeDescriptionHint =>
+      'You can add more details about your order.';
+
+  @override
+  String p2pMakeDescriptionTooLong(String max) {
+    return 'Must be equal to or shorter than $max characters';
+  }
+
+  @override
+  String get p2pMakePassword => 'Password';
+
+  @override
+  String get p2pMakePasswordHint =>
+      'You can optionally set a password so that only the robots you share it with can take this order.';
+
+  @override
+  String get p2pMakePublicDuration => 'Public Duration (HH:mm)';
+
+  @override
+  String get p2pMakePublicDurationTitle => 'Public order length';
+
+  @override
+  String get p2pMakeEscrowDuration => 'Escrow/Invoice Timer (HH:mm)';
+
+  @override
+  String get p2pMakeEscrowDurationTitle => 'Escrow/invoice step length';
+
+  @override
+  String get p2pMakeBondSize => 'Fidelity Bond Size';
+
+  @override
+  String get p2pMakeBondSizeHint =>
+      'Set the skin-in-the-game, increase for higher safety assurance';
+
+  @override
+  String p2pMakeBondSizeValue(String percent) {
+    return '$percent%';
+  }
+
+  @override
+  String get p2pMakeLocation => 'Face to Face Location';
+
+  @override
+  String get p2pMakeLocationHint => 'Add geolocation for a face to face trade';
+
+  @override
+  String get p2pMakeWhyRangeInvalid => 'The amount range is not valid.';
+
+  @override
+  String get p2pMakeWhyDescriptionInvalid => 'The description is not valid.';
+
+  @override
+  String p2pMakeOptionsSentOpen(String options) {
+    return 'Advanced options sent with this order: $options.';
+  }
+
+  @override
+  String p2pMakeOptionsSentClosed(String options) {
+    return 'Advanced options closed, but still sent with this order: $options.';
+  }
+
+  @override
+  String get p2pMakeOptionSentDescription => 'a description';
+
+  @override
+  String p2pMakeOptionSentPublicDuration(String duration) {
+    return 'public duration $duration';
+  }
+
+  @override
+  String p2pMakeOptionSentEscrowDuration(String duration) {
+    return 'escrow/invoice timer $duration';
+  }
+
+  @override
+  String p2pMakeOptionSentBondSize(String percent) {
+    return 'fidelity bond $percent';
+  }
+
+  @override
   String p2pMakeRateCompare(
     String walletPrice,
     String currency,
@@ -3189,6 +3288,21 @@ class P2pLocalizationsKo extends P2pLocalizations {
 
   @override
   String get p2pMakeTooSmall => 'Your order is too small.';
+
+  @override
+  String get p2pMakeRangeTooNarrow =>
+      'Maximum range amount must be at least 50 percent higher than the minimum amount.';
+
+  @override
+  String get p2pMakeRangeMaxTooBig => 'Your order maximum amount is too big.';
+
+  @override
+  String get p2pMakeRangeMinTooSmall =>
+      'Your order minimum amount is too small.';
+
+  @override
+  String get p2pMakeRangeTooWide =>
+      'Your order amount range is too large. Max amount can only be 15 times bigger than min amount.';
 
   @override
   String p2pMakeBookFull(String coordinator) {

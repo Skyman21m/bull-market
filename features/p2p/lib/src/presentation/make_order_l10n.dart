@@ -23,10 +23,12 @@ extension MakerFormBlockL10n on MakerFormBlock {
       MakerFormBlock.amountOutsideLimits => l10n.p2pMakeWhyOutsideLimits,
       MakerFormBlock.badPaymentMethod => l10n.p2pMakeWhyBadPaymentMethod,
       MakerFormBlock.noAmount => l10n.p2pMakeWhyNoAmount,
+      MakerFormBlock.amountRangeInvalid => l10n.p2pMakeWhyRangeInvalid,
       MakerFormBlock.amountNotPositive => l10n.p2pMakeWhyAmountNotPositive,
       MakerFormBlock.premiumInvalid => l10n.p2pMakeWhyPremiumInvalid,
       MakerFormBlock.premiumNotANumber => l10n.p2pMakeWhyPremiumNotANumber,
       MakerFormBlock.noPaymentMethod => l10n.p2pMakeWhyNoPaymentMethod,
+      MakerFormBlock.descriptionInvalid => l10n.p2pMakeWhyDescriptionInvalid,
       MakerFormBlock.formIncorrect => l10n.p2pMakeWhyFormIncorrect,
     };
   }
@@ -34,7 +36,7 @@ extension MakerFormBlockL10n on MakerFormBlock {
 
 /// Why a make did not happen (#181): a text of the app for each type, never the coordinator's (`AGENTS.md`, « Rules for #180 to #182 »).
 ///
-/// Where the official client shows the coordinator's own message for an error code (`MakerForm.tsx:284-286`): for 1004 and 1005 the text is the start of that message, without the figures the coordinator gives (`api/errors.py:7-8`); for 1037 it is the project's own, after that message (`api/errors.py:44`).
+/// Where the official client shows the coordinator's own message for an error code (`MakerForm.tsx:284-286`): for 1004, 1005, 1007 and 1008 the text is the start of that message, without the figures the coordinator gives (`api/errors.py:7-8`, `:10-11`), for 1006 and 1009 the message itself (`:9`, `:12`, #183); for 1037 it is the project's own, after that message (`api/errors.py:44`).
 extension MakeProblemL10n on MakeProblem {
   /// The text, naming [coordinator], the long alias of the chosen coordinator.
   String toText(BuildContext context, {required String coordinator}) {
@@ -74,6 +76,17 @@ extension MakeProblemL10n on MakeProblem {
         ),
         OrderSizeRefused(reason: OrderSizeRefusal.tooSmall) => after(
           l10n.p2pMakeTooSmall,
+        ),
+        OrderSizeRefused(reason: OrderSizeRefusal.rangeTooNarrow) => after(
+          l10n.p2pMakeRangeTooNarrow,
+        ),
+        OrderSizeRefused(reason: OrderSizeRefusal.rangeMaximumTooBig) => after(
+          l10n.p2pMakeRangeMaxTooBig,
+        ),
+        OrderSizeRefused(reason: OrderSizeRefusal.rangeMinimumTooSmall) =>
+          after(l10n.p2pMakeRangeMinTooSmall),
+        OrderSizeRefused(reason: OrderSizeRefusal.rangeTooWide) => after(
+          l10n.p2pMakeRangeTooWide,
         ),
         OrderBookFull() => after(l10n.p2pMakeBookFull(coordinator)),
         final CoordinatorFailure failure => after(

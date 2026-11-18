@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Every tolerance of the checks of a trade, each with its reason (design note § 3.2, § 4.4, § 7 decision 4).
 ///
 /// Change one only with its reason, and the tests around it: `trade_status_test.dart` checks each at its bound and one step past it.
@@ -21,6 +23,10 @@ abstract final class TradeTolerances {
 
   /// How far two fiat amounts may be and still be the same: the coordinator keeps them with 8 decimals (`DecimalField(decimal_places=8)`, `api/models/order.py:77-84`, `api/models/take_order.py:8`).
   static const double fiatAmount = 5e-9;
+
+  /// Whether the fiat amount [read] (an order's) and [asked] (the terms', or the one kept with a contract) are the same, within [fiatAmount] of [read], at least of 1: the one comparison of fiat amounts of the state machine (`TradeStatus`) and of `TradeSeen.contractAmountMoved`, so that a warning on an amount and the silence of the payment rule beside it never diverge (security review of #183, R1).
+  static bool sameFiat(double read, double asked) =>
+      (read - asked).abs() <= fiatAmount * math.max(1, read.abs());
 
   /// How far two percentages may be and still be the same: the coordinator keeps the premium and the bond size with 2 decimals (`api/models/order.py:91-96`, `:135-140`).
   static const double percent = 0.005;

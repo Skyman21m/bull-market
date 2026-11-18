@@ -6,6 +6,7 @@ import '../p2p_failure.dart';
 import '../trade_record.dart';
 import 'trade_status.dart';
 import 'trade_storable.dart';
+import 'trade_tolerances.dart';
 
 /// A status of a trade as the user saw it, with the order it was read from: what `CancelTradeUsecase` cancels with.
 @immutable
@@ -23,12 +24,52 @@ final class TradeSeen {
   /// When the read [status] comes from was sent, when known: what it shows is no older than that, where [TradeStatus.seenAt] is when its answer was read (review of #132: a read sent before a payout was recorded can come back after it).
   final DateTime? requestedAt;
 
+  /// For a trade made here, the order's amount as its maker asked it (the terms' fixed amount or range), so that a screen judges the amount read against it without the terms at hand ([contractAmount], [contractAmountMoved]); `null` for a taker, whose amounts come from its take or the order as before, and where the terms were not at hand.
+  final OrderAmount? asked;
+
   const TradeSeen(
     this.status, {
     required this.order,
     this.stored = false,
     this.requestedAt,
+    this.asked,
   });
+
+  /// Whether the order read gives the contract another amount than the one asked here: for a range, other than the one kept with the contract (`TradeTrail.takenAmount`, kept from the contract's first read), or none; for a fixed amount ([asked], or [madeAs]), another amount or a range (security review of #183, C4, a defect of #182). The state machine then says the terms changed (`TradeTermsChanged`, or refuses the read as a whole), and nothing compares or words a figure with either amount while it lasts, so that no line reassures beside that alert (#183, C5). A status from no order says nothing moved.
+  bool get contractAmountMoved => contractAmountMovedFrom(asked);
+
+  /// [contractAmountMoved], the order's amount as asked here being [madeAs] (the maker's terms' amount), for a caller that holds the terms.
+  bool contractAmountMovedFrom(OrderAmount? madeAs) {
+    final order = this.order;
+    if (order == null) return false;
+    final kept = status.trail.takenAmount;
+    if (kept != null) {
+      final read = order.takenAmount?.value;
+      // The state machine's own comparison, the amount read first (`_madeTermsChanged`): its warning and this never diverge.
+      return read == null || !TradeTolerances.sameFiat(read, kept);
+    }
+    return switch ((madeAs, order.amount)) {
+      (
+        FixedOrderAmount(amount: final asked),
+        FixedOrderAmount(amount: final read),
+      ) =>
+        !TradeTolerances.sameFiat(read.value, asked.value),
+      (FixedOrderAmount(), RangeOrderAmount()) => true,
+      (RangeOrderAmount(), FixedOrderAmount()) => true,
+      _ => false,
+    };
+  }
+
+  /// The contract's amount as asked here, for a trade made here: a range's amount kept with the contract, or the fixed amount of [asked]; `null` for a taker, a range with none kept, or while the amount read does not agree ([contractAmountMoved]), so that no figure is written from a read alone.
+  FiatAmount? get contractAmount {
+    if (contractAmountMoved) return null;
+    final kept = status.trail.takenAmount;
+    if (kept != null) return FiatAmount.tryCreate(kept);
+    return switch (asked) {
+      FixedOrderAmount(:final amount) => amount,
+      _ => null,
+    };
+  }
 
   @override
   String toString() =>
