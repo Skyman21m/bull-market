@@ -360,6 +360,65 @@ void main() {
     );
 
     test(
+      'before « Submit »: a line become « within the margin » never stops the press (« rate not checked » before, third functional pass of #182, #207); a line become any other one does, once',
+      () async {
+        final (harness, record, six) = await taken();
+        final reads = <Object>[];
+        final port = wallet(const P2pWalletRateUnavailable());
+        final cubit = cubitOf(harness, record, port, reads: reads);
+        await cubit.show(six, appeared: true);
+        expect(
+          (cubit.state as PayoutRateChecked).check,
+          isA<WalletRateUnverified>(),
+        );
+        // Within the margin now: read again, the press goes on.
+        await harness.elapse(const Duration(minutes: 3));
+        port.rate = P2pWalletRateRead(91711.15);
+        expect(await cubit.beforeAct(), isTrue);
+        expect(reads, hasLength(2));
+        final within = (cubit.state as PayoutRateChecked).check;
+        expect(within, isA<WalletRateCompared>());
+        expect(within.warns, isFalse);
+        // « Rate not checked » again: the press stops once.
+        await harness.elapse(const Duration(minutes: 3));
+        port.rate = const P2pWalletRateUnavailable();
+        expect(await cubit.beforeAct(), isFalse);
+        expect(await cubit.beforeAct(), isTrue);
+        // « Rate not checked » of another kind: another line, the press stops once too.
+        await harness.elapse(const Duration(minutes: 3));
+        port.rate = const P2pWalletRateNotPriced();
+        expect(await cubit.beforeAct(), isFalse);
+        expect(
+          (cubit.state as PayoutRateChecked).check,
+          isA<WalletRateNotPriced>(),
+        );
+        expect(await cubit.beforeAct(), isTrue);
+        expect(reads, hasLength(4));
+      },
+    );
+
+    test(
+      'a contract seen late whose invoice was never seen here is an alert whatever else the line says (#207)',
+      () {
+        const step = PayoutRateStep(1, fiatSent: true);
+        for (final state in [
+          const PayoutRateSatsMissing(step, notSeen: true),
+          const PayoutRateAmountsDisagree(step, notSeen: true),
+        ]) {
+          expect(PayoutRateCubit.verdictOf(state), PayoutRateVerdict.warns);
+        }
+        expect(
+          PayoutRateCubit.verdictOf(const PayoutRateAmountsDisagree(step)),
+          PayoutRateVerdict.disagree,
+        );
+        expect(
+          PayoutRateCubit.verdictOf(const PayoutRateSatsMissing(step)),
+          PayoutRateVerdict.satsMissing,
+        );
+      },
+    );
+
+    test(
       'before « Submit » during a read: its end awaited; a line with no warning goes on, a line that warns stops',
       () async {
         for (final (rate, goesOn) in [

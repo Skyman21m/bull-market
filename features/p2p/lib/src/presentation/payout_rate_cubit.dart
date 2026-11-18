@@ -241,7 +241,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     }
   }
 
-  /// Before « Submit » gives the payout, or before the dialog of « Confirm … sent » opens (decided by the coordinator of the work after the reviews of #182): a price read under way is awaited, and a price [freshFor] old read again (within [readBound]); `true` when the line shown did not get worse (the press goes on), `false` when it did ([severityOf]: a warning appears or grows), which the screen then shows, and a second press goes on. A line that got better never stops the press (« rate not checked » that becomes a comparison within the margin, third functional pass of #182, #207); from a read under way, a line with no warning lets the press go on, as the create form's press does. Nothing is ever blocked.
+  /// Before « Submit » gives the payout, or before the dialog of « Confirm … sent » opens (decided by the coordinator of the work after the reviews of #182): a price read under way is awaited, and a price [freshFor] old read again (within [readBound]); `true` when the line shown did not change, or now says the sats are within the margin with no warning (the press goes on: a line that became « within the margin », from a read under way as from « rate not checked » or a warning, never stops it, third functional pass of #182, #207), `false` when it changed to any other line, which the screen then shows, and a second press goes on. Nothing is ever blocked.
   Future<bool> beforeAct() async {
     final maker = _maker;
     final seen = _seen;
@@ -257,19 +257,9 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       }
     }
     if (isClosed) return false;
-    return severityOf(verdictOf(state)) <= severityOf(before);
+    final after = verdictOf(state);
+    return after == before || after == PayoutRateVerdict.within;
   }
-
-  /// How unfavourable a line saying [verdict] is, for [beforeAct]: no warning, a read under way, « rate not checked » (a currency not priced, a price not read, no sats), the amounts' warning, then the red alert.
-  static int severityOf(PayoutRateVerdict verdict) => switch (verdict) {
-    PayoutRateVerdict.none || PayoutRateVerdict.within => 0,
-    PayoutRateVerdict.reading => 1,
-    PayoutRateVerdict.notPriced ||
-    PayoutRateVerdict.unverified ||
-    PayoutRateVerdict.satsMissing => 2,
-    PayoutRateVerdict.disagree => 3,
-    PayoutRateVerdict.warns => 4,
-  };
 
   /// What the line of [state] says.
   static PayoutRateVerdict verdictOf(PayoutRateState state) => switch (state) {
