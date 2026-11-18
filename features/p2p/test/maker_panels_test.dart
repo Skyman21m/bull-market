@@ -657,6 +657,26 @@ void main() {
     );
 
     testWidgets(
+      'a range taken for 120 EUR, then shown taken for 60 within the same contract: the change said, the gap still on the amount kept with the contract (#183)',
+      (tester) async {
+        final terms = madeTerms(range: true);
+        final seen = (await _chain([
+          makerOrderJson(0, range: true),
+          makerOrderJson(1, range: true),
+          makerOrderJson(6, range: true, last: _lowSats),
+          makerOrderJson(6, range: true, last: _lowSats, taken: 60),
+        ], terms: terms)).last;
+        expect(seen.status, isA<WaitingForBoth>());
+        expect(seen.status.has<TradeTermsChanged>(), isTrue);
+        expect(seen.status.trail.takenAmount, 120);
+        expect(seen.order?.takenAmount?.value, 60);
+        await _show(tester, seen);
+        expect(find.textContaining('sats for 120 EUR'), findsOneWidget);
+        expect(find.textContaining('sats for 60 EUR'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'a gap in the maker buyer\'s favour is said in the text colour, never as a warning',
       (tester) async {
         final seen = await _at([
