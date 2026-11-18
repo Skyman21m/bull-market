@@ -247,12 +247,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   /// A thumb of the range's slider moved (`handleRangeAmountChange`, `AmountRange.tsx:79-117`).
-  void _slide(MakerRange next, MakerAmountLimits limits) {
-    final check = _check(context.read<MakeOrderCubit>().state);
-    final previous = MakerRange(
-      check.rangeMin ?? limits.min,
-      check.rangeMax ?? limits.max,
-    );
+  ///
+  /// [previous] is what the slider showed (the bounds typed, held within the form's limits), so that the thumb moved is told from the one that stayed.
+  void _slide(MakerRange previous, MakerRange next, MakerAmountLimits limits) {
     setState(
       () => _setRange(
         MakerRange.slid(previous: previous, next: next, limits: limits),
@@ -1543,7 +1540,12 @@ class _AmountRange extends StatelessWidget {
   final bool enabled;
   final VoidCallback onChanged;
   final VoidCallback onCurrency;
-  final void Function(MakerRange next, MakerAmountLimits limits) onSlide;
+  final void Function(
+    MakerRange previous,
+    MakerRange next,
+    MakerAmountLimits limits,
+  )
+  onSlide;
 
   const _AmountRange({
     required this.min,
@@ -1629,8 +1631,11 @@ class _AmountRange extends StatelessWidget {
                     divisions: 5000,
                     labels: RangeLabels(thumb(values.start), thumb(values.end)),
                     onChanged: enabled
-                        ? (next) =>
-                              onSlide(MakerRange(next.start, next.end), limits)
+                        ? (next) => onSlide(
+                            MakerRange(values.start, values.end),
+                            MakerRange(next.start, next.end),
+                            limits,
+                          )
                         : null,
                   );
                 },
