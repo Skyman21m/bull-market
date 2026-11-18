@@ -3382,4 +3382,8 @@ class P2pLocalizationsBg extends P2pLocalizations {
   @override
   String get p2pTradeBondBackThroughSwap =>
       'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
+
+  @override
+  String get p2pPayoutRateNotSeen =>
+      'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.';
 }

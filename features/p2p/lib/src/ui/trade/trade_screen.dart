@@ -965,7 +965,7 @@ class _Contract extends StatelessWidget {
     final gap = _gapOf(context, status);
     return [
       if (state != null)
-        ...PayoutRateLines.linesOf(
+        ...PayoutRateLines.dialogLinesOf(
           context,
           state,
           coordinator: coordinator,

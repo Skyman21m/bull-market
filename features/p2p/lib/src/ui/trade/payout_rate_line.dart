@@ -62,6 +62,9 @@ class PayoutRateLines extends StatelessWidget {
             ),
             tone: TradeDialogTone.alert,
           ),
+        // At 9, a contract seen late whose invoice was never seen here: said first, in the alert colour (second security review of #182, R9).
+        if (basis is PayoutRateNotSeen)
+          (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
         ...switch (check) {
           WalletRateCompared(
             :final price,
@@ -116,11 +119,30 @@ class PayoutRateLines extends StatelessWidget {
     };
   }
 
+  /// The lines of « Confirm … sent » for [state]: [linesOf], after the state machine's warning on the amounts when the coordinator's figures do not agree, which the dialog would not say otherwise (second security review of #182, R8).
+  static List<TradeDialogLine> dialogLinesOf(
+    BuildContext context,
+    PayoutRateState state, {
+    required String coordinator,
+    required String amount,
+  }) => [
+    if (state is PayoutRateAmountsDisagree ||
+        (state is PayoutRateChecked && state.basis is PayoutRateAskedOnly))
+      (
+        text: P2pLocalizations.of(context).p2pTradeWarnAmounts(coordinator),
+        tone: TradeDialogTone.warning,
+      ),
+    ...linesOf(context, state, coordinator: coordinator, amount: amount),
+  ];
+
   /// Whether the gap from the creation's rate is not shown beside [state]: a comparison with the Bull wallet's price (decided by the coordinator of the work after the functional review of #182: one figure for one question), amounts that do not agree, or a coordinator's figure that moved at 9 (the gap would read it as fixed, security review of #182).
   static bool hidesGap(PayoutRateState? state) => switch (state) {
     PayoutRateAmountsDisagree() => true,
     PayoutRateChecked(:final check, :final basis) =>
-      check is WalletRateCompared || basis is PayoutRateTold,
+      check is WalletRateCompared ||
+          basis is PayoutRateTold ||
+          basis is PayoutRateAskedOnly ||
+          basis is PayoutRateNotSeen,
     _ => false,
   };
 

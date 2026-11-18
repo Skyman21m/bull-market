@@ -5352,6 +5352,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.'**
   String get p2pTradeBondBackThroughSwap;
+
+  /// Not in the RoboSats texts: the project's own, in the alert colour: at 9, a contract seen late (another taker, `ContractSeenLate`) whose payout invoice this app never saw: what is compared is the coordinator's own figure, never checked (#182, second security review R9). Nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.'**
+  String get p2pPayoutRateNotSeen;
 }
 
 class _P2pLocalizationsDelegate

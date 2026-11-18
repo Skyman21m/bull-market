@@ -417,6 +417,61 @@ void main() {
       },
     );
 
+    test(
+      'another figure at the same status (8, then 8): compared again at once, with the price read (N06)',
+      () async {
+        final (harness, record, six) = await taken();
+        harness.coordinator.lockEscrow(record.orderId);
+        final eight = await readOf(harness, record);
+        final reads = <Object>[];
+        final cubit = cubitOf(
+          harness,
+          record,
+          wallet(P2pWalletRateRead(91711.15)),
+          reads: reads,
+        );
+        await cubit.show(eight, appeared: true);
+        final first = (cubit.state as PayoutRateChecked).check.asked;
+        harness.coordinator.order(record.orderId).lastSatoshis = 50000;
+        final halved = await readOf(harness, record);
+        expect(halved.status, isA<WaitingForPayout>());
+        await cubit.show(halved);
+        final check = (cubit.state as PayoutRateChecked).check;
+        expect(check.asked, isNot(first));
+        expect(check.asked, valueOf(PayoutAsk.of(record, halved)).buyerSats);
+        expect(check.warns, isTrue);
+        expect(reads, hasLength(1));
+      },
+    );
+
+    test(
+      'the invoice kept is the contract\'s own: a next contract never inherits the one of the contract before (N12)',
+      () async {
+        final (harness, record, _) = await taken();
+        final memory = PayoutRateMemory();
+        final port = wallet(P2pWalletRateRead(91711.15));
+        final cubit = cubitOf(harness, record, port, memory: memory);
+        // Contract 0 asks an invoice of half.
+        harness.coordinator.order(record.orderId).lastSatoshis = 50000;
+        await cubit.show(await readOf(harness, record), appeared: true);
+        // Back in the book, taken again honestly: contract 1.
+        harness.coordinator.backToBook(record.orderId);
+        await readOf(harness, record);
+        await harness.elapse(const Duration(minutes: 1));
+        harness.coordinator.take(record.orderId, harness.robot(5));
+        final six = await readOf(harness, record);
+        expect(six.status.trail.take, 1);
+        await cubit.show(six);
+        harness.coordinator.order(record.orderId).status = 9;
+        final nine = await readOf(harness, record);
+        await cubit.show(nine);
+        expect(
+          (cubit.state as PayoutRateChecked).basis,
+          const PayoutRateAsked(),
+        );
+      },
+    );
+
     test('a step outside the rule shows nothing and reads nothing', () async {
       final harness = await MakeHarness.start();
       final record = (valueOf(await harness.makeOrder()) as MakeStarted).record;

@@ -414,6 +414,9 @@ class _P2pPageState extends State<_P2pPage> {
   /// How long a tap on an order of the book waits for the active trades' read.
   static const Duration _activeTradesWait = Duration(seconds: 10);
 
+  /// Whether a tap on an order waits for the active trades' read: another tap meanwhile does nothing, so that one page opens (second security review of #182, R11).
+  bool _waitingForTrades = false;
+
   void _show(P2pDestination destination) =>
       setState(() => _destination = destination);
 
@@ -424,15 +427,21 @@ class _P2pPageState extends State<_P2pPage> {
     RobosatsNetwork network,
     ActiveTradesState? active,
   ) async {
+    if (_waitingForTrades) return;
     var known = active;
     if (known is ActiveTradesLoading) {
       final cubit = context.read<ActiveTradesCubit>();
       known = cubit.state;
       if (known is ActiveTradesLoading) {
-        known = await cubit.stream
-            .firstWhere((state) => state is! ActiveTradesLoading)
-            .timeout(_activeTradesWait, onTimeout: () => cubit.state)
-            .catchError((Object _) => cubit.state);
+        _waitingForTrades = true;
+        try {
+          known = await cubit.stream
+              .firstWhere((state) => state is! ActiveTradesLoading)
+              .timeout(_activeTradesWait, onTimeout: () => cubit.state)
+              .catchError((Object _) => cubit.state);
+        } finally {
+          _waitingForTrades = false;
+        }
       }
       if (!mounted || !context.mounted) return;
     }

@@ -269,7 +269,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     PayoutRateAmountsDisagree() => PayoutRateVerdict.disagree,
     PayoutRateChecked(:final check, :final basis) => switch (check) {
       // A coordinator's figure that moved since the invoice is an alert of its own, whatever the price says.
-      _ when basis is PayoutRateTold => PayoutRateVerdict.warns,
+      _ when basis is PayoutRateTold || basis is PayoutRateNotSeen =>
+        PayoutRateVerdict.warns,
       WalletRateCompared(:final warns) =>
         warns ? PayoutRateVerdict.warns : PayoutRateVerdict.within,
       WalletRateNotPriced() => PayoutRateVerdict.notPriced,

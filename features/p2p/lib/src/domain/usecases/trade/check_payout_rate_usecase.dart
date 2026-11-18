@@ -94,15 +94,28 @@ final class CheckPayoutRateUsecase {
         );
       case Chatting(role: TradeRole.buyer, fiatSent: false):
         final last = order?.satoshisNow;
+        if (amount == null) return const PayoutRateNoSats();
+        final disagree = amountsDisagree(status);
+        // The invoice's sats this app kept are its own figure: compared even when the coordinator's figures are missing or do not agree, beside the state machine's warning (second security review of #182, R8).
+        if (asked != null && (last == null || disagree)) {
+          return PayoutRateCompared(
+            received: asked,
+            amount: amount,
+            basis: const PayoutRateAskedOnly(),
+          );
+        }
         // No sats at all is said as such (the state machine's fee warning then only says the same).
-        if (last == null || amount == null) return const PayoutRateNoSats();
-        if (amountsDisagree(status)) return const PayoutRateMismatch(null);
+        if (last == null) return const PayoutRateNoSats();
+        if (disagree) return const PayoutRateMismatch(null);
         final told = maker.payoutAt(last);
         if (asked == null) {
           return PayoutRateCompared(
             received: told,
             amount: amount,
-            basis: const PayoutRateToldNow(),
+            // A contract this app saw only from 9 on (another taker, « seen late »): its invoice was never seen here, which is no restart (second security review of #182, R9).
+            basis: status.has<ContractSeenLate>()
+                ? const PayoutRateNotSeen()
+                : const PayoutRateToldNow(),
           );
         }
         final gap = told.value - asked.value;
@@ -233,6 +246,28 @@ final class PayoutRateTold extends PayoutRateBasis {
 
   @override
   int get hashCode => Object.hash(told, asked);
+}
+
+/// At 9, the coordinator's figures missing or not agreeing: the invoice's sats this app kept for the contract compared alone, the state machine's warning said beside them.
+final class PayoutRateAskedOnly extends PayoutRateBasis {
+  const PayoutRateAskedOnly();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateAskedOnly;
+
+  @override
+  int get hashCode => 5;
+}
+
+/// At 9, a contract seen late (`ContractSeenLate`, another taker) whose invoice this app never saw: the coordinator's figure of now, and an alert that the invoice was not seen.
+final class PayoutRateNotSeen extends PayoutRateBasis {
+  const PayoutRateNotSeen();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateNotSeen;
+
+  @override
+  int get hashCode => 6;
 }
 
 /// At 9 with no invoice's sats kept for the contract (the app started again between 8 and 9, #204): the coordinator's figure of now, said as such.

@@ -4881,5 +4881,9 @@
   "p2pTradeBondBackThroughSwap": "A bond paid with this wallet comes back through the swap service, less its fees, after a delay.",
   "@p2pTradeBondBackThroughSwap": {
     "description": "Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked ») (#182, second review): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised."
+  },
+  "p2pPayoutRateNotSeen": "Bull Market has not seen this contract's payout invoice: do not send the money before checking in the official app.",
+  "@p2pPayoutRateNotSeen": {
+    "description": "Not in the RoboSats texts: the project's own, in the alert colour: at 9, a contract seen late (another taker, `ContractSeenLate`) whose payout invoice this app never saw: what is compared is the coordinator's own figure, never checked (#182, second security review R9). Nothing is blocked."
   }
 }

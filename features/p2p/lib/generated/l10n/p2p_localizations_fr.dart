@@ -3429,4 +3429,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pTradeBondBackThroughSwap =>
       'Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.';
+
+  @override
+  String get p2pPayoutRateNotSeen =>
+      'Bull Market n’a pas vu la facture de paiement de ce contrat : n’envoyez pas l’argent avant d’avoir vérifié dans l’app officielle.';
 }

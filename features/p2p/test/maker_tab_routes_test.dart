@@ -167,9 +167,15 @@ void main() {
       await tester.tap(find.text('100 EUR', findRichText: true).first);
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsNothing);
+      // A second tap while waiting does nothing: one page opens (R11).
+      await tester.tap(
+        find.text('100 EUR', findRichText: true).first,
+        warnIfMissed: false,
+      );
+      await settle(tester);
       records.add(Ok([ActiveTrade(made, const ActiveTradeTakeNeverSent())]));
       await settle(tester);
-      expect(find.byType(TradeScreen), findsOneWidget);
+      expect(find.byType(TradeScreen, skipOffstage: false), findsOneWidget);
       expect(find.byType(OrderDetailsScreen), findsNothing);
     },
   );

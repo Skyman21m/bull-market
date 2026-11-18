@@ -1167,6 +1167,123 @@ void main() {
       );
 
       testWidgets(
+        'the second security review\'s attack E4: an invoice of half kept, then 9 with figures that do not agree: the kept invoice compared anyway, in red, and the amounts\' warning in « Confirm … sent » too (R8)',
+        (tester) async {
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(8, last: 50000),
+            makerOrderJson(
+              9,
+              last: 106900,
+              changes: {'trade_satoshis': 200000},
+            ),
+          ]);
+          expect(chain[4].status.has<MakerFeeAboveAnnounced>(), isTrue);
+          final (_, watch) = await _show(
+            tester,
+            chain[2],
+            rate: rateOf(() => atWallet),
+          );
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('do not add up'), findsOneWidget);
+          expect(
+            find.textContaining('You receive 49,988 sats'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('fewer sats than that'), findsOneWidget);
+          final confirm = find.textContaining('Confirm 100 EUR sent');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          for (final words in ['do not add up', 'fewer sats than that']) {
+            expect(
+              find.descendant(
+                of: find.byType(ConfirmFiatSentDialog),
+                matching: find.textContaining(words),
+              ),
+              findsOneWidget,
+              reason: words,
+            );
+          }
+        },
+      );
+
+      testWidgets(
+        'at 9 with figures that do not agree and nothing kept: the warning alone on the screen, and in « Confirm … sent »',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(8, last: 50000),
+            makerOrderJson(
+              9,
+              last: 106900,
+              changes: {'trade_satoshis': 200000},
+            ),
+          ]);
+          await _show(tester, seen, rate: rateOf(() => atWallet));
+          await tester.pump();
+          expect(
+            find.textContaining('At the Bull wallet\'s price'),
+            findsNothing,
+          );
+          final confirm = find.textContaining('Confirm 100 EUR sent');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining('do not add up'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'the second security review\'s attack E3: an invoice of half given at 6, then 9 under another taker (a contract « seen late »): an alert that its invoice was never seen here, no word of a restart (R9)',
+        (tester) async {
+          final chain = await _chain([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 50000),
+            makerOrderJson(7, last: 50000),
+            makerOrderJson(9, taker: third, last: 106900),
+          ]);
+          expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+          final (_, watch) = await _show(
+            tester,
+            chain[2],
+            rate: rateOf(() => atWallet),
+          );
+          await tester.pump();
+          watch
+            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+          await tester.pump();
+          await tester.pump();
+          final alert = find.text(
+            'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.',
+          );
+          expect(alert, findsOneWidget);
+          expect(tester.widget<Text>(alert).style?.color, testBullTheme.error);
+          expect(
+            find.textContaining('once the app is restarted'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
         'at 9 with nothing kept (the app started again between 8 and 9): the coordinator\'s figure of now, said as such',
         (tester) async {
           final seen = await _at([

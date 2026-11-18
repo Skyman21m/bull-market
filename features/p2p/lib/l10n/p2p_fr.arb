@@ -858,5 +858,6 @@
   "p2pTradeEscrowWaitMaker": "Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.",
   "p2pPayoutRateToldMoved": "{coordinator} annonce maintenant {told} sats pour ce contrat, mais a demandé avant une facture de {asked} sats : Bull Market compare le plus petit des deux. Vérifiez la facture donnée avant de continuer.",
   "p2pPayoutRateToldNow": "Comparé au chiffre que {coordinator} donne maintenant : après un redémarrage de l’app, Bull Market ne garde plus le montant de la facture donnée.",
-  "p2pTradeBondBackThroughSwap": "Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai."
+  "p2pTradeBondBackThroughSwap": "Une caution payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.",
+  "p2pPayoutRateNotSeen": "Bull Market n’a pas vu la facture de paiement de ce contrat : n’envoyez pas l’argent avant d’avoir vérifié dans l’app officielle."
 }
