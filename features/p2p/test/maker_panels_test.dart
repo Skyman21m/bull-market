@@ -1187,6 +1187,27 @@ void main() {
           },
         );
       }
+
+      testWidgets(
+        'captures in French of the payout panel at 6 and 8 (with P2P_CAPTURE_DIR)',
+        skip: captureDirectory == null,
+        (tester) async {
+          await loadCaptureFonts();
+          for (final status in [6, 8]) {
+            final seen = await tester.runAsync(
+              () => _at([
+                makerOrderJson(0),
+                makerOrderJson(1),
+                makerOrderJson(6, last: 90000),
+                if (status == 8) makerOrderJson(8, last: 90000),
+              ]),
+            );
+            if (seen == null) throw StateError('no status');
+            await page(tester, seen, locale: const Locale('fr'));
+            await capture(tester, 'fr-createur-$status-panneau-paiement');
+          }
+        },
+      );
     },
   );
 
