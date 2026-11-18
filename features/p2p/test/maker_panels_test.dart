@@ -994,10 +994,37 @@ void main() {
             String name,
             List<Object> answers, {
             List<PublicOrder>? withBook,
+            P2pWalletBitcoinRate? wallet,
           }) async {
             final seen = await tester.runAsync(() => _at(answers));
             if (seen == null) throw StateError(name);
-            await _show(tester, seen, locale: locale, book: withBook);
+            final maker = switch (madeTerms().side) {
+              MadeSide(:final maker) => maker,
+            };
+            final rate = wallet == null
+                ? null
+                : PayoutRateCubit(_record, (record, seen) async {
+                    final contract = CheckPayoutRateUsecase.contractOf(seen);
+                    if (contract == null) return null;
+                    return WalletRateCheck.ofMakerPayout(
+                      maker,
+                      amount:
+                          maker.contractAmount(contract.rangeAmount) ??
+                          (throw StateError('no amount')),
+                      received: contract.received,
+                      wallet: wallet,
+                    );
+                  });
+            if (rate != null) addTearDown(rate.close);
+            await _show(
+              tester,
+              seen,
+              locale: locale,
+              book: withBook,
+              rate: rate,
+            );
+            await tester.pump();
+            await tester.pump();
             await capture(tester, '$code-createur-$name');
           }
 
@@ -1102,6 +1129,58 @@ void main() {
               await tester.pumpAndSettle();
             }
           }
+          // The owner's payment rule on the buyer's side (#182): red, within, not priced, not read; and in « Confirm … sent ».
+          final low = [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ];
+          await shoot(
+            '6-regle-rouge',
+            low,
+            wallet: P2pWalletRateRead(91711.15),
+          );
+          await shoot('6-regle-info', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+          ], wallet: P2pWalletRateRead(91711.15));
+          await shoot(
+            '6-regle-non-cote',
+            low,
+            wallet: const P2pWalletRateNotPriced(),
+          );
+          await shoot(
+            '6-regle-illisible',
+            low,
+            wallet: const P2pWalletRateUnavailable(),
+          );
+          await shoot('9-regle', [
+            ...low,
+            makerOrderJson(8, last: 90000),
+            makerOrderJson(9, last: 90000),
+          ], wallet: P2pWalletRateRead(91711.15));
+          final confirmRule = find.text(
+            lookupP2pLocalizations(locale).p2pEndConfirmSent('100', 'EUR'),
+          );
+          if (confirmRule.evaluate().isNotEmpty) {
+            await tester.ensureVisible(confirmRule.last);
+            await tester.pump();
+            await tester.tap(confirmRule.last);
+            await tester.pumpAndSettle();
+            final dialog = find.byType(ConfirmFiatSentDialog);
+            if (dialog.evaluate().isNotEmpty) {
+              await capture(tester, '$code-createur-9-dialogue-regle');
+              Navigator.of(tester.element(dialog)).pop(false);
+              await tester.pumpAndSettle();
+            }
+          }
+          await shoot('rupture', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(7, taker: third),
+          ]);
           final before = [
             makerOrderJson(0),
             makerOrderJson(1),
