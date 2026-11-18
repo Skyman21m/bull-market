@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
@@ -15,6 +16,7 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/trade/active_trades_sheet.dart';
+import 'package:p2p/src/ui/trade/pending_make_lines.dart';
 import 'package:p2p/testing.dart'
     show Bolt11TestDecoder, ScriptedFault, ScriptedMakerRequest;
 import 'package:primitives/primitives.dart';
@@ -352,6 +354,34 @@ void main() {
         held.complete(MakePending(_make, MakePendingReason.outcomeUnknown));
         await settle(tester);
         expect(find.text('Set aside'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a make no resolution has read yet shows no « Set aside »',
+      (tester) async {
+        usePhoneScreen(tester);
+        final makes = _Makes();
+        final cubit = makes.cubit()..start();
+        addTearDown(cubit.close);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: BlocProvider.value(
+                value: cubit,
+                child: const PendingMakeLines(),
+              ),
+            ),
+          ),
+        );
+        await settle(tester);
+        expect(find.text('Creating your order…'), findsOneWidget);
+        expect(makes.resolved, isEmpty);
+        expect(find.text('Set aside'), findsNothing);
+        expect(find.text('Retry'), findsOneWidget);
       },
     );
 

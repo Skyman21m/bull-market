@@ -23,6 +23,7 @@ import 'package:p2p/src/presentation/trade_panel.dart';
 import 'package:p2p/src/ui/trade/confirm_cancel_dialog.dart';
 import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
 import 'package:p2p/src/ui/trade/rate_gap_line.dart';
+import 'package:p2p/src/ui/trade/trade_order_details.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
@@ -32,6 +33,7 @@ import 'support/fakes.dart'
     show FakeTransport, bookOrder, coordinator, parseOrders, testNow;
 import 'support/captures.dart';
 import 'support/harness.dart';
+import 'support/make_form.dart' show infoAt;
 import 'support/maker_orders.dart';
 import 'support/trade_harness.dart' show tradeKey;
 import 'support/trade_orders.dart';
@@ -708,6 +710,37 @@ void main() {
           find.textContaining('106,873', findRichText: true),
           findsWidgets,
         );
+      },
+    );
+
+    testWidgets(
+      'the « Order » tab before the sats are fixed: the reference\'s estimate with the maker fee, not the taker\'s (`OrderDetails/index.tsx:194-196`)',
+      (tester) async {
+        final seen = await _at([makerOrderJson(0), makerOrderJson(1)]);
+        final order = seen.order;
+        if (order == null) throw StateError('no order');
+        // temple announces a maker fee of 0.025 % and a taker fee of 0.175 %.
+        final info = await tester.runAsync(
+          () => infoAt('temple', makerFee: 0.00025),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: ListView(
+                children: [
+                  TradeOrderDetails(order: order, now: tradeNow, info: info),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        // 106,900 sats × (1 + 0.025 %) × (1 − 0.1 % of routing budget).
+        expect(find.textContaining('106,820'), findsOneWidget);
+        expect(find.textContaining('106,980'), findsNothing);
       },
     );
 
