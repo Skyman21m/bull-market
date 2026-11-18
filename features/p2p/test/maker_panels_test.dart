@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bull_ui/testing.dart' show testBullTheme;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -129,6 +130,7 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
   Locale locale = const Locale('en'),
   Future<Result<CancelOutcome, CancelRefusal>> Function(TradeSeen seen)? cancel,
   PayoutRateCubit? rate,
+  ValueListenable<bool>? onScreen,
 }) async {
   tester.view
     ..physicalSize = const Size(390, 1600) * 3
@@ -182,13 +184,19 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
               BlocProvider.value(value: page),
               if (rate != null) BlocProvider.value(value: rate),
             ],
-            // A screen of its own at each show, so that a tab chosen in a show before is not kept.
-            child: TradeScreen(
-              key: UniqueKey(),
-              now: () => tradeNow,
-              coordinatorDetails: (_) => throw StateError('not opened'),
-              book: book,
-              checksPayoutRate: rate != null,
+            // Shown or hidden as a tab of the app hides it ([onScreen]).
+            child: ValueListenableBuilder<bool>(
+              valueListenable: onScreen ?? ValueNotifier(true),
+              builder: (context, shown, child) =>
+                  TickerMode(enabled: shown, child: child ?? const SizedBox()),
+              // A screen of its own at each show, so that a tab chosen in a show before is not kept.
+              child: TradeScreen(
+                key: UniqueKey(),
+                now: () => tradeNow,
+                coordinatorDetails: (_) => throw StateError('not opened'),
+                book: book,
+                checksPayoutRate: rate != null,
+              ),
             ),
           ),
         ),
@@ -818,6 +826,7 @@ void main() {
       PayoutRateCubit rateOf(
         P2pWalletBitcoinRate Function() wallet, {
         List<TradeSeen>? reads,
+        DateTime Function()? now,
       }) {
         final maker = switch (madeTerms().side) {
           MadeSide(:final maker) => maker,
@@ -829,7 +838,7 @@ void main() {
             seen,
             wallet: wallet(),
           );
-        }, now: () => tradeNow);
+        }, now: now ?? () => tradeNow);
         addTearDown(cubit.close);
         return cubit;
       }
@@ -862,6 +871,41 @@ void main() {
             findsOneWidget,
           );
           expect(reads, hasLength(1));
+        },
+      );
+
+      testWidgets(
+        'the screen shown again with a read 3 minutes old reads the price again; the watch\'s next read of the same status does not',
+        (tester) async {
+          var clock = tradeNow;
+          final reads = <TradeSeen>[];
+          final shown = ValueNotifier(true);
+          addTearDown(shown.dispose);
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+          ]);
+          final (_, watch) = await _show(
+            tester,
+            seen,
+            rate: rateOf(() => atWallet, reads: reads, now: () => clock),
+            onScreen: shown,
+          );
+          await tester.pump();
+          expect(reads, hasLength(1));
+          clock = clock.add(const Duration(minutes: 4));
+          watch.add(TradeScreenStatuses.watched(seen, of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(1));
+          shown.value = false;
+          await tester.pump();
+          expect(reads, hasLength(1));
+          shown.value = true;
+          await tester.pump();
+          await tester.pump();
+          expect(reads, hasLength(2));
         },
       );
 
