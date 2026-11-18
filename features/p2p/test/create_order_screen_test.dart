@@ -1713,8 +1713,7 @@ void main() {
           double.parse(tester.widget<TextField>(field).controller?.text ?? '');
 
       Future<void> start(WidgetTester tester) async {
-        final form = _Form()
-          ..limits = await limitsOf({2: (50000, 100, 1000)});
+        final form = _Form()..limits = await limitsOf({2: (50000, 100, 1000)});
         await _show(tester, form);
         await _fill(tester, amount: '400');
         await _open(tester);

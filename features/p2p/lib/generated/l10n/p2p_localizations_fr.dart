@@ -3185,7 +3185,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pMakePublicDuration => 'Durée publique (HH:mm)';
 
   @override
-  String get p2pMakePublicDurationTitle => 'Durée de l\'ordre public';
+  String get p2pMakePublicDurationTitle => 'Durée de l’ordre public';
 
   @override
   String get p2pMakeEscrowDuration =>
@@ -3215,11 +3215,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Ajouter une géolocalisation pour un échange en face à face';
 
   @override
-  String get p2pMakeWhyRangeInvalid => 'La plage de montant n\'est pas valide.';
+  String get p2pMakeWhyRangeInvalid => 'La plage de montant n’est pas valide.';
 
   @override
-  String get p2pMakeWhyDescriptionInvalid =>
-      'La description n\'est pas valide.';
+  String get p2pMakeWhyDescriptionInvalid => 'La description n’est pas valide.';
 
   @override
   String p2pMakeRateCompare(
@@ -3304,6 +3303,22 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakeTooSmall => 'Votre ordre est trop petit.';
+
+  @override
+  String get p2pMakeRangeTooNarrow =>
+      'Le montant maximum de la plage doit dépasser d’au moins 50 % le montant minimum.';
+
+  @override
+  String get p2pMakeRangeMaxTooBig =>
+      'Le montant maximum de votre ordre est trop gros.';
+
+  @override
+  String get p2pMakeRangeMinTooSmall =>
+      'Le montant minimum de votre ordre est trop petit.';
+
+  @override
+  String get p2pMakeRangeTooWide =>
+      'La plage de montant de votre ordre est trop large. Le montant maximum ne peut pas dépasser 15 fois le montant minimum.';
 
   @override
   String p2pMakeBookFull(String coordinator) {

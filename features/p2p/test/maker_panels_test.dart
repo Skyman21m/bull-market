@@ -986,7 +986,10 @@ void main() {
           await tester.pump();
           await tester.pump();
           expect(find.textContaining('are worth'), findsNothing);
-          expect(find.textContaining('from the rate when you made it'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
         },
       );
 

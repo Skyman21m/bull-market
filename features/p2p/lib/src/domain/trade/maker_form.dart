@@ -411,11 +411,7 @@ final class MakerRange {
         ? MakerRange(leading, following)
         : MakerRange(following, leading);
     bool fits(MakerRange range) {
-      final errors = MakerFormCheck.rangeErrorsOf(
-        range.min,
-        range.max,
-        limits,
-      );
+      final errors = MakerFormCheck.rangeErrorsOf(range.min, range.max, limits);
       return !errors.min && !errors.max;
     }
 
@@ -441,8 +437,7 @@ final class MakerRange {
 
   static int _digitsOf(double value) => value < 100 ? 2 : 3;
 
-  static double _precise(double value) =>
-      significant(value, _digitsOf(value));
+  static double _precise(double value) => significant(value, _digitsOf(value));
 
   /// [value] rounded up or down at the slider's precision ([_precise]).
   static double _toward(double value, {required bool up}) {

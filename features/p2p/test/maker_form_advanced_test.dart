@@ -590,7 +590,8 @@ void main() {
               expect(
                 errors.min || errors.max,
                 isFalse,
-                reason: '$low-$high: $start → ${next.min}-${next.max}: ${range.min}-${range.max}',
+                reason:
+                    '$low-$high: $start → ${next.min}-${next.max}: ${range.min}-${range.max}',
               );
             }
           }
@@ -607,27 +608,26 @@ void main() {
         (const MakerRange(200, 500), const MakerRange(103, 500)),
         (const MakerRange(200, 500), const MakerRange(200, 980)),
       ]) {
-        final range = slide(
-          previous: previous,
-          next: next,
-          limits: limits,
-        );
+        final range = slide(previous: previous, next: next, limits: limits);
         final check = checkOf(min: '${range.min}', max: '${range.max}');
         expect(check.block, isNull, reason: '$previous → $next: $range');
       }
     });
   });
 
-  test('the package\'s nominal ratios, the coordinator\'s, are no narrower than the form\'s', () {
-    expect(
-      MakeOrderRequest.minRangeRatio,
-      lessThanOrEqualTo(MakerFormCheck.typedMinRangeRatio),
-    );
-    expect(
-      MakeOrderRequest.maxRangeRatio,
-      greaterThan(MakerFormCheck.typedMaxRangeRatio),
-    );
-    expect(MakerAmountLimits.rangeMinMargin, 0.99);
-    expect(MakerAmountLimits.rangeMaxMargin, 1.01);
-  });
+  test(
+    'the package\'s nominal ratios, the coordinator\'s, are no narrower than the form\'s',
+    () {
+      expect(
+        MakeOrderRequest.minRangeRatio,
+        lessThanOrEqualTo(MakerFormCheck.typedMinRangeRatio),
+      );
+      expect(
+        MakeOrderRequest.maxRangeRatio,
+        greaterThan(MakerFormCheck.typedMaxRangeRatio),
+      );
+      expect(MakerAmountLimits.rangeMinMargin, 0.99);
+      expect(MakerAmountLimits.rangeMaxMargin, 1.01);
+    },
+  );
 }

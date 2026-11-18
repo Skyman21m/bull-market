@@ -147,7 +147,10 @@ void main() {
       },
     );
 
-    for (final (direction, moved) in [('raised to 380', 380.0), ('lowered to 120', 120.0)]) {
+    for (final (direction, moved) in [
+      ('raised to 380', 380.0),
+      ('lowered to 120', 120.0),
+    ]) {
       test(
         'another amount shown within the same contract, $direction with the sats of it: the state machine\'s alert alone, nothing compared at 6, 8 and 9 (functional review of #183, C5)',
         () async {
@@ -181,7 +184,12 @@ void main() {
           // Nothing compared, the invoice of 8 kept or not.
           for (final asked in [null, Sats.fromInt(250000)]) {
             expect(
-              CheckPayoutRateUsecase.subjectAt(record, maker, nine, asked: asked),
+              CheckPayoutRateUsecase.subjectAt(
+                record,
+                maker,
+                nine,
+                asked: asked,
+              ),
               isA<PayoutRateMismatch>(),
               reason: '$asked',
             );

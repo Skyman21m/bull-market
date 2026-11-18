@@ -5208,6 +5208,30 @@ abstract class P2pLocalizations {
   /// **'Your order is too small.'**
   String get p2pMakeTooSmall;
 
+  /// The coordinator's message of error 1006 (`api/errors.py:9`, commit ff1998c), which the official client shows, with a final full stop; a range refused by the coordinator (#183). The French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Maximum range amount must be at least 50 percent higher than the minimum amount.'**
+  String get p2pMakeRangeTooNarrow;
+
+  /// The start of the coordinator's message of error 1007 (`api/errors.py:10`, commit ff1998c), which the official client shows; the sizes it gives are not kept (#183). The French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order maximum amount is too big.'**
+  String get p2pMakeRangeMaxTooBig;
+
+  /// The start of the coordinator's message of error 1008 (`api/errors.py:11`, commit ff1998c), which the official client shows; the sizes it gives are not kept (#183). The French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order minimum amount is too small.'**
+  String get p2pMakeRangeMinTooSmall;
+
+  /// The coordinator's message of error 1009 (`api/errors.py:12`, commit ff1998c), which the official client shows, with a final full stop; a range refused by the coordinator (#183). The French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order amount range is too large. Max amount can only be 15 times bigger than min amount.'**
+  String get p2pMakeRangeTooWide;
+
   /// Not in the RoboSats texts: the project's own, after the coordinator's error 1037 (`api/errors.py:44`, commit ff1998c: « The RoboSats {coordinator_alias} coordinator book is at full capacity! Current limit is {max_public_orders} orders »), which the official client shows; written by the project, without the coordinator's limit, followed by « The order was not created. ».
   ///
   /// In en, this message translates to:

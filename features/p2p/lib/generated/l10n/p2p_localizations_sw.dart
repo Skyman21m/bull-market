@@ -3258,6 +3258,21 @@ class P2pLocalizationsSw extends P2pLocalizations {
   String get p2pMakeTooSmall => 'Your order is too small.';
 
   @override
+  String get p2pMakeRangeTooNarrow =>
+      'Maximum range amount must be at least 50 percent higher than the minimum amount.';
+
+  @override
+  String get p2pMakeRangeMaxTooBig => 'Your order maximum amount is too big.';
+
+  @override
+  String get p2pMakeRangeMinTooSmall =>
+      'Your order minimum amount is too small.';
+
+  @override
+  String get p2pMakeRangeTooWide =>
+      'Your order amount range is too large. Max amount can only be 15 times bigger than min amount.';
+
+  @override
   String p2pMakeBookFull(String coordinator) {
     return '$coordinator\'s book is full.';
   }
