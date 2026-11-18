@@ -59,21 +59,30 @@ final class WalletPaymentSlot {
   });
 }
 
-/// Where a payment of the bond, or of the escrow, from this wallet stands, as « Cancel » needs it (#100, #97): [sending] while either is being sent, [sent] while the bond's is on its way (sent, held, or not yet known; not refunded nor settled), [escrowSent] while the escrow's is.
+/// Where a payment of the bond, or of the escrow, from this wallet stands, as « Cancel » needs it (#100, #97): [sending] while either is being sent, [sent] while the bond's is on its way (sent, held, or not yet known; not refunded nor settled), [escrowSent] while the escrow's is; and whether each was paid with this wallet ([bondPaid], [escrowPaid]), for the line that says how a bond or collateral paid so comes back (#207).
 @immutable
 final class WalletBondState {
   final bool sending;
   final bool sent;
   final bool escrowSent;
 
+  /// Whether the bond, and the escrow, were paid with this wallet, as the trade's payment records tell.
+  final WalletPaidHere bondPaid;
+  final WalletPaidHere escrowPaid;
+
   const WalletBondState({
     required this.sending,
     required this.sent,
     this.escrowSent = false,
+    this.bondPaid = WalletPaidHere.no,
+    this.escrowPaid = WalletPaidHere.no,
   });
 
   static const none = WalletBondState(sending: false, sent: false);
 }
+
+/// Whether a bond or an escrow was paid with this wallet, as the trade's payment records tell (#207): [yes] once a payment of this wallet left it (sent, held, paid, being refunded or refunded); [cannotTell] when the records cannot be read, a payment is being sent, or its funds may have left with its end unknown (broadcast not known, expired or failed after sending); [no] otherwise (nothing paid with this wallet, nothing left it, or the records still being read, which takes a moment).
+enum WalletPaidHere { no, yes, cannotTell }
 
 /// Builds what the wallet offers for [request], or `null` when it has nothing to offer: then the section is empty and « Pay with another wallet » opens at once.
 typedef WalletPaymentBuilder =

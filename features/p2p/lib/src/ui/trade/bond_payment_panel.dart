@@ -108,22 +108,42 @@ class BondPaymentPanel extends StatefulWidget {
     _ => WalletPaymentSlot(panel, othersHidden: true),
   };
 
-  /// Where the payments of the bond and of the escrow stand, for « Cancel »: either being sent, or each sent (its funds may have left the wallet). The escrow's is read only where the page provides its cubit.
+  /// Where the payments of the bond and of the escrow stand, for « Cancel »: either being sent, or each sent (its funds may have left the wallet); and whether each was paid with this wallet, for the line under a bond or collateral returned (#207). The escrow's is read only where the page provides its cubit.
   static WalletBondState bondOf(BuildContext context) {
-    final (bondSending, bondSent) = _stateOf(
-      context.watch<BondPaymentCubit>().state.step,
-    );
-    final (escrowSending, escrowSent) = switch (context
-        .watch<EscrowPaymentCubit?>()) {
-      final escrow? => _stateOf(escrow.state.step),
-      null => (false, false),
-    };
+    final bond = context.watch<BondPaymentCubit>().state.step;
+    final escrow = context.watch<EscrowPaymentCubit?>()?.state.step;
+    final (bondSending, bondSent) = _stateOf(bond);
+    final (escrowSending, escrowSent) = escrow == null
+        ? (false, false)
+        : _stateOf(escrow);
     return WalletBondState(
       sending: bondSending || escrowSending,
       sent: bondSent,
       escrowSent: escrowSent,
+      bondPaid: paidHereOf(bond),
+      escrowPaid: escrow == null ? WalletPaidHere.no : paidHereOf(escrow),
     );
   }
+
+  /// Whether the payment at [step] says the invoice was paid with this wallet ([WalletPaidHere]), for the line under a bond or collateral returned (#207).
+  @visibleForTesting
+  static WalletPaidHere paidHereOf(BondPayStep step) => switch (step) {
+    BondPayFollowing(:final progress) ||
+    BondPayPaidElsewhere(:final progress) => switch (progress) {
+      // Its funds may have left, but where the payment ended is not known.
+      P2pWalletPaymentBroadcastUnknown() ||
+      P2pWalletPaymentExpired() ||
+      P2pWalletPaymentFailed() when progress.fundsMayHaveLeft =>
+        WalletPaidHere.cannotTell,
+      _ when progress.fundsMayHaveLeft => WalletPaidHere.yes,
+      _ => WalletPaidHere.no,
+    },
+    BondPayUnreadable() || BondPaySending() => WalletPaidHere.cannotTell,
+    BondPayLooking() ||
+    BondPayIdle() ||
+    BondPayQuoting() ||
+    BondPayConfirming() => WalletPaidHere.no,
+  };
 
   /// Whether a payment at [step] is being sent, and whether it is on its way.
   static (bool, bool) _stateOf(BondPayStep step) => switch (step) {

@@ -3376,7 +3376,7 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String p2pPayoutRateToldNow(String coordinator) {
-    return 'Compared with the figure $coordinator gives now: once the app is restarted, Bull Market no longer keeps the amount of the invoice you gave.';
+    return 'This figure is the one $coordinator gives now: Bull Market does not keep your invoice after a restart. Compare it yourself with your invoice\'s amount.';
   }
 
   @override
@@ -3386,4 +3386,24 @@ class P2pLocalizationsZh extends P2pLocalizations {
   @override
   String get p2pPayoutRateNotSeen =>
       'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.';
+
+  @override
+  String get p2pTradeBondPaidHereBack =>
+      'Your bond was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+
+  @override
+  String get p2pTradeEscrowPaidHereBack =>
+      'Your collateral was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+
+  @override
+  String get p2pTradeBothPaidHereBack =>
+      'Your bond and collateral were paid with this wallet: once returned, they come back through the swap service, less its fees, after a delay.';
+
+  @override
+  String get p2pTradeBondOrEscrowBackThroughSwap =>
+      'A bond or collateral paid with this wallet comes back through the swap service, less its fees, after a delay.';
+
+  @override
+  String get p2pOrderRecordsUnreadable =>
+      'Bull Market could not read its trades: this order may be yours, so it cannot be taken here. Go back and try again.';
 }

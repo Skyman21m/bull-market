@@ -117,18 +117,20 @@ final class PayoutRateChecked extends PayoutRateState {
   });
 }
 
-/// The read of [step] gives no sats the buyer receives: nothing compared, « rate not checked » said rather than nothing.
+/// The read of [step] gives no sats the buyer receives: nothing compared, « rate not checked » said rather than nothing; [notSeen] for a contract seen late at 9 whose invoice this app never saw, whose alert is said too (#207).
 final class PayoutRateSatsMissing extends PayoutRateState {
   final PayoutRateStep step;
+  final bool notSeen;
 
-  const PayoutRateSatsMissing(this.step);
+  const PayoutRateSatsMissing(this.step, {this.notSeen = false});
 }
 
-/// The state machine says the amounts of [step]'s contract do not agree: nothing compared, its warning said alone (security review of #182, C1 bis).
+/// The state machine says the amounts of [step]'s contract do not agree: nothing compared, its warning said alone (security review of #182, C1 bis), but for a contract seen late at 9 whose invoice this app never saw ([notSeen]), whose alert is said beside it (third security pass of #182, R13, #207).
 final class PayoutRateAmountsDisagree extends PayoutRateState {
   final PayoutRateStep step;
+  final bool notSeen;
 
-  const PayoutRateAmountsDisagree(this.step);
+  const PayoutRateAmountsDisagree(this.step, {this.notSeen = false});
 }
 
 /// What a line of the rule says, to tell whether a read changed it.
@@ -239,7 +241,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     }
   }
 
-  /// Before « Submit » gives the payout, or before the dialog of « Confirm … sent » opens (decided by the coordinator of the work after the reviews of #182): a price read under way is awaited, and a price [freshFor] old read again (within [readBound]); `true` when the line shown did not change (the press goes on), `false` when it did, which the screen then shows, and a second press goes on. From a read under way, a line with no warning lets the press go on, as the create form's press does. Nothing is ever blocked.
+  /// Before « Submit » gives the payout, or before the dialog of « Confirm … sent » opens (decided by the coordinator of the work after the reviews of #182): a price read under way is awaited, and a price [freshFor] old read again (within [readBound]); `true` when the line shown did not get worse (the press goes on), `false` when it did ([severityOf]: a warning appears or grows), which the screen then shows, and a second press goes on. A line that got better never stops the press (« rate not checked » that becomes a comparison within the margin, third functional pass of #182, #207); from a read under way, a line with no warning lets the press go on, as the create form's press does. Nothing is ever blocked.
   Future<bool> beforeAct() async {
     final maker = _maker;
     final seen = _seen;
@@ -255,16 +257,27 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       }
     }
     if (isClosed) return false;
-    final after = verdictOf(state);
-    if (after == before) return true;
-    return before == PayoutRateVerdict.reading &&
-        after == PayoutRateVerdict.within;
+    return severityOf(verdictOf(state)) <= severityOf(before);
   }
+
+  /// How unfavourable a line saying [verdict] is, for [beforeAct]: no warning, a read under way, « rate not checked » (a currency not priced, a price not read, no sats), the amounts' warning, then the red alert.
+  static int severityOf(PayoutRateVerdict verdict) => switch (verdict) {
+    PayoutRateVerdict.none || PayoutRateVerdict.within => 0,
+    PayoutRateVerdict.reading => 1,
+    PayoutRateVerdict.notPriced ||
+    PayoutRateVerdict.unverified ||
+    PayoutRateVerdict.satsMissing => 2,
+    PayoutRateVerdict.disagree => 3,
+    PayoutRateVerdict.warns => 4,
+  };
 
   /// What the line of [state] says.
   static PayoutRateVerdict verdictOf(PayoutRateState state) => switch (state) {
     PayoutRateNone() => PayoutRateVerdict.none,
     PayoutRateReading() => PayoutRateVerdict.reading,
+    // A contract seen late whose invoice this app never saw is an alert of its own (#207).
+    PayoutRateSatsMissing(notSeen: true) ||
+    PayoutRateAmountsDisagree(notSeen: true) => PayoutRateVerdict.warns,
     PayoutRateSatsMissing() => PayoutRateVerdict.satsMissing,
     PayoutRateAmountsDisagree() => PayoutRateVerdict.disagree,
     PayoutRateChecked(:final check, :final basis) => switch (check) {
@@ -313,8 +326,14 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     if (isClosed) return;
     emit(switch (subject) {
       null => const PayoutRateNone(),
-      PayoutRateNoSats() => PayoutRateSatsMissing(step),
-      PayoutRateMismatch() => PayoutRateAmountsDisagree(step),
+      PayoutRateNoSats(:final notSeen) => PayoutRateSatsMissing(
+        step,
+        notSeen: notSeen,
+      ),
+      PayoutRateMismatch(:final notSeen) => PayoutRateAmountsDisagree(
+        step,
+        notSeen: notSeen,
+      ),
       final PayoutRateCompared compared =>
         price == null
             ? PayoutRateReading(step)

@@ -94,7 +94,9 @@ final class CheckPayoutRateUsecase {
         );
       case Chatting(role: TradeRole.buyer, fiatSent: false):
         final last = order?.satoshisNow;
-        if (amount == null) return const PayoutRateNoSats();
+        // A contract this app saw only from 9 on (another taker, « seen late »), with no invoice kept: its alert is said whatever the coordinator's figures then say, beside « rate not checked » or the amounts' warning, never hidden by them (third security pass of #182, R13, #207).
+        final notSeen = asked == null && status.has<ContractSeenLate>();
+        if (amount == null) return PayoutRateNoSats(notSeen: notSeen);
         final disagree = amountsDisagree(status);
         // The invoice's sats this app kept are its own figure: compared even when the coordinator's figures are missing or do not agree, beside the state machine's warning (second security review of #182, R8).
         if (asked != null && (last == null || disagree)) {
@@ -105,15 +107,15 @@ final class CheckPayoutRateUsecase {
           );
         }
         // No sats at all is said as such (the state machine's fee warning then only says the same).
-        if (last == null) return const PayoutRateNoSats();
-        if (disagree) return const PayoutRateMismatch(null);
+        if (last == null) return PayoutRateNoSats(notSeen: notSeen);
+        if (disagree) return PayoutRateMismatch(null, notSeen: notSeen);
         final told = maker.payoutAt(last);
         if (asked == null) {
           return PayoutRateCompared(
             received: told,
             amount: amount,
             // A contract this app saw only from 9 on (another taker, « seen late »): its invoice was never seen here, which is no restart (second security review of #182, R9).
-            basis: status.has<ContractSeenLate>()
+            basis: notSeen
                 ? const PayoutRateNotSeen()
                 : const PayoutRateToldNow(),
           );
@@ -181,28 +183,33 @@ final class PayoutRateCompared extends PayoutRateSubject {
   int get hashCode => Object.hash(received, amount, basis);
 }
 
-/// The read gives no sats the buyer receives: nothing compared, and the screen says « rate not checked » rather than nothing.
+/// The read gives no sats the buyer receives: nothing compared, and the screen says « rate not checked » rather than nothing; at 9, for a contract seen late whose invoice this app never saw, with that alert ([notSeen], #207).
 final class PayoutRateNoSats extends PayoutRateSubject {
-  const PayoutRateNoSats();
+  final bool notSeen;
+
+  const PayoutRateNoSats({this.notSeen = false});
 
   @override
-  bool operator ==(Object other) => other is PayoutRateNoSats;
+  bool operator ==(Object other) =>
+      other is PayoutRateNoSats && other.notSeen == notSeen;
 
   @override
-  int get hashCode => 0;
+  int get hashCode => Object.hash(0, notSeen);
 }
 
-/// The state machine says the contract's amounts do not agree: nothing compared, its warning said alone; at 6 and 8 the smallest figure to keep for 9 ([keep]).
+/// The state machine says the contract's amounts do not agree: nothing compared, its warning said alone, but at 9 for a contract seen late whose invoice this app never saw, said with that alert ([notSeen], #207); at 6 and 8 the smallest figure to keep for 9 ([keep]).
 final class PayoutRateMismatch extends PayoutRateSubject {
   final Sats? keep;
+  final bool notSeen;
 
-  const PayoutRateMismatch(this.keep);
-
-  @override
-  bool operator ==(Object other) => other is PayoutRateMismatch;
+  const PayoutRateMismatch(this.keep, {this.notSeen = false});
 
   @override
-  int get hashCode => 1;
+  bool operator ==(Object other) =>
+      other is PayoutRateMismatch && other.notSeen == notSeen;
+
+  @override
+  int get hashCode => Object.hash(1, notSeen);
 }
 
 /// Where the sats compared come from.

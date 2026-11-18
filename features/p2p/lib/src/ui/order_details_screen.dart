@@ -36,6 +36,9 @@ class OrderDetailsScreen extends StatefulWidget {
   /// Whether a `TakeOrderCubit` is above this screen: the feature holds robots only when it was set up with the vault's handle.
   final bool canTake;
 
+  /// Whether the records of this device's trades could not be read when the page was opened (#182, security review R3): the order may be one this device made, so « Take Order » is not offered and one line says why (#207).
+  final bool recordsUnreadable;
+
   /// Opens the Garage from « You do not have a Garage Key », when the tab has one.
   final VoidCallback? onOpenGarage;
 
@@ -47,6 +50,7 @@ class OrderDetailsScreen extends StatefulWidget {
     required this.now,
     required this.coordinatorDetails,
     this.canTake = false,
+    this.recordsUnreadable = false,
     this.onOpenGarage,
     this.onTaken,
   });
@@ -128,13 +132,27 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   const Gap(BullSpacing.md),
                   TakeOrderMakerRow(order: order, canTake: widget.canTake),
                   const Gap(BullSpacing.md),
-                  TakeOrderSection(
-                    order: order,
-                    takerFee: state.info?.takerFee ?? 0,
-                    canTake: widget.canTake,
-                    onOpenGarage: widget.onOpenGarage,
-                    onTaken: widget.onTaken ?? (_) {},
-                  ),
+                  // The records unread, the order may be this device's: why « Take Order » is not there, rather than « You do not have a Garage Key » at its press (#207).
+                  if (widget.recordsUnreadable)
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      child: Text(
+                        l10n.p2pOrderRecordsUnreadable,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: colors.warning),
+                      ),
+                    )
+                  else
+                    TakeOrderSection(
+                      order: order,
+                      takerFee: state.info?.takerFee ?? 0,
+                      canTake: widget.canTake,
+                      onOpenGarage: widget.onOpenGarage,
+                      onTaken: widget.onTaken ?? (_) {},
+                    ),
                 ],
               ),
             ),
