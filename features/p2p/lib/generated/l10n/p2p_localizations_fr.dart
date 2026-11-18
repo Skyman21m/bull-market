@@ -3362,4 +3362,39 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pMakeSendingStay(String coordinator) {
     return 'Attendez la réponse de $coordinator avant de quitter : votre ordre est en cours de création.';
   }
+
+  @override
+  String get p2pPayoutRateReading =>
+      'Lecture du prix du portefeuille Bull pour comparaison…';
+
+  @override
+  String p2pPayoutRateWallet(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, $amount $currency valent $expected sats. Vous recevez $received sats : écart $gap.';
+  }
+
+  @override
+  String p2pPayoutRateWarning(
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'Vous recevez plus de $threshold de sats en moins : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateNotPriced(String currency, String coordinator) {
+    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix annoncé par $coordinator : vérifiez-le vous-même avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateUnverified(String currency) {
+    return 'Le portefeuille Bull n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou continuer sans cette vérification.';
+  }
 }

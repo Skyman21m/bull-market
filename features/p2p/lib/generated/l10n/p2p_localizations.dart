@@ -5269,6 +5269,47 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Wait for the answer of {coordinator} before leaving: your order is being created.'**
   String p2pMakeSendingStay(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the Bull wallet's price being read for the owner's payment rule on a maker buyer's side (design note § 3.3, #182).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the Bull wallet\'s price for comparison…'**
+  String get p2pPayoutRateReading;
+
+  /// Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side (decided on 2026-11-17, design note § 3.3, #182), before « Submit » of the payout and in « Confirm … sent »: information. {price} is the Bull wallet's price of a bitcoin without the premium, written as « Order current rate »; {expected} the sats {amount} is worth at it with the premium, rounded down; {received} the sats the coordinator gives the buyer (`trade_satoshis`); {gap} their gap in percent with its sign.
+  ///
+  /// In en, this message translates to:
+  /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, {amount} {currency} are worth {expected} sats. You receive {received} sats: gap {gap}.'**
+  String p2pPayoutRateWallet(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  );
+
+  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule on a maker buyer's side (#182), beyond the threshold, nothing blocked. {threshold} is the threshold as a percentage, such as « 10% ».
+  ///
+  /// In en, this message translates to:
+  /// **'You receive more than {threshold} fewer sats than that: {received} sats received, {expected} sats expected. Check it before going on.'**
+  String p2pPayoutRateWarning(
+    String threshold,
+    String received,
+    String expected,
+  );
+
+  /// Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side for a currency the Bull wallet does not price (#182, as `p2pPayRateNotPriced` for the bond): no figure, no « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'The Bull wallet has no price for {currency}: rate not checked. You are trusting {coordinator}\'s price: check it yourself before going on.'**
+  String p2pPayoutRateNotPriced(String currency, String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the Bull wallet's price could not be read for the owner's payment rule on a maker buyer's side (#182), with « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'The Bull wallet\'s price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or go on without the check.'**
+  String p2pPayoutRateUnverified(String currency);
 }
 
 class _P2pLocalizationsDelegate

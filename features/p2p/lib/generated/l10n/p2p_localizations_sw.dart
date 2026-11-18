@@ -3315,4 +3315,39 @@ class P2pLocalizationsSw extends P2pLocalizations {
   String p2pMakeSendingStay(String coordinator) {
     return 'Wait for the answer of $coordinator before leaving: your order is being created.';
   }
+
+  @override
+  String get p2pPayoutRateReading =>
+      'Reading the Bull wallet\'s price for comparison…';
+
+  @override
+  String p2pPayoutRateWallet(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, $amount $currency are worth $expected sats. You receive $received sats: gap $gap.';
+  }
+
+  @override
+  String p2pPayoutRateWarning(
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'You receive more than $threshold fewer sats than that: $received sats received, $expected sats expected. Check it before going on.';
+  }
+
+  @override
+  String p2pPayoutRateNotPriced(String currency, String coordinator) {
+    return 'The Bull wallet has no price for $currency: rate not checked. You are trusting $coordinator\'s price: check it yourself before going on.';
+  }
+
+  @override
+  String p2pPayoutRateUnverified(String currency) {
+    return 'The Bull wallet\'s price of a bitcoin in $currency could not be read: rate not checked. You can try again, or go on without the check.';
+  }
 }

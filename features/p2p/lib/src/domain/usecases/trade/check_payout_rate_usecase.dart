@@ -1,4 +1,5 @@
 import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show FiatAmount;
 
 import '../../../../public/p2p_wallet_port.dart';
 import '../../trade/trade_status.dart';
