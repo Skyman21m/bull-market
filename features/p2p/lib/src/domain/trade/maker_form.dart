@@ -376,25 +376,23 @@ final class MakerRange {
 
   /// The range the slider gives when [moved] went to [next] (`handleRangeAmountChange`, `AmountRange.tsx:79-117`): the minimum at most the form's largest amount × 0.98 / 1.6 and the maximum at least 1.6 × the form's smallest × 1.03 (`amountSafeThresholds` applied once more, as the reference writes it), then the other thumb moved so that the ratio stays from 1.6 to 14.8, then each bound to 2 significant digits below 100, 3 from 100.
   ///
-  /// The app's own, after that: when the reference's rounding gives a range its own check refuses ([MakerFormCheck.rangeErrorsOf]: from 20-9,000 with « From » moved to 20.4, the reference writes 20-302, a ratio of 15.1, which it then marks in error), the thumb moved is kept at its rounding (or, at an end of the slider, rounded inwards) and the other one computed again from it by the same ratio, rounded to the nearest, then up, then down, the first range the check takes being written; so the slider never writes a range the form refuses.
+  /// It never writes a range the form refuses ([MakerFormCheck.rangeErrorsOf]). The reference can: from 20-9,000 with « From » moved to 20.4 it writes 20-302, a ratio of 15.1, which its own check then marks in error. When the reference's range is refused, the app writes the accepted range nearest to it: the thumb moved at its rounding, moved inwards when that rounding leaves the form's limits; the other bound computed again from it by the same ratio, held within what the check takes beside it, then rounded at the slider's precision, or at more digits when no rounding at that precision is taken (20-296 for the example). There is always such a range when the form's limits leave room for one at all (the largest amount at least about 1.65 times the smallest; a coordinator's are some 25 times apart): the clamps above keep the minimum low enough and the maximum high enough for the other bound to have room (see [_within]).
   static MakerRange slid({
     required RangeThumb moved,
     required MakerRange next,
     required MakerAmountLimits limits,
   }) {
     final minMoved = moved == RangeThumb.min;
-    var min = next.min;
-    var max = next.max;
     final cap =
         limits.max *
         MakerAmountLimits.maxThreshold /
         MakerFormCheck.minRangeRatio;
-    if (min > cap) min = cap;
     final floor =
         MakerFormCheck.minRangeRatio *
         limits.min *
         MakerAmountLimits.minThreshold;
-    if (max < floor) max = floor;
+    var min = next.min > cap ? cap : next.min;
+    var max = next.max < floor ? floor : next.max;
     // The ratio the reference keeps here, if any: 1.6 when the range is too narrow, 14.8 when too wide.
     double? ratio;
     if (min > max / MakerFormCheck.minRangeRatio) {
@@ -402,52 +400,103 @@ final class MakerRange {
     } else if (min < max / MakerFormCheck.maxRangeRatio) {
       ratio = MakerFormCheck.maxRangeRatio;
     }
-    final leader = minMoved ? min : max;
     double followerOf(double leading) => switch (ratio) {
       final ratio? => minMoved ? ratio * leading : leading / ratio,
       null => minMoved ? max : min,
     };
-    MakerRange pair(double leading, double following) => minMoved
-        ? MakerRange(leading, following)
-        : MakerRange(following, leading);
-    bool fits(MakerRange range) {
-      final errors = MakerFormCheck.rangeErrorsOf(range.min, range.max, limits);
-      return !errors.min && !errors.max;
-    }
+    final leader = minMoved ? min : max;
+    final reference = minMoved
+        ? MakerRange(_precise(leader), _precise(followerOf(leader)))
+        : MakerRange(_precise(followerOf(leader)), _precise(leader));
+    if (_fits(reference, limits)) return reference;
 
-    final reference = pair(_precise(leader), _precise(followerOf(leader)));
-    if (fits(reference)) return reference;
-    for (final leading in [
-      _precise(leader),
-      _toward(leader, up: minMoved),
-      _toward(leader, up: !minMoved),
-    ]) {
-      final following = followerOf(leading);
+    // The thumb moved, at its rounding, within the slider's own span and the form's margins.
+    final double leading;
+    if (minMoved) {
+      final held = leader < limits.min ? limits.min : leader;
+      final rounded = _precise(held);
+      leading = rounded < limits.min * MakerAmountLimits.rangeMinMargin
+          ? _toward(held, up: true)
+          : rounded;
+    } else {
+      final held = leader > limits.max ? limits.max : leader;
+      final rounded = _precise(held);
+      leading = rounded > limits.max * MakerAmountLimits.rangeMaxMargin
+          ? _toward(held, up: false)
+          : rounded;
+    }
+    final room = _within(leading, minMoved: minMoved, limits: limits);
+    var following = followerOf(leading);
+    if (following < room.low) following = room.low;
+    if (following > room.high) following = room.high;
+    MakerRange pair(double other) =>
+        minMoved ? MakerRange(leading, other) : MakerRange(other, leading);
+    for (var digits = _digitsOf(following); digits <= 15; digits++) {
       for (final candidate in [
-        _precise(following),
-        _toward(following, up: true),
-        _toward(following, up: false),
+        _significantDecimals(following, digits),
+        _toward(following, up: true, digits: digits),
+        _toward(following, up: false, digits: digits),
       ]) {
-        final range = pair(leading, candidate);
-        if (fits(range)) return range;
+        final range = pair(candidate);
+        if (_fits(range, limits)) return range;
       }
     }
-    return reference;
+    // Not reached: [following] lies strictly inside [room], so 15 significant digits keep it there.
+    return pair(following);
+  }
+
+  /// Where the bound that follows may lie beside [leading], the bound moved, for the form's check to take the range ([MakerFormCheck.rangeErrorsOf]), held a millionth of a millionth inside so that a rounding at many digits stays in: for a minimum moved, a maximum from 1.5 times it to 14.95 times it and to 1.01 × the form's largest amount; for a maximum moved, a minimum from it divided by 14.95, and 0.99 × the form's smallest amount, to it divided by 1.5.
+  ///
+  /// Not empty when the form's limits leave room for a range: a minimum moved is at most the form's largest × 0.98 / 1.6 (the reference's cap), so 1.5 times it, rounded to the nearest at 2 significant digits (5 % at most), is below 1.01 × the largest, and it is rounded up only when it lies at the form's smallest; a maximum moved is at least 1.6 × 1.03 × the form's smallest, so divided by 1.5, rounded down by a tenth at most, it is above 0.99 × the smallest.
+  static ({double low, double high}) _within(
+    double leading, {
+    required bool minMoved,
+    required MakerAmountLimits limits,
+  }) {
+    const inside = 1e-12;
+    if (minMoved) {
+      final most = MakerFormCheck.typedMaxRangeRatio * leading;
+      final ceiling = limits.max * MakerAmountLimits.rangeMaxMargin;
+      return (
+        low: MakerFormCheck.typedMinRangeRatio * leading * (1 + inside),
+        high: (most < ceiling ? most : ceiling) * (1 - inside),
+      );
+    }
+    final least = leading / MakerFormCheck.typedMaxRangeRatio;
+    final floor = limits.min * MakerAmountLimits.rangeMinMargin;
+    return (
+      low: (least > floor ? least : floor) * (1 + inside),
+      high: leading / MakerFormCheck.typedMinRangeRatio * (1 - inside),
+    );
+  }
+
+  static bool _fits(MakerRange range, MakerAmountLimits limits) {
+    final errors = MakerFormCheck.rangeErrorsOf(range.min, range.max, limits);
+    return !errors.min && !errors.max;
   }
 
   static int _digitsOf(double value) => value < 100 ? 2 : 3;
 
-  static double _precise(double value) => significant(value, _digitsOf(value));
+  static double _precise(double value) =>
+      significant(value, _digitsOf(value));
 
-  /// [value] rounded up or down at the slider's precision ([_precise]).
-  static double _toward(double value, {required bool up}) {
-    if (!value.isFinite || value <= 0) return _precise(value);
-    final digits = _digitsOf(value);
+  /// [value] to [digits] significant digits, and to the amount's decimals at most ([MakerFormCheck.amountDecimals]), so that the field writes it as it is.
+  static double _significantDecimals(double value, int digits) {
+    final rounded = significant(value, digits);
+    return double.parse(
+      rounded.toStringAsFixed(MakerFormCheck.amountDecimals),
+    );
+  }
+
+  /// [value] rounded up or down at [digits] significant digits (the slider's precision by default, [_precise]), and to the amount's decimals at most.
+  static double _toward(double value, {required bool up, int? digits}) {
+    final places = digits ?? _digitsOf(value);
+    if (!value.isFinite || value <= 0) return significant(value, places);
     final exponent = (math.log(value) / math.ln10).floor();
-    final scale = math.pow(10, digits - 1 - exponent).toDouble();
+    final scale = math.pow(10, places - 1 - exponent).toDouble();
     final scaled = value * scale;
     final whole = up ? scaled.ceilToDouble() : scaled.floorToDouble();
-    return significant(whole / scale, digits);
+    return _significantDecimals(whole / scale, places);
   }
 
   @override
@@ -464,6 +513,31 @@ final class MakerRange {
 /// [value] to [digits] significant digits, as JavaScript's `parseFloat(Number(value).toPrecision(digits))`.
 double significant(double value, int digits) =>
     double.parse(value.toStringAsPrecision(digits));
+
+/// The advanced options that differ from the reference's defaults and are sent with the order (#183, security review C1): the summary names them, the options open or closed, since the reference sends them whatever the switch says (`buildOrderAttributes`, `MakerForm.tsx:257-275`) and, closed, they are seen nowhere else. Only that a description is attached, never its text.
+@immutable
+final class MakerOptionsSent {
+  final bool description;
+
+  /// Each `null` when at its default.
+  final Duration? publicDuration;
+  final Duration? escrowDuration;
+  final double? bondSizePercent;
+
+  const MakerOptionsSent({
+    required this.description,
+    required this.publicDuration,
+    required this.escrowDuration,
+    required this.bondSizePercent,
+  });
+
+  /// Whether any is sent: no line when all are at their defaults.
+  bool get any =>
+      description ||
+      publicDuration != null ||
+      escrowDuration != null ||
+      bondSizePercent != null;
+}
 
 /// The create form judged by the reference's rules (`components/MakerForm/MakerForm.tsx`, `AmountRange.tsx`, commit ff1998c; design note `docs/design/phase-3-making-an-order.md` § 1.3, § 1.11, § 2.2), from what is typed and what the chosen coordinator gave: what each field says, the figures under the form, why « Create order » is disabled, or the request it sends.
 ///
@@ -546,6 +620,20 @@ final class MakerFormCheck {
   final Duration publicDuration;
   final Duration escrowDuration;
   final double bondSizePercent;
+
+  /// The advanced options sent that differ from the defaults ([MakerOptionsSent]).
+  MakerOptionsSent get optionsSent => MakerOptionsSent(
+    description: description != null,
+    publicDuration: publicDuration == publicDurationDefault
+        ? null
+        : publicDuration,
+    escrowDuration: escrowDuration == escrowDurationDefault
+        ? null
+        : escrowDuration,
+    bondSizePercent: bondSizePercent == bondSizeDefault
+        ? null
+        : bondSizePercent,
+  );
 
   /// The coordinator's price of a bitcoin in the currency (`/api/limits/`), when it gave a usable one.
   final double? price;

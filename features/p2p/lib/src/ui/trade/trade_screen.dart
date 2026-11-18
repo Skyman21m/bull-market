@@ -814,17 +814,18 @@ class _Contract extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (order != null) ...[
-            _Line(
-              l10n.p2pTradePayoutPrompt(
+            _Line(switch (_payoutPromptAmount(status, order)) {
+              final amount? => l10n.p2pTradePayoutPrompt(
                 formats.payoutAmount(
-                  (order.takenAmount ?? order.amount.max).value,
+                  amount,
                   inBitcoin: order.currency.isBitcoin,
                 ),
                 order.currency.isBitcoin
                     ? l10n.p2pSatsUnit
                     : order.currency.code,
               ),
-            ),
+              null => l10n.p2pTradePayoutPromptNoAmount,
+            }),
             const Gap(BullSpacing.sm),
           ],
           // The owner's payment rule on a maker buyer's side, before « Submit » (#182); the gap from the creation's rate under it, only without a comparison with the Bull wallet's price.
@@ -975,6 +976,18 @@ class _Contract extends StatelessWidget {
     };
     if (step == null || step != shown) return null;
     return state;
+  }
+
+  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount kept with the contract (a range's amount taken, `TradeTrail.takenAmount`, or the fixed amount, which the state machine checks), never a figure read alone; none, and the prompt without a figure, when a range's contract has no amount kept or the order read shows it with another (`TradeSeen.contractAmountMoved`, the state machine then saying the terms changed; security review of #183, C2). A taker's as before: the amount its take chose, or the order's.
+  double? _payoutPromptAmount(TradeStatus status, CoordinatorOrder order) {
+    if (!contract.maker) {
+      return (order.takenAmount ?? order.amount.max).value;
+    }
+    if (TradeSeen(status, order: order).contractAmountMoved) return null;
+    return switch (order.amount) {
+      FixedOrderAmount(:final amount) => amount.value,
+      RangeOrderAmount() => status.trail.takenAmount,
+    };
   }
 
   /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.

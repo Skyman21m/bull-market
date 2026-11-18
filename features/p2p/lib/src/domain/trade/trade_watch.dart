@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -40,9 +38,8 @@ final class TradeSeen {
     // A status from no order (a read refused as a whole, a trail not read yet) shows no amount: nothing moved.
     if (kept == null || order == null) return false;
     final read = order.takenAmount?.value;
-    return read == null ||
-        (read - kept).abs() >
-            TradeTolerances.fiatAmount * math.max(1, kept.abs());
+    // The state machine's own comparison, the amount read first (`_madeTermsChanged`): its warning and this never diverge.
+    return read == null || !TradeTolerances.sameFiat(read, kept);
   }
 
   @override

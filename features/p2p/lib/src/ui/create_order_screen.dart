@@ -581,7 +581,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         onTap: () => unawaited(_chooseHost(state)),
                       ),
                       const Gap(BullSpacing.md),
-                      _Summary(type: _type, check: check, state: state),
+                      _Summary(
+                        type: _type,
+                        check: check,
+                        state: state,
+                        advanced: _advanced,
+                      ),
                       const Gap(BullSpacing.md),
                       _CreateButton(
                         check: check,
@@ -1151,11 +1156,40 @@ class _Summary extends StatelessWidget {
   final MakerFormCheck check;
   final MakeOrderState state;
 
+  /// Whether the advanced options are open: the line of the options sent is information then, in the warning colour while they are closed, where they are seen nowhere else.
+  final bool advanced;
+
   const _Summary({
     required this.type,
     required this.check,
     required this.state,
+    required this.advanced,
   });
+
+  /// The line that names the advanced options sent that differ from the defaults (security review of #183, C1), or `null` when all are at their defaults: that a description is attached (never its text), the public duration, the escrow timer and the bond size.
+  static String? optionsLine(
+    BuildContext context,
+    MakerOptionsSent sent, {
+    required bool advanced,
+  }) {
+    if (!sent.any) return null;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final options = [
+      if (sent.description) l10n.p2pMakeOptionSentDescription,
+      if (sent.publicDuration case final duration?)
+        l10n.p2pMakeOptionSentPublicDuration(_DurationField.hhmm(duration)),
+      if (sent.escrowDuration case final duration?)
+        l10n.p2pMakeOptionSentEscrowDuration(_DurationField.hhmm(duration)),
+      if (sent.bondSizePercent case final percent?)
+        l10n.p2pMakeOptionSentBondSize(
+          l10n.p2pMakeBondSizeValue(formats.number(percent)),
+        ),
+    ].join(', ');
+    return advanced
+        ? l10n.p2pMakeOptionsSentOpen(options)
+        : l10n.p2pMakeOptionsSentClosed(options);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1198,6 +1232,17 @@ class _Summary extends StatelessWidget {
               l10n.p2pMakeEstimatedBond(formats.sats(bond)),
               textAlign: TextAlign.center,
               style: text.labelMedium?.copyWith(color: colors.textMuted),
+            ),
+          ],
+          if (optionsLine(context, check.optionsSent, advanced: advanced)
+              case final line?) ...[
+            const Gap(BullSpacing.xxs),
+            Text(
+              line,
+              textAlign: TextAlign.center,
+              style: text.labelMedium?.copyWith(
+                color: advanced ? colors.textMuted : colors.warning,
+              ),
             ),
           ],
         ],

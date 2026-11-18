@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
@@ -730,8 +729,7 @@ sealed class TradeStatus {
   static bool _near(num a, num b, double tolerance) =>
       (a - b).abs() <= b.abs() * tolerance + TradeTolerances.roundingSats;
 
-  static bool _sameFiat(double a, double b) =>
-      (a - b).abs() <= TradeTolerances.fiatAmount * math.max(1, a.abs());
+  static bool _sameFiat(double a, double b) => TradeTolerances.sameFiat(a, b);
 
   static bool _samePercent(double a, double b) =>
       (a - b).abs() <= TradeTolerances.percent;

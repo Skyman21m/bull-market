@@ -1846,6 +1846,10 @@
       }
     }
   },
+  "p2pTradePayoutPromptNoAmount": "Before letting you send the fiat, we want to make sure you are able to receive the BTC.",
+  "@p2pTradePayoutPromptNoAmount": {
+    "description": "The official client's « Before letting you send {{amountFiat}} {{currencyCode}}, we want to make sure you are able to receive the BTC. » (`Prompts/Payout.tsx`) without its figure: for an order made here whose range's amount taken is not known, or is read as another than the one kept with the contract, where the app writes no figure rather than the coordinator's (security review of #183, C2). The French is the project's, after the reference's."
+  },
   "p2pTradeTitleInfoGood": "Your info looks good!",
   "@p2pTradeTitleInfoGood": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 7 for the buyer (`TradeBox/index.tsx:494`), which `fr.json` misses; the French is the project's."
@@ -4513,6 +4517,55 @@
   "p2pMakeWhyDescriptionInvalid": "The description is not valid.",
   "@p2pMakeWhyDescriptionInvalid": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 526), with its French (`fr.json`, line 526). Why « Create order » is disabled (`MakerForm.tsx:561-563`, #183)."
+  },
+  "p2pMakeOptionsSentOpen": "Advanced options sent with this order: {options}.",
+  "@p2pMakeOptionsSentOpen": {
+    "description": "Not in the RoboSats texts: the project's own: under the create form's summary, the advanced options open, the options sent that differ from the defaults (security review of #183, C1). {options} is the list of `p2pMakeOptionSent…` joined by commas.",
+    "placeholders": {
+      "options": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeOptionsSentClosed": "Advanced options closed, but still sent with this order: {options}.",
+  "@p2pMakeOptionsSentClosed": {
+    "description": "Not in the RoboSats texts: the project's own: under the create form's summary, in the warning colour, the advanced options closed, the options that the reference still sends (`buildOrderAttributes`, `MakerForm.tsx:257-275`) and that differ from the defaults (security review of #183, C1). {options} is the list of `p2pMakeOptionSent…` joined by commas.",
+    "placeholders": {
+      "options": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeOptionSentDescription": "a description",
+  "@p2pMakeOptionSentDescription": {
+    "description": "Not in the RoboSats texts: the project's own: in the list of the options sent, that a description is attached (its text is never repeated there)."
+  },
+  "p2pMakeOptionSentPublicDuration": "public duration {duration}",
+  "@p2pMakeOptionSentPublicDuration": {
+    "description": "Not in the RoboSats texts: the project's own: in the list of the options sent, the public duration as HH:mm.",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeOptionSentEscrowDuration": "escrow/invoice timer {duration}",
+  "@p2pMakeOptionSentEscrowDuration": {
+    "description": "Not in the RoboSats texts: the project's own: in the list of the options sent, the escrow/invoice timer as HH:mm.",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeOptionSentBondSize": "fidelity bond {percent}",
+  "@p2pMakeOptionSentBondSize": {
+    "description": "Not in the RoboSats texts: the project's own: in the list of the options sent, the bond size as `p2pMakeBondSizeValue` writes it.",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
   },
   "p2pMakeRateCompare": "For comparison, the Bull wallet's indicative price: {walletPrice} {currency}/BTC ({coordinator}: {coordinatorPrice}, gap {gap}).",
   "@p2pMakeRateCompare": {
