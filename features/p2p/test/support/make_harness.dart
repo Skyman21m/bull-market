@@ -25,8 +25,11 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/chat_step_action_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_make_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
@@ -87,6 +90,10 @@ final class MakeHarness {
   late final CancelTradeUsecase cancel;
   late final ListActiveTradesUsecase list;
 
+  /// A maker buyer's payout and « fiat sent » (#182): the phase 2 use cases over this run's records.
+  late final SubmitPayoutUsecase payout;
+  late final ChatStepActionUsecase chat;
+
   /// The key work of this run.
   final HarnessKeys keys = HarnessKeys();
 
@@ -134,6 +141,15 @@ final class MakeHarness {
       limiter,
       Federation.robosats,
     );
+    payout = SubmitPayoutUsecase(
+      client,
+      reader,
+      limiter,
+      TradeKeyring(readRobot, keys),
+      locks,
+      invoices,
+    );
+    chat = ChatStepActionUsecase(client, reader, limiter, locks);
     make = MakeOrderUsecase(
       client,
       robots,

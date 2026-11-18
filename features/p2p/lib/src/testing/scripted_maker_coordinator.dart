@@ -27,6 +27,12 @@ enum ScriptedMakerRequest {
 
   /// `POST /api/order/` with the action `cancel`.
   cancel,
+
+  /// `POST /api/order/` with the action `update_invoice`: a maker buyer's payout (#182).
+  payout,
+
+  /// `POST /api/order/` with the action `confirm`: a maker buyer's « fiat sent » (#182).
+  confirm,
 }
 
 /// One order made by a robot of the test on [ScriptedMakerCoordinator], as the coordinator stores it.
@@ -64,6 +70,9 @@ final class ScriptedMadeOrder {
 
   /// Whether a cancel returned the maker bond, or settled it.
   bool bondReturned = false;
+
+  /// The payment hashes of the payout invoices given (#182): one is never taken twice.
+  final Set<String> payoutHashes = {};
   bool bondSettled = false;
 
   ScriptedMadeOrder._({
@@ -385,7 +394,123 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     ScriptedMakerRequest.make => _make(_robotOf(request), request),
     ScriptedMakerRequest.order => _read(_robotOf(request), request),
     ScriptedMakerRequest.cancel => _cancel(_robotOf(request), request),
+    ScriptedMakerRequest.payout => _payout(_robotOf(request), request),
+    ScriptedMakerRequest.confirm => _confirm(_robotOf(request), request),
   };
+
+  /// The maker's made order [request] names, if [robot] is its maker.
+  ScriptedMadeOrder? _ownOrder(RobotIdentity robot, CoordinatorRequest request) {
+    final id = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final made = id == null ? null : orders[id];
+    if (made == null || made.maker.sessionKey != robot.sessionKey) return null;
+    return made;
+  }
+
+  /// A maker buyer's payout (#182): `update_invoice` as the reference answers it (`api/views.py:617-649`, `Logics.update_invoice`, `api/logics.py:752-890`): the clear signature checked against the robot's kept public key and split as `verify_signed_message` splits it (`api/utils.py:628-648`), the invoice of exactly `invoice_amount` less the routing budget, at 6 (→ 7) or 8 (→ 9); a payment hash given before refused (3002).
+  CoordinatorResponse _payout(RobotIdentity robot, CoordinatorRequest request) {
+    final made = _ownOrder(robot, request);
+    if (made == null) {
+      return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
+    }
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final signed = fields['invoice'];
+    final publicKey = _kept[robot.sessionKey]?['public_key'];
+    final verified = signed is String && publicKey is String
+        ? switch (PgpPublicKey.parse(publicKey)) {
+            Ok(:final value) => value.verifyCleartext(signed),
+            Err(:final failure) => Err<String, PgpFailure>(failure),
+          }
+        : const Err<String, PgpFailure>(PgpArmorMalformed());
+    if (signed is! String || verified is Err) {
+      return _json(400, {
+        'error_code': 1048,
+        'bad_request': 'The PGP signed cleartext message is not valid.',
+      });
+    }
+    const header = '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n';
+    const footer = '-----BEGIN PGP SIGNATURE-----';
+    final parts = signed.split(header);
+    if (parts.length < 2) return _json(500, {'detail': 'IndexError'});
+    final text = parts[1].split(footer).first.trim();
+    if (made.type != 0) {
+      return _json(400, {
+        'error_code': 1017,
+        'bad_request': 'Only the buyer of this order can provide it.',
+      });
+    }
+    if (made.status != 6 && made.status != 8) {
+      return _json(400, {
+        'error_code': 3001,
+        'bad_invoice':
+            'You can only submit an invoice after expiration or 3 failed attempts',
+      });
+    }
+    final payout = made.lastSatoshis - (made.lastSatoshis * makerFee).round();
+    final ppm = fields['routing_budget_ppm'];
+    final budget = ppm is int ? ppm : 0;
+    final asked = (payout.toDouble() - payout.toDouble() * (budget / 1000000))
+        .truncate();
+    final facts = switch (decoder.decode(text)) {
+      Ok(:final value) => value,
+      Err() => null,
+    };
+    if (facts == null) {
+      return _json(400, {
+        'bad_invoice': 'Does not look like a valid lightning invoice',
+      });
+    }
+    if (facts.amount.value.toInt() != asked) {
+      return _json(400, {'bad_invoice': 'The invoice provided is not for $asked Sats'});
+    }
+    if (made.payoutHashes.contains(facts.paymentHash)) {
+      return _json(400, {
+        'error_code': 3002,
+        'bad_invoice': 'You must submit a NEW invoice',
+      });
+    }
+    made
+      ..payoutHashes.add(facts.paymentHash)
+      ..status = made.status == 6 ? 7 : 9;
+    return _json(200, _orderJson(made, robot, isMaker: true));
+  }
+
+  /// A maker buyer's « fiat sent » (#182): `confirm` at 9 (→ 10), the step's deadline kept (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); refused elsewhere (1027).
+  CoordinatorResponse _confirm(RobotIdentity robot, CoordinatorRequest request) {
+    final made = _ownOrder(robot, request);
+    if (made == null) {
+      return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
+    }
+    if (made.type != 0 || (made.status != 9 && made.status != 10)) {
+      return _json(400, {
+        'error_code': 1027,
+        'bad_request': 'You cannot confirm the fiat payment at this stage',
+      });
+    }
+    made.status = 10;
+    return _json(200, _orderJson(made, robot, isMaker: true));
+  }
+
+  /// The taker, the seller, locks the escrow of order [id] (`Logics.update_status` on the escrow's lock, `api/logics.py:1469-1481`): 6 → 8, 7 → 9 (#182).
+  void lockEscrow(int id) {
+    final made = order(id);
+    made.status = switch (made.status) {
+      6 => 8,
+      7 => 9,
+      _ => throw StateError('no escrow to lock at ${made.status}'),
+    };
+  }
+
+  /// The taker, the seller, confirms the fiat received at 10: the escrow settled, the buyer paid, the trade succeeded (13, then 14 once paid), the maker bond returned (`Logics.confirm_fiat`, `api/logics.py:1721-1726`) (#182).
+  void sellerConfirms(int id) {
+    final made = order(id);
+    if (made.status != 10) throw StateError('not at 10');
+    made
+      ..status = 14
+      ..bondReturned = true;
+  }
 
   CoordinatorResponse _make(RobotIdentity robot, CoordinatorRequest request) {
     if (_kept[robot.sessionKey] == null) {
@@ -630,7 +755,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       ..['taker_locked'] = status >= 6
       ..['escrow_locked'] = status == 8 || status >= 9;
     if (taker != null) data['taker_hash_id'] = taker.hashId.hex;
-    if (const [6, 7, 8, 10, 11, 13, 14, 15].contains(status)) {
+    // Once both bonds are locked, the chat included (`api/views.py:345-371`, `CCA`).
+    if (const [6, 7, 8, 9, 10, 11, 13, 14, 15].contains(status)) {
       data['trade_satoshis'] = buyer ? payout : escrow;
     }
     switch (status) {
@@ -740,9 +866,18 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         '/api/robot/' => ScriptedMakerRequest.robot,
         '/api/make/' => ScriptedMakerRequest.make,
         '/api/order/' when request.method == CoordinatorHttpMethod.post =>
-          ScriptedMakerRequest.cancel,
+          switch (_actionOf(request)) {
+            'update_invoice' => ScriptedMakerRequest.payout,
+            'confirm' => ScriptedMakerRequest.confirm,
+            _ => ScriptedMakerRequest.cancel,
+          },
         _ => ScriptedMakerRequest.order,
       };
+
+  static String? _actionOf(CoordinatorRequest request) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    return body is Map<String, Object?> ? body['action'] as String? : null;
+  }
 
   /// `Logics.calc_sats` of [amount] for [made] at the price now, truncated as `satoshis_now` (`api/logics.py:256-275`).
   int _satsOf(ScriptedMadeOrder made, double amount) =>

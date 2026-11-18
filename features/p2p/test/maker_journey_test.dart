@@ -1,3 +1,17 @@
+import 'package:p2p/public/p2p_wallet_port.dart';
+import 'package:p2p/src/data/trade_payment_repository_impl.dart';
+import 'package:p2p/src/domain/coordinator_lottery.dart';
+import 'package:p2p/src/domain/robot_host.dart';
+import 'package:p2p/src/domain/trade/bolt11.dart';
+import 'package:p2p/src/domain/trade/bond_payment.dart';
+import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
+import 'package:p2p/src/domain/usecases/fetch_coordinator_limits_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/bond_payments_in_flight.dart';
+import 'package:p2p/src/domain/usecases/trade/check_make_price_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
+import 'package:p2p/src/presentation/make_order_cubit.dart';
+import 'package:p2p/testing.dart' show Bolt11TestInvoice, FakeP2pWalletPort;
+import 'package:robosats/robosats.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
@@ -118,6 +132,150 @@ void main() {
       expect(view.title, TradeTitle.expired);
       expect(view.step, isNull);
       expect(view.cancel, TradeCancelOffer.none);
+    },
+  );
+
+  test(
+    'from the form to a successful end: made by the form\'s cubit, the bond paid from the wallet, public, taken, the wallet\'s payout invoice given, the escrow locked, « fiat sent », the end, the bond\'s payment followed',
+    () async {
+      final harness = await MakeHarness.start();
+      final eur = RobosatsCurrency.fromId(2) ?? (throw StateError('EUR'));
+      final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)))
+        ..rate = const P2pWalletRateUnavailable();
+      final client = CoordinatorClient(harness.coordinator);
+
+      // The form: the coordinators listed, the default drawn, its limits read, the make sent from the press.
+      final form = MakeOrderCubit(
+        harness.network,
+        currency: eur,
+        listHosts: (network) => RobotHosts(network, [
+          RobotHost(harness.host, refusesFirstContacts: false),
+        ]),
+        fetchInfo: FetchCoordinatorInfoUsecase(client).execute,
+        fetchLimits: FetchCoordinatorLimitsUsecase(client).execute,
+        make: harness.make.execute,
+        hasGarageKey: (_) async => const Ok(true),
+        lottery: CoordinatorLottery(() => 0.5),
+        now: () => harness.now,
+        checkPrice: CheckMakePriceUsecase(wallet).execute,
+      );
+      addTearDown(form.close);
+      await form.start();
+      expect(form.state.coordinator, harness.host);
+      final seenAtPress = form.seen() ?? (throw StateError('no price'));
+      await form.make(
+        MakeHarness.request(),
+        coordinator: harness.host,
+        seen: seenAtPress,
+      );
+      final record = switch (form.state.progress) {
+        MakeMade(:final record) => record,
+        final other => throw StateError('not made: $other'),
+      };
+
+      // 0: « Pay with this wallet » pays the maker bond.
+      final payments = TradePaymentRepositoryImpl(harness.database);
+      final payBond = PayBondFromWalletUsecase(
+        harness.reader,
+        harness.limiter,
+        payments,
+        wallet,
+        harness.locks,
+        BondPaymentsInFlight(),
+      );
+      var (view, seen) = await read(harness, record);
+      expect(view.title, TradeTitle.lockBondToPublish);
+      final offered = valueOf(await payBond.checkBond(record, seen));
+      wallet.scriptQuote(
+        Ok(
+          P2pWalletQuote(
+            invoice: offered.walletInvoice,
+            payin: Sats(offered.walletInvoice.amount.value + BigInt.from(120)),
+            networkFee: Sats.fromInt(27),
+            balance: Sats.fromInt(5000000),
+            quotedAt: harness.now,
+          ),
+        ),
+      );
+      final quote = valueOf(await payBond.quoteBond(record, seen));
+      final payment = P2pWalletPayment(
+        id: 'swap-journey',
+        paymentHash: quote.invoice.paymentHash,
+      );
+      wallet.scriptPayment(Ok(payment));
+      valueOf(await payBond.payBond(record, accepted: quote));
+      expect(wallet.paid, hasLength(1));
+      // The swap service's payment locks the hold invoice: the coordinator publishes the order.
+      harness.coordinator.lockMakerBond(record.orderId);
+      (view, seen) = await read(harness, record);
+      expect(view.title, TradeTitle.orderPublic);
+
+      // Taken by a seller: 6, the wallet's payout invoice, « Submit ».
+      harness.coordinator.take(record.orderId, harness.robot(4));
+      (view, seen) = await read(harness, record);
+      expect(view.title, TradeTitle.payout);
+      final ask = valueOf(harness.payout.ask(record, seen));
+      final budget = RoutingBudgetPpm.referenceDefault;
+      final amount = ask.invoiceSatsFor(budget) ?? (throw StateError('none'));
+      final made = Bolt11TestInvoice(
+        network: Bolt11Network.testnet,
+        sats: amount.value.toInt(),
+        seed: 77,
+        createdAt: harness.now,
+        expiry: const Duration(hours: 24),
+        description: 'Bull wallet payout',
+      );
+      harness.coordinator.decoder.add(made);
+      wallet.scriptInvoice(
+        Ok(
+          P2pWalletInvoice(
+            bolt11: made.text,
+            amount: amount,
+            expiresAt: harness.now.add(const Duration(hours: 24)),
+            received: amount,
+          ),
+        ),
+      );
+      final given = valueOf(
+        await PayoutFromWalletUsecase(wallet).invoice(ask, amount),
+      );
+      expect(wallet.invoicesAsked.single.$3, PayoutFromWalletUsecase.payoutKey(ask));
+      final checked = valueOf(
+        harness.payout.check(
+          record,
+          seen,
+          PayoutInvoiceText(given.bolt11, budget: budget),
+        ),
+      );
+      valueOf(await harness.payout.execute(record, checked));
+      (view, seen) = await read(harness, record);
+      expect(seen.status, isA<WaitingForEscrow>());
+      expect(view.title, TradeTitle.infoGood);
+
+      // The seller locks the escrow: 9, « Confirm … sent ».
+      harness.coordinator.lockEscrow(record.orderId);
+      (view, seen) = await read(harness, record);
+      expect(seen.status, isA<Chatting>());
+      expect(view.step, (4, 5));
+      valueOf(await harness.chat.confirmFiatSent(record, seen));
+      (view, seen) = await read(harness, record);
+      expect(view.step, (5, 5));
+
+      // The seller confirms: the end, the maker bond returned by the coordinator; the screen says it from the payment's record only.
+      harness.coordinator.sellerConfirms(record.orderId);
+      (view, seen) = await read(harness, record);
+      expect(seen.status, isA<Succeeded>());
+      expect(view.title, TradeTitle.finished);
+      expect(harness.coordinator.order(record.orderId).bondReturned, isTrue);
+      wallet.setProgress(payment, const Ok(P2pWalletPaymentRefunded()));
+      final followed = await payBond.followBond(record).firstWhere(
+        (watch) => watch is BondPaymentFollowed,
+      );
+      expect(
+        (followed as BondPaymentFollowed).progress,
+        isA<P2pWalletPaymentRefunded>(),
+      );
+      expect(followed.payment.paymentHash, quote.invoice.paymentHash);
     },
   );
 }
