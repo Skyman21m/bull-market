@@ -267,10 +267,15 @@ void main() {
       expect(seen.status, isA<Succeeded>());
       expect(view.title, TradeTitle.finished);
       expect(harness.coordinator.order(record.orderId).bondReturned, isTrue);
-      wallet.setProgress(payment, const Ok(P2pWalletPaymentRefunded()));
-      final followed = await payBond.followBond(record).firstWhere(
-        (watch) => watch is BondPaymentFollowed,
+      // The hold invoice released, the swap service refunds its payment: what the wallet's records say, and the only thing the screen says the bond's return from.
+      wallet.setFound(
+        payment.paymentHash,
+        P2pWalletPaymentFound(
+          payment: payment,
+          progress: const P2pWalletPaymentRefunded(),
+        ),
       );
+      final followed = await payBond.followBond(record).first;
       expect(
         (followed as BondPaymentFollowed).progress,
         isA<P2pWalletPaymentRefunded>(),
