@@ -12,6 +12,7 @@ import '../domain/option_search.dart';
 import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
 import '../domain/trade/trade_make.dart';
+import '../domain/trade/trade_renewal.dart';
 import '../domain/trade/trade_tolerances.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_details_cubit.dart';
@@ -37,6 +38,8 @@ import 'widgets/trade_button.dart';
 /// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy », and « Sell » disabled with « Selling as maker is coming in a later version. »; with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location », disabled with « Coming in a later version. » (#189); « Premium over Market (%) * »; with the advanced options, « Description », « Password » (disabled until #189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
 ///
 /// What is typed stays here; it is judged by [MakerFormCheck] at each build, and the request « Create order » sends is the one the summary shows, taken at the press. From the press the fields are locked: « You do not have a Garage Key » without a key, else « Store your garage key », whose « Done » sends the make once ([MakeOrderCubit.make]), its « Go back » sending nothing. A made order opens its trade ([onMade]); a make refused or not made says why; a make whose outcome is unknown locks the form.
+///
+/// A renewal (#185, [MakeOrderState.renewing]) is the same page titled « Renew Order », its fields filled with the terms this device kept of the order renewed and locked, on that order's coordinator: the same summary, « Estimated Bond », rate and Bull wallet's comparison, the same press and the same make; « Create order » sends only when the form judges its fields into exactly the kept request, and with no « Store your garage key », as the reference's renewal sends at once (`TradeBox/index.tsx:146-200`). Going back sends nothing.
 class CreateOrderScreen extends StatefulWidget {
   /// « Buy » chosen when the form opens, as the reference starts from the book's choice (`fav.type`); `null` for none.
   final OrderType? initialType;
@@ -99,6 +102,50 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   /// Completes when the screen goes away: « Select Host » and the coordinator dialog it opened close then.
   final _gone = Completer<void>();
 
+  /// The renewal whose kept terms fill the fields (#185), once filled.
+  OrderRenewal? _filled;
+
+  @override
+  void initState() {
+    super.initState();
+    if (context.read<MakeOrderCubit>().state.renewal case MakeRenewalReady(
+      :final renewal,
+    )) {
+      _fill(renewal);
+    }
+  }
+
+  /// The fields of a renewal (#185): the kept request written in them as the form reads it back, the advanced options open when it has a range or an option that differs from the defaults, so that each is seen.
+  void _fill(OrderRenewal renewal) {
+    if (_filled != null) return;
+    final request = renewal.request;
+    _filled = renewal;
+    _type = request.type;
+    _methods
+      ..clear()
+      ..add(request.paymentMethod);
+    _premium.text = _plain(request.premium.percent);
+    _description.text = request.description ?? '';
+    _publicDuration = request.publicDuration;
+    _escrowDuration = request.escrowDuration;
+    _bondSize = request.bondSize.percent;
+    switch (request.amount) {
+      case FixedOrderAmount(:final amount):
+        _amount.text = _plain(amount.value);
+        _rangeEnabled = false;
+      case RangeOrderAmount(:final min, :final max):
+        _minAmount.text = _plain(min.value);
+        _maxAmount.text = _plain(max.value);
+        _rangeEnabled = true;
+    }
+    _advanced =
+        request.amount is RangeOrderAmount ||
+        request.description != null ||
+        request.publicDuration != MakerFormCheck.publicDurationDefault ||
+        request.escrowDuration != MakerFormCheck.escrowDurationDefault ||
+        request.bondSize.percent != MakerFormCheck.bondSizeDefault;
+  }
+
   @override
   void dispose() {
     _amount.dispose();
@@ -145,7 +192,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         coordinator == null ||
         seen == null ||
         cubit.state.locked ||
-        context.read<PendingMakesCubit>().state.blocksMaking) {
+        context.read<PendingMakesCubit>().state.blocksMaking ||
+        _renewalMismatch(cubit.state, request)) {
       return;
     }
     setState(() {
@@ -187,12 +235,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         return;
       }
       if (!mounted) return;
-      final done = await StoreTokenDialog.show(context);
-      if (!mounted || !done) return;
+      // A renewal sends at once, as the reference's (`TradeBox/index.tsx:146-200`): the page itself, with its summary, is what the user confirms (#185).
+      if (!cubit.state.renewing) {
+        final done = await StoreTokenDialog.show(context);
+        if (!mounted || !done) return;
+      }
       unawaited(cubit.make(request, coordinator: coordinator, seen: seen));
     } finally {
       if (mounted) setState(() => _asking = false);
     }
+  }
+
+  /// Whether the form renews an order (#185) and [request], what the form judges its fields into, is not exactly the request kept of that order, or the kept terms are not filled yet: nothing is sent then, and the button says why.
+  bool _renewalMismatch(MakeOrderState state, MakeOrderRequest? request) {
+    if (!state.renewing) return false;
+    final filled = _filled;
+    final shown = switch (state.renewal) {
+      MakeRenewalReady(:final renewal) => renewal,
+      _ => null,
+    };
+    return filled == null ||
+        shown != filled ||
+        (request != null && request != filled.request);
   }
 
   /// The amount typed: the Bull wallet's price is compared only once an amount above zero is typed (security review of #181), the range's maximum for a range (#183).
@@ -383,6 +447,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final pending = context.watch<PendingMakesCubit>().state;
     final check = _check(state);
     final locked = state.locked || _asking;
+    // A renewal's fields, currency and coordinator are its order's, never changed (#185).
+    final renewing = state.renewing;
+    final fieldsLocked = locked || renewing;
     final sending = state.progress is MakeSending;
     final coordinator = state.coordinator;
     final coordinatorName = coordinator == null
@@ -411,6 +478,17 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           listener: (context, _) =>
               context.read<MakeOrderCubit>().pendingCleared(),
         ),
+        // A renewal's kept terms read: written in the fields (#185).
+        BlocListener<MakeOrderCubit, MakeOrderState>(
+          listenWhen: (previous, current) =>
+              previous.renewal is! MakeRenewalReady &&
+              current.renewal is MakeRenewalReady,
+          listener: (_, current) {
+            if (current.renewal case MakeRenewalReady(:final renewal)) {
+              setState(() => _fill(renewal));
+            }
+          },
+        ),
         // A pending make a resolution confirmed: its trade, as an order made (#182).
         BlocListener<PendingMakesCubit, PendingMakesState>(
           listenWhen: (previous, current) =>
@@ -436,7 +514,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   const TestnetBanner(),
                 const Gap(BullSpacing.xs),
                 BullTopBar(
-                  title: l10n.p2pNavCreate,
+                  title: renewing ? l10n.p2pRenewOrder : l10n.p2pNavCreate,
                   onBack: () {
                     if (sending) {
                       setState(() => _leaveTried = true);
@@ -448,7 +526,23 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.all(BullSpacing.md),
-                    children: [
+                    children: switch (state.renewal) {
+                      // A renewal whose kept terms are being read, or cannot be (#185): nothing else is shown, nothing can be sent.
+                      MakeRenewalReading() => [
+                        const Center(child: CircularProgressIndicator()),
+                      ],
+                      MakeRenewalRefused(:final refusal) => [
+                        _Line(
+                          refusal.toText(context),
+                          color: colors.warning,
+                          live: true,
+                        ),
+                      ],
+                      MakeRenewalNone() || MakeRenewalReady() => [
+                      if (state.renewal case MakeRenewalReady(:final renewal)) ...[
+                        _Line(l10n.p2pRenewIntro(renewal.orderId.toString())),
+                        const Gap(BullSpacing.md),
+                      ],
                       // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
                       if (pending.unreadable ||
                           (pending.makes?.isNotEmpty ?? false)) ...[
@@ -461,14 +555,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         const Gap(BullSpacing.md),
                       ],
                       _AdvancedOptions(
-                        onClear: locked ? null : _clear,
+                        onClear: fieldsLocked ? null : _clear,
                         advanced: _advanced,
                         loading:
                             !state.coordinatorsLoaded ||
                             state.limits is MakerFormLimitsLoading,
                         // Opened only once the coordinator's limits are read, as the reference's switch (`MakerForm.tsx:710`); closed at any time.
                         onToggle:
-                            locked ||
+                            fieldsLocked ||
                                 (!_advanced &&
                                     (!state.coordinatorsLoaded ||
                                         state.limits is! MakerFormLimitsRead))
@@ -478,7 +572,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       const Gap(BullSpacing.md),
                       _Side(
                         type: _type,
-                        enabled: !locked,
+                        enabled: !fieldsLocked,
                         // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
                         onBuy: () => setState(() => _type = OrderType.buy),
                       ),
@@ -486,7 +580,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       if (_advanced) ...[
                         _RangeSwitch(
                           range: _rangeEnabled,
-                          onChanged: locked ? null : _toggleRange,
+                          onChanged: fieldsLocked ? null : _toggleRange,
                         ),
                         const Gap(BullSpacing.xs),
                       ],
@@ -496,7 +590,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           max: _maxAmount,
                           check: check,
                           currency: state.currency,
-                          enabled: !locked,
+                          enabled: !fieldsLocked,
                           onChanged: _amountChanged,
                           onCurrency: () => unawaited(_chooseCurrency(state)),
                           onSlide: _slide,
@@ -506,7 +600,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           controller: _amount,
                           currency: state.currency,
                           problem: check.amountProblem,
-                          enabled: !locked,
+                          enabled: !fieldsLocked,
                           onChanged: _amountChanged,
                           onCurrency: () => unawaited(_chooseCurrency(state)),
                         ),
@@ -514,7 +608,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       _Methods(
                         methods: _methods,
                         tooLong: check.badPaymentMethod,
-                        enabled: !locked,
+                        enabled: !fieldsLocked,
                         onChoose: () => unawaited(_chooseMethods()),
                         onAdd: () => unawaited(_addMethod()),
                         onRemove: (method) =>
@@ -526,7 +620,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       _PremiumField(
                         controller: _premium,
                         problem: check.premiumProblem,
-                        enabled: !locked,
+                        enabled: !fieldsLocked,
                         onChanged: () => setState(() {}),
                       ),
                       const Gap(BullSpacing.md),
@@ -534,7 +628,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         _Description(
                           controller: _description,
                           check: check,
-                          enabled: !locked,
+                          enabled: !fieldsLocked,
                           onChanged: () => setState(() {}),
                         ),
                         const Gap(BullSpacing.md),
@@ -544,7 +638,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           label: l10n.p2pMakePublicDuration,
                           title: l10n.p2pMakePublicDurationTitle,
                           value: _publicDuration,
-                          enabled: !locked,
+                          enabled: !fieldsLocked,
                           onPicked: (picked) => setState(
                             () => _publicDuration =
                                 MakerFormCheck.publicDurationOf(picked),
@@ -555,7 +649,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           label: l10n.p2pMakeEscrowDuration,
                           title: l10n.p2pMakeEscrowDurationTitle,
                           value: _escrowDuration,
-                          enabled: !locked,
+                          enabled: !fieldsLocked,
                           onPicked: (picked) => setState(
                             () => _escrowDuration =
                                 MakerFormCheck.escrowDurationOf(picked),
@@ -564,7 +658,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         const Gap(BullSpacing.md),
                         _BondSizeSlider(
                           value: _bondSize,
-                          onChanged: locked
+                          onChanged: fieldsLocked
                               ? null
                               : (value) => setState(
                                   () => _bondSize = MakerFormCheck.bondSizeOf(
@@ -578,6 +672,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         state: state,
                         name: coordinatorName,
                         enabled: !locked && state.coordinatorsLoaded,
+                        // A renewal goes to its order's coordinator, with no « Select Host » (#185); « Retry » stays.
+                        chooses: !renewing,
                         onTap: () => unawaited(_chooseHost(state)),
                       ),
                       const Gap(BullSpacing.md),
@@ -598,6 +694,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         leaveTried: sending && _leaveTried,
                         asking: _asking,
                         stopped: _stopped,
+                        renewalMismatch: _renewalMismatch(state, check.request),
                         coordinator: coordinatorName,
                         onPressed: () => unawaited(_press()),
                       ),
@@ -608,6 +705,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         coordinator: coordinatorName,
                       ),
                     ],
+                    },
                   ),
                 ),
               ],
@@ -1061,12 +1159,16 @@ class _Coordinator extends StatelessWidget {
   final MakeOrderState state;
   final String name;
   final bool enabled;
+
+  /// Whether « Select Host » can be opened: not for a renewal (#185).
+  final bool chooses;
   final VoidCallback onTap;
 
   const _Coordinator({
     required this.state,
     required this.name,
     required this.enabled,
+    required this.chooses,
     required this.onTap,
   });
 
@@ -1092,9 +1194,10 @@ class _Coordinator extends StatelessWidget {
         ],
       );
     }
+    final opens = enabled && chooses;
     return Semantics(
       button: true,
-      enabled: enabled,
+      enabled: opens,
       label: l10n.p2pMakeChooseHost,
       child: Material(
         color: colors.surface,
@@ -1103,7 +1206,7 @@ class _Coordinator extends StatelessWidget {
           side: BorderSide(color: colors.outline),
         ),
         child: InkWell(
-          onTap: enabled ? onTap : null,
+          onTap: opens ? onTap : null,
           borderRadius: BorderRadius.circular(BullRadius.xxs),
           child: Padding(
             padding: const EdgeInsets.all(BullSpacing.sm),
@@ -1140,7 +1243,8 @@ class _Coordinator extends StatelessWidget {
                           ],
                         ),
                 ),
-                Icon(Icons.arrow_drop_down, color: colors.textMuted),
+                if (chooses)
+                  Icon(Icons.arrow_drop_down, color: colors.textMuted),
               ],
             ),
           ),
@@ -1277,6 +1381,9 @@ class _CreateButton extends StatelessWidget {
 
   /// Why the last press stopped, the form showing something else.
   final _PressStopped? stopped;
+
+  /// Whether a renewal's fields are not judged into exactly its kept request (#185): nothing can be sent, and a line says so.
+  final bool renewalMismatch;
   final String coordinator;
   final VoidCallback onPressed;
 
@@ -1288,6 +1395,7 @@ class _CreateButton extends StatelessWidget {
     required this.leaveTried,
     required this.asking,
     required this.stopped,
+    required this.renewalMismatch,
     required this.coordinator,
     required this.onPressed,
   });
@@ -1298,7 +1406,8 @@ class _CreateButton extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final progress = state.progress;
     final block = check.block;
-    final ready = block == null && progress is MakeIdle && !pendingFirst;
+    final ready =
+        block == null && progress is MakeIdle && !pendingFirst && !renewalMismatch;
     final button = TradeButton(
       label: l10n.p2pMakeCreateOrder,
       busy: asking || progress is MakeSending,
@@ -1307,6 +1416,8 @@ class _CreateButton extends StatelessWidget {
     final lines = <Widget>[
       if (block != null && progress is MakeIdle)
         _Line(block.toText(context), live: true),
+      if (block == null && renewalMismatch && progress is MakeIdle)
+        _Line(l10n.p2pRenewNotAsKept, color: colors.warning, live: true),
       // A pending make of the network first (#182): said under the button too, where the reason of a disabled button is.
       if (block == null && pendingShown && progress is MakeIdle)
         _Line(l10n.p2pMakePendingFirst, live: true),

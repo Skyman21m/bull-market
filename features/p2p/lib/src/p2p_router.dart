@@ -80,13 +80,26 @@ final class P2pCreateRouteArgs {
   /// The book of the tab, handed to the trade of the order made ([P2pTradeRouteArgs.book], #182).
   final List<PublicOrder>? book;
 
+  /// The trade of the order made here that the page renews (#185), `null` for a creation.
+  final TradeRecord? renewing;
+
   const P2pCreateRouteArgs(
     this.network, {
     required this.currency,
     this.initialType,
     this.offline = const {},
     this.book,
-  });
+  }) : renewing = null;
+
+  /// The renewal's page of the order of [record] (#185), from its trade's page: the form filled with that order's kept terms, on its coordinator; [currency] stands until those terms are read, and is shown nowhere.
+  P2pCreateRouteArgs.renewal(TradeRecord record, {this.book})
+    : network = record.network,
+      currency =
+          RobosatsCurrency.fromCode('USD') ??
+          (throw StateError('USD is in the RoboSats currencies')),
+      initialType = null,
+      offline = const {},
+      renewing = record;
 
   /// The create page's start from [book], the book of the tab (#182): « Buy » when it shows the orders a buyer takes and « Sell » when it shows a seller's, as the reference's form takes its side from the book's filter (`fav.type`, `MakerForm.tsx:258`); the first currency it shows, USD for any (`MakerForm.tsx:98-100`); the coordinators it could not reach; and every order it received.
   static P2pCreateRouteArgs fromBook(BookState book) {
@@ -297,6 +310,22 @@ final class P2pRouter {
             ),
             book: args.book,
             checksPayoutRate: checksPayoutRate,
+            // « Renew Order » and « Renew » (#185): the renewal's page above the trade, where the feature can make an order; the Garage, when that page is left for it, through this page.
+            onRenew:
+                locator.isRegistered<MakeOrderCubit>(
+                      instanceName: MakeOrderCubit.renewalInstance,
+                    ) &&
+                    locator.isRegistered<PendingMakesCubit>()
+                ? (record) async {
+                    final exit = await context.pushNamed<P2pOrderExit>(
+                      createName,
+                      extra: P2pCreateRouteArgs.renewal(record, book: args.book),
+                    );
+                    if (exit == P2pOrderExit.garage && context.mounted) {
+                      context.pop(P2pOrderExit.garage);
+                    }
+                  }
+                : null,
           ),
         ),
       ),
@@ -312,9 +341,17 @@ final class P2pRouter {
   ) => MultiBlocProvider(
     providers: [
       BlocProvider(
-        create: (_) =>
-            locator<MakeOrderCubit>(param1: args.network, param2: args.currency)
-              ..start(),
+        create: (_) => switch (args.renewing) {
+          // A renewal (#185): the form's cubit built from the record of the order renewed.
+          final record? => locator<MakeOrderCubit>(
+            param1: record,
+            instanceName: MakeOrderCubit.renewalInstance,
+          ),
+          null => locator<MakeOrderCubit>(
+            param1: args.network,
+            param2: args.currency,
+          ),
+        }..start(),
       ),
       // The pending makes resolved once when the form opens: the form makes nothing while one is listed (security review of #181, S2).
       BlocProvider(

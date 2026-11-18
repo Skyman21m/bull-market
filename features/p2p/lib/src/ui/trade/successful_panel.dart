@@ -15,6 +15,7 @@ import '../../presentation/trade_l10n.dart';
 import '../../presentation/trade_summary_export.dart';
 import '../widgets/coordinator_avatar.dart';
 import '../widgets/robot_avatar.dart';
+import '../widgets/trade_button.dart';
 import '../widgets/word_fit_text.dart';
 import 'chat_step_panel.dart';
 
@@ -22,7 +23,8 @@ import 'chat_step_panel.dart';
 ///
 /// A tap on a star sends `rate_platform` once through the trade's cubit, for the status shown (`TradeCubit.rate`), as the reference sends each change of its stars; while it runs the stars are off and a line says what it waits for; what it gave is said under them, nothing when it was recorded (the reference says nothing either).
 /// The two ratings are one under the other, where the reference puts them side by side, for the width of a phone.
-/// Left out, each declared in `AGENTS.md`: « Start Again » and « Renew », whose order creation does not exist here.
+/// « Renew » (`Successful.tsx:276-287`, `order.is_maker`) for an order made here ([onRenew], #185), under the on-chain payment's lines, above the summary, as the reference places it; it opens the renewal's page, where the order is made again.
+/// Left out, declared in `AGENTS.md`: « Start Again », which leaves the order for the reference's robot page.
 /// The copies are made on the user's tap only; nothing here opens a link.
 class SuccessfulPanel extends StatefulWidget {
   final TradeSeen seen;
@@ -45,6 +47,10 @@ class SuccessfulPanel extends StatefulWidget {
   /// « Rate your host » (`HostRatingSection`), shown under « Rate your trade experience » when the screen offers that one; `null` where the feature holds no robot.
   final Widget? hostRating;
 
+  /// « Renew » of an order made here (#185): `null` where it is not offered (an order not made here, a status not stored, a screen that cannot make an order); spinning and off while [renewing].
+  final VoidCallback? onRenew;
+  final bool renewing;
+
   const SuccessfulPanel({
     super.key,
     required this.seen,
@@ -56,6 +62,8 @@ class SuccessfulPanel extends StatefulWidget {
     required this.otherActionRunning,
     required this.offersRating,
     this.hostRating,
+    this.onRenew,
+    this.renewing = false,
   });
 
   @override
@@ -218,6 +226,17 @@ class _SuccessfulPanelState extends State<SuccessfulPanel> {
             copyLabel: l10n.p2pEndCopyAddress,
             onCopy: () => unawaited(_copy(address)),
             copied: _copied == address,
+          ),
+        ],
+        if (widget.onRenew case final renew?) ...[
+          const Gap(BullSpacing.md),
+          TradeButton(
+            key: const ValueKey('trade-renew'),
+            label: l10n.p2pRenew,
+            icon: Icons.refresh,
+            outlined: true,
+            busy: widget.renewing,
+            onPressed: renew,
           ),
         ],
         if (summary != null && order != null) ...[

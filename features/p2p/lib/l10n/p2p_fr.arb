@@ -911,5 +911,12 @@
   "p2pTradeEscrowPaidHereBack": "Votre garantie a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.",
   "p2pTradeBothPaidHereBack": "Votre caution et votre garantie ont été payées avec ce portefeuille : une fois rendues, elles reviennent par le service de swap, moins ses frais, après un délai.",
   "p2pTradeBondOrEscrowBackThroughSwap": "Une caution ou une garantie payée avec ce portefeuille revient par le service de swap, moins ses frais, après un délai.",
-  "p2pOrderRecordsUnreadable": "Bull Market n’a pas pu lire ses échanges : cet ordre est peut-être le vôtre, il ne peut donc pas être pris ici. Revenez en arrière et réessayez."
+  "p2pOrderRecordsUnreadable": "Bull Market n’a pas pu lire ses échanges : cet ordre est peut-être le vôtre, il ne peut donc pas être pris ici. Revenez en arrière et réessayez.",
+  "p2pRenewOrder": "Renouveler l’ordre",
+  "p2pRenew": "Renouveler",
+  "p2pRenewIntro": "Renouvellement de l’ordre {orderId} : un nouvel ordre est créé avec les termes que cet appareil en a gardés, sous un nouveau robot, et demande une nouvelle caution.",
+  "p2pRenewTermsUnreadable": "Cet ordre ne peut pas être renouvelé : les termes que cet appareil en a gardés n’ont pas pu être lus.",
+  "p2pRenewNotEnded": "Cet ordre ne peut pas être renouvelé : cet appareil ne l’a pas vu expiré ou terminé.",
+  "p2pRenewCoordinatorGone": "Cet ordre ne peut pas être renouvelé : son coordinateur n’est plus dans la liste, ou a changé d’adresse.",
+  "p2pRenewNotAsKept": "Le formulaire ne montre pas exactement les termes gardés de cet ordre : rien ne peut être envoyé."
 }

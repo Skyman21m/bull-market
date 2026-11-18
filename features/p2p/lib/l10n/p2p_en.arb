@@ -5158,5 +5158,38 @@
   "p2pOrderRecordsUnreadable": "Bull Market could not read its trades: this order may be yours, so it cannot be taken here. Go back and try again.",
   "@p2pOrderRecordsUnreadable": {
     "description": "Not in the RoboSats texts: the project's own: the page of an order of the book opened while the records of this device's trades could not be read (or were not read within 10 s), in place of « Take Order »: the order may be one this device made, which a take would spend a robot on before the database refuses it (#182, security review R3; #207)."
+  },
+  "p2pRenewOrder": "Renew Order",
+  "@p2pRenewOrder": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 757); its `fr.json` says « Renouveler la commande », the French is the app's, which says « ordre » (design note § 1.11). The button of an order made here once it expired (`Prompts/Expired.tsx:78-96`, #185), and the title of its renewal's page."
+  },
+  "p2pRenew": "Renew",
+  "@p2pRenew": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 791), with its French (`fr.json`, line 791). The button of an order made here at « Trade finished! » (`Prompts/Successful.tsx:276-285`, #185)."
+  },
+  "p2pRenewIntro": "Renewing order {orderId}: a new order is made with the terms this device kept of it, under a new robot, and asks for a new bond.",
+  "@p2pRenewIntro": {
+    "description": "Not in the RoboSats texts: the project's own: at the top of a renewal's page (#185), which the reference does not have (its renewal sends at once): what « Create order » will make.",
+    "placeholders": {
+      "orderId": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewTermsUnreadable": "This order cannot be renewed: the terms this device kept of it could not be read.",
+  "@p2pRenewTermsUnreadable": {
+    "description": "Not in the RoboSats texts: the project's own: a renewal's page when the records of the order cannot be read, or do not restore (#185); nothing is sent."
+  },
+  "p2pRenewNotEnded": "This order cannot be renewed: this device has not seen it expired or finished.",
+  "@p2pRenewNotEnded": {
+    "description": "Not in the RoboSats texts: the project's own: a renewal's page when the trail this device stored of the order is not at a status where the reference offers a renewal (#185); nothing is sent."
+  },
+  "p2pRenewCoordinatorGone": "This order cannot be renewed: its coordinator is no longer in the list, or has moved.",
+  "@p2pRenewCoordinatorGone": {
+    "description": "Not in the RoboSats texts: the project's own: a renewal's page when the order's coordinator left the federation list on its network, or changed address (#185); nothing is sent."
+  },
+  "p2pRenewNotAsKept": "The form does not show exactly the terms kept of this order: nothing can be sent.",
+  "@p2pRenewNotAsKept": {
+    "description": "Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when the form, filled with the kept terms, would not send exactly them (#185); never expected, said rather than a button that does nothing."
   }
 }

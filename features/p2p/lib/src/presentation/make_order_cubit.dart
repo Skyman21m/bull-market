@@ -12,6 +12,7 @@ import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
 import '../domain/trade/maker_terms.dart';
 import '../domain/trade/trade_make.dart';
+import '../domain/trade/trade_renewal.dart';
 import '../domain/trade_record.dart';
 import 'take_order_cubit.dart' show HasGarageKey;
 
@@ -48,6 +49,40 @@ typedef CheckMakePrice =
       RobosatsCurrency currency,
       double coordinatorPrice,
     );
+
+/// `MakeOrderUsecase.renewal`: the request and the coordinator of an order made here, read from the records, for its renewal (#185).
+typedef ReadRenewal =
+    Future<Result<OrderRenewal, RenewalRefusal>> Function(TradeRecord record);
+
+/// Whether the create form renews an order made here (#185), and where the read of that order's kept terms stands.
+@immutable
+sealed class MakeRenewalState {
+  const MakeRenewalState();
+}
+
+/// A creation: the form as the user types it.
+final class MakeRenewalNone extends MakeRenewalState {
+  const MakeRenewalNone();
+}
+
+/// A renewal whose kept terms are being read from the records.
+final class MakeRenewalReading extends MakeRenewalState {
+  const MakeRenewalReading();
+}
+
+/// A renewal of [renewal]: the form shows its request, locked, on its coordinator.
+final class MakeRenewalReady extends MakeRenewalState {
+  final OrderRenewal renewal;
+
+  const MakeRenewalReady(this.renewal);
+}
+
+/// A renewal that cannot be made from this device ([refusal]): nothing is sent.
+final class MakeRenewalRefused extends MakeRenewalState {
+  final RenewalRefusal refusal;
+
+  const MakeRenewalRefused(this.refusal);
+}
 
 /// Where the make of the create form stands.
 @immutable
@@ -156,6 +191,9 @@ final class MakeOrderState {
   /// When the chosen coordinator's limits were last read, `null` before.
   final DateTime? limitsReadAt;
 
+  /// Whether the form renews an order made here (#185), and its kept terms.
+  final MakeRenewalState renewal;
+
   const MakeOrderState({
     required this.network,
     required this.currency,
@@ -168,7 +206,11 @@ final class MakeOrderState {
     this.price = const MakeFormPriceNone(),
     this.progress = const MakeIdle(),
     this.limitsReadAt,
+    this.renewal = const MakeRenewalNone(),
   });
+
+  /// Whether the form renews an order (#185): its fields, its currency and its coordinator are the order's, never changed.
+  bool get renewing => renewal is! MakeRenewalNone;
 
   /// Whether the form is locked: a make runs or has run, so nothing typed changes what was sent.
   bool get locked => progress is! MakeIdle;
@@ -191,6 +233,7 @@ final class MakeOrderState {
     MakeFormPrice? price,
     MakeProgress? progress,
     DateTime? limitsReadAt,
+    MakeRenewalState? renewal,
   }) => MakeOrderState(
     network: network,
     coordinatorsLoaded: coordinatorsLoaded ?? this.coordinatorsLoaded,
@@ -203,6 +246,7 @@ final class MakeOrderState {
     price: price ?? this.price,
     progress: progress ?? this.progress,
     limitsReadAt: limitsReadAt ?? this.limitsReadAt,
+    renewal: renewal ?? this.renewal,
   );
 }
 
@@ -221,6 +265,10 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// The wallet's price check, when the wallet's port was lent; `null` shows no check.
   final CheckMakePrice? _checkPrice;
 
+  /// The order made here this form renews (#185), and the read of its kept terms; both `null` for a creation.
+  final TradeRecord? _renewing;
+  final ReadRenewal? _readRenewal;
+
   /// Bumped at each read of limits or of the wallet's price, so that an answer for a coordinator or a currency no longer shown is dropped.
   int _limitsRead = 0;
   int _priceRead = 0;
@@ -237,6 +285,9 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// The read of the Bull wallet's price that runs, if one does ([priceSettled]).
   Future<MakePriceCheck>? _priceReading;
 
+  /// The name the locator registers the renewal's cubit under (#185), built from the record of the order renewed.
+  static const String renewalInstance = 'renewal';
+
   /// How old the limits and the Bull wallet's price may be when « Create order » is pressed: older, they are read again first ([refreshIfStale]). The reference reads them once when the form opens or the coordinator changes, never again while it stays open (`MakerForm.tsx:102-131`; `Federation.loadCoordinatorData`, `models/Federation.model.ts:763-792`, at a change of connection only).
   static const Duration staleAfter = Duration(minutes: 3);
 
@@ -251,7 +302,32 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     required this._lottery,
     required this._now,
     this._checkPrice,
-  }) : super(MakeOrderState(network: network, currency: currency));
+  }) : _renewing = null,
+       _readRenewal = null,
+       super(MakeOrderState(network: network, currency: currency));
+
+  /// The form renewing the order of [renewing] (#185): its kept terms read by [readRenewal] when it starts, shown locked, sent to its own coordinator only. [placeholder] is the currency of the state until those terms are read, which the screen shows nowhere (it shows the wait).
+  MakeOrderCubit.renewal(
+    TradeRecord renewing, {
+    required RobosatsCurrency placeholder,
+    required ReadRenewal readRenewal,
+    required this._listHosts,
+    required this._fetchInfo,
+    required this._fetchLimits,
+    required this._make,
+    required this._hasGarageKey,
+    required this._lottery,
+    required this._now,
+    this._checkPrice,
+  }) : _renewing = renewing,
+       _readRenewal = readRenewal,
+       super(
+         MakeOrderState(
+           network: renewing.network,
+           currency: placeholder,
+           renewal: const MakeRenewalReading(),
+         ),
+       );
 
   /// Reads every coordinator's `/api/info/` at once, then draws their order by the reference's lottery (`federationLottery`, run once the information is loaded, `models/Federation.model.ts:584-609`): the first one that takes first contacts is the default, as the reference picks the first of its list (`MakerForm.tsx:132-138`); then its limits.
   Future<void> start() async {
@@ -272,6 +348,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   }
 
   Future<void> _start() async {
+    if (_renewing case final renewing?) return _startRenewal(renewing);
     final network = state.network;
     final hosts = _listHosts(network).choices;
     final answers = await Future.wait([
@@ -303,9 +380,66 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     if (first != null) await choose(first.coordinator);
   }
 
+  /// A renewal's start (#185): the order's kept terms read from the records, then its own coordinator, with no lottery and no other choice (the reference renews on the order's coordinator, `TradeBox/index.tsx:178`): its `/api/info/` and limits read as for a creation, then the Bull wallet's price compared, an amount being shown from the start. A coordinator no longer listed, or that refuses first contacts in this run, is said as for a creation (« Retry » reads all again).
+  Future<void> _startRenewal(TradeRecord renewing) async {
+    final read = _readRenewal;
+    if (read == null) return;
+    emit(
+      state._with(
+        coordinatorsLoaded: false,
+        renewal: const MakeRenewalReading(),
+      ),
+    );
+    final OrderRenewal renewal;
+    switch (await read(renewing)) {
+      case Ok(:final value):
+        renewal = value;
+      case Err(:final failure):
+        if (isClosed) return;
+        emit(
+          state._with(
+            coordinatorsLoaded: true,
+            renewal: MakeRenewalRefused(failure),
+          ),
+        );
+        return;
+    }
+    if (isClosed) return;
+    final coordinator = renewal.coordinator;
+    final hosts = [
+      for (final host in _listHosts(state.network).choices)
+        if (host.coordinator == coordinator) host,
+    ];
+    final info = await _fetchInfo(coordinator, state.network);
+    if (isClosed) return;
+    _wanted = true;
+    emit(
+      state._with(
+        coordinatorsLoaded: true,
+        hosts: List.unmodifiable(hosts),
+        infos: Map.unmodifiable({
+          if (info case Ok(:final value)) coordinator.shortAlias: value,
+        }),
+        currency: renewal.request.currency,
+        renewal: MakeRenewalReady(renewal),
+      ),
+    );
+    if (hosts.any((host) => !host.refusesFirstContacts)) {
+      await choose(coordinator);
+    }
+  }
+
+  /// The order this form renews, once its kept terms are read; `null` for a creation or before.
+  OrderRenewal? get _renewal => switch (state.renewal) {
+    MakeRenewalReady(:final renewal) => renewal,
+    _ => null,
+  };
+
   /// The coordinator the user chose in « Select Host », or the default: its limits read again, even when it is the one shown (a choice is the reference's way of reading them again, `MakerForm.tsx:102-131`), then its price compared. Nothing while a make runs or has run.
   Future<void> choose(Coordinator coordinator) async {
     if (state.locked) return;
+    // A renewal is sent to its order's coordinator only (#185).
+    if (state.renewing && coordinator != _renewal?.coordinator) return;
     emit(
       state._with(
         coordinator: coordinator,
@@ -347,7 +481,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
 
   /// The currency the form shows: its price compared when an amount is typed ([wantPrice]), from the last read of the Bull wallet's price for that currency when it is less than [staleAfter] old.
   Future<void> showCurrency(RobosatsCurrency currency) async {
-    if (state.locked || currency == state.currency) return;
+    if (state.locked || state.renewing || currency == state.currency) return;
     _priceRead++;
     emit(state._with(currency: currency, price: const MakeFormPriceNone()));
     await _readPrice();
@@ -355,7 +489,8 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
 
   /// Whether the user typed an amount (a number above zero): the Bull wallet's price is read, outside Tor, only for someone about to make an order (security review of #181), and only then; « Clear form » and an amount taken away ask nothing more, the line shown, if any, staying as it was.
   Future<void> wantPrice(bool wanted) async {
-    if (wanted == _wanted) return;
+    // A renewal shows its order's amount from the start: its price is compared once its terms are read (#185).
+    if (state.renewing || wanted == _wanted) return;
     _wanted = wanted;
     if (wanted) await _readPrice();
   }
@@ -459,6 +594,15 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     required MakePriceSeen seen,
   }) async {
     if (state.progress is! MakeIdle || state.coordinator != coordinator) return;
+    // A renewal sends its order's kept request to its order's coordinator, nothing else (#185).
+    if (state.renewing) {
+      final renewal = _renewal;
+      if (renewal == null ||
+          request != renewal.request ||
+          coordinator != renewal.coordinator) {
+        return;
+      }
+    }
     emit(state._with(progress: const MakeSending()));
     final result = await _make(
       request,

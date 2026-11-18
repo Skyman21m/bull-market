@@ -12,8 +12,11 @@ import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
 import '../../trade/make_price_check.dart';
+import '../../trade/maker_terms.dart';
 import '../../trade/trade_answer.dart';
+import '../../trade/trade_edges.dart';
 import '../../trade/trade_make.dart';
+import '../../trade/trade_renewal.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_storable.dart';
 import '../../trade/trade_terms.dart';
@@ -86,6 +89,71 @@ final class MakeOrderUsecase {
   /// [MakeStarted] when an order is found that shows its robot as the maker; [MakeNotMade] when none can be, the make closed; [MakeNeverSent] when its terms were never written, the make closed with no request; [MakeNoLongerPending] when the records no longer hold it pending (confirmed or closed since), nothing sent; [MakePending] otherwise, for a later resolution.
   Future<MakeOutcome> resolve(PendingMake make) =>
       _locks.run(make.network, () => _resolve(make));
+
+  /// The renewal of the order of [record] (#185): the request this device kept when it made that order, and its coordinator, for a new make by [execute]; it sends nothing and writes nothing.
+  ///
+  /// Read from the records only, never from what the coordinator reads back of the order: the terms (`maker_terms`, restored with the checks of [MakerTerms.restore]) and the stored trail, which must stand where the reference offers the renewal ([OrderRenewal.offeredAt]). [RenewalNotMadeHere] for a trade taken here or recovered; [RenewalNotEnded] for a trail elsewhere, or none; [RenewalTermsUnreadable] for records that cannot be read or do not restore, or that are of another trade; [RenewalCoordinatorGone] for a coordinator no longer in the federation list on the network, or at another address than the one the order was made on.
+  Future<Result<OrderRenewal, RenewalRefusal>> renewal(
+    TradeRecord record,
+  ) async {
+    if (record.origin != TradeOrigin.madeHere || record.confirmedAt == null) {
+      return const Err(RenewalNotMadeHere());
+    }
+    final network = record.network;
+    final TradeTrailRecord? trail;
+    switch (await _trails.historyOf(record)) {
+      case Ok(:final value) when !value.unreadable:
+        trail = value.trail;
+      case Ok() || Err():
+        return const Err(RenewalTermsUnreadable());
+    }
+    final position = TradePosition.values
+        .where((value) => value.name == trail?.position)
+        .firstOrNull;
+    if (trail == null ||
+        position == null ||
+        trail.network != network.name ||
+        trail.coordinatorAlias != record.coordinatorAlias ||
+        trail.orderId != record.orderId ||
+        !OrderRenewal.offeredAt(position, role: record.role)) {
+      return const Err(RenewalNotEnded());
+    }
+    final MakerTermsRecord stored;
+    switch (await _trails.makerTermsOf(record.robot)) {
+      case Ok(value: final value?)
+          when value.network == network.name &&
+              value.coordinatorAlias == record.coordinatorAlias &&
+              value.role == record.role.name:
+        stored = value;
+      case Ok() || Err():
+        return const Err(RenewalTermsUnreadable());
+    }
+    final MakerTerms terms;
+    switch (MakerTerms.restore(stored)) {
+      case Ok(:final value):
+        terms = value;
+      case Err(failure: TradeCoordinatorGone()):
+        return const Err(RenewalCoordinatorGone());
+      case Err():
+        return const Err(RenewalTermsUnreadable());
+    }
+    // The coordinator of the order, as this use case's federation list gives it now, at the address the order was made on.
+    final coordinator = _federation.byAlias(record.coordinatorAlias);
+    if (coordinator == null ||
+        coordinator != terms.coordinator ||
+        CoordinatorIdentity.of(coordinator, network)?.onion !=
+            record.coordinatorOnion) {
+      return const Err(RenewalCoordinatorGone());
+    }
+    return Ok(
+      OrderRenewal(
+        orderId: record.orderId,
+        network: network,
+        coordinator: coordinator,
+        request: terms.request,
+      ),
+    );
+  }
 
   /// Sets the pending make [make] aside, on the user's request (#182, reviews of #179): a make that does not resolve (its coordinator left the list or moved, its robot unknown to it, an order it names that is not the robot's, an outcome unknown again and again) is closed in the records, so that nothing reads it again; it is never made again in its place.
   ///

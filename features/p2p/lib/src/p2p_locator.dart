@@ -399,6 +399,27 @@ final class P2pLocator {
             : null,
       ),
     );
+    // The renewal of an order made here (#185): the same form's cubit, its fields read from the order's kept terms, on its coordinator.
+    locator.registerFactoryParam<MakeOrderCubit, TradeRecord, void>(
+      (record, _) => MakeOrderCubit.renewal(
+        record,
+        placeholder:
+            RobosatsCurrency.fromCode('USD') ??
+            (throw StateError('USD is in the RoboSats currencies')),
+        readRenewal: locator<MakeOrderUsecase>().renewal,
+        listHosts: locator<ListRobotHostsUsecase>().execute,
+        fetchInfo: locator<FetchCoordinatorInfoUsecase>().execute,
+        fetchLimits: locator<FetchCoordinatorLimitsUsecase>().execute,
+        make: locator<MakeOrderUsecase>().execute,
+        hasGarageKey: locator<HasGarageKeyUsecase>().execute,
+        lottery: locator<CoordinatorLottery>(),
+        now: clock,
+        checkPrice: paysBondFromWallet(locator)
+            ? locator<CheckMakePriceUsecase>().execute
+            : null,
+      ),
+      instanceName: MakeOrderCubit.renewalInstance,
+    );
     // The owner's payment rule on a maker buyer's side (#182): one cubit per shown trade, built only where the wallet's port was lent.
     locator.registerFactory<CheckPayoutRateUsecase>(
       () => CheckPayoutRateUsecase(locator(), locator<P2pWalletPort>()),
