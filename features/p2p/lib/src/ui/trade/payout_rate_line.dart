@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_tolerances.dart';
 import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/usecases/trade/check_payout_rate_usecase.dart';
@@ -152,10 +153,19 @@ class PayoutRateLines extends StatelessWidget {
     _ => false,
   };
 
-  /// The contract's amount of [order] as the payout's prompt writes it.
-  static String amountOf(BuildContext context, CoordinatorOrder? order) {
+  /// The contract's amount of [order] as the payout's prompt writes it: for a range, the amount the trail keeps with the contract ([status]'s, #183), the one the rule compares, rather than the read's alone.
+  static String amountOf(
+    BuildContext context,
+    CoordinatorOrder? order,
+    TradeStatus? status,
+  ) {
     if (order == null) return '';
     final formats = P2pFormats.of(context);
+    final kept = status?.trail.takenAmount;
+    if (kept != null) {
+      final amount = FiatAmount.tryCreate(kept);
+      if (amount != null) return formats.amount(amount);
+    }
     final taken = order.takenAmount;
     return taken == null
         ? formats.orderAmount(order.amount)

@@ -11,6 +11,7 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/option_search.dart';
 import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
+import '../domain/trade/trade_make.dart';
 import '../domain/trade/trade_tolerances.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_details_cubit.dart';
@@ -33,7 +34,7 @@ import 'widgets/trade_button.dart';
 
 /// The « Create » page: the official client's basic form (`components/MakerForm/MakerForm.tsx`, `basic/MakerPage/index.tsx`, commit ff1998c; design note `docs/design/phase-3-making-an-order.md` § 1.11, § 2.1), in the wallet's look (#181).
 ///
-/// Field by field, as the reference lays them out: « Enable advanced options », shown disabled with « Coming in a later version. » (the defaults apply: 23:59 public, 3 hours for each step, a bond of 3 %, a fixed amount); « Buy or Sell Bitcoin? * » with « Buy », and « Sell » disabled with « Selling as maker is coming in a later version. »; « Amount * » and the currency; « Fiat Payment Method(s) * » with « Add custom payment method »; « Premium over Market (%) * »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
+/// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy », and « Sell » disabled with « Selling as maker is coming in a later version. »; with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location », disabled with « Coming in a later version. » (#189); « Premium over Market (%) * »; with the advanced options, « Description », « Password » (disabled until #189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
 ///
 /// What is typed stays here; it is judged by [MakerFormCheck] at each build, and the request « Create order » sends is the one the summary shows, taken at the press. From the press the fields are locked: « You do not have a Garage Key » without a key, else « Store your garage key », whose « Done » sends the make once ([MakeOrderCubit.make]), its « Go back » sending nothing. A made order opens its trade ([onMade]); a make refused or not made says why; a make whose outcome is unknown locks the form.
 class CreateOrderScreen extends StatefulWidget {
@@ -69,6 +70,18 @@ class CreateOrderScreen extends StatefulWidget {
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _amount = TextEditingController();
   final _premium = TextEditingController();
+
+  /// « From », « to » and « Description » of the advanced options (#183).
+  final _minAmount = TextEditingController();
+  final _maxAmount = TextEditingController();
+  final _description = TextEditingController();
+
+  /// « Enable advanced options » and « Amount Range » (`maker.advancedOptions`, `amountRangeEnabled`, `MakerForm.tsx:90`), and the values of the options, the reference's defaults (`models/Maker.model.ts:29-56`).
+  bool _advanced = false;
+  bool _rangeEnabled = true;
+  Duration _publicDuration = MakerFormCheck.publicDurationDefault;
+  Duration _escrowDuration = MakerFormCheck.escrowDurationDefault;
+  double _bondSize = MakerFormCheck.bondSizeDefault;
   late OrderType? _type = widget.initialType == OrderType.buy
       ? OrderType.buy
       : null;
@@ -90,6 +103,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void dispose() {
     _amount.dispose();
     _premium.dispose();
+    _minAmount.dispose();
+    _maxAmount.dispose();
+    _description.dispose();
     if (!_gone.isCompleted) _gone.complete();
     super.dispose();
   }
@@ -101,6 +117,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       amount: _amount.text,
       paymentMethods: _methods,
       premium: _premium.text,
+      advanced: _advanced,
+      rangeEnabled: _rangeEnabled,
+      minAmount: _minAmount.text,
+      maxAmount: _maxAmount.text,
+      description: _description.text,
+      publicDuration: _publicDuration,
+      escrowDuration: _escrowDuration,
+      bondSizePercent: _bondSize,
     ),
     coordinatorsLoaded: state.coordinatorsLoaded,
     market: state.formLimits,
@@ -171,16 +195,70 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
-  /// The amount typed: the Bull wallet's price is compared only once an amount above zero is typed (security review of #181).
+  /// The amount typed: the Bull wallet's price is compared only once an amount above zero is typed (security review of #181), the range's maximum for a range (#183).
   void _amountChanged() {
     setState(() {});
     final value = FormNumber.read(
-      _amount.text,
+      _advanced && _rangeEnabled ? _maxAmount.text : _amount.text,
       maxDecimals: MakerFormCheck.amountDecimals,
     ).value;
     unawaited(
       context.read<MakeOrderCubit>().wantPrice(value != null && value > 0),
     );
+  }
+
+  /// The limit the chosen coordinator gives for [currency], when its limits are read.
+  CurrencyLimit? _limitOf(MakeOrderState state, RobosatsCurrency currency) =>
+      switch (state.limits) {
+        MakerFormLimitsRead(:final limits) => limits[currency],
+        _ => null,
+      };
+
+  /// [range] written in « From » and « to », as plain decimal numbers the fields read back as they are.
+  void _setRange(MakerRange range) {
+    _minAmount.text = _plain(range.min);
+    _maxAmount.text = _plain(range.max);
+  }
+
+  /// « Enable advanced options » (`handleClickAdvanced`, `MakerForm.tsx:381-387`): closed, the range no longer applies and the other options keep their values, as the reference keeps and sends them; opened, the range set as the reference's `resetRange` sets it (`:394-411`).
+  void _toggleAdvanced(MakeOrderState state) {
+    setState(() {
+      if (_advanced) {
+        _advanced = false;
+        return;
+      }
+      _advanced = true;
+      final range = MakerRange.opening(
+        amount: FormNumber.read(
+          _amount.text,
+          maxDecimals: MakerFormCheck.amountDecimals,
+        ).value,
+        limit: _limitOf(state, state.currency),
+      );
+      if (range != null) _setRange(range);
+    });
+    _amountChanged();
+  }
+
+  /// « Amount Range » / « Exact Amount » (`handleClickAmountRangeEnabled`, `MakerForm.tsx:413-418`).
+  void _toggleRange(bool range) {
+    setState(() => _rangeEnabled = range);
+    _amountChanged();
+  }
+
+  /// A thumb of the range's slider moved (`handleRangeAmountChange`, `AmountRange.tsx:79-117`).
+  void _slide(MakerRange next, MakerAmountLimits limits) {
+    final check = _check(context.read<MakeOrderCubit>().state);
+    final previous = MakerRange(
+      check.rangeMin ?? limits.min,
+      check.rangeMax ?? limits.max,
+    );
+    setState(
+      () => _setRange(
+        MakerRange.slid(previous: previous, next: next, limits: limits),
+      ),
+    );
+    _amountChanged();
   }
 
   /// « Clear form » (`clearMaker`, `MakerForm.tsx:485-492`): no side chosen, the currency back to USD (`fav.currency` 0, which the form reads as USD), the amount, the payment methods and the premium emptied. The coordinator chosen stays: the reference puts back `defaultMaker.coordinator`, an alias drawn at random when its page loads, not its lottery's.
@@ -191,6 +269,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _premium.clear();
       _methods.clear();
       _stopped = null;
+      // The advanced options back to the reference's defaults (`setMaker(defaultMaker)`, `:489`); « Amount Range » stays as it was, a state of its own there (`amountRangeEnabled`).
+      _advanced = false;
+      _minAmount.clear();
+      _maxAmount.clear();
+      _description.clear();
+      _publicDuration = MakerFormCheck.publicDurationDefault;
+      _escrowDuration = MakerFormCheck.escrowDurationDefault;
+      _bondSize = MakerFormCheck.bondSizeDefault;
     });
     final cubit = context.read<MakeOrderCubit>();
     unawaited(cubit.wantPrice(false));
@@ -213,7 +299,18 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       label: (currency) => currency.code,
     );
     if (currency == null || !mounted) return;
+    // A range out of the new currency's orders set again, as the reference does (`handleCurrencyChange`, `MakerForm.tsx:184-199`).
+    if (_advanced && _rangeEnabled) {
+      final check = _check(state);
+      final range = MakerRange.afterCurrency(
+        min: check.rangeMin,
+        max: check.rangeMax,
+        limit: _limitOf(state, currency),
+      );
+      if (range != null) setState(() => _setRange(range));
+    }
     unawaited(context.read<MakeOrderCubit>().showCurrency(currency));
+    _amountChanged();
   }
 
   Future<void> _chooseMethods() async {
@@ -362,7 +459,21 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         const PendingMakeLines(),
                         const Gap(BullSpacing.md),
                       ],
-                      _AdvancedOptions(onClear: locked ? null : _clear),
+                      _AdvancedOptions(
+                        onClear: locked ? null : _clear,
+                        advanced: _advanced,
+                        loading:
+                            !state.coordinatorsLoaded ||
+                            state.limits is MakerFormLimitsLoading,
+                        // Opened only once the coordinator's limits are read, as the reference's switch (`MakerForm.tsx:710`); closed at any time.
+                        onToggle:
+                            locked ||
+                                (!_advanced &&
+                                    (!state.coordinatorsLoaded ||
+                                        state.limits is! MakerFormLimitsRead))
+                            ? null
+                            : () => _toggleAdvanced(state),
+                      ),
                       const Gap(BullSpacing.md),
                       _Side(
                         type: _type,
@@ -371,14 +482,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         onBuy: () => setState(() => _type = OrderType.buy),
                       ),
                       const Gap(BullSpacing.md),
-                      _Amount(
-                        controller: _amount,
-                        currency: state.currency,
-                        problem: check.amountProblem,
-                        enabled: !locked,
-                        onChanged: _amountChanged,
-                        onCurrency: () => unawaited(_chooseCurrency(state)),
-                      ),
+                      if (_advanced) ...[
+                        _RangeSwitch(
+                          range: _rangeEnabled,
+                          onChanged: locked ? null : _toggleRange,
+                        ),
+                        const Gap(BullSpacing.xs),
+                      ],
+                      if (check.hasRange)
+                        _AmountRange(
+                          min: _minAmount,
+                          max: _maxAmount,
+                          check: check,
+                          currency: state.currency,
+                          enabled: !locked,
+                          onChanged: _amountChanged,
+                          onCurrency: () => unawaited(_chooseCurrency(state)),
+                          onSlide: _slide,
+                        )
+                      else
+                        _Amount(
+                          controller: _amount,
+                          currency: state.currency,
+                          problem: check.amountProblem,
+                          enabled: !locked,
+                          onChanged: _amountChanged,
+                          onCurrency: () => unawaited(_chooseCurrency(state)),
+                        ),
                       const Gap(BullSpacing.md),
                       _Methods(
                         methods: _methods,
@@ -390,6 +520,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             setState(() => _methods.remove(method)),
                       ),
                       const Gap(BullSpacing.md),
+                      const _Location(),
+                      const Gap(BullSpacing.md),
                       _PremiumField(
                         controller: _premium,
                         problem: check.premiumProblem,
@@ -397,6 +529,50 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         onChanged: () => setState(() {}),
                       ),
                       const Gap(BullSpacing.md),
+                      if (_advanced) ...[
+                        _Description(
+                          controller: _description,
+                          check: check,
+                          enabled: !locked,
+                          onChanged: () => setState(() {}),
+                        ),
+                        const Gap(BullSpacing.md),
+                        const _Password(),
+                        const Gap(BullSpacing.md),
+                        _DurationField(
+                          label: l10n.p2pMakePublicDuration,
+                          title: l10n.p2pMakePublicDurationTitle,
+                          value: _publicDuration,
+                          enabled: !locked,
+                          onPicked: (picked) => setState(
+                            () => _publicDuration =
+                                MakerFormCheck.publicDurationOf(picked),
+                          ),
+                        ),
+                        const Gap(BullSpacing.md),
+                        _DurationField(
+                          label: l10n.p2pMakeEscrowDuration,
+                          title: l10n.p2pMakeEscrowDurationTitle,
+                          value: _escrowDuration,
+                          enabled: !locked,
+                          onPicked: (picked) => setState(
+                            () => _escrowDuration =
+                                MakerFormCheck.escrowDurationOf(picked),
+                          ),
+                        ),
+                        const Gap(BullSpacing.md),
+                        _BondSizeSlider(
+                          value: _bondSize,
+                          onChanged: locked
+                              ? null
+                              : (value) => setState(
+                                  () => _bondSize = MakerFormCheck.bondSizeOf(
+                                    value,
+                                  ),
+                                ),
+                        ),
+                        const Gap(BullSpacing.md),
+                      ],
                       _Coordinator(
                         state: state,
                         name: coordinatorName,
@@ -437,12 +613,22 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 }
 
-/// The reference's first row (`MakerForm.tsx:674-723`): « Clear form » at the left, a bin with its tooltip, then « Enable advanced options », disabled, with « Coming in a later version. ».
+/// The reference's first row (`MakerForm.tsx:674-723`): « Clear form » at the left, a bin with its tooltip, then « Enable advanced options » with its switch, a wait shown while the coordinators or the limits are being read, as the reference's spinner (`:714-718`).
 class _AdvancedOptions extends StatelessWidget {
   /// « Clear form »; `null` while the form is locked.
   final VoidCallback? onClear;
 
-  const _AdvancedOptions({required this.onClear});
+  /// Whether the options are open, and the switch; `null` while it cannot be used.
+  final bool advanced;
+  final bool loading;
+  final VoidCallback? onToggle;
+
+  const _AdvancedOptions({
+    required this.onClear,
+    required this.advanced,
+    required this.loading,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -463,25 +649,28 @@ class _AdvancedOptions extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.p2pMakeEnableAdvanced,
-                        style: text.bodyLarge?.copyWith(
-                          color: colors.textMuted,
-                        ),
-                      ),
-                      Text(
-                        l10n.p2pMakeComingLater,
-                        style: text.labelMedium?.copyWith(
-                          color: colors.textMuted,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    l10n.p2pMakeEnableAdvanced,
+                    style: text.bodyLarge?.copyWith(
+                      color: onToggle == null ? colors.textMuted : colors.text,
+                    ),
                   ),
                 ),
-                const Switch(value: false, onChanged: null),
+                if (loading && !advanced)
+                  const Padding(
+                    padding: EdgeInsets.only(right: BullSpacing.xs),
+                    child: SizedBox.square(
+                      dimension: 15,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                Switch(
+                  value: advanced,
+                  onChanged: switch (onToggle) {
+                    final toggle? => (_) => toggle(),
+                    null => null,
+                  },
+                ),
               ],
             ),
           ),
@@ -986,13 +1175,17 @@ class _Summary extends StatelessWidget {
         ? l10n.p2pMakeAtPremium(formats.number(premium))
         : l10n.p2pMakeAtDiscount(formats.number(-premium));
     final bond = check.estimatedBond;
+    // A range as the reference writes it, « min-max » (`amountToString`, `utils/prettyNumbers.ts:13-28`), each bound with all the decimals sent.
+    final amount = check.hasRange
+        ? '${formats.typedNumber(check.rangeMin ?? 0)}-${formats.typedNumber(check.rangeMax ?? 0)}'
+        : formats.typedNumber(check.amount);
     return Semantics(
       container: true,
       liveRegion: true,
       child: Column(
         children: [
           Text(
-            '$start${formats.typedNumber(check.amount)} ${state.currency.code}$price',
+            '$start$amount ${state.currency.code}$price',
             textAlign: TextAlign.center,
             style: text.titleSmall?.copyWith(
               color: check.block == null ? colors.text : colors.textMuted,
@@ -1300,4 +1493,553 @@ class _Alert extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// [value] as a plain decimal number, with at most the amount's decimals and no exponent, as « From » and « to » read it back ([FormNumber]).
+String _plain(double value) {
+  final fixed = value.toStringAsFixed(MakerFormCheck.amountDecimals);
+  final trimmed = fixed.replaceFirst(RegExp(r'0+$'), '');
+  return trimmed.endsWith('.')
+      ? trimmed.substring(0, trimmed.length - 1)
+      : trimmed;
+}
+
+/// « Amount Range » / « Exact Amount » (`MakerForm.tsx:831-850`): a switch whose label says what is chosen.
+class _RangeSwitch extends StatelessWidget {
+  final bool range;
+  final ValueChanged<bool>? onChanged;
+
+  const _RangeSwitch({required this.range, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    return MergeSemantics(
+      child: Row(
+        children: [
+          Switch(value: range, onChanged: onChanged),
+          const Gap(BullSpacing.xs),
+          Expanded(
+            child: Text(
+              range ? l10n.p2pMakeAmountRange : l10n.p2pMakeExactAmount,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: colors.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The range (`AmountRange.tsx`): « From » … « to » and the currency, then the reference's slider over the form's limits, its two ends marked with them (3 significant digits), each thumb's value shown as it moves (2 significant digits below 100, 3 from 100).
+class _AmountRange extends StatelessWidget {
+  final TextEditingController min;
+  final TextEditingController max;
+  final MakerFormCheck check;
+  final RobosatsCurrency currency;
+  final bool enabled;
+  final VoidCallback onChanged;
+  final VoidCallback onCurrency;
+  final void Function(MakerRange next, MakerAmountLimits limits) onSlide;
+
+  const _AmountRange({
+    required this.min,
+    required this.max,
+    required this.check,
+    required this.currency,
+    required this.enabled,
+    required this.onChanged,
+    required this.onCurrency,
+    required this.onSlide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final limits = check.limits;
+    final code = currency.code;
+    String bound(double value, int digits) =>
+        '${formats.typedNumber(significant(value, digits))} $code';
+    final label = text.labelLarge?.copyWith(color: colors.textMuted);
+    return Material(
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(BullRadius.xxs),
+        side: BorderSide(color: colors.outline),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(BullSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                ExcludeSemantics(child: Text(l10n.p2pMakeFrom, style: label)),
+                const Gap(BullSpacing.xs),
+                Expanded(
+                  child: _RangeField(
+                    label: l10n.p2pMakeFrom,
+                    controller: min,
+                    error: check.rangeMinError,
+                    enabled: enabled,
+                    onChanged: onChanged,
+                  ),
+                ),
+                const Gap(BullSpacing.xs),
+                ExcludeSemantics(child: Text(l10n.p2pMakeTo, style: label)),
+                const Gap(BullSpacing.xs),
+                Expanded(
+                  child: _RangeField(
+                    label: l10n.p2pMakeTo,
+                    controller: max,
+                    error: check.rangeMaxError,
+                    enabled: enabled,
+                    onChanged: onChanged,
+                  ),
+                ),
+                const Gap(BullSpacing.xs),
+                FilterChoice(
+                  label: code,
+                  semanticsLabel: '${l10n.p2pBookFilterSubjectCurrency}: $code',
+                  onTap: enabled ? onCurrency : () {},
+                ),
+              ],
+            ),
+            if (limits != null && limits.max > limits.min) ...[
+              const Gap(BullSpacing.xs),
+              Builder(
+                builder: (context) {
+                  double within(double value) =>
+                      value.clamp(limits.min, limits.max).toDouble();
+                  final start = within(check.rangeMin ?? limits.min);
+                  final end = within(check.rangeMax ?? limits.max);
+                  final values = RangeValues(
+                    start <= end ? start : end,
+                    end,
+                  );
+                  String thumb(double value) =>
+                      bound(value, value < 100 ? 2 : 3);
+                  return RangeSlider(
+                    values: values,
+                    min: limits.min,
+                    max: limits.max,
+                    divisions: 5000,
+                    labels: RangeLabels(
+                      thumb(values.start),
+                      thumb(values.end),
+                    ),
+                    onChanged: enabled
+                        ? (next) => onSlide(
+                            MakerRange(next.start, next.end),
+                            limits,
+                          )
+                        : null,
+                  );
+                },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(bound(limits.min, 3), style: text.labelMedium),
+                  Text(bound(limits.max, 3), style: text.labelMedium),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// « From » or « to »: a number field without a label of its own (the words around it are), red when the reference marks it (`AmountRange.tsx:163`, `:194`).
+class _RangeField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final bool error;
+  final bool enabled;
+  final VoidCallback onChanged;
+
+  const _RangeField({
+    required this.label,
+    required this.controller,
+    required this.error,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final edge = error ? colors.error : colors.outline;
+    return Semantics(
+      container: true,
+      label: label,
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        autocorrect: false,
+        enableSuggestions: false,
+        enableIMEPersonalizedLearning: false,
+        inputFormatters: [
+          LengthLimitingTextInputFormatter(FormNumber.maxLength),
+          const _DecimalsFormatter(MakerFormCheck.amountDecimals),
+        ],
+        textAlign: TextAlign.center,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(color: error ? colors.error : colors.text),
+        onChanged: (_) => onChanged(),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: colors.surface,
+          enabledBorder: _border(edge),
+          disabledBorder: _border(colors.outline),
+          focusedBorder: _border(error ? colors.error : colors.primary),
+        ),
+      ),
+    );
+  }
+}
+
+/// A field shown and not usable before #189, with the reference's label and tooltip and « Coming in a later version. » under it.
+class _Later extends StatelessWidget {
+  final Widget child;
+  final String tooltip;
+
+  const _Later({required this.child, required this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Tooltip(message: tooltip, child: child),
+        const Gap(BullSpacing.xxs),
+        Text(
+          P2pLocalizations.of(context).p2pMakeComingLater,
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(color: colors.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+/// « Face to Face Location » (`MakerForm.tsx:1002-1027`), where the reference puts it, under the payment methods: disabled until #189.
+class _Location extends StatelessWidget {
+  const _Location();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    return _Later(
+      tooltip: l10n.p2pMakeLocationHint,
+      child: OutlinedButton.icon(
+        onPressed: null,
+        icon: const Icon(Icons.map_outlined),
+        iconAlignment: IconAlignment.end,
+        style: OutlinedButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          minimumSize: const Size.fromHeight(48),
+          side: BorderSide(color: colors.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(BullRadius.xxs),
+          ),
+        ),
+        label: Text(l10n.p2pMakeLocation),
+      ),
+    );
+  }
+}
+
+/// « Password » (`MakerForm.tsx:1085-1113`): disabled until #189.
+class _Password extends StatelessWidget {
+  const _Password();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    return _Later(
+      tooltip: l10n.p2pMakePasswordHint,
+      child: TextField(
+        enabled: false,
+        obscureText: true,
+        decoration: InputDecoration(
+          labelText: l10n.p2pMakePassword,
+          filled: true,
+          fillColor: colors.surface,
+          disabledBorder: _border(colors.outline),
+        ),
+      ),
+    );
+  }
+}
+
+/// « Description » (`MakerForm.tsx:1051-1083`) with its tooltip, and under it the reference's line when it is too long, or the app's when others would not see it as written ([OrderDescription]).
+class _Description extends StatelessWidget {
+  final TextEditingController controller;
+  final MakerFormCheck check;
+  final bool enabled;
+  final VoidCallback onChanged;
+
+  const _Description({
+    required this.controller,
+    required this.check,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final error = check.descriptionTooLong
+        ? l10n.p2pMakeDescriptionTooLong('${MakerFormCheck.maxDescriptionLength}')
+        : check.descriptionNotShown
+        ? l10n.p2pMakeCustomMethodNotShown
+        : null;
+    final edge = error == null ? colors.outline : colors.error;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(
+          child: Text(
+            l10n.p2pMakeDescription,
+            style: text.labelLarge?.copyWith(
+              color: error == null ? colors.textMuted : colors.error,
+            ),
+          ),
+        ),
+        const Gap(BullSpacing.xxs),
+        Tooltip(
+          message: l10n.p2pMakeDescriptionHint,
+          child: Semantics(
+            container: true,
+            label: l10n.p2pMakeDescription,
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              minLines: 1,
+              maxLines: 4,
+              keyboardType: TextInputType.text,
+              textAlign: TextAlign.center,
+              style: text.bodyLarge?.copyWith(color: colors.text),
+              onChanged: (_) => onChanged(),
+              decoration: InputDecoration(
+                errorText: error,
+                errorMaxLines: 3,
+                filled: true,
+                fillColor: colors.surface,
+                enabledBorder: _border(edge),
+                disabledBorder: _border(colors.outline),
+                focusedBorder: _border(
+                  error == null ? colors.primary : colors.error,
+                ),
+                errorBorder: _border(colors.error),
+                focusedErrorBorder: _border(colors.error),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// « Public Duration (HH:mm) » or « Escrow/Invoice Timer (HH:mm) » (`MakerForm.tsx:1115-1184`): the duration as HH:mm, a tap opening a 24-hour picker titled as the reference's ([title]).
+class _DurationField extends StatelessWidget {
+  final String label;
+  final String title;
+  final Duration value;
+  final bool enabled;
+  final ValueChanged<Duration> onPicked;
+
+  const _DurationField({
+    required this.label,
+    required this.title,
+    required this.value,
+    required this.enabled,
+    required this.onPicked,
+  });
+
+  /// [duration] as the reference's field writes it, `HH:mm`.
+  static String hhmm(Duration duration) {
+    final hours = duration.inHours.toString().padLeft(2, '0');
+    final minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
+    return '$hours:$minutes';
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: value.inHours,
+        minute: value.inMinutes % 60,
+      ),
+      helpText: title,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
+    if (picked == null) return;
+    onPicked(Duration(hours: picked.hour, minutes: picked.minute));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      value: hhmm(value),
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(label, style: text.labelLarge?.copyWith(color: colors.textMuted)),
+          const Gap(BullSpacing.xxs),
+          Material(
+            color: colors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(BullRadius.xxs),
+              side: BorderSide(color: colors.outline),
+            ),
+            child: InkWell(
+              onTap: enabled ? () => unawaited(_pick(context)) : null,
+              borderRadius: BorderRadius.circular(BullRadius.xxs),
+              child: Padding(
+                padding: const EdgeInsets.all(BullSpacing.sm),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        hhmm(value),
+                        textAlign: TextAlign.center,
+                        style: text.bodyLarge?.copyWith(
+                          color: enabled ? colors.text : colors.textMuted,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.schedule, color: colors.textMuted),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// « Fidelity Bond Size » (`MakerForm.tsx:1186-1258`): its label with a lock and the reference's tooltip, the slider from 2 to 15 % by 0.25, and the reference's marks, 2, 5, 10 and 15 %, under it.
+class _BondSizeSlider extends StatelessWidget {
+  final double value;
+  final ValueChanged<double>? onChanged;
+
+  const _BondSizeSlider({required this.value, required this.onChanged});
+
+  static const _marks = [2.0, 5.0, 10.0, 15.0];
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    String percent(double value) =>
+        l10n.p2pMakeBondSizeValue(formats.number(value));
+    const span = MakerFormCheck.maxBondSize - MakerFormCheck.minBondSize;
+    return Material(
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(BullRadius.xxs),
+        side: BorderSide(color: colors.outline),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(BullSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Tooltip(
+              message: l10n.p2pMakeBondSizeHint,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      l10n.p2pMakeBondSize,
+                      style: text.labelLarge?.copyWith(color: colors.textMuted),
+                    ),
+                  ),
+                  const Gap(BullSpacing.xxs),
+                  Icon(Icons.lock_outline, size: 14, color: colors.textMuted),
+                ],
+              ),
+            ),
+            Slider(
+              value: value,
+              min: MakerFormCheck.minBondSize,
+              max: MakerFormCheck.maxBondSize,
+              divisions: (span / MakerFormCheck.bondSizeStep).round(),
+              label: percent(value),
+              semanticFormatterCallback: percent,
+              onChanged: onChanged,
+            ),
+            ExcludeSemantics(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // The slider's track runs inside its own padding of 24 points each side.
+                  const inset = 24.0;
+                  final track = constraints.maxWidth - 2 * inset;
+                  return SizedBox(
+                    height: 20,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (final mark in _marks)
+                          Positioned(
+                            left:
+                                inset +
+                                track *
+                                    (mark - MakerFormCheck.minBondSize) /
+                                    span -
+                                20,
+                            width: 40,
+                            child: Text(
+                              percent(mark),
+                              textAlign: TextAlign.center,
+                              style: text.labelSmall?.copyWith(
+                                color: colors.textMuted,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

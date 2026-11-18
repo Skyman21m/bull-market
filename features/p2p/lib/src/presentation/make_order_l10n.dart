@@ -23,10 +23,13 @@ extension MakerFormBlockL10n on MakerFormBlock {
       MakerFormBlock.amountOutsideLimits => l10n.p2pMakeWhyOutsideLimits,
       MakerFormBlock.badPaymentMethod => l10n.p2pMakeWhyBadPaymentMethod,
       MakerFormBlock.noAmount => l10n.p2pMakeWhyNoAmount,
+      MakerFormBlock.amountRangeInvalid => l10n.p2pMakeWhyRangeInvalid,
       MakerFormBlock.amountNotPositive => l10n.p2pMakeWhyAmountNotPositive,
       MakerFormBlock.premiumInvalid => l10n.p2pMakeWhyPremiumInvalid,
       MakerFormBlock.premiumNotANumber => l10n.p2pMakeWhyPremiumNotANumber,
       MakerFormBlock.noPaymentMethod => l10n.p2pMakeWhyNoPaymentMethod,
+      MakerFormBlock.descriptionInvalid =>
+        l10n.p2pMakeWhyDescriptionInvalid,
       MakerFormBlock.formIncorrect => l10n.p2pMakeWhyFormIncorrect,
     };
   }

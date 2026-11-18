@@ -14,7 +14,7 @@ import 'trade_reader.dart';
 
 /// The owner's payment rule on the buyer's side (#182, decided on 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3): for an order made here whose user buys, the sats the buyer receives against the sats the contract's amount is worth at the Bull wallet's own price, with the order's premium ([WalletRateCheck.ofMakerPayout]). Information and a warning: it never stops « Submit » nor « Confirm … sent », and moves nothing.
 ///
-/// What is compared ([subjectAt], pure): at 6 and 8 the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`, the order's `trade_satoshis`), so that the comparison and « Submit invoice for … » speak of the same invoice (security review of #182, C1 bis); at 9, where the coordinator gives no `trade_satoshis` (`api/views.py:346-356` leaves out `CHA`), the order's `satoshis_now` (its `last_satoshis`, `api/views.py:324`) less the maker fee of the terms ([MakerTerms.payoutAt]), which nothing checks: it is compared with the invoice's sats this app kept for the contract ([PayoutRateAsked]), the smaller of the two compared, and without them said as the coordinator's figure of now (security review of #182, C2). Nothing is compared while the state machine says the amounts do not agree ([PayoutRateMismatch]).
+/// What is compared ([subjectAt], pure), for the contract's amount kept in the trail (the fixed amount, or a range's amount its take chose, #183): at 6 and 8 the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`, the order's `trade_satoshis`), so that the comparison and « Submit invoice for … » speak of the same invoice (security review of #182, C1 bis); at 9, where the coordinator gives no `trade_satoshis` (`api/views.py:346-356` leaves out `CHA`), the order's `satoshis_now` (its `last_satoshis`, `api/views.py:324`) less the maker fee of the terms ([MakerTerms.payoutAt]), which nothing checks: it is compared with the invoice's sats this app kept for the contract ([PayoutRateAsked]), the smaller of the two compared, and without them said as the coordinator's figure of now (security review of #182, C2). Nothing is compared while the state machine says the amounts do not agree ([PayoutRateMismatch]).
 ///
 /// The price is read through the wallet's port ([priceOf], [P2pWalletPort.bitcoinRate]), outside Tor, as the wallet's own screens read it, unless the wallet's pricer holds it from less than a minute before or is already reading it: the request carries the currency's code and the user's IP address, nothing of the trade (accepted by the owner on 2026-11-17 for the maker bond, the same read). When the screen asks it is `PayoutRateCubit`'s. The shell bounds a read to 15 s (`ReadWalletRateUsecase.readBound`), past which the price is unavailable.
 final class CheckPayoutRateUsecase {
@@ -68,7 +68,11 @@ final class CheckPayoutRateUsecase {
     if (!seen.stored) return null;
     final order = seen.order;
     final status = seen.status;
-    final amount = maker.contractAmount(order?.takenAmount);
+    // The contract's amount is the one the trail keeps with the contract (a range's amount taken, kept from the contract's first read, #178), never the read's alone: a coordinator that shows another amount within the contract has the state machine say it (`TradeTermsChanged`), and the comparison stays on the amount of the contract the user saw taken (#183). A range without one kept, or with one outside its bounds, gives no amount: « rate not checked », never a comparison.
+    final kept = status.trail.takenAmount;
+    final amount = maker.contractAmount(
+      kept == null ? null : FiatAmount.tryCreate(kept),
+    );
     switch (status) {
       case WaitingForBoth(role: TradeRole.buyer) ||
           WaitingForPayout(role: TradeRole.buyer):

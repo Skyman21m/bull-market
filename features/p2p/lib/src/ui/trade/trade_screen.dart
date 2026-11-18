@@ -992,7 +992,7 @@ class _Contract extends StatelessWidget {
           context,
           state,
           coordinator: coordinator,
-          amount: PayoutRateLines.amountOf(context, order),
+          amount: PayoutRateLines.amountOf(context, order, status),
         ),
       if (gap != null && !PayoutRateLines.hidesGap(state))
         (
@@ -1013,7 +1013,11 @@ class _Contract extends StatelessWidget {
       child: PayoutRateLines(
         state: state,
         coordinator: coordinator,
-        amount: PayoutRateLines.amountOf(context, contract.order),
+        amount: PayoutRateLines.amountOf(
+          context,
+          contract.order,
+          contract.seen.status,
+        ),
         onRetry: onRetryRate,
       ),
     );
@@ -1038,8 +1042,9 @@ class _Contract extends StatelessWidget {
       WaitingForPayout(:final rateGap, :final role) => (
         rateGap,
         role,
-        switch ((order?.takenAmount, order?.amount)) {
-          (final taken?, _) => taken,
+        // The contract's amount the gap is computed with: for a range, the one the trail keeps with the contract (#183), never the read's alone.
+        switch ((status.trail.takenAmount, order?.amount)) {
+          (final kept?, _) => FiatAmount.tryCreate(kept),
           (null, FixedOrderAmount(:final amount)) => amount,
           _ => null,
         },
