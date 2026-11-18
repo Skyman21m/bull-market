@@ -19,10 +19,7 @@ typedef PayoutRateTermsOf = Future<MakerTerms?> Function(TradeRecord record);
 
 /// [CheckPayoutRateUsecase.priceOf], which the locator gives the cubit.
 typedef PayoutRatePriceOf =
-    Future<P2pWalletBitcoinRate> Function(
-      TradeRecord record,
-      MakerTerms maker,
-    );
+    Future<P2pWalletBitcoinRate> Function(TradeRecord record, MakerTerms maker);
 
 /// Which buyer's step a check is for: the payout (6 and 8) or « fiat sent » (9), of a contract ([take]).
 @immutable
@@ -225,8 +222,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
         subject is PayoutRateCompared &&
         _reading == null &&
         (kept == null ||
-            ((newStep || appeared || moved) &&
-                (stale || (newStep && unread))));
+            ((newStep || appeared || moved) && (stale || (newStep && unread))));
     if (read) {
       await _read(maker);
     } else {
@@ -299,8 +295,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       asked: memory.askedOf(record, take),
     );
     final keep = switch (subject) {
-      PayoutRateCompared(:final keep?) || PayoutRateMismatch(:final keep?) =>
-        keep,
+      PayoutRateCompared(:final keep?) ||
+      PayoutRateMismatch(:final keep?) => keep,
       _ => null,
     };
     if (keep != null) memory.keepAsked(record, take, keep);

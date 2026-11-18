@@ -185,7 +185,9 @@ void main() {
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsOneWidget);
       expect(
-        tester.widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen)).canTake,
+        tester
+            .widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen))
+            .canTake,
         isFalse,
       );
     },
@@ -198,7 +200,9 @@ void main() {
     expect(find.byType(OrderDetailsScreen), findsOneWidget);
     expect(find.byType(TradeScreen), findsNothing);
     expect(
-      tester.widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen)).canTake,
+      tester
+          .widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen))
+          .canTake,
       isTrue,
     );
   });

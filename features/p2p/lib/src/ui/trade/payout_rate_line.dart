@@ -63,51 +63,54 @@ class PayoutRateLines extends StatelessWidget {
             tone: TradeDialogTone.alert,
           ),
         ...switch (check) {
-        WalletRateCompared(
-          :final price,
-          :final expected,
-          :final gapHundredths,
-        ) =>
-          [
-            (
-              text: l10n.p2pPayoutRateWallet(
-                formats.orderRate(price),
-                check.currency.code,
-                amount,
-                formats.bigSats(expected.value),
-                formats.bigSats(check.asked.value),
-                formats.gap(gapHundredths),
-              ),
-              tone: TradeDialogTone.plain,
-            ),
-            // At 9 with nothing kept: the figure compared is the coordinator's of now.
-            if (basis is PayoutRateToldNow)
+          WalletRateCompared(
+            :final price,
+            :final expected,
+            :final gapHundredths,
+          ) =>
+            [
               (
-                text: l10n.p2pPayoutRateToldNow(coordinator),
-                tone: TradeDialogTone.warning,
-              ),
-            if (check.warns)
-              (
-                text: l10n.p2pPayoutRateWarning(
-                  formats.threshold(TradeTolerances.walletRateGap),
-                  formats.bigSats(check.asked.value),
+                text: l10n.p2pPayoutRateWallet(
+                  formats.orderRate(price),
+                  check.currency.code,
+                  amount,
                   formats.bigSats(expected.value),
+                  formats.bigSats(check.asked.value),
+                  formats.gap(gapHundredths),
                 ),
-                tone: TradeDialogTone.alert,
+                tone: TradeDialogTone.plain,
               ),
+              // At 9 with nothing kept: the figure compared is the coordinator's of now.
+              if (basis is PayoutRateToldNow)
+                (
+                  text: l10n.p2pPayoutRateToldNow(coordinator),
+                  tone: TradeDialogTone.warning,
+                ),
+              if (check.warns)
+                (
+                  text: l10n.p2pPayoutRateWarning(
+                    formats.threshold(TradeTolerances.walletRateGap),
+                    formats.bigSats(check.asked.value),
+                    formats.bigSats(expected.value),
+                  ),
+                  tone: TradeDialogTone.alert,
+                ),
+            ],
+          WalletRateNotPriced() => [
+            (
+              text: l10n.p2pPayoutRateNotPriced(
+                check.currency.code,
+                coordinator,
+              ),
+              tone: TradeDialogTone.warning,
+            ),
           ],
-        WalletRateNotPriced() => [
-          (
-            text: l10n.p2pPayoutRateNotPriced(check.currency.code, coordinator),
-            tone: TradeDialogTone.warning,
-          ),
-        ],
-        WalletRateUnverified() => [
-          (
-            text: l10n.p2pPayoutRateUnverified(check.currency.code),
-            tone: TradeDialogTone.warning,
-          ),
-        ],
+          WalletRateUnverified() => [
+            (
+              text: l10n.p2pPayoutRateUnverified(check.currency.code),
+              tone: TradeDialogTone.warning,
+            ),
+          ],
         },
       ],
     };

@@ -979,13 +979,19 @@ void main() {
             rate: rateOf(() => atWallet, reads: reads),
           );
           await tester.pump();
-          expect(find.textContaining('You receive 106,873 sats'), findsOneWidget);
+          expect(
+            find.textContaining('You receive 106,873 sats'),
+            findsOneWidget,
+          );
           expect(find.textContaining('fewer sats than that'), findsNothing);
           watch.add(TradeScreenStatuses.watched(chain[3], of: _record));
           await tester.pump();
           await tester.pump();
           expect(find.textContaining('You receive 106,873 sats'), findsNothing);
-          expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
+          expect(
+            find.textContaining('You receive 49,988 sats'),
+            findsOneWidget,
+          );
           expect(find.textContaining('fewer sats than that'), findsOneWidget);
           // The price read at 6, less than 3 minutes old: not read again.
           expect(reads, hasLength(1));
@@ -1007,8 +1013,14 @@ void main() {
             find.text('The amounts Temple of Sats gives do not add up.'),
             findsOneWidget,
           );
-          expect(find.textContaining('At the Bull wallet\'s price'), findsNothing);
-          expect(find.textContaining('from the rate when you made it'), findsNothing);
+          expect(
+            find.textContaining('At the Bull wallet\'s price'),
+            findsNothing,
+          );
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
         },
       );
 
@@ -1041,14 +1053,22 @@ void main() {
           );
           expect(
             tester
-                .widget<Text>(find.textContaining('but asked for an invoice of'))
+                .widget<Text>(
+                  find.textContaining('but asked for an invoice of'),
+                )
                 .style
                 ?.color,
             testBullTheme.error,
           );
-          expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
+          expect(
+            find.textContaining('You receive 49,988 sats'),
+            findsOneWidget,
+          );
           expect(find.textContaining('fewer sats than that'), findsOneWidget);
-          expect(find.textContaining('from the rate when you made it'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
           final confirm = find.textContaining('Confirm 100 EUR sent');
           await _reveal(tester, confirm);
           await tester.tap(confirm);
@@ -1056,7 +1076,9 @@ void main() {
           expect(
             find.descendant(
               of: find.byType(ConfirmFiatSentDialog),
-              matching: find.textContaining('but asked for an invoice of 49,988'),
+              matching: find.textContaining(
+                'but asked for an invoice of 49,988',
+              ),
             ),
             findsOneWidget,
           );
@@ -1095,7 +1117,10 @@ void main() {
             find.textContaining('but asked for an invoice of 49,988 sats'),
             findsOneWidget,
           );
-          expect(find.textContaining('You receive 49,988 sats'), findsOneWidget);
+          expect(
+            find.textContaining('You receive 49,988 sats'),
+            findsOneWidget,
+          );
         },
       );
 

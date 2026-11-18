@@ -51,10 +51,11 @@ void main() {
       ).termsOf(record) ??
       (throw StateError('no terms'));
 
-  PayoutRateCompared comparedOf(PayoutRateSubject? subject) => switch (subject) {
-    final PayoutRateCompared compared => compared,
-    final other => throw StateError('nothing compared: $other'),
-  };
+  PayoutRateCompared comparedOf(PayoutRateSubject? subject) =>
+      switch (subject) {
+        final PayoutRateCompared compared => compared,
+        final other => throw StateError('nothing compared: $other'),
+      };
 
   /// The cubit over [record] and [harness]'s records, the wallet's price from [port], each read counted in [reads].
   PayoutRateCubit cubitOf(
