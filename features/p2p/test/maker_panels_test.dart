@@ -1154,7 +1154,12 @@ void main() {
             await tester.pump();
             await tester.pump();
             await capture(tester, '$code-createur-9-chiffre-change');
-            await _show(tester, chain[4], locale: locale, rate: rateOf(() => atWallet));
+            await _show(
+              tester,
+              chain[4],
+              locale: locale,
+              rate: rateOf(() => atWallet),
+            );
             await tester.pump();
             await capture(tester, '$code-createur-9-rien-garde');
           }
