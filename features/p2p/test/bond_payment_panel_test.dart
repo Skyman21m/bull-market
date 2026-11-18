@@ -185,13 +185,14 @@ void main() {
           WalletPaidHere.yes,
         ),
         (const BondPayFollowing(P2pWalletPaymentPaid()), WalletPaidHere.yes),
+        // A refund does not tell a hold invoice cancelled after its lock from the swap service failing to pay it (review of #208, C1).
         (
           const BondPayFollowing(P2pWalletPaymentRefundPending()),
-          WalletPaidHere.yes,
+          WalletPaidHere.cannotTell,
         ),
         (
           const BondPayFollowing(P2pWalletPaymentRefunded()),
-          WalletPaidHere.yes,
+          WalletPaidHere.cannotTell,
         ),
         // The wallet's own screens paid it: this wallet still.
         (
@@ -241,6 +242,31 @@ void main() {
         await tester.pump();
         expect(find.text(maybe), findsOneWidget);
         expect(find.text(named), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'at 7, a payment of this wallet being refunded, then refunded: said as a condition, never « Your bond was paid with this wallet », since the bond may have been paid with another wallet after the swap failed (review of #208, C1)',
+      (tester) async {
+        const named =
+            'Your bond was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.';
+        const maybe =
+            'A bond paid with this wallet comes back through the swap service, less its fees, after a delay.';
+        final (_, payments) = await _show(
+          tester,
+          state: 'seven',
+          offered: false,
+        );
+        for (final progress in const [
+          P2pWalletPaymentRefundPending(),
+          P2pWalletPaymentRefunded(),
+        ]) {
+          _follow(payments, progress);
+          await tester.pump();
+          await tester.pump();
+          expect(find.text(maybe), findsOneWidget, reason: '$progress');
+          expect(find.text(named), findsNothing, reason: '$progress');
+        }
       },
     );
   });

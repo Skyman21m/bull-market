@@ -3376,7 +3376,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String p2pPayoutRateToldNow(String coordinator) {
-    return 'This figure is the one $coordinator gives now: Bull Market does not keep your invoice after a restart. Compare it yourself with your invoice\'s amount.';
+    return 'The sats you receive shown above are those $coordinator gives now: Bull Market does not keep your invoice after a restart. Compare them yourself with your invoice\'s amount.';
   }
 
   @override

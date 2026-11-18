@@ -1321,7 +1321,7 @@ void main() {
           await tester.pump();
           // A normal case, said plainly: in the text colour, not bold, the user asked to compare it with the invoice (functional review of #182, U3, #207); a line of its own beside the comparison.
           final now = find.text(
-            'This figure is the one Temple of Sats gives now: Bull Market does not keep your invoice after a restart. Compare it yourself with your invoice\'s amount.',
+            'The sats you receive shown above are those Temple of Sats gives now: Bull Market does not keep your invoice after a restart. Compare them yourself with your invoice\'s amount.',
           );
           expect(now, findsOneWidget);
           final style = tester.widget<Text>(now).style;
@@ -2246,6 +2246,47 @@ void main() {
           );
         }
         await capture(tester, 'en-createur-9-vu-tard-montants');
+      },
+    );
+
+    testWidgets(
+      'a range order\'s contract seen late at 9, then a read refused as a whole (the status kept from no order, so no contract\'s amount), nothing kept: the alert beside « rate not checked » (R13, review of #208, R2)',
+      (tester) async {
+        final terms = madeTerms(range: true);
+        final chain = await _chain([
+          makerOrderJson(0, range: true),
+          makerOrderJson(1, range: true),
+          makerOrderJson(6, range: true, last: 50000),
+          makerOrderJson(7, range: true, last: 50000),
+          makerOrderJson(9, range: true, taker: third, last: 106900),
+        ], terms: terms);
+        expect(chain[4].status.has<ContractSeenLate>(), isTrue);
+        // As `TradeReader` keeps a status after a read the state machine refuses as a whole: from no order (`TradeScreenStatuses.refusedRead`).
+        final kept = TradeSeen(chain[4].status, order: null, stored: true);
+        final maker = switch (terms.side) {
+          MadeSide(:final maker) => maker,
+        };
+        expect(maker.contractAmount(kept.order?.takenAmount), isNull);
+        expect(
+          CheckPayoutRateUsecase.subjectAt(_record, maker, kept),
+          const PayoutRateNoSats(notSeen: true),
+        );
+        final (_, watch) = await _show(
+          tester,
+          chain[2],
+          rate: _rateCubit(() => atWallet, terms: terms),
+        );
+        await tester.pump();
+        watch
+          ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+          ..add(TradeScreenStatuses.watched(kept, of: _record));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.textContaining('has not seen this contract\'s payout invoice'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Rate not checked'), findsOneWidget);
       },
     );
 

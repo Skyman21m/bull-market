@@ -198,6 +198,33 @@ void main() {
   );
 
   testWidgets(
+    'a read of the active trades that does not end: after 10 s the bar goes and the order\'s page opens without « Take Order » (review of #208, R3)',
+    (tester) async {
+      final never = StreamController<Result<List<ActiveTrade>, P2pFailure>>();
+      addTearDown(never.close);
+      await open(tester, activeStream: () => never.stream);
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await tester.pump();
+      expect(find.byKey(P2pTabScreen.waitingForTradesKey), findsOneWidget);
+      await tester.pump(const Duration(seconds: 9));
+      expect(find.byKey(P2pTabScreen.waitingForTradesKey), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await settle(tester);
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(
+        tester
+            .widget<OrderDetailsScreen>(find.byType(OrderDetailsScreen))
+            .recordsUnreadable,
+        isTrue,
+      );
+      expect(
+        find.byKey(P2pTabScreen.waitingForTradesKey, skipOffstage: false),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
     'records that cannot be read: the order\'s page without « Take Order », since the order may be this device\'s',
     (tester) async {
       await open(

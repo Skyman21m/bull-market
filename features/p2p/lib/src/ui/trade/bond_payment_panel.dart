@@ -135,6 +135,9 @@ class BondPaymentPanel extends StatefulWidget {
       P2pWalletPaymentExpired() ||
       P2pWalletPaymentFailed() when progress.fundsMayHaveLeft =>
         WalletPaidHere.cannotTell,
+      // A refund does not tell a hold invoice cancelled after its lock from the swap service failing to pay it (the port's own words, `P2pWalletPaymentRefundPending`): the invoice may have been paid by another wallet meanwhile (review of #208, C1).
+      P2pWalletPaymentRefundPending() ||
+      P2pWalletPaymentRefunded() => WalletPaidHere.cannotTell,
       _ when progress.fundsMayHaveLeft => WalletPaidHere.yes,
       _ => WalletPaidHere.no,
     },

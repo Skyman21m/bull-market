@@ -4869,7 +4869,7 @@
       }
     }
   },
-  "p2pPayoutRateToldNow": "This figure is the one {coordinator} gives now: Bull Market does not keep your invoice after a restart. Compare it yourself with your invoice's amount.",
+  "p2pPayoutRateToldNow": "The sats you receive shown above are those {coordinator} gives now: Bull Market does not keep your invoice after a restart. Compare them yourself with your invoice's amount.",
   "@p2pPayoutRateToldNow": {
     "description": "Not in the RoboSats texts: the project's own: at 9, no invoice's sats kept in memory for the contract (most often the app started again between 8 and 9, a normal case; #204 will keep it, schema 9): what is compared is the coordinator's figure of now, said as such (#182, security review C2), in the text colour, not bold, the user asked to compare it with the invoice given (#207, functional review U3). It does not say the app was restarted, which the app cannot tell (an invoice given from another app gives the same line).",
     "placeholders": {

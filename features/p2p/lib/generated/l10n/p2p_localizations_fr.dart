@@ -3423,7 +3423,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutRateToldNow(String coordinator) {
-    return 'Ce chiffre est celui que $coordinator annonce maintenant : Bull Market ne garde pas votre facture après un redémarrage. Comparez-le vous-même au montant de votre facture.';
+    return 'Les sats reçus affichés ci-dessus sont ceux que $coordinator annonce maintenant : Bull Market ne garde pas votre facture après un redémarrage. Comparez-les vous-même au montant de votre facture.';
   }
 
   @override

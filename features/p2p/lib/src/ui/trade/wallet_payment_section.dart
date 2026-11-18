@@ -81,7 +81,7 @@ final class WalletBondState {
   static const none = WalletBondState(sending: false, sent: false);
 }
 
-/// Whether a bond or an escrow was paid with this wallet, as the trade's payment records tell (#207): [yes] once a payment of this wallet left it (sent, held, paid, being refunded or refunded); [cannotTell] when the records cannot be read, a payment is being sent, or its funds may have left with its end unknown (broadcast not known, expired or failed after sending); [no] otherwise (nothing paid with this wallet, nothing left it, or the records still being read, which takes a moment).
+/// Whether a bond or an escrow was paid with this wallet, as the trade's payment records tell (#207): [yes] once a payment of this wallet left it and was not refunded (sent, held, under review, paid); [cannotTell] when the records cannot be read, a payment is being sent, its funds may have left with its end unknown (broadcast not known, expired or failed after sending), or it is being refunded or was, which does not tell a hold invoice cancelled after its lock from the swap service failing to pay it (the invoice then perhaps paid by another wallet, review of #208, C1); [no] otherwise (nothing paid with this wallet, nothing left it, or the records still being read, which takes a moment).
 enum WalletPaidHere { no, yes, cannotTell }
 
 /// Builds what the wallet offers for [request], or `null` when it has nothing to offer: then the section is empty and « Pay with another wallet » opens at once.

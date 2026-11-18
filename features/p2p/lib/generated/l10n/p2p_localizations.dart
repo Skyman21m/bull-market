@@ -5344,7 +5344,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: at 9, no invoice's sats kept in memory for the contract (most often the app started again between 8 and 9, a normal case; #204 will keep it, schema 9): what is compared is the coordinator's figure of now, said as such (#182, security review C2), in the text colour, not bold, the user asked to compare it with the invoice given (#207, functional review U3). It does not say the app was restarted, which the app cannot tell (an invoice given from another app gives the same line).
   ///
   /// In en, this message translates to:
-  /// **'This figure is the one {coordinator} gives now: Bull Market does not keep your invoice after a restart. Compare it yourself with your invoice\'s amount.'**
+  /// **'The sats you receive shown above are those {coordinator} gives now: Bull Market does not keep your invoice after a restart. Compare them yourself with your invoice\'s amount.'**
   String p2pPayoutRateToldNow(String coordinator);
 
   /// Not in the RoboSats texts: the project's own, under the reference's texts that say a bond is returned (« If the order expires untaken, your bond will return to you », « you will get your bond back automatically », « Your … bond is unlocked ») (#182, second review): a bond paid with this wallet is a payment of the swap service, which refunds it less its fees, with no duration promised. Since #207, only when the trade's payment records cannot tell whether the bond was paid with this wallet (records that cannot be read, a payment whose end is not known): said as a condition, true in every case; `p2pTradeBondPaidHereBack` when they say it was.
