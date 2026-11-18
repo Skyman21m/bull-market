@@ -71,6 +71,9 @@ final class ScriptedMadeOrder {
   /// Whether a cancel returned the maker bond, or settled it.
   bool bondReturned = false;
 
+  /// Whether the buyer confirmed the fiat sent (`order.is_fiat_sent`, `api/logics.py:1696`).
+  bool fiatSent = false;
+
   /// The payment hashes of the payout invoices given (#182): one is never taken twice.
   final Set<String> payoutHashes = {};
   bool bondSettled = false;
@@ -502,7 +505,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         'bad_request': 'You cannot confirm the fiat payment at this stage',
       });
     }
-    made.status = 10;
+    made
+      ..status = 10
+      ..fiatSent = true;
     return _json(200, _orderJson(made, robot, isMaker: true));
   }
 
@@ -788,16 +793,22 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       ..['is_seller'] = !buyer
       ..['taker_nick'] = taker?.nickname ?? 'None'
       ..['status_message'] = 'Some label'
-      ..['is_fiat_sent'] = status == 10
+      // `order.is_fiat_sent`: set by the buyer's « confirm » (`api/logics.py:1696`), cleared by « undo » only (`:1748`), so still set after 10 (#182).
+      ..['is_fiat_sent'] = status == 10 || (made.fiatSent && status >= 11)
       ..['is_disputed'] = status == 11 || status >= 16
       ..['ur_nick'] = robot.nickname
       ..['satoshis_now'] = made.lastSatoshis
-      ..['maker_locked'] = status != 0
-      ..['taker_locked'] = status >= 6
-      ..['escrow_locked'] = status == 8 || status >= 9;
-    if (taker != null) data['taker_hash_id'] = taker.hashId.hex;
-    // Once both bonds are locked, at the statuses `api/views.py:346-356` lists: 6 (WF2), 7 (WFE), 8 (WFI), 10 (FSE), 11 (DIS), 12 (CCA), 13 (PAY), 14 (SUC), 15 (FAI); not at 9 (CHA, the chat).
-    if (const [6, 7, 8, 10, 11, 12, 13, 14, 15].contains(status)) {
+      // Whether each hold invoice is LOCKED now (`api/views.py:326-343`): the maker bond from the publication to the trade's end, returned or settled at 4, 5 and 11 to 18 (`Logics.return_bond`, `settle_bond`, `api/logics.py:1561-1600`; a dispute settles the escrow and both bonds, `:503-506`; the seller's « confirm » returns both bonds before paying the buyer, `:1724-1727`); the taker bond from the contract (6) to 10; the escrow from its lock (8, or 9 after 7) to 10 (#182).
+      ..['maker_locked'] = const [1, 2, 3, 6, 7, 8, 9, 10].contains(status)
+      ..['taker_locked'] = status >= 6 && status <= 10
+      ..['escrow_locked'] = status >= 8 && status <= 10;
+    if (taker != null) {
+      data
+        ..['taker_hash_id'] = taker.hashId.hex
+        ..['taker_nostr_pubkey'] = 'None';
+    }
+    // Only while both bonds are LOCKED, at the statuses `api/views.py:346-361` lists (6, 7, 8, 10, 11, 12, 13, 14, 15, not 9): with the bonds locked only at 6, 7, 8 and 10 (above), never at 9, 11 to 15 (#182).
+    if (const [6, 7, 8, 10].contains(status)) {
       data['trade_satoshis'] = buyer ? payout : escrow;
     }
     switch (status) {
@@ -822,7 +833,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
           ..['invoice_amount'] = payout
           ..['swap_allowed'] = false
           ..['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
-      case 9 || 10:
+      // The chat's fields at 8 for the seller (the buyer's 8 is the payout's branch), 9 and 10 (`api/views.py:438-460`).
+      case 8 || 9 || 10:
         data
           ..['asked_for_cancel'] = false
           ..['chat_last_index'] = 0;
@@ -836,7 +848,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
             _ => 'Expired not taken',
           };
     }
-    if (const [5, 13, 14, 15].contains(status)) {
+    // The renewal's fields (`api/views.py:489-498`); the trade summary of 13 to 15 (`Logics.summarize_trade`) is not played.
+    if (const [5, 13, 14].contains(status) || (status == 15 && !buyer)) {
       data
         ..['public_duration'] = made.publicSeconds
         ..['bond_size'] = _decimal(body['bond_size'], 2);

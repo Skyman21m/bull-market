@@ -1182,29 +1182,49 @@ void main() {
             expect(sent, hasLength(1));
             // The red warning still there: nothing was stopped by it.
             expect(find.textContaining('fewer sats than that'), findsOneWidget);
-            await capture(tester, 'en-createur-$status-panneau-paiement');
             await tester.pump(const Duration(seconds: 31));
           },
         );
       }
 
       testWidgets(
-        'captures in French of the payout panel at 6 and 8 (with P2P_CAPTURE_DIR)',
+        'captures of the payout panel at 6 and 8, the invoice submitted under the red warning (with P2P_CAPTURE_DIR)',
         skip: captureDirectory == null,
         (tester) async {
           await loadCaptureFonts();
-          for (final status in [6, 8]) {
-            final seen = await tester.runAsync(
-              () => _at([
-                makerOrderJson(0),
-                makerOrderJson(1),
-                makerOrderJson(6, last: 90000),
-                if (status == 8) makerOrderJson(8, last: 90000),
-              ]),
-            );
-            if (seen == null) throw StateError('no status');
-            await page(tester, seen, locale: const Locale('fr'));
-            await capture(tester, 'fr-createur-$status-panneau-paiement');
+          for (final locale in const [Locale('fr'), Locale('en')]) {
+            for (final status in [6, 8]) {
+              final seen = await tester.runAsync(
+                () => _at([
+                  makerOrderJson(0),
+                  makerOrderJson(1),
+                  makerOrderJson(6, last: 90000),
+                  if (status == 8) makerOrderJson(8, last: 90000),
+                ]),
+              );
+              if (seen == null) throw StateError('no status');
+              final sent = await page(tester, seen, locale: locale);
+              await tester.enterText(
+                find.byKey(PayoutPanel.invoiceField),
+                _payoutInvoice(seen).text,
+              );
+              await tester.pump();
+              final submit = find.widgetWithText(
+                TradeButton,
+                locale.languageCode == 'fr' ? 'Soumettre' : 'Submit',
+              );
+              await tester.ensureVisible(submit);
+              await tester.pump();
+              await tester.tap(submit);
+              await tester.pump();
+              await tester.pump();
+              expect(sent, hasLength(1));
+              await capture(
+                tester,
+                '${locale.languageCode}-createur-$status-panneau-paiement',
+              );
+              await tester.pump(const Duration(seconds: 31));
+            }
           }
         },
       );
