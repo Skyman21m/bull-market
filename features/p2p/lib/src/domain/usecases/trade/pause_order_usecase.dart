@@ -7,6 +7,7 @@ import '../../trade/trade_answer.dart';
 import '../../trade/trade_pause.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'pauses_in_flight.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -18,19 +19,25 @@ import 'trade_take_locks.dart';
 /// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]); the request is sent only if that read is marked stored and still shows the status the user saw ([PauseStatusMoved] otherwise, with the status now, nothing sent), so that a pause never leaves for an order already paused, paused elsewhere, taken or expired;
 /// 4. the request is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: an answer lost, unreadable or late is an outcome unknown, resolved by the reads that follow, never by a second request;
 /// 5. the order is read again and kept (the answer, accepted or refused, only says what the coordinator did with the request); the status then shown is compared with what the user asked ([PauseWanted.reachedAt]): [PauseDone] only when a status marked stored shows the order where the user asked, never because the request was accepted; [PauseNotReached] when the coordinator accepted it and the order is read elsewhere (toggled twice or the other way, taken, expired, or a coordinator that answers falsely), so that the screen says when the order stayed or became public again; [PauseNotDone] when it was refused or never left; [PauseOutcomeUnknown] otherwise.
+/// While it runs, the pause is known to [PausesInFlight] ([running]), so that a screen of the trade opened meanwhile shows it running and gives its outcome rather than a second tap.
 /// Nothing here pays or moves the wallet's funds; nothing is printed or logged.
 final class PauseOrderUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
   final TradeTakeLocks _locks;
+  final PausesInFlight _inFlight;
 
   const PauseOrderUsecase(
     this._client,
     this._reader,
     this._limiter,
     this._locks,
+    this._inFlight,
   );
+
+  /// The pause of [record]'s order this process is sending now, `null` when none runs.
+  PauseInFlight? running(TradeRecord record) => _inFlight.running(record);
 
   /// Pauses or unpauses the order of [record] as [seen] showed it, the status the screen showed when the user tapped.
   ///
@@ -46,6 +53,14 @@ final class PauseOrderUsecase {
         wanted == null) {
       return const Err(PauseNotOffered());
     }
+    return _inFlight.run(record, wanted, () => _open(record, shown, wanted));
+  }
+
+  Future<Result<PauseOutcome, PauseRefusal>> _open(
+    TradeRecord record,
+    CoordinatorOrder shown,
+    PauseWanted wanted,
+  ) async {
     final OpenTrade trade;
     switch (await _reader.open(record)) {
       case TradeOpened(trade: final opened):
@@ -159,7 +174,7 @@ final class PauseOrderUsecase {
       isBusy: _answeredBusy,
     );
 
-    // A read after it. The answer itself is the coordinator's read of the order once toggled (`api/views.py:695`), checked by the package (`parseTradeActionAnswer`), but it is not kept as the status shown: only a read sent after the request says where the order is, so that « paused » is never shown on the word of the request's own answer (a coordinator that answers « paused » and toggles nothing is caught by the read after).
+    // A read after it. The answer itself is the coordinator's read of the order once toggled (`api/views.py:695`), checked by the package (`parseTradeActionAnswer`), but it is not kept as the status shown: only the read sent after the request is. What this gains: an answer lost on the way back is resolved at once by that read (done when it shows the order where the user asked), and a request with no direction is said done only from a read, never from its own answer. It does not catch a coordinator that lies: the read comes from the same coordinator (functional review of #184, R2).
     final readAfter = _reader.request();
     final read = await _reader.readOrder(
       requests,

@@ -4880,14 +4880,27 @@
       }
     }
   },
-  "p2pTradePauseNotReached": "{coordinator} accepted the request, but the order is not read where you asked: it is shown as it is now.",
-  "@p2pTradePauseNotReached": {
-    "description": "Not in the RoboSats texts: the project's own: the coordinator accepted a pause or an unpause and the order is read elsewhere: toggled twice or the other way (paused or unpaused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184).",
+  "p2pTradePauseNotReachedPaused": "{coordinator} accepted the request, but your order is not paused: it is shown as it is now.",
+  "@p2pTradePauseNotReachedPaused": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator accepted a pause and the read after it does not show the order paused: toggled twice (paused from another app meanwhile), taken, expired, or a coordinator that answers falsely (#184; named after the functional review, R5).",
     "placeholders": {
       "coordinator": {
         "type": "String"
       }
     }
+  },
+  "p2pTradePauseNotReachedPublic": "{coordinator} accepted the request, but your order is not public: it is shown as it is now.",
+  "@p2pTradePauseNotReachedPublic": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator accepted an unpause (« Unpause Order ») and the read after it does not show the order public: toggled twice (unpaused from another app meanwhile), expired, or a coordinator that answers falsely (#184; named after the functional review, R5).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePauseWhileCancel": "The order is being cancelled: wait until it ends.",
+  "@p2pTradePauseWhileCancel": {
+    "description": "Not in the RoboSats texts: the project's own: the pause button and « Unpause Order » are off while a cancel of the order runs, and this line says why (#184, functional review B1)."
   },
   "p2pTradeStillPublic": "Your order is public: robots can see it and take it.",
   "@p2pTradeStillPublic": {

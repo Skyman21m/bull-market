@@ -705,6 +705,20 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status, paid),
+        // The pause button or « Unpause Order » off while a cancel runs: said why (functional review of #184, B1).
+        if (offersPause &&
+            (contract.prompt == TradePrompt.publicWait ||
+                contract.prompt == TradePrompt.paused) &&
+            cancel is CancelRunning &&
+            pause is! PauseRunning) ...[
+          const Gap(BullSpacing.sm),
+          _Line(
+            l10n.p2pTradePauseWhileCancel,
+            color: colors.textMuted,
+            center: true,
+            live: true,
+          ),
+        ],
         // A pause or an unpause that has run [TradeCubit.stillWaitingAfter]: what it waits for (#184).
         if (pause case PauseRunning(waitedLong: true)) ...[
           const Gap(BullSpacing.sm),

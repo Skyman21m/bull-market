@@ -70,6 +70,7 @@ import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/make_order_usecase.dart';
 import 'domain/usecases/trade/pause_order_usecase.dart';
+import 'domain/usecases/trade/pauses_in_flight.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
@@ -445,9 +446,12 @@ final class P2pLocator {
       ),
     );
     // The pause and « Unpause Order » of a public order made here (#184), as the cancel, under the order's lock.
+    // One for the feature: the pauses running now, so that a trade screen opened again meanwhile shows its order's pause running (functional review of #184, R1).
+    locator.registerLazySingleton<PausesInFlight>(PausesInFlight.new);
     locator.registerFactory<PauseOrderUsecase>(
       () => PauseOrderUsecase(
         CoordinatorClient(transport(), clock: clock),
+        locator(),
         locator(),
         locator(),
         locator(),
@@ -559,6 +563,7 @@ final class P2pLocator {
         startDispute: locator<ChatStepActionUsecase>().startDispute,
         rate: locator<ChatStepActionUsecase>().rate,
         pause: locator<PauseOrderUsecase>().execute,
+        pauseRunning: locator<PauseOrderUsecase>().running,
       ),
     );
     // The payout panel of one shown trade (#91), the only caller of the payout use case and of the key's hold.

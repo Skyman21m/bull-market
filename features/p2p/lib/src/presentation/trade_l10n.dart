@@ -286,7 +286,10 @@ extension TradePauseNoticeL10n on TradePauseNotice {
         l10n.p2pTradePauseNotDoneAfter(failure.toTranslated(context)),
       PauseWasNotDone() => l10n.p2pTradePauseNotDoneAfter(l10n.p2pBookError),
       PauseWasUnknown() => l10n.p2pTradePauseUnknown(coordinator),
-      PauseWasNotReached() => l10n.p2pTradePauseNotReached(coordinator),
+      PauseWasNotReached(wanted: PauseWanted.paused) =>
+        l10n.p2pTradePauseNotReachedPaused(coordinator),
+      PauseWasNotReached(wanted: PauseWanted.public) =>
+        l10n.p2pTradePauseNotReachedPublic(coordinator),
       PausePublicAgain() => l10n.p2pTradePublicAgain,
     };
   }

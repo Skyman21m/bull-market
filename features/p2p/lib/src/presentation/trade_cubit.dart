@@ -14,6 +14,7 @@ import '../domain/trade_record.dart';
 import '../domain/usecases/trade/cancel_trade_usecase.dart';
 import '../domain/usecases/trade/chat_step_action_usecase.dart';
 import '../domain/usecases/trade/pause_order_usecase.dart';
+import '../domain/usecases/trade/pauses_in_flight.dart';
 import '../domain/usecases/trade/watch_trade_usecase.dart';
 
 /// [WatchTradeUsecase.execute], which the locator gives the cubit.
@@ -38,6 +39,9 @@ typedef TradePauser =
       TradeRecord record,
       TradeSeen seen,
     );
+
+/// [PauseOrderUsecase.running], which the locator gives the cubit: the pause of the trade's order running now, from an earlier screen (#184, functional review R1).
+typedef TradePauseRunning = PauseInFlight? Function(TradeRecord record);
 
 /// [WatchTradeUsecase.lastStored], which the locator gives the cubit (#152).
 typedef TradeLastStored = TradeSeen? Function(TradeRecord record);
@@ -161,9 +165,11 @@ final class PauseWasUnknown extends TradePauseNotice {
   const PauseWasUnknown();
 }
 
-/// The coordinator accepted the request, and the order is read elsewhere than where the user asked ([PauseNotReached]).
+/// The coordinator accepted the request, and the order is read elsewhere than where the user asked, [wanted] ([PauseNotReached]).
 final class PauseWasNotReached extends TradePauseNotice {
-  const PauseWasNotReached();
+  final PauseWanted wanted;
+
+  const PauseWasNotReached(this.wanted);
 }
 
 /// The order this screen saw paused is read public again, with no tap of this screen asking it: from another app with the same Garage Key, or a coordinator.
@@ -283,6 +289,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeFiatSender? _startDispute;
   final TradeRater? _rate;
   final TradePauser? _pause;
+  final TradePauseRunning? _pauseRunning;
   StreamSubscription<TradeWatchState>? _subscription;
 
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
@@ -303,6 +310,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._rate,
     this._lastStored,
     this._pause,
+    this._pauseRunning,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
@@ -334,6 +342,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// Starts following the trade: does nothing when it is already followed.
   void start() {
     if (isClosed || _subscription != null) return;
+    _followPauseInFlight();
     final signals = StreamController<TradeWatchSignal>();
     _signals = signals;
     late final StreamSubscription<TradeWatchState> subscription;
@@ -415,6 +424,12 @@ class TradeCubit extends Cubit<TradeScreenState> {
         wanted: PauseWanted.paused,
       );
     }
+    // A pause asked here whose outcome was not known, now read paused: the request landed; an order read public again later is said (functional review of #184, R6).
+    if (pause.notice is PauseWasUnknown &&
+        pause.wanted == PauseWanted.paused &&
+        PauseWanted.paused.reachedAt(seen)) {
+      return const PauseIdle(pausedHere: true);
+    }
     if (pause.notice != null || pause.pausedHere) return const PauseIdle();
     return null;
   }
@@ -477,8 +492,14 @@ class TradeCubit extends Cubit<TradeScreenState> {
   }
 
   /// Cancels the trade at [seen], the status the screen showed when the user asked; [bondLoss] only from the confirmation of a cancel that loses the bond.
+  ///
+  /// A pause running does not stop it (functional review of #184, B1): the reference sends a cancel whatever other button spins (`TradeBox/index.tsx:246-251`), and the order's lock (`TradeTakeLocks`) makes it wait for the pause to end; the coordinator then refuses it (1020) if the pause moved the status it guards, which the cancel's notice says.
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
-    if (isClosed || state.actionRunning) return;
+    if (isClosed ||
+        state.cancel is CancelRunning ||
+        state.chatStep is ChatStepRunning) {
+      return;
+    }
     emit(state._with(cancel: const CancelRunning()));
     // After 30 s, the long wait's line, as for an action of the chat step.
     final longWait = Timer(stillWaitingAfter, () {
@@ -532,6 +553,21 @@ class TradeCubit extends Cubit<TradeScreenState> {
     final send = _pause;
     if (send == null || isClosed || state.actionRunning) return;
     final wanted = PauseWanted.of(seen);
+    await _followPause(wanted, () => send(state.record, seen));
+  }
+
+  /// A pause of the trade's order still running from an earlier screen (its cubit closed, the request going on): shown running, and its outcome said once it ends, as if this screen had asked it (functional review of #184, R1); nothing is sent.
+  void _followPauseInFlight() {
+    if (state.pause is! PauseIdle || state.actionRunning) return;
+    final running = _pauseRunning?.call(state.record);
+    if (running == null) return;
+    unawaited(_followPause(running.wanted, () => running.result));
+  }
+
+  Future<void> _followPause(
+    PauseWanted? wanted,
+    Future<Result<PauseOutcome, PauseRefusal>> Function() result,
+  ) async {
     emit(state._with(pause: PauseRunning(wanted: wanted)));
     // After 30 s, the long wait's line, as for a cancel.
     final longWait = Timer(stillWaitingAfter, () {
@@ -541,9 +577,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
         );
       }
     });
-    final Result<PauseOutcome, PauseRefusal> result;
+    final Result<PauseOutcome, PauseRefusal> outcome;
     try {
-      result = await send(state.record, seen);
+      outcome = await result();
     } on Object {
       // A bug of the use case: the buttons free again, the outcome said unknown, and the error passed on.
       if (!isClosed) {
@@ -558,16 +594,13 @@ class TradeCubit extends Cubit<TradeScreenState> {
       longWait.cancel();
     }
     if (isClosed) return;
-    switch (result) {
+    switch (outcome) {
       case Err(:final failure):
         // A read kept before the refusal is shown: the status now.
         final read = switch (failure) {
           PauseStatusMoved(:final seen, :final record) ||
-          PauseReadFailed(seen: final seen?, :final record) => TradeWatchStatus(
-            record ?? state.record,
-            seen,
-            takePending: false,
-          ),
+          PauseReadFailed(seen: final seen?, :final record) =>
+            TradeWatchStatus(record ?? state.record, seen, takePending: false),
           _ => null,
         };
         emit(
@@ -576,31 +609,36 @@ class TradeCubit extends Cubit<TradeScreenState> {
             pause: PauseIdle(notice: PauseWasRefused(failure), wanted: wanted),
           ),
         );
-      case Ok(value: final outcome):
+      case Ok(value: final done):
         emit(
           state._with(
             watch: TradeWatchStatus(
-              outcome.record,
-              outcome.seen,
-              recordProblem: outcome.recordProblem,
+              done.record,
+              done.seen,
+              recordProblem: done.recordProblem,
               takePending: false,
             ),
             pause: PauseIdle(
-              notice: switch (outcome) {
+              notice: switch (done) {
                 PauseDone() => null,
-                PauseNotReached() => const PauseWasNotReached(),
+                PauseNotReached(:final wanted) => PauseWasNotReached(wanted),
                 PauseNotDone(:final cause) => PauseWasNotDone(cause),
                 PauseOutcomeUnknown() => const PauseWasUnknown(),
               },
-              wanted: outcome.wanted,
+              wanted: done.wanted,
               pausedHere:
-                  outcome is PauseDone && outcome.wanted == PauseWanted.paused,
+                  done is PauseDone && done.wanted == PauseWanted.paused,
             ),
           ),
         );
     }
-    // The watch reads again at once, so that what follows is shown as soon as the coordinator tells it.
-    _signals?.add(TradeWatchSignal.readNow);
+    // The watch reads again at once only when the status shown did not come from a read the pause just kept (functional review of #184, R2): after done, not reached or a status moved, that read is the newest, and a read more would say the same.
+    final readJustKept = switch (outcome) {
+      Ok(value: PauseDone() || PauseNotReached()) ||
+      Err(failure: PauseStatusMoved()) => true,
+      _ => false,
+    };
+    if (!readJustKept) _signals?.add(TradeWatchSignal.readNow);
   }
 
   /// Sends the buyer's « fiat sent » at [seen], the status the screen showed when the user confirmed the reference's dialog: once, never again by itself; nothing while another action of the trade runs.
