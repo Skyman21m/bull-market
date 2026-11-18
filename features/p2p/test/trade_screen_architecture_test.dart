@@ -12,7 +12,7 @@ import 'package:test/test.dart';
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
 /// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message), the chat's actions (« Export », and « Don't trust, verify »: its fields and its « Keys » and « Messages », the token and the encrypted private key among them, as the reference's mobile client) and the end's panel (the transaction id, the payout's address, the trade summary) use the clipboard.
-/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; that screen is named only in its own file and in `P2pRouter.createPage`, which only the route `create` of the router and the testing seam (for the app's captures) call; the route is opened by name only from the router's own tab, by « Create » and « Create order » of « Active trades » (#182), with the `P2pCreateRouteArgs` only the router and the seam build.
+/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; that screen is named only in its own file and in `P2pRouter.createPage`, which only the route `create` of the router and the testing seam (for the app's captures) call; the route is opened by name only from the router's own tab, by « Create » and « Create order » of « Active trades » (#182), and from the router's trade page for a renewal (#185), with the `P2pCreateRouteArgs` only the router and the seam build; a renewal's terms are built by the make use case alone.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -141,6 +141,37 @@ void main() {
       });
       // The route is named by the router alone: « Create » of the tab and « Create order » of « Active trades » reach it through the callbacks the router gives them.
       expect(_whereNamed(sources, 'createName'), {'lib/src/p2p_router.dart'});
+    },
+  );
+
+  test(
+    'a renewal (#185): its terms built by the make use case alone, from the records; its page is the create page, opened by the router from the trade page only, with its cubit built by the locator alone',
+    () {
+      expect(_whereBuilt(sources, 'OrderRenewal'), {
+        'lib/src/domain/usecases/trade/make_order_usecase.dart',
+      });
+      expect(_whereNamed(sources, 'renewalInstance'), {
+        'lib/src/presentation/make_order_cubit.dart',
+        'lib/src/p2p_locator.dart',
+        'lib/src/p2p_router.dart',
+      });
+      // The renewal's route arguments: built by the router only.
+      expect(
+        {
+          for (final MapEntry(key: path, value: source) in sources.entries)
+            if (_callsMethod(source, 'renewal') &&
+                _namesIn(source).contains('P2pCreateRouteArgs'))
+              path,
+        },
+        {'lib/src/p2p_router.dart'},
+      );
+      // The trade screen only hands the router the record: it names neither the make nor its cubit.
+      expect(
+        _namesIn(
+          sources['lib/src/ui/trade/trade_screen.dart'] ?? (throw StateError('')),
+        ).intersection({'MakeOrderCubit', 'MakeOrderUsecase', 'P2pCreateRouteArgs'}),
+        isEmpty,
+      );
     },
   );
 

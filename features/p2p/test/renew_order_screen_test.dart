@@ -151,14 +151,14 @@ Future<void> _showTrade(
   addTearDown(tester.view.reset);
   final watch = StreamController<TradeWatchState>.broadcast();
   addTearDown(watch.close);
-  final trade = TradeCubit(
-    record,
-    (record, {signals = const Stream.empty(), onScreen = true}) {
-      signals.listen((_) {});
-      return watch.stream;
-    },
-    (record, seen, {bondLoss}) => Completer<Never>().future,
-  )..start();
+  final trade = TradeCubit(record, (
+    record, {
+    signals = const Stream.empty(),
+    onScreen = true,
+  }) {
+    signals.listen((_) {});
+    return watch.stream;
+  }, (record, seen, {bondLoss}) => Completer<Never>().future)..start();
   addTearDown(trade.close);
   final reads = FakeTransport();
   final page = TradeOrderPageCubit(
@@ -304,8 +304,11 @@ final class _Renewal {
     hasGarageKey: (_) async => keys,
     lottery: CoordinatorLottery(() => 0.5),
     now: () => DateTime.utc(2026, 11, 17),
-    checkPrice: (network, currency, price) async =>
-        MakePriceCheck.of(currency: currency, coordinatorPrice: price, wallet: rate),
+    checkPrice: (network, currency, price) async => MakePriceCheck.of(
+      currency: currency,
+      coordinatorPrice: price,
+      wallet: rate,
+    ),
   );
 }
 
@@ -675,10 +678,7 @@ void main() {
       (tester) async {
         final renewal = _Renewal()..rate = P2pWalletRateRead(76000);
         await _showRenewal(tester, renewal);
-        expect(
-          find.textContaining('above the Bull wallet'),
-          findsWidgets,
-        );
+        expect(find.textContaining('above the Bull wallet'), findsWidgets);
         expect(_enabled(tester, _create), isTrue);
         await _tap(tester, _create);
         await settle(tester);
@@ -767,10 +767,10 @@ void main() {
                 robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 3),
                 coordinatorAlias: 'temple',
                 coordinatorOnion:
-                    Federation.robosats.byAlias('temple')?.mainnet.onion ??
-                    '',
+                    Federation.robosats.byAlias('temple')?.mainnet.onion ?? '',
                 role: TradeRole.buyer,
                 writtenAt: madeAt,
+                closedAt: null,
               ),
               neverSent: false,
             ),
@@ -956,7 +956,10 @@ void main() {
         expect(find.byType(CreateOrderScreen), findsOneWidget);
         expect(forms, hasLength(1));
         await settleBoth();
-        expect(find.text('Buy BTC for 100 EUR at a 2% premium'), findsOneWidget);
+        expect(
+          find.text('Buy BTC for 100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
         expect(_enabled(tester, _create), isTrue);
         await _tap(tester, _create);
         await tester.tap(_create, warnIfMissed: false);
