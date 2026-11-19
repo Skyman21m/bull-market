@@ -404,4 +404,109 @@ void main() {
       );
     },
   );
+
+  group(
+    'a maker seller\'s escrow (#187): the contract\'s amount at the wallet\'s price with the premium, more than 10 % above it warns, never a refusal',
+    () {
+      // The owner's example: 100 USD at 71,657 USD/BTC and +3.5 % = 134,834.4997… sats; 1.1 times that = 148,317.9497…
+      final made = terms();
+      WalletRateCheck escrow(
+        int sats, {
+        double amount = 100,
+        MakerTerms? of,
+        P2pWalletBitcoinRate? wallet,
+      }) => WalletRateCheck.ofMakerEscrow(
+        of ?? made,
+        amount: some(FiatAmount.tryCreate(amount)),
+        asked: Sats.fromInt(sats),
+        wallet: wallet ?? P2pWalletRateRead(71657),
+      );
+      WalletRateCompared compared(int sats, {double amount = 100}) =>
+          switch (escrow(sats, amount: amount)) {
+            final WalletRateCompared rate => rate,
+            final other => throw StateError('not compared: $other'),
+          };
+
+      test('134,834 sats expected, this wallet the one that pays', () {
+        final rate = compared(134834);
+        expect(rate, isA<WalletRateAtWallet>());
+        expect(rate.expected, Sats.fromInt(134834));
+        expect(rate.side, WalletRateSide.pays);
+        expect(rate.warns, isFalse);
+        expect(rate.gapHundredths, BigInt.from(-1));
+      });
+
+      test('148,317 sats: shown, no warning (+10.00 %)', () {
+        final rate = compared(148317);
+        expect(rate.warns, isFalse);
+        expect(rate.gapHundredths, BigInt.from(1000));
+      });
+
+      test(
+        '148,318 sats: the warning (+10.01 %), the first sat above 10 %',
+        () {
+          final rate = compared(148318);
+          expect(rate.warns, isTrue);
+          expect(rate.gapHundredths, BigInt.from(1001));
+        },
+      );
+
+      test(
+        'fewer sats than expected, by any gap, is in the seller\'s favour: never a warning',
+        () {
+          expect(compared(1000).warns, isFalse);
+          expect(compared(1000).gapHundredths < BigInt.zero, isTrue);
+        },
+      );
+
+      test(
+        'the contract\'s amount, never the order\'s largest: a range taken for 50 of 20 to 100 USD expects half',
+        () {
+          final range = terms(min: 20);
+          final rate = switch (escrow(67417, amount: 50, of: range)) {
+            final WalletRateCompared rate => rate,
+            final other => throw StateError('not compared: $other'),
+          };
+          // 50 USD = 67,417.2498… sats.
+          expect(rate.expected, Sats.fromInt(67417));
+          expect(rate.warns, isFalse);
+        },
+      );
+
+      test(
+        'never the coordinator\'s price of the creation: a creation\'s price ten times too low changes nothing',
+        () {
+          final lied = terms(createdPrice: 7165.7);
+          final rate = switch (escrow(1348344, of: lied)) {
+            final WalletRateCompared rate => rate,
+            final other => throw StateError('not compared: $other'),
+          };
+          expect(rate.expected, Sats.fromInt(134834));
+          expect(rate.warns, isTrue);
+        },
+      );
+
+      test(
+        'a currency the wallet does not price, a price not read: nothing compared, no figure',
+        () {
+          expect(
+            escrow(1, wallet: const P2pWalletRateNotPriced()),
+            isA<WalletRateNotPriced>(),
+          );
+          expect(
+            escrow(1, wallet: const P2pWalletRateUnavailable()),
+            isA<WalletRateUnverified>(),
+          );
+          expect(
+            escrow(1, wallet: P2pWalletRateRead(1e16)),
+            isA<WalletRateUnverified>(),
+          );
+          expect(
+            escrow(1 << 40, wallet: const P2pWalletRateNotPriced()).warns,
+            isFalse,
+          );
+        },
+      );
+    },
+  );
 }

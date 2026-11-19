@@ -41,12 +41,6 @@ abstract final class TradeTolerances {
   /// The reference's default is 0.025 % (`FEE` 0.2 % × `MAKER_FEE_SPLIT` 0.125, `.env-sample:107-110`, `api/views.py:1042`); the coordinators recorded on 2026-11-10 announce 0 % to 0.0375 % (`packages/robosats/test/fixtures/coordinator/*-info.json`). The maker's fee is taken from its payout as a buyer and added to its escrow as a seller (`Logics.payout_amount`, `api/logics.py:650-668`; `Logics.escrow_amount`, `:733-749`), so a fee checked only against what the coordinator itself announces would let it ask for anything.
   static const double makerFeeCeiling = 0.01;
 
-  /// The factor F of the most « Pay with this wallet » pays for a maker seller's escrow: the sats of the contract's amount at the rate of the creation, times F, with the maker fee of them and [feeSats], rounded down (`MakerTerms.escrowCeilingFor`, design note § 3.3).
-  ///
-  /// A proposal, not a decision: the design note's independent reviewer proposed 2 (§ 3.3), and the factor is an open decision of the owner (§ 7, proposal 7: 1.5, 2, or no ceiling at all). At 2, the ceiling stops « Pay with this wallet » in a normal market only when the bitcoin price halves between the creation and the escrow; above it, « Pay with another wallet » stays, and nothing is a warning.
-  /// It bounds only what this wallet pays: the coordinator fixes the trade's sats at its own price at the take (`Logics.finalize_contract`, `api/logics.py:1332-1335`), which nothing compares with a price (§ 3.3).
-  static const double makerEscrowFactor = 2;
-
   /// How far above the sats expected at the wallet's own price a payment for an order made here may be before the confirmation warns, as a fraction: 10 %, the owner's one threshold (decided on 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3).
   ///
   /// On the side that costs the user only (a bond or an escrow asked larger than expected): a smaller one is shown without a warning. Beyond it, the confirmation shows a red warning with both amounts, and the user may still pay: it never stops a payment. To measure in the first real trials.

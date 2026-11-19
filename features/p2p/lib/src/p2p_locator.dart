@@ -66,6 +66,7 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
+import 'domain/usecases/trade/escrow_amounts.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/list_last_orders_usecase.dart';
@@ -659,9 +660,12 @@ final class P2pLocator {
         locator(),
         locator(),
         step: InvoiceStep.escrow,
+        amounts: locator(),
       ),
       instanceName: InvoiceStep.escrow.name,
     );
+    // The sats of each maker seller's escrow this run asked the wallet to pay (#187), for the confirmation of a next contract: one for the feature, in memory.
+    locator.registerLazySingleton<EscrowAmounts>(EscrowAmounts.new);
     // One for the feature, each step apart: a screen opened again while a payment runs knows of it.
     locator.registerLazySingleton<BondPaymentsInFlight>(
       BondPaymentsInFlight.new,

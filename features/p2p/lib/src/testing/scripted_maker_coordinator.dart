@@ -546,8 +546,11 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   }
 
   /// What a maker buyer receives, `invoice_amount`: `round(last_satoshis − last_satoshis × fee)`, a half to the even one as Python's `round` (`Logics.payout_amount`, `api/logics.py:650-669`).
-  int _payoutOf(ScriptedMadeOrder made) {
-    final value = made.lastSatoshis - made.lastSatoshis * makerFee;
+  int _payoutOf(ScriptedMadeOrder made) =>
+      _halfEven(made.lastSatoshis - made.lastSatoshis * makerFee);
+
+  /// [value] rounded to the nearest whole number, a half to the even one, as Python's `round`.
+  static int _halfEven(double value) {
     final floor = value.floorToDouble();
     final rest = value - floor;
     final whole = floor.toInt();
@@ -837,9 +840,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         ..['price_now'] = _priceOf(made)
         ..['premium_now'] = made.premium;
     }
-    final fee = (made.lastSatoshis * makerFee).round();
     final payout = _payoutOf(made);
-    final escrow = made.lastSatoshis + fee;
+    // `Logics.escrow_amount`: `round(last_satoshis + last_satoshis × fee)`, a half to the even one as Python's `round` (`api/logics.py:742-746`).
+    final escrow = _halfEven(made.lastSatoshis + made.lastSatoshis * makerFee);
     data
       ..['is_buyer'] = buyer
       ..['is_seller'] = !buyer
