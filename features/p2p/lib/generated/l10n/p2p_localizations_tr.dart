@@ -3229,6 +3229,52 @@ class P2pLocalizationsTr extends P2pLocalizations {
   String get p2pMakeWhyRangeInvalid => 'The amount range is not valid.';
 
   @override
+  String get p2pMakeRangeMaxBelowMin =>
+      'The maximum must be above the minimum.';
+
+  @override
+  String p2pMakeRangeMinAtLeast(String amount, String coordinator) {
+    return 'The minimum must be at least $amount with $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMost(String amount, String coordinator) {
+    return 'The maximum cannot exceed $amount with $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtLeastFor(String min, String amount) {
+    return 'For a minimum of $min, the maximum must be at least $amount.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMostFor(String min, String amount) {
+    return 'For a minimum of $min, the maximum cannot exceed $amount.';
+  }
+
+  @override
+  String p2pMakeRangeAccepted(String coordinator, String min, String max) {
+    return 'Amounts accepted with $coordinator: $min to $max.';
+  }
+
+  @override
+  String get p2pMakeRangeRatio =>
+      'The maximum must be more than 1.5 times the minimum and at most 14.95 times it.';
+
+  @override
+  String p2pMakeRangeMinAtMost(String amount, String coordinator) {
+    return 'The minimum cannot exceed $amount with $coordinator: the maximum must be more than 1.5 times it.';
+  }
+
+  @override
+  String p2pMakeRangeNoRoom(String coordinator) {
+    return 'No range of amounts is possible with $coordinator at this premium: use an exact amount.';
+  }
+
+  @override
+  String get p2pMakeRangeNotPositive => 'Type a minimum and a maximum above 0.';
+
+  @override
   String get p2pMakeWhyDescriptionInvalid => 'The description is not valid.';
 
   @override

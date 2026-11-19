@@ -185,28 +185,31 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.dispose();
   }
 
-  MakerFormInput _input(MakeOrderState state) => MakerFormInput(
-    type: _type,
-    currency: state.currency,
-    amount: _amount.text,
-    paymentMethods: _methods,
-    premium: _premium.text,
-    advanced: _advanced,
-    rangeEnabled: _rangeEnabled,
-    minAmount: _minAmount.text,
-    maxAmount: _maxAmount.text,
-    description: _description.text,
-    publicDuration: _publicDuration,
-    escrowDuration: _escrowDuration,
-    bondSizePercent: _bondSize,
-  );
+  MakerFormInput _input(MakeOrderState state, {RobosatsCurrency? currency}) =>
+      MakerFormInput(
+        type: _type,
+        currency: currency ?? state.currency,
+        amount: _amount.text,
+        paymentMethods: _methods,
+        premium: _premium.text,
+        advanced: _advanced,
+        rangeEnabled: _rangeEnabled,
+        minAmount: _minAmount.text,
+        maxAmount: _maxAmount.text,
+        description: _description.text,
+        publicDuration: _publicDuration,
+        escrowDuration: _escrowDuration,
+        bondSizePercent: _bondSize,
+      );
 
-  MakerFormCheck _check(MakeOrderState state) => MakerFormCheck.of(
-    _input(state),
-    coordinatorsLoaded: state.coordinatorsLoaded,
-    market: state.formLimits,
-    sizeLimitSats: state.sizeLimitSats,
-  );
+  /// The form as typed, judged in [currency] when given, else in the currency shown.
+  MakerFormCheck _check(MakeOrderState state, {RobosatsCurrency? currency}) =>
+      MakerFormCheck.of(
+        _input(state, currency: currency),
+        coordinatorsLoaded: state.coordinatorsLoaded,
+        market: state.formLimits,
+        sizeLimitSats: state.sizeLimitSats,
+      );
 
   /// « Existing orders match yours! » (#186): the orders of the book that resemble the form ([MatchingOrders]), never one this device holds a trade of; none for a renewal, without a book, or while the device's trades are not listed (an order of this device could not be told apart).
   List<PublicOrder> _matchesOf(MakeOrderState state, MakerFormCheck check) {
@@ -335,7 +338,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _maxAmount.text = _plain(range.max);
   }
 
-  /// « Enable advanced options » (`handleClickAdvanced`, `MakerForm.tsx:381-387`): closed, the range no longer applies and the other options keep their values, as the reference keeps and sends them; opened, the range set as the reference's `resetRange` sets it (`:394-411`).
+  /// « Enable advanced options » (`handleClickAdvanced`, `MakerForm.tsx:381-387`): closed, the range no longer applies and the other options keep their values, as the reference keeps and sends them; opened, the range set as the reference's `resetRange` sets it (`:394-411`), within the form's own limits so that it is never refused at once (#225).
   void _toggleAdvanced(MakeOrderState state) {
     setState(() {
       if (_advanced) {
@@ -349,6 +352,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           maxDecimals: MakerFormCheck.amountDecimals,
         ).value,
         limit: _limitOf(state, state.currency),
+        limits: _check(state).limits,
       );
       if (range != null) _setRange(range);
     });
@@ -415,13 +419,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       label: (currency) => currency.code,
     );
     if (currency == null || !mounted) return;
-    // A range out of the new currency's orders set again, as the reference does (`handleCurrencyChange`, `MakerForm.tsx:184-199`).
+    // The currency shown chosen again is no change of currency: the range typed stays as it is (independent review of #226, C2).
+    if (currency == state.currency) return;
+    // A range out of the new currency's orders set again, as the reference does (`handleCurrencyChange`, `MakerForm.tsx:184-199`), and never left as one the form refuses in the new currency (#225).
     if (_advanced && _rangeEnabled) {
       final check = _check(state);
       final range = MakerRange.afterCurrency(
         min: check.rangeMin,
         max: check.rangeMax,
         limit: _limitOf(state, currency),
+        limits: _check(state, currency: currency).limits,
       );
       if (range != null) setState(() => _setRange(range));
     }
@@ -681,6 +688,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                               min: _minAmount,
                               max: _maxAmount,
                               check: check,
+                              coordinator: coordinatorName,
                               currency: state.currency,
                               enabled: !fieldsLocked,
                               onChanged: _amountChanged,
@@ -1534,9 +1542,21 @@ class _CreateButton extends StatelessWidget {
       busy: asking || progress is MakeSending,
       onPressed: ready ? onPressed : null,
     );
+    final formats = P2pFormats.of(context);
+    // A range refused says why, as its box does (#225); every other reason in the reference's words.
+    final why = switch ((block, check.rangeProblem)) {
+      (MakerFormBlock.amountRangeInvalid, final problem?) when !renewing =>
+        problem.toText(
+          context,
+          coordinator: coordinator,
+          amountOf: (amount) =>
+              '${formats.typedNumber(amount)} ${state.currency.code}',
+        ),
+      (final block?, _) => block.toText(context),
+      (null, _) => null,
+    };
     final lines = <Widget>[
-      if (block != null && progress is MakeIdle)
-        _Line(block.toText(context), live: true),
+      if (why != null && progress is MakeIdle) _Line(why, live: true),
       if (block == null && renewalMismatch && progress is MakeIdle)
         _Line(l10n.p2pRenewNotAsKept, color: colors.warning, live: true),
       // A renewal the form or the make refuses for its kept terms, which cannot be changed here: what to do (functional review of #185, R3).
@@ -1592,10 +1612,10 @@ class _CreateButton extends StatelessWidget {
           live: true,
         ),
     ];
-    final shown = block == null
+    final shown = why == null
         ? button
         : Tooltip(
-            message: block.toText(context),
+            message: why,
             triggerMode: TooltipTriggerMode.tap,
             child: button,
           );
@@ -1868,12 +1888,15 @@ class _Alert extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _Alert(this.text, this.color);
+  /// Whether it is read out when it appears or changes.
+  final bool live;
+
+  const _Alert(this.text, this.color, {this.live = true});
 
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    liveRegion: true,
+    liveRegion: live,
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1939,6 +1962,9 @@ class _AmountRange extends StatelessWidget {
   final TextEditingController min;
   final TextEditingController max;
   final MakerFormCheck check;
+
+  /// The coordinator's name, for the rules of the range and the reason of a range refused (#225).
+  final String coordinator;
   final RobosatsCurrency currency;
   final bool enabled;
   final VoidCallback onChanged;
@@ -1954,6 +1980,7 @@ class _AmountRange extends StatelessWidget {
     required this.min,
     required this.max,
     required this.check,
+    required this.coordinator,
     required this.currency,
     required this.enabled,
     required this.onChanged,
@@ -1972,6 +1999,15 @@ class _AmountRange extends StatelessWidget {
     String bound(double value, int digits) =>
         '${formats.typedNumber(significant(value, digits))} $code';
     final label = text.labelLarge?.copyWith(color: colors.textMuted);
+    // Why the range typed is refused, with the bound the form takes, where the fields are (#225): the reference only draws the field at fault in red.
+    // Not for fields that cannot be typed (a renewal's, a form being sent): the line under the button says what to do then.
+    final problem = enabled
+        ? check.rangeProblem?.toText(
+            context,
+            coordinator: coordinator,
+            amountOf: (amount) => '${formats.typedNumber(amount)} $code',
+          )
+        : null;
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
@@ -2016,6 +2052,11 @@ class _AmountRange extends StatelessWidget {
                 ),
               ],
             ),
+            if (problem != null) ...[
+              const Gap(BullSpacing.xs),
+              // Read out once, by the line under the button, not here too (independent review of #226, C3).
+              _Alert(problem, colors.error, live: false),
+            ],
             if (limits != null && limits.max > limits.min) ...[
               const Gap(BullSpacing.xs),
               Builder(
@@ -2058,7 +2099,24 @@ class _AmountRange extends StatelessWidget {
                   Text(bound(limits.max, 3), style: text.labelMedium),
                 ],
               ),
+              // What the two amounts under the slider are (#225), which the reference leaves to be guessed.
+              const Gap(BullSpacing.xs),
+              Text(
+                l10n.p2pMakeRangeAccepted(
+                  coordinator,
+                  formats.typedNumber(significant(limits.min, 3)),
+                  bound(limits.max, 3),
+                ),
+                style: text.bodySmall?.copyWith(color: colors.textMuted),
+              ),
             ],
+            // How far apart the bounds may be (#225): said whenever a range is typed, with or without the slider.
+            if (limits == null || limits.max <= limits.min)
+              const Gap(BullSpacing.xs),
+            Text(
+              l10n.p2pMakeRangeRatio,
+              style: text.bodySmall?.copyWith(color: colors.textMuted),
+            ),
           ],
         ),
       ),

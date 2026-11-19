@@ -399,6 +399,266 @@ void main() {
     },
   );
 
+  group('why a range typed is refused (#225)', () {
+    test('one reason, the first that applies, with the bound the form takes', () {
+      // The form's limits here are 103 and 980, the amounts under the slider's ends: a minimum is taken from 101.97, a maximum to 989.8.
+      final limits = checkOf().limits;
+      expect(MakerRangeProblem.of(200, 400, limits), isNull);
+      expect(
+        MakerRangeProblem.of(400, 200, limits),
+        isA<MakerRangeMaxBelowMin>(),
+      );
+      expect(
+        MakerRangeProblem.of(56, 826, limits),
+        isA<MakerRangeMinTooSmall>().having((p) => p.atLeast, 'atLeast', 103),
+      );
+      expect(
+        MakerRangeProblem.of(200, 1400, limits),
+        isA<MakerRangeMaxTooBig>().having((p) => p.atMost, 'atMost', 980),
+      );
+      expect(
+        MakerRangeProblem.of(200, 250, limits),
+        isA<MakerRangeTooNarrow>()
+            .having((p) => p.min, 'min', 200)
+            .having((p) => p.atLeast, 'atLeast', 300),
+      );
+      // Too wide beside its minimum, without limits to say more: 14.95 times 20 is 299.
+      expect(
+        MakerRangeProblem.of(20, 302, null),
+        isA<MakerRangeTooWide>()
+            .having((p) => p.min, 'min', 20)
+            .having((p) => p.atMost, 'atMost', 299),
+      );
+      // Nothing typed: the minimum first.
+      expect(MakerRangeProblem.of(0, 0, limits), isA<MakerRangeMinTooSmall>());
+      // Both bounds outside the form's amounts: the minimum first.
+      expect(
+        MakerRangeProblem.of(56, 1400, limits),
+        isA<MakerRangeMinTooSmall>(),
+      );
+      // A minimum whose 1.5 times is above the largest amount: the minimum comes down, never « at least 1,050 » for a maximum the form would then refuse (independent review of #226, C1). 980 / 1.5 = 653.3.
+      expect(
+        MakerRangeProblem.of(700, 900, limits),
+        isA<MakerRangeMinTooBig>().having((p) => p.atMost, 'atMost', 653),
+      );
+      // Without limits, a bound that is not above zero is said as such, never « cannot exceed -75 » (R4).
+      expect(MakerRangeProblem.of(-5, 10, null), isA<MakerRangeNotPositive>());
+      expect(MakerRangeProblem.of(10, 0, null), isA<MakerRangeNotPositive>());
+      expect(MakerRangeProblem.of(10, 5, null), isA<MakerRangeMaxBelowMin>());
+    });
+
+    test(
+      'limits that leave room for no range say so, whatever is typed (independent review of #226, R3)',
+      () {
+        // 100 to 1,000 EUR at 50,000 under a size limit of 250,000 sats: the form's amounts are 103 to 122.5, and 1.5 times the smallest is above the largest.
+        final limits = MakerAmountLimits.of(
+          narrow[eur] ?? (throw StateError('EUR')),
+          premium: Premium.tryCreate(0) ?? (throw StateError('a premium')),
+          sizeLimitSats: 250000,
+        );
+        for (final (low, high) in [
+          (0.0, 0.0),
+          (103.0, 122.0),
+          (110.0, 165.0),
+          (200.0, 100.0),
+        ]) {
+          expect(
+            MakerRangeProblem.of(low, high, limits),
+            isA<MakerRangeNoRoom>(),
+            reason: '$low to $high',
+          );
+        }
+      },
+    );
+
+    test(
+      'the reasons followed one after the other lead to a range the form takes, never round in a circle (independent review of #226, C1, and its verification)',
+      () {
+        // The form's limits of 103 to 980, and limits that leave almost no room: 103 to 152.1 (the largest about 1.48 times the smallest), under a size limit of 310,400 sats.
+        final wideRoom = checkOf().limits;
+        final tightRoom = MakerAmountLimits.of(
+          narrow[eur] ?? (throw StateError('EUR')),
+          premium: Premium.tryCreate(0) ?? (throw StateError('a premium')),
+          sizeLimitSats: 310400,
+        );
+        expect(tightRoom.max / tightRoom.min, closeTo(1.477, 0.002));
+        // A grid dense where the rules meet: around the smallest and the largest amount, and around the minimum whose 1.5 times is the largest amount (659.3 to 659.9 for 980).
+        final bounds = <double>[
+          0,
+          1,
+          20,
+          56,
+          500,
+          826,
+          1400,
+          5000,
+          for (var value = 100.0; value < 106; value += 0.37) value,
+          for (var value = 148.0; value < 156; value += 0.37) value,
+          for (var value = 650.0; value < 662; value += 0.13) value,
+          for (var value = 975.0; value < 993; value += 0.37) value,
+        ];
+        var followed = 0;
+        for (final under in [wideRoom, tightRoom, null]) {
+          for (final start in bounds) {
+            for (final end in bounds) {
+              var low = start;
+              var high = end;
+              var steps = 0;
+              while (true) {
+                final problem = MakerRangeProblem.of(low, high, under);
+                if (problem == null) break;
+                steps++;
+                followed++;
+                if (steps > 6) {
+                  fail(
+                    'still refused after 6 reasons from $start to $end ($low to $high, $problem), limits $under',
+                  );
+                }
+                switch (problem) {
+                  case MakerRangeNoRoom():
+                    fail('no room said for limits that leave room: $under');
+                  case MakerRangeNotPositive():
+                    low = 1;
+                    high = 2;
+                  case MakerRangeMaxBelowMin():
+                    // No figure is given: the user types a maximum above the minimum.
+                    high = low * 2;
+                  case MakerRangeMinTooSmall(:final atLeast):
+                    low = atLeast;
+                  case MakerRangeMinTooBig(:final atMost):
+                    low = atMost;
+                  case MakerRangeMaxTooBig(:final atMost):
+                    high = atMost;
+                  case MakerRangeTooNarrow(:final atLeast):
+                    high = atLeast;
+                  case MakerRangeTooWide(:final atMost):
+                    high = atMost;
+                }
+              }
+            }
+          }
+        }
+        expect(followed, greaterThan(50000));
+      },
+    );
+
+    test(
+      'a reason exactly when a field is in error, and the bound shown is one the form takes when typed',
+      () {
+        final limits = checkOf().limits;
+        const bounds = <double>[
+          0,
+          1,
+          20,
+          56,
+          101,
+          102,
+          103,
+          150,
+          200,
+          299,
+          300,
+          400,
+          826,
+          980,
+          989,
+          990,
+          1400,
+          5000,
+        ];
+        var refused = 0;
+        for (final low in bounds) {
+          for (final high in bounds) {
+            for (final under in [limits, null]) {
+              final errors = MakerFormCheck.rangeErrorsOf(low, high, under);
+              final problem = MakerRangeProblem.of(low, high, under);
+              expect(
+                problem == null,
+                !errors.min && !errors.max,
+                reason: '$low to $high, limits $under',
+              );
+              if (problem == null) continue;
+              refused++;
+              // The bound shown, typed in place of the one at fault, no longer breaks that rule.
+              switch (problem) {
+                case MakerRangeNoRoom():
+                  fail('no room said for limits that leave room');
+                case MakerRangeNotPositive():
+                  expect(under, isNull);
+                case MakerRangeMinTooBig(:final atMost):
+                  expect(
+                    MakerRangeProblem.of(atMost, high, under),
+                    isNot(isA<MakerRangeMinTooBig>()),
+                    reason: '$low to $high',
+                  );
+                case MakerRangeMaxBelowMin():
+                  expect(high, lessThan(low));
+                case MakerRangeMinTooSmall(:final atLeast):
+                  expect(
+                    MakerRangeProblem.of(atLeast, high, under),
+                    isNot(isA<MakerRangeMinTooSmall>()),
+                    reason: '$low to $high',
+                  );
+                case MakerRangeMaxTooBig(:final atMost):
+                  expect(
+                    MakerRangeProblem.of(low, atMost, under),
+                    isNot(isA<MakerRangeMaxTooBig>()),
+                    reason: '$low to $high',
+                  );
+                case MakerRangeTooNarrow(:final min, :final atLeast):
+                  expect(min, low);
+                  expect(
+                    MakerRangeProblem.of(low, atLeast, under),
+                    isNot(isA<MakerRangeTooNarrow>()),
+                    reason: '$low to $high',
+                  );
+                case MakerRangeTooWide(:final min, :final atMost):
+                  expect(min, low);
+                  expect(
+                    MakerRangeProblem.of(low, atMost, under),
+                    isNot(isA<MakerRangeTooWide>()),
+                    reason: '$low to $high',
+                  );
+              }
+            }
+          }
+        }
+        expect(refused, greaterThan(200));
+      },
+    );
+
+    test('the form\'s check carries it for a range only', () {
+      expect(checkOf(min: '200', max: '400').rangeProblem, isNull);
+      expect(
+        checkOf(min: '56', max: '826').rangeProblem,
+        isA<MakerRangeMinTooSmall>(),
+      );
+      expect(
+        checkOf(min: '56', max: '826').block,
+        MakerFormBlock.amountRangeInvalid,
+      );
+      // « Exact Amount », or the options closed: no range, no reason of one.
+      expect(
+        checkOf(
+          range: false,
+          amount: '200',
+          min: '56',
+          max: '826',
+        ).rangeProblem,
+        isNull,
+      );
+      expect(
+        checkOf(
+          advanced: false,
+          amount: '200',
+          min: '56',
+          max: '826',
+        ).rangeProblem,
+        isNull,
+      );
+    });
+  });
+
   group('the range the form sets', () {
     test(
       'opening the options: half the amount and the amount, else a quarter and three quarters of the coordinator\'s largest order',
@@ -460,6 +720,269 @@ void main() {
         expect(
           MakerRange.afterCurrency(min: 200, max: 400, limit: null),
           isNull,
+        );
+      },
+    );
+
+    test(
+      'opening the options never fills in a range the form refuses: on a young coordinator with a discount the reference fills in 58 to 170 and refuses 170, the form\'s largest amount being 143 (#225)',
+      () async {
+        // The trial of 2026-11-19: 6.98 to 232.66 EUR at 58,165, a premium of -21 %, the size limit of a coordinator a few weeks old (250,000 sats, `calculateSizeLimit`, `Coordinator.model.ts:110-124`).
+        final young = await limitsOf({2: (58165, 6.98, 232.66)});
+        final limit = young[eur];
+        final limits = MakerAmountLimits.of(
+          limit ?? (throw StateError('EUR is in the limits')),
+          premium: Premium.tryCreate(-21) ?? (throw StateError('a premium')),
+          sizeLimitSats: 250000,
+        );
+        expect(limits.max, closeTo(142.5, 0.01));
+        // The reference's range, and that the form refuses it.
+        final reference = MakerRange.opening(amount: null, limit: limit);
+        expect(reference, const MakerRange(58, 170));
+        expect(MakerFormCheck.rangeErrorsOf(58, 170, limits), (
+          min: false,
+          max: true,
+        ));
+        // The form's: a quarter and three quarters of its own largest amount.
+        final opened = MakerRange.opening(
+          amount: null,
+          limit: limit,
+          limits: limits,
+        );
+        expect(opened, const MakerRange(36, 110));
+        // An amount typed above the form's largest: half of it, and the largest the form takes.
+        final typed = MakerRange.opening(
+          amount: 170,
+          limit: limit,
+          limits: limits,
+        );
+        expect(typed?.min, 85);
+        expect(typed?.max, lessThanOrEqualTo(limits.max * 1.01));
+        expect(typed?.max, greaterThan(140));
+        for (final range in [opened, typed]) {
+          expect(
+            MakerFormCheck.rangeErrorsOf(
+              range?.min ?? 0,
+              range?.max ?? 0,
+              limits,
+            ),
+            (min: false, max: false),
+          );
+        }
+      },
+    );
+
+    test(
+      'opening the options stays the reference\'s range whenever the form takes it (#225)',
+      () {
+        final limits = checkOf().limits;
+        for (final amount in <double?>[null, 333, 900]) {
+          expect(
+            MakerRange.opening(
+              amount: amount,
+              limit: narrow[eur],
+              limits: limits,
+            ),
+            MakerRange.opening(amount: amount, limit: narrow[eur]),
+            reason: 'amount $amount',
+          );
+        }
+        // Without the coordinator's limit and without an amount, nothing to set, whatever the form's limits.
+        expect(
+          MakerRange.opening(amount: null, limit: null, limits: limits),
+          isNull,
+        );
+        // An amount whose half is below the form's smallest amount (103): the reference fills in 55 to 110 and refuses 55; here the nearest range the form takes.
+        expect(
+          MakerRange.opening(amount: 110, limit: narrow[eur]),
+          const MakerRange(55, 110),
+        );
+        final near = MakerRange.opening(
+          amount: 110,
+          limit: narrow[eur],
+          limits: limits,
+        );
+        expect(near, isNot(const MakerRange(55, 110)));
+        expect(
+          MakerFormCheck.rangeErrorsOf(near?.min ?? 0, near?.max ?? 0, limits),
+          (min: false, max: false),
+        );
+      },
+    );
+
+    test(
+      'limits a coordinator gives without sense set nothing in the fields that is not a number above zero (independent review of #226, R3)',
+      () async {
+        final huge = await limitsOf({2: (50000, 100, 1e300)});
+        final limit = huge[eur] ?? (throw StateError('EUR'));
+        for (final size in [double.infinity, double.nan, -1.0, 0.0]) {
+          final limits = MakerAmountLimits.of(
+            limit,
+            premium: Premium.tryCreate(0) ?? (throw StateError('a premium')),
+            sizeLimitSats: size,
+          );
+          for (final amount in <double?>[null, 100]) {
+            final range = MakerRange.opening(
+              amount: amount,
+              limit: limit,
+              limits: limits,
+            );
+            if (range != null) {
+              expect(
+                range.min.isFinite && range.min > 0,
+                isTrue,
+                reason: '$size',
+              );
+              expect(
+                range.max.isFinite && range.max > 0,
+                isTrue,
+                reason: '$size',
+              );
+            }
+          }
+        }
+      },
+    );
+
+    test(
+      'opening the options, a sweep of coordinators, premiums, size limits and amounts: the range filled in is always one the form takes (#225)',
+      () async {
+        var opened = 0;
+        var changed = 0;
+        for (final (price, low, high) in [
+          (50000.0, 100.0, 1000.0),
+          (50000.0, 10.0, 10000.0),
+          (58165.0, 6.98, 232.66),
+          (58165.0, 6.98, 1745.0),
+          (63000.0, 12.6, 1070000.0),
+          (0.9, 0.5, 40.0),
+        ]) {
+          final market = await limitsOf({2: (price, low, high)});
+          final limit = market[eur] ?? (throw StateError('EUR'));
+          for (final percent in [-60.0, -21.0, -5.0, 0.0, 7.5, 40.0, 300.0]) {
+            final premium =
+                Premium.tryCreate(percent) ?? (throw StateError('a premium'));
+            for (final size in [250000.0, 928000.0, 21 * 100000000.0]) {
+              final limits = MakerAmountLimits.of(
+                limit,
+                premium: premium,
+                sizeLimitSats: size,
+              );
+              // Limits too close for any range (the largest under about 1.65 times the smallest) are no coordinator's: left out, as for the slider.
+              if (limits.max < limits.min * 1.7) continue;
+              for (final amount in <double?>[
+                null,
+                limits.min,
+                limits.min * 1.2,
+                limits.max / 2,
+                limits.max,
+                limits.max * 3,
+              ]) {
+                final range = MakerRange.opening(
+                  amount: amount,
+                  limit: limit,
+                  limits: limits,
+                );
+                final reference = MakerRange.opening(
+                  amount: amount,
+                  limit: limit,
+                );
+                if (range == null) fail('a range for $limits, amount $amount');
+                opened++;
+                if (range != reference) changed++;
+                expect(
+                  MakerFormCheck.rangeErrorsOf(range.min, range.max, limits),
+                  (min: false, max: false),
+                  reason:
+                      '${range.min} to ${range.max} at $price, $low-$high, premium $percent, size $size, amount $amount, limits $limits',
+                );
+              }
+            }
+          }
+        }
+        // The sweep opens ranges both ways: the reference's kept, and the reference's refused and set within the form's limits.
+        expect(opened, greaterThan(300));
+        expect(changed, greaterThan(50));
+        expect(opened - changed, greaterThan(50));
+      },
+    );
+
+    test(
+      'a currency changed never leaves a range the form refuses in the new currency: kept or set again as the reference does when the form takes it, else set within the form\'s limits (#225)',
+      () async {
+        // FreePort on 2026-11-19: 480 to 1,400 filled in in USD, kept by the reference in EUR (within 6.98 and 1,745), refused there at -21 % under a size limit of 928,000 sats (the form's largest amount 529).
+        final market = await limitsOf({2: (58165, 6.98, 1745)});
+        final limit = market[eur] ?? (throw StateError('EUR'));
+        final limits = MakerAmountLimits.of(
+          limit,
+          premium: Premium.tryCreate(-21) ?? (throw StateError('a premium')),
+          sizeLimitSats: 928000,
+        );
+        expect(limits.max, closeTo(528.97, 0.01));
+        expect(
+          MakerRange.afterCurrency(min: 480, max: 1400, limit: limit),
+          isNull,
+        );
+        expect(
+          MakerRange.afterCurrency(
+            min: 480,
+            max: 1400,
+            limit: limit,
+            limits: limits,
+          ),
+          const MakerRange(130, 400),
+        );
+        // Set again by the reference on a range the form refuses: the form's own.
+        expect(
+          MakerRange.afterCurrency(min: 2, max: 4, limit: limit),
+          const MakerRange(430, 1300),
+        );
+        expect(
+          MakerRange.afterCurrency(
+            min: 2,
+            max: 4,
+            limit: limit,
+            limits: limits,
+          ),
+          const MakerRange(130, 400),
+        );
+        // A range the form takes in the new currency is kept, as the reference keeps it.
+        expect(
+          MakerRange.afterCurrency(
+            min: 200,
+            max: 400,
+            limit: limit,
+            limits: limits,
+          ),
+          isNull,
+        );
+        // A range the reference keeps, whose bounds are only too close or too far apart, is kept: the currency does not change that, and the bounds typed stay (independent review of #226, C2).
+        for (final (low, high) in [(300.0, 320.0), (20.0, 500.0)]) {
+          expect(
+            MakerFormCheck.rangeErrorsOf(low, high, limits),
+            isNot((min: false, max: false)),
+          );
+          expect(
+            MakerRange.afterCurrency(
+              min: low,
+              max: high,
+              limit: limit,
+              limits: limits,
+            ),
+            isNull,
+            reason: '$low to $high',
+          );
+        }
+        // The reference's range, when the form takes it.
+        final mature = checkOf().limits;
+        expect(
+          MakerRange.afterCurrency(
+            min: 50,
+            max: 400,
+            limit: narrow[eur],
+            limits: mature,
+          ),
+          const MakerRange(250, 750),
         );
       },
     );
