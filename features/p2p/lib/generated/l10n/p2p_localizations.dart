@@ -3870,6 +3870,12 @@ abstract class P2pLocalizations {
   /// **'Sending your request to {coordinator}…'**
   String p2pEndStepSendingRequest(String coordinator);
 
+  /// Not in the RoboSats texts: the project's own: an action of the chat step (« Confirm … sent », …) pressed while the order read just before it is refused by the state machine (a read of a coordinator that changed the order's terms, a status that does not follow the trade): nothing was sent, and the alert of that read is shown above (security review of #219, C2). Where the order really moved on, p2pEndMovedOn and its siblings.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent: the order read just now carries the alert shown above.'**
+  String get p2pEndNotSentReadRefused;
+
   /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
   ///
   /// In en, this message translates to:
@@ -5436,10 +5442,10 @@ abstract class P2pLocalizations {
   /// **'The order is being cancelled: wait until it ends.'**
   String get p2pTradePauseWhileCancel;
 
-  /// Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2).
+  /// Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2). It says that the two reads lower the risk without ruling it out, the transport giving no sure bound for a request still on its way (#214, security review of #184, R-a); the reference's « it cannot be seen or taken by other robots » is not shown while it is (R-b).
   ///
   /// In en, this message translates to:
-  /// **'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.'**
+  /// **'A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.'**
   String get p2pTradePauseMayStillArrive;
 
   /// Not in the RoboSats texts: the project's own: a cancel tapped while a pause or an unpause of the order runs waits for it behind the order's lock (security review of #184, R3).
@@ -5563,6 +5569,19 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, {amount} {currency} are worth {expected} sats. You receive {received} sats: gap {gap}.'**
   String p2pPayoutRateWallet(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  );
+
+  /// Not in the RoboSats texts: the project's own: the line of p2pPayoutRateWallet at 9 when the coordinator's figures are missing or do not agree with each other and the invoice's sats this app kept for the contract at 6 or 8 are compared alone, beside the state machine's alert (`PayoutRateAskedOnly`, second security review of #182, R8): it names the amount as the one asked here and the sats as those of the invoice this app saw asked, so that neither reads as a figure of the coordinator beside that alert (#211). {price} is the Bull wallet's price of a bitcoin without the premium; {expected} the sats {amount} is worth at it with the premium, rounded down; {received} the invoice's sats kept; {gap} their gap in percent with its sign.
+  ///
+  /// In en, this message translates to:
+  /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, the {amount} {currency} asked here are worth {expected} sats. The payout invoice this app saw asked for this contract is of {received} sats: gap {gap}.'**
+  String p2pPayoutRateWalletAsked(
     String price,
     String currency,
     String amount,

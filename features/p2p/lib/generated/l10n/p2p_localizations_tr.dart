@@ -2405,6 +2405,10 @@ class P2pLocalizationsTr extends P2pLocalizations {
   }
 
   @override
+  String get p2pEndNotSentReadRefused =>
+      'Nothing was sent: the order read just now carries the alert shown above.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'The trade moved on: your request was not sent.';
 
@@ -3420,7 +3424,7 @@ class P2pLocalizationsTr extends P2pLocalizations {
 
   @override
   String get p2pTradePauseMayStillArrive =>
-      'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+      'A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.';
 
   @override
   String get p2pTradeCancelAfterPause =>
@@ -3512,6 +3516,18 @@ class P2pLocalizationsTr extends P2pLocalizations {
     String gap,
   ) {
     return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, $amount $currency are worth $expected sats. You receive $received sats: gap $gap.';
+  }
+
+  @override
+  String p2pPayoutRateWalletAsked(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, the $amount $currency asked here are worth $expected sats. The payout invoice this app saw asked for this contract is of $received sats: gap $gap.';
   }
 
   @override

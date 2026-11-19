@@ -79,14 +79,24 @@ class PayoutRateLines extends StatelessWidget {
           ) =>
             [
               (
-                text: l10n.p2pPayoutRateWallet(
-                  formats.orderRate(price),
-                  check.currency.code,
-                  amount,
-                  formats.bigSats(expected.value),
-                  formats.bigSats(check.asked.value),
-                  formats.gap(gapHundredths),
-                ),
+                // At 9, the invoice this app kept compared alone beside the state machine's alert: the amount named as the one asked here, the sats as the invoice's (#211).
+                text: basis is PayoutRateAskedOnly
+                    ? l10n.p2pPayoutRateWalletAsked(
+                        formats.orderRate(price),
+                        check.currency.code,
+                        amount,
+                        formats.bigSats(expected.value),
+                        formats.bigSats(check.asked.value),
+                        formats.gap(gapHundredths),
+                      )
+                    : l10n.p2pPayoutRateWallet(
+                        formats.orderRate(price),
+                        check.currency.code,
+                        amount,
+                        formats.bigSats(expected.value),
+                        formats.bigSats(check.asked.value),
+                        formats.gap(gapHundredths),
+                      ),
                 tone: TradeDialogTone.plain,
               ),
               // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
@@ -124,22 +134,6 @@ class PayoutRateLines extends StatelessWidget {
       ],
     };
   }
-
-  /// The lines of « Confirm … sent » for [state]: [linesOf], after the state machine's warning on the amounts when the coordinator's figures do not agree, which the dialog would not say otherwise (second security review of #182, R8).
-  static List<TradeDialogLine> dialogLinesOf(
-    BuildContext context,
-    PayoutRateState state, {
-    required String coordinator,
-    required String amount,
-  }) => [
-    if (state is PayoutRateAmountsDisagree ||
-        (state is PayoutRateChecked && state.basis is PayoutRateAskedOnly))
-      (
-        text: P2pLocalizations.of(context).p2pTradeWarnAmounts(coordinator),
-        tone: TradeDialogTone.warning,
-      ),
-    ...linesOf(context, state, coordinator: coordinator, amount: amount),
-  ];
 
   /// Whether the gap from the creation's rate is not shown beside [state]: a comparison with the Bull wallet's price (decided by the coordinator of the work after the functional review of #182: one figure for one question), amounts that do not agree, or a coordinator's figure that moved at 9 (the gap would read it as fixed, security review of #182).
   static bool hidesGap(PayoutRateState? state) => switch (state) {

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
+import 'package:p2p/src/data/tor_coordinator_transport.dart'
+    show coordinatorRequestDeadline;
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
@@ -108,8 +110,12 @@ final class _Pauses {
   /// What each pause gives, the next one first; a pause with none left never ends.
   final List<Completer<Result<PauseOutcome, PauseRefusal>>> answers = [];
 
-  /// What stays uncertain after an outcome unknown, as the use case keeps it ([PausesInFlight]).
-  final PausesInFlight registry = PausesInFlight();
+  /// What stays uncertain after an outcome unknown, as the use case keeps it ([PausesInFlight]), on [elapsed], the time that only moves forward the test moves.
+  late final PausesInFlight registry = PausesInFlight(
+    elapsed: () => elapsed,
+    requestDeadline: coordinatorRequestDeadline,
+  );
+  Duration elapsed = Duration.zero;
 
   Future<Result<PauseOutcome, PauseRefusal>> call(
     TradeRecord record,
@@ -517,7 +523,7 @@ void main() {
         );
         // The watch reads it paused, by a read sent after the request: the notice goes, a reserve stays, since a request still on its way could make it public again.
         const reserve =
-            'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+            'A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.';
         watch.add(
           TradeScreenStatuses.watched(
             _readAt(paused, tradeNow.add(const Duration(seconds: 10))),
@@ -530,7 +536,10 @@ void main() {
         expect(find.textContaining('count on your order being'), findsNothing);
         expect(find.textContaining('does not know yet'), findsNothing);
         expect(find.text(reserve), findsOneWidget);
-        // Read paused again, three minutes later: settled.
+        // Never beside the reserve: the reference's « it cannot be seen or taken » (R-b, #214).
+        expect(find.textContaining('cannot be seen or taken'), findsNothing);
+        // Read paused again, three minutes later on the device's clock but ten seconds later on the time that only moves forward (a clock set forward): not settled (R-d, #214).
+        pauses.elapsed = const Duration(seconds: 10);
         watch.add(
           TradeScreenStatuses.watched(
             _readAt(
@@ -542,7 +551,23 @@ void main() {
         );
         await tester.pump();
         await tester.pump();
+        expect(find.text(reserve), findsOneWidget);
+        expect(find.textContaining('cannot be seen or taken'), findsNothing);
+        // Read paused again, more than three minutes and the transport's deadline later on the time that only moves forward: settled, the reference's sentence back.
+        pauses.elapsed = const Duration(minutes: 5, seconds: 20);
+        watch.add(
+          TradeScreenStatuses.watched(
+            _readAt(
+              paused,
+              tradeNow.add(const Duration(minutes: 3, seconds: 20)),
+            ),
+            of: _record,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
         expect(find.text(reserve), findsNothing);
+        expect(find.textContaining('cannot be seen or taken'), findsOneWidget);
         expect(pauses.asked, hasLength(1));
       },
     );
@@ -1131,7 +1156,7 @@ void main() {
       const referencePaused =
           'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.';
       const reserve =
-          'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+          'A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.';
 
       testWidgets(
         '« Unpause Order », toggled, its answer lost and every read after it failing: never « cannot be seen or taken », the order counted as public (C1)',
@@ -1221,6 +1246,131 @@ void main() {
             findsOneWidget,
           );
           expect(find.text(mayBePublic), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(trade.close);
+        },
+      );
+
+      testWidgets(
+        '« Unpause Order », toggled, then the read after it throws in the use case (a bug below it): the order counted as public, never « cannot be seen or taken » (security review of #184, mutant N9, #214)',
+        (tester) async {
+          final (harness, record) = await made(tester, paused: true);
+          // A bug below the use case (an `Error`, which the client passes on for a read) at the first read of the order once the request toggled it.
+          var pauseArrived = false;
+          var thrown = 0;
+          harness.coordinator.onRequest = (request) {
+            if (request.method == CoordinatorHttpMethod.post) {
+              pauseArrived = String.fromCharCodes(
+                request.body ?? const [],
+              ).contains('"pause"');
+            } else if (pauseArrived && request.url.path == '/api/order/') {
+              pauseArrived = false;
+              thrown++;
+              throw StateError('a bug below the use case');
+            }
+          };
+          final trade = await mount(tester, harness, record, harness.pause);
+          await settleBoth(tester, harness);
+          expect(find.text(referencePaused), findsOneWidget);
+          await tester.ensureVisible(_unpause);
+          await tester.pump();
+          // The cubit passes the bug on, after saying the outcome unknown: caught here, in the zone of the tap.
+          final errors = <Object>[];
+          await runZonedGuarded(() async {
+            await tester.tap(_unpause);
+            await settleBoth(tester, harness);
+          }, (error, _) => errors.add(error));
+          expect(errors.single, isA<StateError>());
+          // The bug thrown once, under the use case, after the request toggled the order.
+          expect(thrown, 1);
+          expect(harness.coordinator.order(record.orderId).status, 1);
+          expect(harness.pausesInFlight.uncertainty(record), isNotNull);
+          expect(find.text(referencePaused), findsNothing);
+          expect(find.text(mayBePublic), findsOneWidget);
+          expect(find.textContaining('does not know yet'), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(trade.close);
+        },
+      );
+
+      testWidgets(
+        'the reserve after an outcome unknown: the reference\'s « cannot be seen or taken » not beside it; back once two reads paused, minutes apart, settle it (security review of #184, R-a, R-b, #214)',
+        (tester) async {
+          final (harness, record) = await made(tester);
+          final trade = await mount(tester, harness, record, harness.pause);
+          await settleBoth(tester, harness);
+          harness.coordinator.failNext(
+            ScriptedMakerRequest.pause,
+            ScriptedFault.landsLate,
+          );
+          await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+          await tester.pump();
+          await tester.tap(find.byTooltip(_pauseTooltip));
+          await settleBoth(tester, harness);
+          expect(find.text(mayBePublic), findsOneWidget);
+          // The request lands; the watch reads the order paused: the reserve, without the reference's sentence.
+          harness.coordinator.landLate();
+          await tester.runAsync(
+            () => harness.elapse(const Duration(seconds: 35)),
+          );
+          await settleBoth(tester, harness);
+          expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+          expect(find.text(reserve), findsOneWidget);
+          expect(find.text(referencePaused), findsNothing);
+          expect(find.textContaining('without ruling it out'), findsOneWidget);
+          // Read paused again, three minutes later: the reserve kept, the second read taken into account less than three minutes and the transport's deadline after the first (security review of #219, R1).
+          await tester.runAsync(
+            () => harness.elapse(const Duration(minutes: 3)),
+          );
+          await settleBoth(tester, harness);
+          expect(find.text(reserve), findsOneWidget);
+          expect(find.text(referencePaused), findsNothing);
+          // Three minutes more: settled, the reference's sentence back.
+          await tester.runAsync(
+            () => harness.elapse(const Duration(minutes: 3)),
+          );
+          await settleBoth(tester, harness);
+          expect(find.text(reserve), findsNothing);
+          expect(find.text(referencePaused), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(trade.close);
+        },
+      );
+
+      testWidgets(
+        'paused here, then read at another status (taken), then public again: said « public again » (functional review of #184, R6 (2), #214)',
+        (tester) async {
+          final (harness, record) = await made(tester);
+          final trade = await mount(tester, harness, record, harness.pause);
+          await settleBoth(tester, harness);
+          await tester.ensureVisible(find.byTooltip(_pauseTooltip));
+          await tester.pump();
+          await tester.tap(find.byTooltip(_pauseTooltip));
+          await settleBoth(tester, harness);
+          expect(find.text('Your order is paused (2/5)'), findsOneWidget);
+          // Unpaused from another app with the same Garage Key, then taken: read at 6.
+          harness.coordinator
+            ..pause(record.orderId)
+            ..take(record.orderId, harness.robot(4));
+          await tester.runAsync(
+            () => harness.elapse(const Duration(minutes: 3)),
+          );
+          await settleBoth(tester, harness);
+          expect(trade.state.seen?.status, isA<WaitingForBoth>());
+          expect(find.textContaining('public again'), findsNothing);
+          // The taker cancels: the order back in the book, public.
+          harness.coordinator.backToBook(record.orderId);
+          await tester.runAsync(
+            () => harness.elapse(const Duration(minutes: 3)),
+          );
+          await settleBoth(tester, harness);
+          expect(find.text('Your order is public (2/5)'), findsOneWidget);
+          expect(
+            find.text(
+              'Your order is public again, although it was paused from this app: robots can see it and take it.',
+            ),
+            findsOneWidget,
+          );
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.runAsync(trade.close);
         },

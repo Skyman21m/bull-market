@@ -135,7 +135,7 @@ sealed class TradePauseState {
 
 /// No pause runs; [notice] says what the last one gave when it says something, [wanted] what the user had asked then.
 ///
-/// [pausedHere] holds from a pause that this screen saw done ([PauseDone] of [PauseWanted.paused]) while the order is read paused: a later read that shows it public again, which no tap of this screen asked, is then said ([PausePublicAgain]), since a public order can be taken.
+/// [pausedHere] holds from a pause that this screen saw done ([PauseDone] of [PauseWanted.paused]) while the order is read paused or at any status that is no end (taken, back in the book, #214), until it is read public: a later read that shows it public again, which no tap of this screen asked, is then said ([PausePublicAgain]), since a public order can be taken.
 final class PauseIdle extends TradePauseState {
   final TradePauseNotice? notice;
   final PauseWanted? wanted;
@@ -439,7 +439,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     };
   }
 
-  /// What a pause's notice becomes once the watch gives [watch]: a pause this screen saw done whose order is now read public again is said ([PausePublicAgain]); a notice goes once the status shows another position than the one it was given at, except the words of an order public again, which stay while it is public; kept otherwise, a running pause included.
+  /// What a pause's notice becomes once the watch gives [watch]: a pause this screen saw done whose order is now read public again is said ([PausePublicAgain]), whatever statuses that are no end were read between (#214); a notice goes once the status shows another position than the one it was given at, except the words of an order public again, which stay while it is public; kept otherwise, a running pause included.
   TradePauseState? _pauseAfter(TradeWatchState watch) {
     final pause = state.pause;
     if (pause is! PauseIdle) return null;
@@ -459,6 +459,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
     if (pause.notice is PauseWasUnknown &&
         pause.wanted == PauseWanted.paused &&
         PauseWanted.paused.reachedAt(seen)) {
+      return const PauseIdle(pausedHere: true);
+    }
+    // Paused here, now read at another status that is no end (taken, then perhaps back in the book): kept, so that a later read public says it public again, rather than forgetting it at the status between (functional review of #184, R6 (2), #214).
+    if (pause.pausedHere && !seen.status.isTerminal) {
       return const PauseIdle(pausedHere: true);
     }
     if (pause.notice != null || pause.pausedHere) return const PauseIdle();

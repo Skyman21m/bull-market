@@ -2435,6 +2435,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String get p2pEndNotSentReadRefused =>
+      'Rien n’a été envoyé : l’ordre relu à l’instant porte l’alerte affichée ci-dessus.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'L’échange a changé : votre demande n’a pas été envoyée.';
 
@@ -3469,7 +3473,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradePauseMayStillArrive =>
-      'Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public : tant qu’il n’a pas été lu en pause deux fois, à quelques minutes d’intervalle, cet écran ouvert, considérez qu’il peut être public.';
+      'Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public. Deux lectures qui le montrent en pause, à quelques minutes d’intervalle, cet écran ouvert, réduisent ce risque sans l’exclure : d’ici là, considérez qu’il peut être public.';
 
   @override
   String get p2pTradeCancelAfterPause =>
@@ -3563,6 +3567,18 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String gap,
   ) {
     return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, $amount $currency valent $expected sats. Vous recevez $received sats : écart $gap.';
+  }
+
+  @override
+  String p2pPayoutRateWalletAsked(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, les $amount $currency demandés ici valent $expected sats. La facture de paiement demandée pour ce contrat, vue par cette app, est de $received sats : écart $gap.';
   }
 
   @override

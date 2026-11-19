@@ -294,4 +294,63 @@ void main() {
       },
     );
   });
+
+  group(
+    'what was asked here, on the reads of an order made at a fixed amount (#211, security review of #183, R9)',
+    () {
+      double? askedOf(TradeSeen? seen) => switch (seen?.asked) {
+        FixedOrderAmount(:final amount) => amount.value,
+        _ => null,
+      };
+
+      Future<(MakeHarness, TradeRecord)> fixed() async {
+        final harness = await MakeHarness.start();
+        final started = valueOf(await harness.makeOrder());
+        if (started is! MakeStarted) throw StateError('not made: $started');
+        return (harness, started.record);
+      }
+
+      test(
+        'the make\'s own first read and the reads of the watch carry the amount asked, 100 EUR (its MC4c and MC4d)',
+        () async {
+          final (harness, record) = await fixed();
+          // The make's first read, as the run stored it (`MakeOrderUsecase`, then `TradeReader.keep`).
+          final first = harness.watch.lastStored(record);
+          expect(first?.stored, isTrue);
+          expect(first?.status, isA<WaitingForMakerBond>());
+          expect(askedOf(first), 100);
+          harness.coordinator
+            ..lockMakerBond(record.orderId)
+            ..take(record.orderId, harness.robot(4));
+          // A read of the real reader, through the watch.
+          final six = await readOf(harness, record);
+          expect(six.status, isA<WaitingForBoth>());
+          expect(askedOf(six), 100);
+          expect(six.contractAmount?.value, 100);
+          expect(askedOf(harness.watch.lastStored(record)), 100);
+        },
+      );
+
+      test(
+        'a fixed amount read as a range: said moved, the state machine\'s alert, no amount of the contract written (its MC4b)',
+        () async {
+          final (harness, record) = await fixed();
+          harness.coordinator
+            ..lockMakerBond(record.orderId)
+            ..take(record.orderId, harness.robot(4))
+            ..orderChanges[record.orderId] = {
+              'has_range': true,
+              'min_amount': '50.00000000',
+              'max_amount': '200.00000000',
+            };
+          final six = await readOf(harness, record);
+          expect(six.order?.amount, isA<RangeOrderAmount>());
+          expect(askedOf(six), 100);
+          expect(six.status.has<TradeTermsChanged>(), isTrue);
+          expect(six.contractAmountMoved, isTrue);
+          expect(six.contractAmount, isNull);
+        },
+      );
+    },
+  );
 }
