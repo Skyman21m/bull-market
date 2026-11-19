@@ -543,6 +543,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             }
           },
         ),
+        // A renewal's own make ended without an order, closed by a resolution or set aside: its page free again (security review of #220, N1).
+        BlocListener<PendingMakesCubit, PendingMakesState>(
+          listenWhen: (previous, current) =>
+              current.ended != null && previous.ended != current.ended,
+          listener: (context, current) {
+            if (current.ended case final robot?) {
+              context.read<MakeOrderCubit>().pendingEnded(robot);
+            }
+          },
+        ),
         // A pending make a resolution confirmed: its trade, as an order made (#182); on a renewal's page, only the renewal's own make, which the cubit tells (#217, security review of #185, R3).
         BlocListener<PendingMakesCubit, PendingMakesState>(
           listenWhen: (previous, current) =>
@@ -1568,7 +1578,10 @@ class _CreateButton extends StatelessWidget {
           live: true,
         ),
       if (progress is MakeSending) _Line(l10n.p2pMakeCreating, live: true),
-      if (progress is MakeUncertain) ...[
+      // An order confirmed on a renewal's page that could not be told this renewal's: nothing more from here, and how to go on (security review of #220, R1, N1).
+      if (progress case MakeUncertain(unverified: true))
+        _Line(l10n.p2pRenewUnverified, color: colors.warning, live: true)
+      else if (progress is MakeUncertain) ...[
         _Line(l10n.p2pMakeCreating, live: true),
         _Line(l10n.p2pMakePending(coordinator), live: true),
       ],

@@ -165,12 +165,12 @@ final class MakeOrderUsecase {
     final subscriptions = <StreamSubscription<Object?>>[];
     late final StreamController<Result<OrderRenewals, P2pFailure>> out;
 
-    // Made after [record]: never by the device's clock alone, which may have been set back (security review of #220, C2). A fresh robot of the same Garage Key always takes a higher index than every robot used before (`TradeRobots.robotForNewTrade`: the first index neither bound nor recorded, and neither binding nor record is ever deleted); another key's robot is judged by the time written. Either says « after »: counted rather than missed.
+    // Made after [record]: never by the device's clock when both are of the same Garage Key, which may have been set forward or back (security review of #220, C2, N2): a fresh robot of the same key always takes a higher index than every robot used before (`TradeRobots.robotForNewTrade`: the first index neither bound nor recorded, and neither binding nor record is ever deleted); another key's robot, by the time written alone.
     bool after(RobotSlot robot, DateTime writtenAt) =>
         robot != record.robot &&
-        ((robot.keyFingerprint == record.robot.keyFingerprint &&
-                robot.accountIndex > record.robot.accountIndex) ||
-            writtenAt.isAfter(record.takenAt));
+        (robot.keyFingerprint == record.robot.keyFingerprint
+            ? robot.accountIndex > record.robot.accountIndex
+            : writtenAt.isAfter(record.takenAt));
 
     void emit() {
       final (t, h, p) = (recorded, histories, pending);
@@ -297,21 +297,26 @@ final class MakeOrderUsecase {
     return out.stream;
   }
 
-  /// Whether [made], an order a resolution of a pending make confirmed while the page of [renewal] is open, is made with the very request of [renewal], on its coordinator and network (#217, security review of #185, R3): only such an order closes the renewal's page, a make unrelated to it leaving the page as it is. Read from the records only; `false` when they cannot be read or do not restore.
-  Future<bool> madeAsRenewal(TradeRecord made, OrderRenewal renewal) async {
+  /// Whether [made], an order a resolution of a pending make confirmed while the page of [renewal] is open, is made with the very request of [renewal], on its coordinator and network (#217, security review of #185, R3): only such an order closes the renewal's page, a make unrelated to it leaving the page as it is. Read from the records only: [Err] when they cannot be read or the order's terms do not restore, so that the page never takes « cannot tell » for « unrelated » (security review of #220, R1, N1).
+  Future<Result<bool, P2pFailure>> madeAsRenewal(
+    TradeRecord made,
+    OrderRenewal renewal,
+  ) async {
     if (made.origin != TradeOrigin.madeHere ||
         made.network != renewal.network ||
         made.coordinatorAlias != renewal.coordinator.shortAlias) {
-      return false;
+      return const Ok(false);
     }
     return switch (await _trails.makerTermsOf(made.robot)) {
       Ok(value: final terms?) => switch (MakerTerms.restore(terms)) {
-        Ok(:final value) =>
+        Ok(:final value) => Ok(
           value.request == renewal.request &&
               value.coordinator == renewal.coordinator,
-        Err() => false,
+        ),
+        Err() => const Err(P2pStorageFailure()),
       },
-      Ok() || Err() => false,
+      Ok() => const Err(P2pStorageFailure()),
+      Err(:final failure) => Err(failure),
     };
   }
 

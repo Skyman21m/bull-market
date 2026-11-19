@@ -453,7 +453,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                           (
                             TradeMessageKind.ended,
                             TradeWatchStatus(
-                              endReread: TradeEndShownAlive(),
+                              endReread: TradeEndShownAlive() ||
+                                  TradeEndNotRead() ||
+                                  TradeEndUnknownToCoordinator(),
                               :final record,
                               :final seen,
                             ),

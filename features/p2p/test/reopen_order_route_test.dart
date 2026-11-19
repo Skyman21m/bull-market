@@ -421,9 +421,15 @@ void main() {
         await app.openGarage();
         await _tap(tester, _lastOrder(id));
         await app.settle(12);
-        // Not « The order has expired », which the coordinator did not say now: the end the records hold, as the screen words an end of a status it did not read.
+        // Not « The order has expired », which the coordinator did not say now: the end the records hold, said as kept here when it was not confirmed, « over » for another end the coordinator showed (security review of #220, N4).
         expect(find.text('The order has expired'), findsNothing);
-        expect(find.text('This trade is over for this robot.'), findsOneWidget);
+        final endText = line.contains('otherwise')
+            ? 'This trade is over for this robot.'
+            : 'This device kept this order as ended on ';
+        expect(find.textContaining(endText), findsOneWidget);
+        if (!line.contains('otherwise')) {
+          expect(find.textContaining('over for this robot'), findsNothing);
+        }
         expect(find.textContaining(line), findsOneWidget);
         for (final other in [
           'could not be read again',
@@ -436,14 +442,10 @@ void main() {
           }
         }
         expect(find.textContaining(_keptLine), findsOneWidget);
-        // « Renew Order » under « This trade is over for this robot. », as under the expiry's reason.
+        // « Renew Order » under the message, as under the expiry's reason.
         expect(
           tester.getTopLeft(_renewOrder).dy,
-          greaterThan(
-            tester
-                .getTopLeft(find.text('This trade is over for this robot.'))
-                .dy,
-          ),
+          greaterThan(tester.getTopLeft(find.textContaining(endText)).dy),
         );
         await renewThroughDialog(tester, app, reason);
         await app.close();
@@ -473,11 +475,11 @@ void main() {
         await app.settle(12);
         expect(
           find.text(
-            'Temple of Sats now shows this order as still running: it may still be under way there, its bond may still be locked and it may be taken. Check it in the official RoboSats app with your Garage Key before you create another.',
+            'Temple of Sats now shows this order as still running: it may still be taken or need an action from you, and sats may still be locked in it. Check it in the official RoboSats app with your Garage Key before you create another.',
           ),
           findsOneWidget,
         );
-        expect(find.text('This trade is over for this robot.'), findsNothing);
+        expect(find.textContaining('over for this robot'), findsNothing);
         expect(
           find.textContaining('This device kept this order as ended on '),
           findsOneWidget,
@@ -486,7 +488,7 @@ void main() {
         await renewThroughDialog(
           tester,
           app,
-          'Temple of Sats shows this order still running: its bond may still be locked and it may be taken.',
+          'Temple of Sats shows this order still running: it may still be taken or need an action from you, and sats may still be locked in it.',
         );
         await app.close();
       },
@@ -507,7 +509,7 @@ void main() {
         find.text('Reading this order again from Temple of Sats…'),
         findsOneWidget,
       );
-      expect(find.text('This trade is over for this robot.'), findsNothing);
+      expect(find.textContaining('over for this robot'), findsNothing);
       await _tap(tester, _renewOrder);
       await app.settle();
       expect(find.byType(RenewCheckDialog), findsOneWidget);
@@ -607,6 +609,68 @@ void main() {
       await app.close();
     },
   );
+
+  for (final setAside in [false, true]) {
+    testWidgets(
+      'the renewal\'s make timing out, then ${setAside ? '« Set aside »' : '« Retry » finding it was not made'}: the page free again and saying so, « Create order » sends anew, one order made (security review of #220, N1)',
+      (tester) async {
+        final app = await _App.start(tester);
+        unawaited(
+          app.router.pushNamed(
+            P2pRouter.tradeName,
+            extra: P2pTradeRouteArgs(app.first),
+          ),
+        );
+        await app.settle(12);
+        await _tap(tester, _renewOrder);
+        await app.settle(12);
+        expect(find.byType(CreateOrderScreen), findsOneWidget);
+        app.coordinator.failNext(
+          ScriptedMakerRequest.make,
+          ScriptedFault.timedOut,
+        );
+        await _tap(tester, _create);
+        await app.settle(16);
+        expect(app.makes, hasLength(2));
+        expect(find.textContaining('does not know yet whether'), findsWidgets);
+        if (setAside) {
+          // A check that reaches no one leaves it pending, with « Set aside ».
+          app.coordinator.failNext(
+            ScriptedMakerRequest.robot,
+            ScriptedFault.unreachable,
+          );
+          await _tap(tester, find.text('Retry').first);
+          await app.settle(16);
+          expect(
+            find.textContaining('does not know yet whether'),
+            findsWidgets,
+          );
+          await _tap(tester, find.text('Set aside').first);
+          await app.settle();
+          await tester.tap(find.text('Set aside').last);
+        } else {
+          await _tap(tester, find.text('Retry').first);
+        }
+        await app.settle(16);
+        expect(find.byType(CreateOrderScreen), findsOneWidget);
+        expect(find.textContaining('does not know yet whether'), findsNothing);
+        expect(
+          find.textContaining('Go back, then open the order'),
+          findsNothing,
+        );
+        await _tap(tester, _create);
+        await app.settle(16);
+        expect(app.makes, hasLength(3));
+        // One order made by the renewal at the coordinator, beside the order renewed.
+        expect(app.coordinator.orders, hasLength(2));
+        expect(
+          find.byType(CreateOrderScreen, skipOffstage: false),
+          findsNothing,
+        );
+        await app.close();
+      },
+    );
+  }
 
   group(
     'a pending make confirmed while the renewal\'s page is open (#217, security review of #185, R3)',

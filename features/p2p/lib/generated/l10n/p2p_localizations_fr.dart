@@ -3752,7 +3752,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pRenewEndAlive(String coordinator) {
-    return '$coordinator montre cet ordre encore en cours : sa caution est peut-être encore bloquée et il peut être pris.';
+    return '$coordinator montre cet ordre encore en cours : il peut encore être pris ou demander une action de votre part, et des sats y sont peut-être encore bloqués.';
   }
 
   @override
@@ -3784,13 +3784,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pTradeEndAlive(String coordinator) {
-    return '$coordinator montre maintenant cet ordre comme toujours en cours : il est peut-être encore en cours chez lui, sa caution est peut-être encore bloquée et il peut être pris. Vérifiez-le dans l’application officielle RoboSats avec votre clé de garage avant d’en créer un autre.';
+    return '$coordinator montre maintenant cet ordre comme toujours en cours : il peut encore être pris ou demander une action de votre part, et des sats y sont peut-être encore bloqués. Vérifiez-le dans l’application officielle RoboSats avec votre clé de garage avant d’en créer un autre.';
   }
 
   @override
   String p2pTradeEndKeptEnded(String date) {
     return 'Cet appareil a gardé cet ordre comme terminé le $date.';
   }
+
+  @override
+  String get p2pRenewUnverified =>
+      'Un de vos ordres a été confirmé, et Bull Market n’a pas pu vérifier s’il s’agit de ce renouvellement : plus rien ne peut être envoyé depuis cette page. Revenez en arrière, puis rouvrez l’ordre depuis le Garage ou « Order ».';
 
   @override
   String get p2pMakeSubmit => 'Soumettre';

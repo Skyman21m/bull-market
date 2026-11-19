@@ -67,6 +67,9 @@ final class PendingMakesState {
   /// The coordinator of [closed], its short alias.
   final String? closedAlias;
 
+  /// The robot of the last make that this screen saw end without an order: closed by a resolution as not made, or set aside by the user (#220, security review N1); `null` while none did.
+  final RobotSlot? ended;
+
   const PendingMakesState({
     this.makes,
     this.unreadable = false,
@@ -74,6 +77,7 @@ final class PendingMakesState {
     this.started,
     this.closed,
     this.closedAlias,
+    this.ended,
   });
 
   /// Whether a pending make is listed, or the records cannot tell: the create form makes nothing then.
@@ -86,6 +90,7 @@ final class PendingMakesState {
     TradeRecord? started,
     MakeProblem? closed,
     String? closedAlias,
+    RobotSlot? ended,
   }) => PendingMakesState(
     makes: makes ?? this.makes,
     unreadable: unreadable ?? this.unreadable,
@@ -93,6 +98,7 @@ final class PendingMakesState {
     started: started ?? this.started,
     closed: closed ?? this.closed,
     closedAlias: closedAlias ?? this.closedAlias,
+    ended: ended ?? this.ended,
   );
 }
 
@@ -169,6 +175,7 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
           state._with(
             closed: MakeWasNotMade(refusal),
             closedAlias: make.coordinatorAlias,
+            ended: make.robot,
           ),
         );
       case MakeNeverSent(closed: true):
@@ -177,6 +184,7 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
           state._with(
             closed: const MakeWasNotMade(null),
             closedAlias: make.coordinatorAlias,
+            ended: make.robot,
           ),
         );
       // The close could not be written: it stays listed, and the next resolution closes it.
@@ -195,8 +203,9 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
     final result = await _dismiss(make);
     if (isClosed) return;
     switch (result) {
-      case Ok():
+      case Ok(:final value):
         _step(make, null);
+        if (value) emit(state._with(ended: make.robot));
       case Err():
         _step(make, const PendingMakeNotSetAside());
     }

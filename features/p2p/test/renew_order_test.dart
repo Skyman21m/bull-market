@@ -1020,6 +1020,26 @@ void main() {
       );
 
       test(
+        'an order of the same terms made BEFORE, while the device\'s clock ran three hours ahead, then set back: never said made after, the fresh robot\'s index alone telling within one Garage Key (security review of #220, N2)',
+        () async {
+          final harness = await MakeHarness.start();
+          harness.setClockOnly(const Duration(hours: 3));
+          final before = valueOf(await harness.makeOrder()) as MakeStarted;
+          harness.setClockOnly(const Duration(hours: -3));
+          final record = await expiredOrder(harness);
+          expect(record.takenAt.isBefore(before.record.takenAt), isTrue);
+          expect(
+            record.robot.accountIndex,
+            greaterThan(before.record.robot.accountIndex),
+          );
+          expect(
+            valueOf(await harness.make.renewalsOf(record).first).since,
+            isEmpty,
+          );
+        },
+      );
+
+      test(
         'an order made after whose kept terms cannot be read (a version this code does not write), after the app started again over the same records: not known, never « none » (security review of #220, C3)',
         () async {
           final first = await MakeHarness.start();
@@ -1143,13 +1163,21 @@ void main() {
               valueOf(await harness.makeOrder(MakeHarness.request(amount: 250)))
                   as MakeStarted;
           expect(
-            await harness.make.madeAsRenewal(same.record, renewal),
+            valueOf(await harness.make.madeAsRenewal(same.record, renewal)),
             isTrue,
           );
           expect(
-            await harness.make.madeAsRenewal(other.record, renewal),
+            valueOf(await harness.make.madeAsRenewal(other.record, renewal)),
             isFalse,
           );
+          // Its terms that cannot be read: not known, never « unrelated » (security review of #220, N1).
+          harness.trails.readBack = (stored) =>
+              stored == null ? null : withVersion(stored, 99);
+          expect(
+            await harness.make.madeAsRenewal(same.record, renewal),
+            isA<Err<bool, P2pFailure>>(),
+          );
+          harness.trails.readBack = null;
           final taken = TradeRecord(
             robot: same.record.robot,
             coordinatorAlias: same.record.coordinatorAlias,
@@ -1161,7 +1189,10 @@ void main() {
             confirmedAt: same.record.confirmedAt,
             closedAt: null,
           );
-          expect(await harness.make.madeAsRenewal(taken, renewal), isFalse);
+          expect(
+            valueOf(await harness.make.madeAsRenewal(taken, renewal)),
+            isFalse,
+          );
         },
       );
     },

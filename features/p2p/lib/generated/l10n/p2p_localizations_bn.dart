@@ -3701,7 +3701,7 @@ class P2pLocalizationsBn extends P2pLocalizations {
 
   @override
   String p2pRenewEndAlive(String coordinator) {
-    return '$coordinator shows this order still running: its bond may still be locked and it may be taken.';
+    return '$coordinator shows this order still running: it may still be taken or need an action from you, and sats may still be locked in it.';
   }
 
   @override
@@ -3733,13 +3733,17 @@ class P2pLocalizationsBn extends P2pLocalizations {
 
   @override
   String p2pTradeEndAlive(String coordinator) {
-    return '$coordinator now shows this order as still running: it may still be under way there, its bond may still be locked and it may be taken. Check it in the official RoboSats app with your Garage Key before you create another.';
+    return '$coordinator now shows this order as still running: it may still be taken or need an action from you, and sats may still be locked in it. Check it in the official RoboSats app with your Garage Key before you create another.';
   }
 
   @override
   String p2pTradeEndKeptEnded(String date) {
     return 'This device kept this order as ended on $date.';
   }
+
+  @override
+  String get p2pRenewUnverified =>
+      'An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».';
 
   @override
   String get p2pMakeSubmit => 'Submit';

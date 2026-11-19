@@ -12,6 +12,8 @@ import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
 import '../domain/trade/maker_terms.dart';
 import '../domain/trade/trade_make.dart';
+import '../domain/p2p_failure.dart';
+import '../domain/robot_binding.dart';
 import '../domain/trade/trade_renewal.dart';
 import '../domain/trade_record.dart';
 import 'take_order_cubit.dart' show HasGarageKey;
@@ -56,7 +58,10 @@ typedef ReadRenewal =
 
 /// `MakeOrderUsecase.madeAsRenewal`: whether an order a resolution confirmed is made with the request of a renewal, on its coordinator (#217).
 typedef MadeAsRenewal =
-    Future<bool> Function(TradeRecord made, OrderRenewal renewal);
+    Future<Result<bool, P2pFailure>> Function(
+      TradeRecord made,
+      OrderRenewal renewal,
+    );
 
 /// Whether the create form renews an order made here (#185), and where the read of that order's kept terms stands.
 @immutable
@@ -115,7 +120,10 @@ final class MakeMade extends MakeProgress {
 
 /// Whether the make made an order is not known: it stays pending in the records, resolved from its line of « Active trades » (#182). The form makes nothing more, so that no second order is made beside one that may exist.
 final class MakeUncertain extends MakeProgress {
-  const MakeUncertain();
+  /// Whether an order of the network was confirmed while a renewal's page was open, and whether it is this renewal's could not be read (security review of #220, R1, N1): the page sends nothing more, and says to go back.
+  final bool unverified;
+
+  const MakeUncertain({this.unverified = false});
 }
 
 /// Why a make did not happen: a type, worded by the screen, never a coordinator's text.
@@ -278,6 +286,9 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
 
   /// How many checks of [pendingStarted] run: [make] sends nothing meanwhile.
   int _checkingStarted = 0;
+
+  /// The pending make this page's own make left, its outcome unknown: the order a resolution confirms for its robot is this page's, and its end without an order frees a renewal's page (security review of #220, N1).
+  PendingMake? _ownPending;
 
   /// Bumped at each read of limits or of the wallet's price, so that an answer for a coordinator or a currency no longer shown is dropped.
   int _limitsRead = 0;
@@ -601,30 +612,51 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
         Err() => false,
       };
 
-  /// The network's last pending make is resolved or set aside (#182, functional review C1): a form locked by a make whose outcome was unknown is free again, nothing sent; any other state is left as it is.
+  /// The network's last pending make is resolved or set aside (#182, functional review C1): a creation's form locked by a make whose outcome was unknown is free again, nothing sent; any other state is left as it is.
   ///
-  /// Never for a renewal (security review of #220, R1): its own make, sent with an outcome unknown, may be the very order a resolution has just confirmed, which [pendingStarted] opens; if that read cannot tell, the form stays locked, saying it does not know, rather than free for a second order and a second bond. The page left and opened again starts afresh.
+  /// Never for a renewal (security review of #220, R1): its own make may be the very order a resolution has just confirmed; a renewal's page is freed only when its own make is known to have ended without an order ([pendingEnded]).
   void pendingCleared() {
     if (isClosed || state.progress is! MakeUncertain || state.renewing) return;
     emit(state._with(progress: const MakeIdle()));
   }
 
-  /// A pending make of the network that a resolution confirmed while the renewal's page is open, the order of [record] (#217, security review of #185, R3): [MakeMade], which the screen opens in place of the order renewed, only when that order is made with this renewal's very request on its coordinator (an earlier try of this renewal whose answer was lost); a make unrelated to it, confirmed meanwhile, neither closes the page nor takes the place of the order renewed, and the page stays as it is. Nothing while a make of this page runs or made an order; nothing for a creation, whose screen opens such a trade at once (#182).
+  /// The pending make of [robot] ended without an order on this screen: closed by a resolution as not made, or set aside by the user (security review of #220, N1). A renewal's page whose own make it was is free again, a new make legitimate; anything else is left as it is.
+  void pendingEnded(RobotSlot robot) {
+    if (isClosed || !state.renewing || _ownPending?.robot != robot) return;
+    if (state.progress case MakeUncertain(unverified: false)) {
+      _ownPending = null;
+      emit(state._with(progress: const MakeIdle()));
+    }
+  }
+
+  /// A pending make of the network that a resolution confirmed while the renewal's page is open, the order of [record] (#217, security review of #185, R3): [MakeMade], which the screen opens in place of the order renewed, when that order is this page's own make (its robot), or made with this renewal's very request on its coordinator (an earlier try of this renewal whose answer was lost); a make unrelated to it, confirmed meanwhile, neither closes the page nor takes the place of the order renewed. When that check cannot read the records, the page sends nothing more and says to go back (`MakeUncertain.unverified`, security review of #220, R1, N1), rather than be free for a second order. Nothing while a make of this page runs or made an order; nothing for a creation, whose screen opens such a trade at once (#182).
   ///
   /// While that check runs, [make] sends nothing (security review of #220, R1, its mutant M14): the pending list may empty meanwhile and turn « Create order » on, and the order just confirmed may be this renewal's own.
   Future<void> pendingStarted(TradeRecord record) async {
     final check = _madeAsRenewal;
     final renewal = _renewal;
     if (isClosed || check == null || renewal == null || _busy) return;
+    if (_ownPending?.robot == record.robot) {
+      _ownPending = null;
+      emit(state._with(progress: MakeMade(record)));
+      return;
+    }
     _checkingStarted++;
-    final bool own;
+    final Result<bool, P2pFailure> own;
     try {
       own = await check(record, renewal);
     } finally {
       _checkingStarted--;
     }
-    if (!own || isClosed || _busy) return;
-    emit(state._with(progress: MakeMade(record)));
+    if (isClosed || _busy) return;
+    switch (own) {
+      case Ok(value: true):
+        emit(state._with(progress: MakeMade(record)));
+      case Ok(value: false):
+        break;
+      case Err():
+        emit(state._with(progress: const MakeUncertain(unverified: true)));
+    }
   }
 
   /// Whether a make of this page runs or made an order.
@@ -663,6 +695,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
       seen: seen,
     );
     if (isClosed) return;
+    if (result case Ok(value: MakePending(:final make))) _ownPending = make;
     if (result case Err(failure: MakePriceCheckChanged(:final limits))) {
       _limitsRead++;
       _priceRead++;
@@ -687,8 +720,11 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
           Ok(value: MakeNeverSent()) => const MakeIdle(
             problem: MakeWasNotMade(null),
           ),
-          Ok(value: MakePending() || MakeNoLongerPending()) =>
-            const MakeUncertain(),
+          // A renewal's page knows its own pending make by its robot (security review of #220, N1); a make no longer pending cannot be told, and stays locked, said so.
+          Ok(value: MakePending()) => const MakeUncertain(),
+          Ok(value: MakeNoLongerPending()) => MakeUncertain(
+            unverified: state.renewing,
+          ),
         },
       ),
     );

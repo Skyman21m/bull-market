@@ -5837,7 +5837,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again shows the order at a status that is no end (security review of #220, C1).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} shows this order still running: its bond may still be locked and it may be taken.'**
+  /// **'{coordinator} shows this order still running: it may still be taken or need an action from you, and sats may still be locked in it.'**
   String p2pRenewEndAlive(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again shows another end, or other terms (security review of #220, C1).
@@ -5879,7 +5879,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: the alert of a trade opened again at its end whose one read shows the order at a status that is no end (0, 1, 2, 3, 6 to 11, 13, 15, 16), while this device's record of it is closed and nothing follows it any more (security review of #220, C1).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} now shows this order as still running: it may still be under way there, its bond may still be locked and it may be taken. Check it in the official RoboSats app with your Garage Key before you create another.'**
+  /// **'{coordinator} now shows this order as still running: it may still be taken or need an action from you, and sats may still be locked in it. Check it in the official RoboSats app with your Garage Key before you create another.'**
   String p2pTradeEndAlive(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: in place of « This trade is over for this robot. » when the coordinator shows the order still running (p2pTradeEndAlive): where the end shown comes from (security review of #220, C1).
@@ -5887,6 +5887,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This device kept this order as ended on {date}.'**
   String p2pTradeEndKeptEnded(String date);
+
+  /// Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when an order of the network was confirmed while the page was open and whether it is this renewal's could not be read (security review of #220, R1, N1): the page sends nothing more, and says how to go on.
+  ///
+  /// In en, this message translates to:
+  /// **'An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».'**
+  String get p2pRenewUnverified;
 
   /// The official client's label (`basic/MakerPage/index.tsx:145`, `submitButtonLabel`, its key `Submit` in `frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): the button of the create form while orders of the book match the one being made and are not shown (#186); it only shows them.
   ///

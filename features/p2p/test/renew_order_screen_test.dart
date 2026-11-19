@@ -266,8 +266,11 @@ final class _Renewal {
   Result<OrderRenewal, RenewalRefusal> read;
 
   /// Whether an order a resolution confirmed is made with the renewal's request (#217): played by the test, every such order counted as the renewal's own by default, as an earlier try of the same renewal.
-  FutureOr<bool> Function(TradeRecord made, OrderRenewal renewal)
-  madeAsRenewal = (_, _) => true;
+  FutureOr<Result<bool, P2pFailure>> Function(
+    TradeRecord made,
+    OrderRenewal renewal,
+  )
+  madeAsRenewal = (_, _) => const Ok(true);
 
   /// What the Bull wallet's price check reads.
   P2pWalletBitcoinRate rate = P2pWalletRateRead(91711.15);
@@ -1270,7 +1273,7 @@ void main() {
             confirmedAt: madeAt,
             closedAt: null,
           );
-          final check = Completer<bool>();
+          final check = Completer<Result<bool, P2pFailure>>();
           final renewal = _Renewal()
             ..listedMakes = [ActivePendingMake(earlier, neverSent: false)]
             ..resolveWith = ((_) =>
@@ -1286,7 +1289,7 @@ void main() {
           await tester.tap(_create, warnIfMissed: false);
           await settle(tester);
           expect(renewal.made, isEmpty);
-          check.complete(true);
+          check.complete(const Ok(true));
           await settle(tester);
           expect(opened, [made]);
           expect(renewal.made, isEmpty);
@@ -1294,7 +1297,7 @@ void main() {
       );
 
       testWidgets(
-        'its own make sent with an outcome unknown, then confirmed by a resolution whose read of the order\'s terms fails: the page stays locked, saying it does not know, and a press sends nothing more (security review of #220, R1, its mutant M14)',
+        'its own make sent with an outcome unknown, then confirmed by a resolution: the page closes on that order, its robot telling it is this page\'s, with no read to fail; one make (security review of #220, R1, N1)',
         (tester) async {
           final own = PendingMake(
             robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 1),
@@ -1320,31 +1323,74 @@ void main() {
           );
           final renewal = _Renewal()
             ..answer = Ok(MakePending(own, MakePendingReason.unread))
-            ..madeAsRenewal = ((_, _) => false)
+            ..madeAsRenewal = ((_, _) => const Err(P2pStorageFailure()))
             ..resolveWith = ((_) =>
                 MakeStarted(made, bondStep.status, stored: true));
           final opened = await _showRenewal(tester, renewal);
           await _tap(tester, _create);
           await settle(tester);
           expect(renewal.made, hasLength(1));
-          // The records list the make, a resolution confirms it, the list empties.
           renewal.pendingMakes.add(
             Ok([ActivePendingMake(own, neverSent: false)]),
           );
           await settle(tester);
+          renewal.pendingMakes.add(const Ok([]));
+          await settle(tester);
+          // The list emptied: still locked, never free for a second make.
+          expect(_enabled(tester, _create), isFalse);
           await renewal.pending?.resolve(own);
+          await settle(tester);
+          expect(opened, [made]);
+          expect(renewal.made, hasLength(1));
+        },
+      );
+
+      testWidgets(
+        'an earlier make confirmed while the page is open, whether it is this renewal not readable: the page sends nothing more and says to go back and open the order again; never « check it again below » (security review of #220, R1, N1)',
+        (tester) async {
+          final earlier = PendingMake(
+            robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 1),
+            coordinatorAlias: 'temple',
+            coordinatorOnion: _madeRecord().coordinatorOnion,
+            role: TradeRole.buyer,
+            writtenAt: madeAt,
+            closedAt: null,
+          );
+          final bondStep =
+              await tester.runAsync(() => _at([makerOrderJson(0)])) ??
+              (throw StateError('none'));
+          final made = TradeRecord(
+            robot: earlier.robot,
+            coordinatorAlias: 'temple',
+            coordinatorOnion: earlier.coordinatorOnion,
+            orderId: 777,
+            role: TradeRole.buyer,
+            origin: TradeOrigin.madeHere,
+            takenAt: madeAt,
+            confirmedAt: madeAt,
+            closedAt: null,
+          );
+          final renewal = _Renewal()
+            ..listedMakes = [ActivePendingMake(earlier, neverSent: false)]
+            ..madeAsRenewal = ((_, _) => const Err(P2pStorageFailure()))
+            ..resolveWith = ((_) =>
+                MakeStarted(made, bondStep.status, stored: true));
+          final opened = await _showRenewal(tester, renewal);
+          await renewal.pending?.resolve(earlier);
           renewal.pendingMakes.add(const Ok([]));
           await settle(tester);
           expect(opened, isEmpty);
-          expect(find.byType(CreateOrderScreen), findsOneWidget);
           expect(
-            find.textContaining('does not know yet whether'),
-            findsWidgets,
+            find.text(
+              'An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».',
+            ),
+            findsOneWidget,
           );
+          expect(find.textContaining('Check it again below'), findsNothing);
           expect(_enabled(tester, _create), isFalse);
           await tester.tap(_create, warnIfMissed: false);
           await settle(tester);
-          expect(renewal.made, hasLength(1));
+          expect(renewal.made, isEmpty);
         },
       );
 
