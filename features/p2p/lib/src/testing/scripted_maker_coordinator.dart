@@ -182,6 +182,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// Runs as each request arrives, before it is answered.
   void Function(CoordinatorRequest request)? onRequest;
 
+  /// How many « confirm » requests a maker seller sent (#188): its « Confirm … received », sent once per press.
+  int sellerConfirmations = 0;
+
   /// When set, every make waits for it once it arrived, before it is answered: a make in flight, as long as the test wants.
   Future<void>? holdMake;
 
@@ -503,7 +506,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     return _json(200, _orderJson(made, robot, isMaker: true));
   }
 
-  /// A maker buyer's « fiat sent » (#182): `confirm` at 9 (→ 10), the step's deadline kept (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); refused elsewhere (1027).
+  /// A maker buyer's « fiat sent » (#182): `confirm` at 9 (→ 10), the step's deadline kept (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); refused elsewhere (1029). A maker seller's « received » (#188): `confirm` at 10 settles the escrow, returns both bonds and pays the buyer, 13 (`:1701-1730`); at 9, before the buyer's « fiat sent », refused with 1027 (`:1702-1703`). Each `confirm` of a maker seller is counted ([sellerConfirmations]).
   CoordinatorResponse _confirm(
     RobotIdentity robot,
     CoordinatorRequest request,
@@ -512,12 +515,25 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     if (made == null) {
       return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
     }
-    // Refused outside the chat states with 1029 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`); the seller's confirmation is the test's ([sellerConfirms]).
-    if (made.type != 0 || (made.status != 9 && made.status != 10)) {
+    if (made.status != 9 && made.status != 10) {
       return _json(400, {
         'error_code': 1029,
         'bad_request': 'You cannot confirm the fiat payment at this stage',
       });
+    }
+    if (made.type != 0) {
+      sellerConfirmations += 1;
+      if (!made.fiatSent) {
+        return _json(400, {
+          'error_code': 1027,
+          'bad_request':
+              'You cannot confirm to have received the fiat before it is confirmed to be sent by the buyer.',
+        });
+      }
+      made
+        ..status = 13
+        ..bondReturned = true;
+      return _json(200, _orderJson(made, robot, isMaker: true));
     }
     made
       ..status = 10
@@ -525,7 +541,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     return _json(200, _orderJson(made, robot, isMaker: true));
   }
 
-  /// The taker, the seller, locks the escrow of order [id] (`Logics.update_status` on the escrow's lock, `api/logics.py:1469-1481`): 6 → 8, 7 → 9 (#182).
+  /// The seller locks the escrow of order [id] (`Logics.update_status` on the escrow's lock, `api/logics.py:1469-1481`): 6 → 8, 7 → 9; the taker for a maker buyer (#182), the maker for a maker seller (#188: its escrow paid, from this wallet or another, which the test says here).
   void lockEscrow(int id) {
     final made = order(id);
     switch (made.status) {
@@ -566,6 +582,28 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     made
       ..status = 13
       ..bondReturned = true;
+  }
+
+  /// The taker, the buyer of a maker seller's order, gives its payout invoice (#188, `Logics.update_invoice`, `api/logics.py:752-890`, then `move_state_updated_payout_method`, `:907-947`): 6 → 7 while the escrow is not locked, 8 → 9 (the chat, its deadline from now).
+  void buyerGivesInvoice(int id) {
+    final made = order(id);
+    switch (made.status) {
+      case 6:
+        made.status = 7;
+      case 8:
+        _toChat(made);
+      default:
+        throw StateError('no payout to give at ${made.status}');
+    }
+  }
+
+  /// The taker, the buyer of a maker seller's order, confirms the fiat sent at 9 (#188, `Logics.confirm_fiat`, `api/logics.py:1692-1699`): 10, `is_fiat_sent`.
+  void buyerSentFiat(int id) {
+    final made = order(id);
+    if (made.status != 9) throw StateError('not at 9');
+    made
+      ..status = 10
+      ..fiatSent = true;
   }
 
   /// The buyer's invoice paid: the trade succeeded, 14 (`follow_invoices.py`, the payment's success) (#182).

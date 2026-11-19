@@ -459,10 +459,9 @@ void main() {
           MakerFormBlock.priceNotSynchronized,
         );
         expect(checkOf(type: null).block, MakerFormBlock.noSide);
-        expect(
-          checkOf(type: OrderType.sell).block,
-          MakerFormBlock.sellComingLater,
-        );
+        // « Sell » is no reason since #188: a sell order judged as a buy order.
+        expect(checkOf(type: OrderType.sell).block, isNull);
+        expect(checkOf(type: OrderType.sell).request?.type, OrderType.sell);
         expect(checkOf(amount: '5').block, MakerFormBlock.amountOutsideLimits);
         expect(checkOf(amount: '-5').block, MakerFormBlock.amountOutsideLimits);
         expect(

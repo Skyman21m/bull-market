@@ -286,7 +286,7 @@ void main() {
 
   group('the form, field by field', () {
     testWidgets(
-      'the reference\'s fields and texts, « Sell » and the location disabled with their lines, the reason of the disabled button',
+      'the reference\'s fields and texts, the location disabled with its line, the reason of the disabled button, « Sell » a choice (#188)',
       (tester) async {
         await _show(tester, _Form());
         for (final text in [
@@ -295,7 +295,6 @@ void main() {
           'Buy or Sell Bitcoin? *',
           'Buy',
           'Sell',
-          'Selling as maker is coming in a later version.',
           'Amount *',
           'EUR',
           'Fiat Payment Method(s) *',
@@ -324,27 +323,32 @@ void main() {
           expect(find.text(text), findsNothing, reason: text);
         }
         expect(_createEnabled(tester), isFalse);
-        // « Sell » cannot be chosen.
         expect(
-          tester
-              .widget<TradeButton>(
-                find.ancestor(
-                  of: find.text('Sell'),
-                  matching: find.byType(TradeButton),
-                ),
-              )
-              .onPressed,
-          isNull,
+          find.text('Selling as maker is coming in a later version.'),
+          findsNothing,
         );
-        await tester.tap(find.text('Sell'), warnIfMissed: false);
+        // « Sell » is a choice since #188, as « Buy »: the summary says it, never a toggle.
+        await tester.tap(find.text('Sell'));
         await tester.pump();
-        expect(find.text('Order for 0 EUR at market price'), findsOneWidget);
+        expect(find.text('Sell BTC for 0 EUR at market price'), findsOneWidget);
+        await tester.tap(find.text('Sell'));
+        await tester.pump();
+        expect(find.text('Sell BTC for 0 EUR at market price'), findsOneWidget);
+        await tester.tap(find.text('Buy'));
+        await tester.pump();
+        expect(find.text('Buy BTC for 0 EUR at market price'), findsOneWidget);
       },
     );
 
     testWidgets('« Buy » chosen from the book\'s side', (tester) async {
       await _show(tester, _Form(), initialType: OrderType.buy);
       expect(find.text('Buy BTC for 0 EUR at market price'), findsOneWidget);
+      expect(find.text('Please enter an amount.'), findsOneWidget);
+    });
+
+    testWidgets('« Sell » chosen from the book\'s side (#188)', (tester) async {
+      await _show(tester, _Form(), initialType: OrderType.sell);
+      expect(find.text('Sell BTC for 0 EUR at market price'), findsOneWidget);
       expect(find.text('Please enter an amount.'), findsOneWidget);
     });
 
