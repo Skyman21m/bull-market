@@ -3259,7 +3259,21 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakeRangeRatio =>
-      'Le maximum doit valoir entre 1,5 fois et un peu moins de 15 fois le minimum.';
+      'Le maximum doit valoir plus de 1,5 fois et moins de 15 fois le minimum.';
+
+  @override
+  String p2pMakeRangeMinAtMost(String amount, String coordinator) {
+    return 'Le minimum ne peut pas dépasser $amount chez $coordinator : le maximum doit valoir plus de 1,5 fois le minimum.';
+  }
+
+  @override
+  String p2pMakeRangeNoRoom(String coordinator) {
+    return 'Aucune plage de montants n’est possible chez $coordinator avec cette prime : utilisez un montant exact.';
+  }
+
+  @override
+  String get p2pMakeRangeNotPositive =>
+      'Indiquez un minimum et un maximum supérieurs à 0.';
 
   @override
   String get p2pMakeWhyDescriptionInvalid => 'La description n’est pas valide.';

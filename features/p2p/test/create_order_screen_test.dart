@@ -1661,7 +1661,7 @@ void main() {
         );
         expect(
           find.text(
-            'The maximum must be between 1.5 and just under 15 times the minimum.',
+            'The maximum must be more than 1.5 times and less than 15 times the minimum.',
           ),
           findsOneWidget,
         );
@@ -1672,7 +1672,7 @@ void main() {
         await tester.tap(_rangeSwitch);
         await settle(tester);
         expect(startingWith('Amounts accepted with '), findsNothing);
-        expect(startingWith('The maximum must be between '), findsNothing);
+        expect(startingWith('The maximum must be more than '), findsNothing);
       },
     );
 
@@ -1694,6 +1694,51 @@ void main() {
         // Never the reference's one sentence for every error of a range.
         expect(find.text('The amount range is not valid.'), findsNothing);
         expect(_createEnabled(tester), isFalse);
+        // The rules stay said while a reason is shown.
+        expect(
+          startingWith('Amounts accepted with Temple of Sats: '),
+          findsOneWidget,
+        );
+        expect(
+          startingWith('The maximum must be more than 1.5 times and less'),
+          findsOneWidget,
+        );
+        // The currency shown chosen again is no change: the bounds stay as typed (independent review of #226, C2).
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        await tester.tap(find.text('EUR').last);
+        await settle(tester);
+        expect(textOf(tester, _minField), '90');
+        expect(textOf(tester, _maxField), '100');
+        // Another currency, where the two amounts are within the form's: bounds only too close stay as typed, with their reason.
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        await tester.tap(find.text('USD'));
+        await settle(tester);
+        expect(textOf(tester, _minField), '90');
+        expect(textOf(tester, _maxField), '100');
+        expect(
+          find.text(
+            'For a minimum of 90 USD, the maximum must be at least 135 USD.',
+          ),
+          findsNWidgets(2),
+        );
+        await tester.tap(find.text('USD'));
+        await settle(tester);
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        expect(textOf(tester, _minField), '90');
+        expect(textOf(tester, _maxField), '100');
+        // A minimum so high that 1.5 times it is above the largest amount: the minimum comes down, never a maximum the form would then refuse (C1). 4,580 / 1.5 = 3,053.
+        await tester.enterText(_minField, '4000');
+        await tester.enterText(_maxField, '4500');
+        await settle(tester);
+        expect(
+          find.text(
+            'The minimum cannot exceed 3,050 EUR with Temple of Sats: the maximum must be more than 1.5 times it.',
+          ),
+          findsNWidgets(2),
+        );
         // A maximum above the coordinator's largest order: the largest amount the form takes, the one under the slider's end, and whose limit it is.
         await tester.enterText(_minField, '62.5');
         await tester.enterText(_maxField, '1000000');

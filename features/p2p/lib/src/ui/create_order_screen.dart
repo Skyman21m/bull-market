@@ -419,6 +419,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       label: (currency) => currency.code,
     );
     if (currency == null || !mounted) return;
+    // The currency shown chosen again is no change of currency: the range typed stays as it is (independent review of #226, C2).
+    if (currency == state.currency) return;
     // A range out of the new currency's orders set again, as the reference does (`handleCurrencyChange`, `MakerForm.tsx:184-199`), and never left as one the form refuses in the new currency (#225).
     if (_advanced && _rangeEnabled) {
       final check = _check(state);
@@ -1543,12 +1545,13 @@ class _CreateButton extends StatelessWidget {
     final formats = P2pFormats.of(context);
     // A range refused says why, as its box does (#225); every other reason in the reference's words.
     final why = switch ((block, check.rangeProblem)) {
-      (MakerFormBlock.amountRangeInvalid, final problem?) => problem.toText(
-        context,
-        coordinator: coordinator,
-        amountOf: (amount) =>
-            '${formats.typedNumber(amount)} ${state.currency.code}',
-      ),
+      (MakerFormBlock.amountRangeInvalid, final problem?) when !renewing =>
+        problem.toText(
+          context,
+          coordinator: coordinator,
+          amountOf: (amount) =>
+              '${formats.typedNumber(amount)} ${state.currency.code}',
+        ),
       (final block?, _) => block.toText(context),
       (null, _) => null,
     };
@@ -1885,12 +1888,15 @@ class _Alert extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _Alert(this.text, this.color);
+  /// Whether it is read out when it appears or changes.
+  final bool live;
+
+  const _Alert(this.text, this.color, {this.live = true});
 
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    liveRegion: true,
+    liveRegion: live,
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1994,11 +2000,14 @@ class _AmountRange extends StatelessWidget {
         '${formats.typedNumber(significant(value, digits))} $code';
     final label = text.labelLarge?.copyWith(color: colors.textMuted);
     // Why the range typed is refused, with the bound the form takes, where the fields are (#225): the reference only draws the field at fault in red.
-    final problem = check.rangeProblem?.toText(
-      context,
-      coordinator: coordinator,
-      amountOf: (amount) => '${formats.typedNumber(amount)} $code',
-    );
+    // Not for fields that cannot be typed (a renewal's, a form being sent): the line under the button says what to do then.
+    final problem = enabled
+        ? check.rangeProblem?.toText(
+            context,
+            coordinator: coordinator,
+            amountOf: (amount) => '${formats.typedNumber(amount)} $code',
+          )
+        : null;
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
@@ -2045,7 +2054,8 @@ class _AmountRange extends StatelessWidget {
             ),
             if (problem != null) ...[
               const Gap(BullSpacing.xs),
-              _Alert(problem, colors.error),
+              // Read out once, by the line under the button, not here too (independent review of #226, C3).
+              _Alert(problem, colors.error, live: false),
             ],
             if (limits != null && limits.max > limits.min) ...[
               const Gap(BullSpacing.xs),
@@ -2089,7 +2099,7 @@ class _AmountRange extends StatelessWidget {
                   Text(bound(limits.max, 3), style: text.labelMedium),
                 ],
               ),
-              // The rules a range must keep, said where the range is (#225): what the two amounts under the slider are, and how far apart the bounds may be. The reference leaves both to be guessed.
+              // What the two amounts under the slider are (#225), which the reference leaves to be guessed.
               const Gap(BullSpacing.xs),
               Text(
                 l10n.p2pMakeRangeAccepted(
@@ -2099,11 +2109,14 @@ class _AmountRange extends StatelessWidget {
                 ),
                 style: text.bodySmall?.copyWith(color: colors.textMuted),
               ),
-              Text(
-                l10n.p2pMakeRangeRatio,
-                style: text.bodySmall?.copyWith(color: colors.textMuted),
-              ),
             ],
+            // How far apart the bounds may be (#225): said whenever a range is typed, with or without the slider.
+            if (limits == null || limits.max <= limits.min)
+              const Gap(BullSpacing.xs),
+            Text(
+              l10n.p2pMakeRangeRatio,
+              style: text.bodySmall?.copyWith(color: colors.textMuted),
+            ),
           ],
         ),
       ),

@@ -254,6 +254,8 @@ sealed class MakerRangeProblem {
   const MakerRangeProblem();
 
   /// The reason [MakerFormCheck.rangeErrorsOf] refuses [low] to [high] under [limits], `null` when it takes the range.
+  ///
+  /// A bound named is never one the form then refuses for another rule of the same field (independent review of #226, C1): a minimum whose 1.5 times is above the largest amount is told to come down ([MakerRangeMinTooBig]), not the maximum to go above that amount; limits that leave room for no range say so ([MakerRangeNoRoom]). Followed step by step, the reasons lead to a range the form takes.
   static MakerRangeProblem? of(
     double low,
     double high,
@@ -261,15 +263,34 @@ sealed class MakerRangeProblem {
   ) {
     final errors = MakerFormCheck.rangeErrorsOf(low, high, limits);
     if (!errors.min && !errors.max) return null;
-    if (high < low) return const MakerRangeMaxBelowMin();
     if (limits != null) {
-      // The bounds the slider shows under itself, to 3 significant digits: within the margins the check gives a typed bound (1 %), so each is taken when typed as shown.
-      if (low < limits.min * MakerAmountLimits.rangeMinMargin) {
+      final floor = limits.min * MakerAmountLimits.rangeMinMargin;
+      final ceiling = limits.max * MakerAmountLimits.rangeMaxMargin;
+      // No maximum is both 1.5 times the smallest amount and below the largest: nothing typed can be taken.
+      if (!(floor * MakerFormCheck.typedMinRangeRatio <= ceiling)) {
+        return const MakerRangeNoRoom();
+      }
+      // The minimum first, since the maximum is judged beside it. The bounds named are the ones the slider shows under itself, to 3 significant digits: within the margins the check gives a typed bound (1 %), so each is taken when typed as shown.
+      if (low < floor) {
         return MakerRangeMinTooSmall(significant(limits.min, 3));
       }
-      if (high > limits.max * MakerAmountLimits.rangeMaxMargin) {
+      // 1.5 times the minimum would be above the largest amount: the minimum comes down, to the largest minimum that leaves the largest amount shown as its maximum.
+      if (low * MakerFormCheck.typedMinRangeRatio > ceiling) {
+        return MakerRangeMinTooBig(
+          MakerRange._toward(
+            significant(limits.max, 3) / MakerFormCheck.typedMinRangeRatio,
+            up: false,
+          ),
+        );
+      }
+      if (high < low) return const MakerRangeMaxBelowMin();
+      if (high > ceiling) {
         return MakerRangeMaxTooBig(significant(limits.max, 3));
       }
+    } else {
+      // Without limits (no price yet), only what the bounds say of each other.
+      if (!(low > 0) || !(high > 0)) return const MakerRangeNotPositive();
+      if (high < low) return const MakerRangeMaxBelowMin();
     }
     if (low * MakerFormCheck.typedMinRangeRatio > high) {
       return MakerRangeTooNarrow(
@@ -282,6 +303,23 @@ sealed class MakerRangeProblem {
       MakerRange._toward(low * MakerFormCheck.typedMaxRangeRatio, up: false),
     );
   }
+}
+
+/// The form's limits leave room for no range: its largest amount is under 1.5 times its smallest (a premium or a size limit that leaves almost nothing, or limits a coordinator gives crossed).
+final class MakerRangeNoRoom extends MakerRangeProblem {
+  const MakerRangeNoRoom();
+}
+
+/// A bound is zero, negative or no number, the form's limits not known yet.
+final class MakerRangeNotPositive extends MakerRangeProblem {
+  const MakerRangeNotPositive();
+}
+
+/// « From » is so high that 1.5 times it is above the largest amount the form takes; [atMost] is the largest minimum that leaves that amount as its maximum.
+final class MakerRangeMinTooBig extends MakerRangeProblem {
+  final double atMost;
+
+  const MakerRangeMinTooBig(this.atMost);
 }
 
 /// « to » is below « From ».
@@ -419,6 +457,7 @@ final class MakerRange {
     if (typed) {
       reference = MakerRange(significant(amount / 2, 2), amount);
     } else if (limit != null) {
+      if (!limit.maxAmount.isFinite) return null;
       reference = MakerRange(
         significant(limit.maxAmount * 0.25, 2),
         significant(limit.maxAmount * 0.75, 2),
@@ -426,11 +465,23 @@ final class MakerRange {
     } else {
       return null;
     }
-    if (limits == null || _fits(reference, limits)) return reference;
-    return typed
-        ? slid(moved: RangeThumb.max, next: reference, limits: limits)
-        : _inside(limits);
+    if (limits == null || _fits(reference, limits)) return _written(reference);
+    return _written(
+      typed
+          ? slid(moved: RangeThumb.max, next: reference, limits: limits)
+          : _inside(limits),
+    );
   }
+
+  /// [range] when both its bounds can be written in the fields (finite, above zero), else `null`: limits a coordinator gives without sense (not finite, negative) set nothing (independent review of #226, R3).
+  static MakerRange? _written(MakerRange? range) =>
+      range != null &&
+          range.min.isFinite &&
+          range.max.isFinite &&
+          range.min > 0 &&
+          range.max > 0
+      ? range
+      : null;
 
   /// A quarter and three quarters of the form's largest amount, each to 2 significant digits, as the reference opens a range on the coordinator's largest order; held within the form's limits when they are too close for that ([slid]).
   static MakerRange _inside(MakerAmountLimits limits) {
@@ -445,7 +496,7 @@ final class MakerRange {
 
   /// The range after a change of currency, the new currency's limit being [limit] (`handleCurrencyChange`, `:184-199`): kept when both bounds lie within its smallest and largest order (`min_amount` and `max_amount`, to 2 significant digits), else a quarter and three quarters of that largest order (rounded first, as the reference rounds it there, `:186`, `:195-196`); `null` to keep it (no limit for the currency). A bound left empty is 0, as the reference's number field reads it (`Number('')`), so it sets the range again.
   ///
-  /// With [limits], the form's own limits in the new currency, the range it leaves is never one the form refuses at once (#225): a range kept or set again as the reference does, when the form would refuse it (the premium, a young coordinator's size limit), is set again on a quarter and three quarters of the form's own largest amount ([_inside]).
+  /// With [limits], the form's own limits in the new currency, the range it leaves is not one whose amounts the form refuses in that currency (#225): a range the reference sets again, when the form would refuse it (the premium, a young coordinator's size limit), is set on a quarter and three quarters of the form's own largest amount ([_inside]); so is a range the reference keeps whose minimum is below, or maximum above, the amounts the form takes there. A range the reference keeps is never changed for the distance between its bounds alone, which the currency does not change: the reason says it (independent review of #226, C2).
   static MakerRange? afterCurrency({
     required double min,
     required double max,
@@ -459,10 +510,14 @@ final class MakerRange {
         min < low || min > high || max > high || max < low
         ? MakerRange(significant(high * 0.25, 2), significant(high * 0.75, 2))
         : null;
-    if (limits == null) return reference;
-    return _fits(reference ?? MakerRange(min, max), limits)
-        ? reference
-        : _inside(limits);
+    if (limits == null) return _written(reference);
+    if (reference != null) {
+      return _written(_fits(reference, limits) ? reference : _inside(limits));
+    }
+    final outside =
+        min < limits.min * MakerAmountLimits.rangeMinMargin ||
+        max > limits.max * MakerAmountLimits.rangeMaxMargin;
+    return outside ? _written(_inside(limits)) : null;
   }
 
   /// The thumb that moved from [previous], what the slider showed, to [next]: the one that moved the most. The platform's slider puts both values back on its grid at each move (`_discretizeRangeValues` of Flutter's `RangeSlider`), so the thumb that stayed can come back shifted by part of a step; the one dragged moves by the drag. The reference's slider names it (`activeThumb`, `AmountRange.tsx:82`).

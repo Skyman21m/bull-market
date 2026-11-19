@@ -19,6 +19,12 @@ extension MakerRangeProblemL10n on MakerRangeProblem {
   }) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
+      MakerRangeNoRoom() => l10n.p2pMakeRangeNoRoom(coordinator),
+      MakerRangeNotPositive() => l10n.p2pMakeRangeNotPositive,
+      MakerRangeMinTooBig(:final atMost) => l10n.p2pMakeRangeMinAtMost(
+        amountOf(atMost),
+        coordinator,
+      ),
       MakerRangeMaxBelowMin() => l10n.p2pMakeRangeMaxBelowMin,
       MakerRangeMinTooSmall(:final atLeast) => l10n.p2pMakeRangeMinAtLeast(
         amountOf(atLeast),

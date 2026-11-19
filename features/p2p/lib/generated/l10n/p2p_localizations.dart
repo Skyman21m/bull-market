@@ -5142,11 +5142,29 @@ abstract class P2pLocalizations {
   /// **'Amounts accepted with {coordinator}: {min} to {max}.'**
   String p2pMakeRangeAccepted(String coordinator, String min, String max);
 
-  /// Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The ratio the form's check of the bounds takes (1.5 to 14.95, `AmountRange.tsx:57-77`).
+  /// Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The ratio the form's check of the bounds takes (`AmountRange.tsx:57-77`): from 1.5 times, where a maximum of exactly 1.5 times a minimum with decimals can be refused by a rounding of the multiplication (the reference's own), to 14.95 times.
   ///
   /// In en, this message translates to:
-  /// **'The maximum must be between 1.5 and just under 15 times the minimum.'**
+  /// **'The maximum must be more than 1.5 times and less than 15 times the minimum.'**
   String get p2pMakeRangeRatio;
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « From » is so high that 1.5 times it is above the largest amount the form takes; {amount} is the largest minimum that leaves room for a maximum, with its currency code, {coordinator} the coordinator's name.
+  ///
+  /// In en, this message translates to:
+  /// **'The minimum cannot exceed {amount} with {coordinator}: the maximum must be more than 1.5 times it.'**
+  String p2pMakeRangeMinAtMost(String amount, String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». The form's largest amount is under 1.5 times its smallest (the premium, a young coordinator's size limit, or limits the coordinator gives crossed): nothing typed can be taken; {coordinator} is the coordinator's name.
+  ///
+  /// In en, this message translates to:
+  /// **'No range of amounts is possible with {coordinator} at this premium: use an exact amount.'**
+  String p2pMakeRangeNoRoom(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». A bound is zero, negative or no number while the coordinator's price is not known yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Type a minimum and a maximum above 0.'**
+  String get p2pMakeRangeNotPositive;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 526), with its French (`fr.json`, line 526). Why « Create order » is disabled (`MakerForm.tsx:561-563`, #183).
   ///
