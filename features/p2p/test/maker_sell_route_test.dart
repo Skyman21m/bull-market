@@ -59,6 +59,7 @@ final class _Words {
   final String payoutWaitMaker;
   final String sellSummary;
   final String public;
+  final String renew;
 
   const _Words({
     required this.locale,
@@ -84,6 +85,7 @@ final class _Words {
     required this.payoutWaitMaker,
     required this.sellSummary,
     required this.public,
+    required this.renew,
   });
 
   String sats(int value) =>
@@ -121,6 +123,7 @@ const _english = _Words(
       'For an order you made: if the buyer does not cooperate, your collateral comes back, but your order goes back to the book and your bond stays locked.',
   sellSummary: 'Sell BTC for 100 USD at a 2% premium',
   public: 'Your order is public',
+  renew: 'Renew',
 );
 
 const _french = _Words(
@@ -154,6 +157,7 @@ const _french = _Words(
       'Pour un ordre que vous avez créé : si l’acheteur ne coopère pas, votre garantie revient, mais votre ordre retourne dans le carnet et votre caution reste bloquée.',
   sellSummary: 'Vendre BTC pour 100 USD à une prime de 2 %',
   public: 'Votre ordre est public',
+  renew: 'Renouveler',
 );
 
 /// The coordinators: [maker] for every robot's request, the limits and the make whatever the host; each coordinator's `/api/info/` under its own alias; the book empty (`404` with the reference's `not_found`, `api/views.py:797-801`); the chat refused (`400`), which the chat panel says, as `/api/chat/` is not played.
@@ -603,6 +607,8 @@ void main() {
         await journey.waitFor(find.textContaining(words.finished), seconds: 30);
         expect(journey.coordinator.sellerConfirmations, 1);
         expect(journey.order.status, 13);
+        // A maker seller is offered « Renew » at 13, where the buyer is still being paid (`TradeBox/index.tsx:602-631`, #185).
+        expect(find.text(words.renew), findsOneWidget);
         await tester.pumpWidget(const SizedBox.shrink());
         await settle(tester);
         await tester.pump(const Duration(seconds: 61));
