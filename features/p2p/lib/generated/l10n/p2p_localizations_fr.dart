@@ -3469,7 +3469,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradePauseMayStillArrive =>
-      'Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public : tant qu’il n’a pas été lu en pause deux fois, à quelques minutes d’intervalle, cet écran ouvert, considérez qu’il peut être public.';
+      'Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public. Deux lectures qui le montrent en pause, à quelques minutes d’intervalle, cet écran ouvert, réduisent ce risque sans l’exclure : d’ici là, considérez qu’il peut être public.';
 
   @override
   String get p2pTradeCancelAfterPause =>

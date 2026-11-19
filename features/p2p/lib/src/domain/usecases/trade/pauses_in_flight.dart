@@ -15,6 +15,11 @@ final class PausesInFlight {
   final Map<RobotSlot, PauseInFlight> _running = {};
   final Map<RobotSlot, PauseUncertainty> _uncertain = {};
 
+  /// A time that only moves forward, such as a running `Stopwatch`'s (as `RobotRequestLimiter` is given): when each read is taken into account, so that a device's clock set forward does not settle an uncertainty sooner (security review of #184, R-d, #214).
+  final Duration Function() _elapsed;
+
+  PausesInFlight({required this._elapsed});
+
   /// What stays uncertain for [record]'s order, `null` when nothing does.
   PauseUncertainty? uncertainty(TradeRecord record) => _uncertain[record.robot];
 
@@ -34,7 +39,7 @@ final class PausesInFlight {
     final key = record.robot;
     final before = _uncertain[key];
     if (before == null) return null;
-    final after = before.observe(seen);
+    final after = before.observe(seen, elapsed: _elapsed());
     if (after == null) {
       _uncertain.remove(key);
     } else {

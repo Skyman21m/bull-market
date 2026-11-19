@@ -110,8 +110,13 @@ final class MakeHarness {
 
   final TradeTakeLocks locks = TradeTakeLocks();
 
-  /// The pauses running in this run (#184, functional review R1).
-  final PausesInFlight pausesInFlight = PausesInFlight();
+  /// The pauses running in this run (#184, functional review R1), their uncertainty on [elapsed] (#214).
+  late final PausesInFlight pausesInFlight = PausesInFlight(
+    elapsed: () => elapsed,
+  );
+
+  /// The time that only moves forward of this run: moved with the clock by [elapse], never by [setClockOnly] (a device's clock set forward or back).
+  Duration elapsed = Duration.zero;
   final TradeMakeLocks makeLocks = TradeMakeLocks();
   final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
   final _MakeVault _vault;
@@ -236,9 +241,13 @@ final class MakeHarness {
   /// Another Garage Key in the vault in place of the one of the tests.
   void replaceKey() => _vault.key = NetworkGarageKey(network, otherTradeKey);
 
+  /// The device's clock set forward (or back, [by] negative) at once, the time that only moves forward unchanged: no timer fires.
+  void setClockOnly(Duration by) => _clock.now = _clock.now.add(by);
+
   /// Moves the clock by [by], and fires the timers whose time has come, in order.
   Future<void> elapse(Duration by) async {
     _clock.now = _clock.now.add(by);
+    elapsed += by;
     while (true) {
       final due = timers.where((t) => t.isActive && !t.due.isAfter(_clock.now));
       if (due.isEmpty) break;

@@ -876,7 +876,7 @@
   "p2pTradePauseNotReachedPaused": "{coordinator} a accepté la demande, mais votre ordre n’est pas en pause : il est affiché tel qu’il est maintenant.",
   "p2pTradePauseNotReachedPublic": "{coordinator} a accepté la demande, mais votre ordre n’est pas public : il est affiché tel qu’il est maintenant.",
   "p2pTradePauseWhileCancel": "L’ordre est en cours d’annulation : attendez la fin.",
-  "p2pTradePauseMayStillArrive": "Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public : tant qu’il n’a pas été lu en pause deux fois, à quelques minutes d’intervalle, cet écran ouvert, considérez qu’il peut être public.",
+  "p2pTradePauseMayStillArrive": "Une demande dont la réponse s’est perdue peut encore arriver et rendre votre ordre de nouveau public. Deux lectures qui le montrent en pause, à quelques minutes d’intervalle, cet écran ouvert, réduisent ce risque sans l’exclure : d’ici là, considérez qu’il peut être public.",
   "p2pTradeCancelAfterPause": "Votre annulation partira une fois la mise en pause ou la reprise terminée.",
   "p2pTradeCancelMovedOnTapAgain": "L’ordre a changé d’état avant l’annulation : rien n’a été annulé. Appuyez de nouveau sur « Annuler » si vous voulez toujours l’annuler.",
   "p2pTradeStillPublic": "Votre ordre est public : les robots peuvent le voir et le prendre.",

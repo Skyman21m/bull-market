@@ -2851,7 +2851,10 @@ void main() {
           await tester.pump();
           await tester.pump();
           expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
-          expect(find.textContaining('from the rate when you made it'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
         },
       );
 
@@ -2866,14 +2869,20 @@ void main() {
           );
           await tester.pump();
           await openDialog(tester);
-          expect(inDialog('could not be read: rate not checked'), findsOneWidget);
+          expect(
+            inDialog('could not be read: rate not checked'),
+            findsOneWidget,
+          );
           expect(inDialog('+5.85% from the rate'), findsOneWidget);
           watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
           await tester.pump();
           await tester.pump();
           expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
           expect(inDialog('gives no sats for this step'), findsOneWidget);
-          expect(find.textContaining('from the rate when you made it'), findsNothing);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
         },
       );
 

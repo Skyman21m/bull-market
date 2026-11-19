@@ -467,8 +467,11 @@ final class P2pLocator {
       ),
     );
     // The pause and « Unpause Order » of a public order made here (#184), as the cancel, under the order's lock.
-    // One for the feature: the pauses running now, so that a trade screen opened again meanwhile shows its order's pause running (functional review of #184, R1).
-    locator.registerLazySingleton<PausesInFlight>(PausesInFlight.new);
+    // One for the feature: the pauses running now, so that a trade screen opened again meanwhile shows its order's pause running (functional review of #184, R1); what stays uncertain after one settles on a time that only moves forward, as the limiter's busy window (#214).
+    locator.registerLazySingleton<PausesInFlight>(() {
+      final running = Stopwatch()..start();
+      return PausesInFlight(elapsed: () => running.elapsed);
+    });
     locator.registerFactory<PauseOrderUsecase>(
       () => PauseOrderUsecase(
         CoordinatorClient(transport(), clock: clock),

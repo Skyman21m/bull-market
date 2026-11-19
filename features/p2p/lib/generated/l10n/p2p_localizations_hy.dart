@@ -3420,7 +3420,7 @@ class P2pLocalizationsHy extends P2pLocalizations {
 
   @override
   String get p2pTradePauseMayStillArrive =>
-      'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.';
+      'A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.';
 
   @override
   String get p2pTradeCancelAfterPause =>

@@ -843,12 +843,6 @@ class _Contract extends StatelessWidget {
     );
   }
 
-  /// Whether the order may be public although shown paused: a pause or an unpause's outcome is unknown and no read sent after the request has shown it paused (security review of #184, C1).
-  bool get _possiblyPublic => switch (pauseUncertainty) {
-    final uncertain? => !uncertain.pausedSinceRequest,
-    null => false,
-  };
-
   /// The line of what stays uncertain, while the order is read public or paused; `null` for none.
   String? _uncertainLine(P2pLocalizations l10n) {
     final uncertain = pauseUncertainty;
@@ -931,8 +925,8 @@ class _Contract extends StatelessWidget {
       (TradePrompt.paused, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // « At the moment it cannot be seen or taken by other robots »: not said while the order may be public, the status shown coming from a read sent before a request whose outcome is unknown (security review of #184, C1).
-          if (!_possiblyPublic) _Line(l10n.p2pTradePausedText),
+          // « At the moment it cannot be seen or taken by other robots »: not said while anything stays uncertain after a pause or an unpause whose outcome is unknown, neither while the order may be public (the status shown coming from a read sent before the request, security review of #184, C1) nor while a request still on its way could make it public again (the reserve, its R-b, #214): never beside the line that says so.
+          if (pauseUncertainty == null) _Line(l10n.p2pTradePausedText),
           if (offersPause) ...[
             const Gap(BullSpacing.md),
             _pauseButton(context),

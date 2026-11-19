@@ -613,8 +613,16 @@ void main() {
         final uncertain = PauseUncertainty(
           readAt.subtract(const Duration(seconds: 1)),
         );
-        expect(uncertain.observe(notStored)?.pausedSinceRequest, isFalse);
-        expect(uncertain.observe(paused)?.pausedSinceRequest, isTrue);
+        expect(
+          uncertain
+              .observe(notStored, elapsed: Duration.zero)
+              ?.pausedSinceRequest,
+          isFalse,
+        );
+        expect(
+          uncertain.observe(paused, elapsed: Duration.zero)?.pausedSinceRequest,
+          isTrue,
+        );
       },
     );
 
@@ -632,30 +640,27 @@ void main() {
           stored: true,
           requestedAt: when,
         );
+        // Each read taken into account as it is sent, the time that only moves forward with the clock.
+        PauseUncertainty? observe(
+          PauseUncertainty? uncertain,
+          TradeSeen of,
+          Duration after,
+        ) => uncertain?.observe(at(of, readAt.add(after)), elapsed: after);
         final uncertain = PauseUncertainty(readAt);
         // Sent as the request, not after it: nothing.
         expect(
-          identical(uncertain.observe(at(paused, readAt)), uncertain),
+          identical(observe(uncertain, paused, Duration.zero), uncertain),
           isTrue,
         );
-        final once = uncertain.observe(
-          at(paused, readAt.add(const Duration(seconds: 1))),
-        );
+        final once = observe(uncertain, paused, const Duration(seconds: 1));
         expect(once?.pausedSinceRequest, isTrue);
+        expect(observe(once, paused, const Duration(minutes: 2)), isNotNull);
         expect(
-          once?.observe(at(paused, readAt.add(const Duration(minutes: 2)))),
-          isNotNull,
-        );
-        expect(
-          once?.observe(
-            at(paused, readAt.add(const Duration(minutes: 3, seconds: 1))),
-          ),
+          observe(once, paused, const Duration(minutes: 3, seconds: 1)),
           isNull,
         );
         // Read public meanwhile: the wait starts again.
-        final restarted = once?.observe(
-          at(seen, readAt.add(const Duration(minutes: 1))),
-        );
+        final restarted = observe(once, seen, const Duration(minutes: 1));
         expect(restarted?.pausedSinceRequest, isFalse);
         // Taken: nothing left to toggle.
         harness.coordinator
@@ -666,10 +671,95 @@ void main() {
         final taken = run.lastStatus.seen;
         await run.subscription.cancel();
         expect(taken.status, isA<WaitingForBoth>());
+        expect(observe(uncertain, taken, const Duration(minutes: 1)), isNull);
+      },
+    );
+
+    test(
+      'the device\'s clock set forward between the two reads paused: not settled until three minutes have passed on the time that only moves forward; set back, kept (security review of #184, R-d, #214)',
+      () async {
+        final (harness, record, seen) = await shown();
+        final done = valueOf(await harness.pause.execute(record, seen));
+        final paused = done.seen;
+        final readAt = paused.requestedAt;
+        if (readAt == null) fail('no request time');
+        TradeSeen at(DateTime when) => TradeSeen(
+          paused.status,
+          order: paused.order,
+          stored: true,
+          requestedAt: when,
+        );
+        final uncertain = PauseUncertainty(readAt);
+        final once = uncertain.observe(
+          at(readAt.add(const Duration(seconds: 1))),
+          elapsed: const Duration(seconds: 1),
+        );
+        expect(once?.pausedSinceRequest, isTrue);
+        // Ten seconds later, the clock set an hour forward: the second read says it was sent an hour after the first.
+        final jumped = once?.observe(
+          at(readAt.add(const Duration(hours: 1, seconds: 11))),
+          elapsed: const Duration(seconds: 11),
+        );
+        expect(jumped, isNotNull);
+        expect(jumped?.pausedSinceRequest, isTrue);
+        // Three real minutes after the first: settled.
         expect(
-          uncertain.observe(at(taken, readAt.add(const Duration(minutes: 1)))),
+          jumped?.observe(
+            at(readAt.add(const Duration(hours: 1, minutes: 3, seconds: 2))),
+            elapsed: const Duration(minutes: 3, seconds: 2),
+          ),
           isNull,
         );
+        // The clock set back an hour: the read seems sent before the first, three real minutes later, never settled by it.
+        expect(
+          once?.observe(
+            at(readAt.subtract(const Duration(hours: 1))),
+            elapsed: const Duration(minutes: 3, seconds: 2),
+          ),
+          isNotNull,
+        );
+      },
+    );
+
+    test(
+      'over the real use case and watch: an unknown outcome, the order then read paused twice ten real seconds apart while the device\'s clock jumps an hour forward: the reserve stays (security review of #184, R-d, #214)',
+      () async {
+        final (harness, record, seen) = await shown();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.pause,
+          ScriptedFault.landsLate,
+        );
+        final unknown = valueOf(await harness.pause.execute(record, seen));
+        expect(unknown, isA<PauseOutcomeUnknown>());
+        expect(harness.pause.uncertainty(record)?.pausedSinceRequest, isFalse);
+        // The request lands: the order paused, read so by a read sent after the request; the reserve.
+        harness.coordinator.landLate();
+        expect(harness.coordinator.order(record.orderId).status, 2);
+        await harness.elapse(const Duration(seconds: 5));
+        final first = harness.watchOf(record);
+        await harness.settle();
+        final paused = first.lastStatus.seen;
+        await first.subscription.cancel();
+        expect(
+          harness.pause.uncertainty(record, paused)?.pausedSinceRequest,
+          isTrue,
+        );
+        // Ten real seconds later, the device's clock an hour forward: read paused again, the reserve kept.
+        harness.setClockOnly(const Duration(hours: 1));
+        await harness.elapse(const Duration(seconds: 10));
+        final run = harness.watchOf(record);
+        await harness.settle();
+        final again = run.lastStatus.seen;
+        await run.subscription.cancel();
+        expect(again.status, isA<MakerOrderPublic>());
+        expect(harness.pause.uncertainty(record, again), isNotNull);
+        // Three real minutes after the first read paused: settled.
+        await harness.elapse(const Duration(minutes: 3));
+        final later = harness.watchOf(record);
+        await harness.settle();
+        final settled = later.lastStatus.seen;
+        await later.subscription.cancel();
+        expect(harness.pause.uncertainty(record, settled), isNull);
       },
     );
 
@@ -688,6 +778,39 @@ void main() {
         expect(uncertain, isNotNull);
         // The read after it showed the order public: not settled, still counted as public.
         expect(uncertain?.pausedSinceRequest, isFalse);
+      },
+    );
+
+    test(
+      'a bug under the use case once the request may have toggled the order (the read after it throws): passed on, the order kept uncertain for every screen, the pause no longer running, the lock given back (security review of #184, mutant N9, #214)',
+      () async {
+        final (harness, record, seen) = await shown();
+        var pauseArrived = false;
+        harness.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            pauseArrived = true;
+          } else if (pauseArrived && request.url.path == '/api/order/') {
+            pauseArrived = false;
+            throw StateError('a bug below the use case');
+          }
+        };
+        await expectLater(
+          harness.pause.execute(record, seen),
+          throwsA(isA<StateError>()),
+        );
+        harness.coordinator.onRequest = null;
+        expect(statusAt(harness, record), 2);
+        final uncertain = harness.pause.uncertainty(record);
+        expect(uncertain, isNotNull);
+        expect(uncertain?.pausedSinceRequest, isFalse);
+        expect(harness.pause.running(record), isNull);
+        // The order's lock given back: a cancel goes.
+        final paused = harness.watchOf(record);
+        await harness.settle();
+        final now = paused.lastStatus.seen;
+        await paused.subscription.cancel();
+        expect(valueOf(await harness.cancel.execute(record, now)), isNotNull);
+        expect(statusAt(harness, record), 4);
       },
     );
   });

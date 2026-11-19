@@ -4902,9 +4902,9 @@
   "@p2pTradePauseWhileCancel": {
     "description": "Not in the RoboSats texts: the project's own: the pause button and « Unpause Order » are off while a cancel of the order runs, and this line says why (#184, functional review B1)."
   },
-  "p2pTradePauseMayStillArrive": "A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.",
+  "p2pTradePauseMayStillArrive": "A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.",
   "@p2pTradePauseMayStillArrive": {
-    "description": "Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2)."
+    "description": "Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2). It says that the two reads lower the risk without ruling it out, the transport giving no sure bound for a request still on its way (#214, security review of #184, R-a); the reference's « it cannot be seen or taken by other robots » is not shown while it is (R-b)."
   },
   "p2pTradeCancelAfterPause": "Your cancel will leave once the pause or unpause ends.",
   "@p2pTradeCancelAfterPause": {

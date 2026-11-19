@@ -5436,10 +5436,10 @@ abstract class P2pLocalizations {
   /// **'The order is being cancelled: wait until it ends.'**
   String get p2pTradePauseWhileCancel;
 
-  /// Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2).
+  /// Not in the RoboSats texts: the project's own: after a pause or an unpause whose outcome was unknown, once a read sent after the request showed the order paused: a request still on its way could toggle it; kept until a second read, three minutes after the first, still shows it paused (security review of #184, C2). It says that the two reads lower the risk without ruling it out, the transport giving no sure bound for a request still on its way (#214, security review of #184, R-a); the reference's « it cannot be seen or taken by other robots » is not shown while it is (R-b).
   ///
   /// In en, this message translates to:
-  /// **'A request whose answer was lost may still arrive and make your order public again: until it has been read paused twice, minutes apart, with this screen open, count on it being possibly public.'**
+  /// **'A request whose answer was lost may still arrive and make your order public again. Two reads that show it paused, minutes apart, with this screen open, lower that risk without ruling it out: until then, count on it being possibly public.'**
   String get p2pTradePauseMayStillArrive;
 
   /// Not in the RoboSats texts: the project's own: a cancel tapped while a pause or an unpause of the order runs waits for it behind the order's lock (security review of #184, R3).
