@@ -628,9 +628,14 @@ void main() {
         await journey.tap(find.text(words.renew));
         await settle(tester);
         await settle(tester);
-        Finder inForm(Finder finder) =>
-            find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
-        await journey.waitFor(inForm(find.text(words.sellSummary)), seconds: 20);
+        Finder inForm(Finder finder) => find.descendant(
+          of: find.byType(CreateOrderScreen),
+          matching: finder,
+        );
+        await journey.waitFor(
+          inForm(find.text(words.sellSummary)),
+          seconds: 20,
+        );
         await journey.tap(inForm(find.text(words.createOrder)));
         await journey.waitFor(find.textContaining('PUBL'), seconds: 30);
         expect(journey.coordinator.orders, hasLength(2));

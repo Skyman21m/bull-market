@@ -385,112 +385,116 @@ void main() {
     },
   );
 
-  group('the contract\'s amount the confirmation names (functional review of #188, C1)', () {
-    Future<void> openConfirmation(_App app) async {
-      final invoice = app.coordinator.order(app.record.orderId).escrow;
-      if (invoice == null) fail('no escrow invoice');
-      final checked = checkedBolt11InvoiceForTesting(
-        bolt11: invoice.text,
-        amount: invoice.facts.amount,
-        network: _net,
-        paymentHash: invoice.facts.paymentHash,
-        expiresAt: invoice.facts.createdAt.add(invoice.facts.expiry),
-        now: DateTime.utc(2026, 11, 14, 9),
-      );
-      if (checked == null) fail('not a payable invoice');
-      app.wallet.scriptQuote(
-        Ok(
-          P2pWalletQuote(
-            invoice: checked,
-            payin: Sats(checked.amount.value + BigInt.from(500)),
-            networkFee: Sats.fromInt(27),
-            balance: Sats.fromInt(5000000),
-            quotedAt: DateTime.utc(2026, 11, 14, 9),
+  group(
+    'the contract\'s amount the confirmation names (functional review of #188, C1)',
+    () {
+      Future<void> openConfirmation(_App app) async {
+        final invoice = app.coordinator.order(app.record.orderId).escrow;
+        if (invoice == null) fail('no escrow invoice');
+        final checked = checkedBolt11InvoiceForTesting(
+          bolt11: invoice.text,
+          amount: invoice.facts.amount,
+          network: _net,
+          paymentHash: invoice.facts.paymentHash,
+          expiresAt: invoice.facts.createdAt.add(invoice.facts.expiry),
+          now: DateTime.utc(2026, 11, 14, 9),
+        );
+        if (checked == null) fail('not a payable invoice');
+        app.wallet.scriptQuote(
+          Ok(
+            P2pWalletQuote(
+              invoice: checked,
+              payin: Sats(checked.amount.value + BigInt.from(500)),
+              networkFee: Sats.fromInt(27),
+              balance: Sats.fromInt(5000000),
+              quotedAt: DateTime.utc(2026, 11, 14, 9),
+            ),
           ),
-        ),
-      );
-      await _tap(app.tester, find.text('Pay with this wallet'));
-      await app.settle();
-    }
-
-    testWidgets('a range: the amount its take chose, kept with the contract', (
-      tester,
-    ) async {
-      final app = await _App.start(
-        tester,
-        range: (50, 150),
-        takenAmount: 120,
-      );
-      await app.openTrade();
-      await openConfirmation(app);
-      // 120 EUR at 50,000 EUR/BTC with +2 %: 235,294 sats.
-      expect(
-        find.textContaining('120 EUR are worth 235,294 sats'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('150 EUR are worth'), findsNothing);
-      await app.close();
-    });
-
-    testWidgets(
-      'a fixed amount the coordinator reads otherwise, the confirmation open: never its figure; what is compared is still the amount asked here',
-      (tester) async {
-        final app = await _App.start(tester);
-        await app.openTrade();
-        await openConfirmation(app);
-        expect(
-          find.textContaining('100 EUR are worth 196,078 sats'),
-          findsOneWidget,
         );
-        app.coordinator.orderChanges[app.record.orderId] = {
-          'amount': '1000.00000000',
-        };
-        for (var i = 0; i < 15; i++) {
-          app.advance(const Duration(seconds: 1));
-          await tester.pump(const Duration(seconds: 1));
-        }
+        await _tap(app.tester, find.text('Pay with this wallet'));
         await app.settle();
-        for (final text in tester.widgetList<Text>(find.byType(Text))) {
-          final data = text.data ?? '';
-          expect(data, isNot(contains('1,000 EUR')));
-          expect(data, isNot(contains('1000 EUR')));
-          if (data.contains('are worth')) {
-            expect(data, contains('100 EUR are worth 196,078 sats'));
+      }
+
+      testWidgets(
+        'a range: the amount its take chose, kept with the contract',
+        (tester) async {
+          final app = await _App.start(
+            tester,
+            range: (50, 150),
+            takenAmount: 120,
+          );
+          await app.openTrade();
+          await openConfirmation(app);
+          // 120 EUR at 50,000 EUR/BTC with +2 %: 235,294 sats.
+          expect(
+            find.textContaining('120 EUR are worth 235,294 sats'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('150 EUR are worth'), findsNothing);
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'a fixed amount the coordinator reads otherwise, the confirmation open: never its figure; what is compared is still the amount asked here',
+        (tester) async {
+          final app = await _App.start(tester);
+          await app.openTrade();
+          await openConfirmation(app);
+          expect(
+            find.textContaining('100 EUR are worth 196,078 sats'),
+            findsOneWidget,
+          );
+          app.coordinator.orderChanges[app.record.orderId] = {
+            'amount': '1000.00000000',
+          };
+          for (var i = 0; i < 15; i++) {
+            app.advance(const Duration(seconds: 1));
+            await tester.pump(const Duration(seconds: 1));
           }
-        }
-        expect(app.wallet.paid, isEmpty);
-        await app.close();
-      },
-    );
+          await app.settle();
+          for (final text in tester.widgetList<Text>(find.byType(Text))) {
+            final data = text.data ?? '';
+            expect(data, isNot(contains('1,000 EUR')));
+            expect(data, isNot(contains('1000 EUR')));
+            if (data.contains('are worth')) {
+              expect(data, contains('100 EUR are worth 196,078 sats'));
+            }
+          }
+          expect(app.wallet.paid, isEmpty);
+          await app.close();
+        },
+      );
 
-    testWidgets(
-      'a range\'s amount taken the coordinator reads otherwise, the confirmation open: no comparison and no figure of it, the state machine\'s alert alone',
-      (tester) async {
-        final app = await _App.start(
-          tester,
-          range: (50, 150),
-          takenAmount: 120,
-        );
-        await app.openTrade();
-        await openConfirmation(app);
-        expect(
-          find.textContaining('120 EUR are worth 235,294 sats'),
-          findsOneWidget,
-        );
-        app.coordinator.orderChanges[app.record.orderId] = {
-          'amount': '130.00000000',
-        };
-        for (var i = 0; i < 15; i++) {
-          app.advance(const Duration(seconds: 1));
-          await tester.pump(const Duration(seconds: 1));
-        }
-        await app.settle();
-        expect(find.textContaining('are worth'), findsNothing);
-        expect(find.textContaining('130 EUR'), findsNothing);
-        expect(find.textContaining('fee included'), findsNothing);
-        expect(app.wallet.paid, isEmpty);
-        await app.close();
-      },
-    );
-  });
+      testWidgets(
+        'a range\'s amount taken the coordinator reads otherwise, the confirmation open: no comparison and no figure of it, the state machine\'s alert alone',
+        (tester) async {
+          final app = await _App.start(
+            tester,
+            range: (50, 150),
+            takenAmount: 120,
+          );
+          await app.openTrade();
+          await openConfirmation(app);
+          expect(
+            find.textContaining('120 EUR are worth 235,294 sats'),
+            findsOneWidget,
+          );
+          app.coordinator.orderChanges[app.record.orderId] = {
+            'amount': '130.00000000',
+          };
+          for (var i = 0; i < 15; i++) {
+            app.advance(const Duration(seconds: 1));
+            await tester.pump(const Duration(seconds: 1));
+          }
+          await app.settle();
+          expect(find.textContaining('are worth'), findsNothing);
+          expect(find.textContaining('130 EUR'), findsNothing);
+          expect(find.textContaining('fee included'), findsNothing);
+          expect(app.wallet.paid, isEmpty);
+          await app.close();
+        },
+      );
+    },
+  );
 }
