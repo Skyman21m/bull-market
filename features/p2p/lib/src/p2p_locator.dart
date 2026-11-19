@@ -66,6 +66,7 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
+import 'domain/usecases/trade/follow_renewal_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/list_last_orders_usecase.dart';
@@ -264,6 +265,10 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
+        // The robot of a renewal of the order of « Last order #N » once its bond is locked (#227), where the feature holds trades.
+        renewedRobots: locator.isRegistered<FollowRenewalUsecase>()
+            ? locator<FollowRenewalUsecase>().execute
+            : null,
       ),
     );
     // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases and of the acknowledgement of a key's history.
@@ -443,6 +448,10 @@ final class P2pLocator {
     locator.registerFactoryParam<RenewalsCubit, TradeRecord, void>(
       (record, _) =>
           RenewalsCubit(record, locator<MakeOrderUsecase>().renewalsOf),
+    );
+    // The renewals of the order of a « Last order #N » the Garage follows (#227): read from the device, for the robot it shows.
+    locator.registerFactory<FollowRenewalUsecase>(
+      () => FollowRenewalUsecase(locator<MakeOrderUsecase>().renewalsOf),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(

@@ -12,13 +12,17 @@ import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
+import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/trade/make_price_check.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/presentation/garage_cubit.dart';
+import 'package:p2p/src/presentation/garage_state.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
+import 'package:p2p/src/ui/garage/garage_profile.dart';
 import 'package:p2p/src/ui/trade/renew_check_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -32,7 +36,8 @@ import 'package:secrets/testing.dart';
 import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
 import 'support/make_harness.dart';
-import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
+import 'support/trade_harness.dart'
+    show HarnessKeys, TradeHarness, otherTradeKey, tradeKey;
 
 /// Opening again the last finished order made here, and renewing it (#216, #217), on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`): the real router, records, use cases, state machine and pages, by real gestures, from the Garage's « Last order #N » to the makes counted at the coordinator played by `ScriptedMakerCoordinator` (never a real one), which follows the reference's answers to a maker.
 ///
@@ -53,12 +58,16 @@ final class _Coordinators implements CoordinatorTransport {
   /// When set, every read of an order waits for it before it reaches the coordinator: a slow coordinator.
   Future<void>? holdReads;
 
+  /// Every request sent, to any coordinator, anonymous or of a robot, in order.
+  final List<CoordinatorRequest> sent = [];
+
   _Coordinators(this.maker);
 
   @override
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
     CoordinatorRequest request,
   ) async {
+    sent.add(request);
     final path = request.url.path;
     if (holdReads case final hold?
         when path == '/api/order/' &&
@@ -755,4 +764,240 @@ void main() {
       );
     },
   );
+
+  group('« Last order #N » shows its order\'s robot in the Garage (#227)', () {
+    /// The cubit of the Garage, shown or under the pages above the tab.
+    GarageCubit garageOf(WidgetTester tester) => BlocProvider.of<GarageCubit>(
+      tester.element(find.byType(GarageProfile, skipOffstage: false)),
+    );
+
+    /// The number of the robot the Garage shows.
+    int shown(WidgetTester tester) => switch (garageOf(tester).state) {
+      GarageWithKey(:final robot) => robot.index,
+      final other => throw StateError('$other'),
+    };
+
+    /// The requests sent since the [from]th, each as its method, its path and the number of its robot (`-` when anonymous), in a stable order: what two moments of a test are compared by, never a token or a key.
+    List<String> sentSince(_App app, int from) {
+      final robots = TradeHarness.robotsOf(_net);
+      return [
+        for (final request in app.transport.sent.skip(from))
+          '${request.method.name} ${request.url.path} ${switch (request.robot) {
+            null => '-',
+            final robot => '${robots.indexWhere((known) => known.sessionKey == robot)}',
+          }}',
+      ]..sort();
+    }
+
+    /// Where the trail this device stored of [record] stands.
+    Future<String?> stored(_App app, TradeRecord record) async =>
+        switch (await app.wait(
+          () => app.locator<TradeTrailRepository>().historyOf(record),
+        )) {
+          Ok(:final value) => value.trail?.position,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+
+    Future<void> next(_App app) async {
+      await app.tester.tap(find.byTooltip('Next account'));
+      await app.settle();
+    }
+
+    Future<void> previous(_App app) async {
+      await app.tester.tap(find.byTooltip('Previous account'));
+      await app.settle();
+    }
+
+    testWidgets(
+      'two robots, the Garage on the second: a tap on the first one\'s « Last order #N » shows that robot, then opens the order; back, the Garage shows it; nothing sent for the switch that the arrows would not send',
+      (tester) async {
+        final app = await _App.start(tester);
+        final id = app.first.orderId;
+        final robot = app.first.robot.accountIndex;
+        await app.openGarage();
+        expect(shown(tester), robot);
+        await next(app);
+        expect(shown(tester), robot + 1);
+        // What showing the order's robot with the arrows sends: its panel's reads.
+        var from = app.transport.sent.length;
+        await previous(app);
+        expect(shown(tester), robot);
+        final byArrows = sentSince(app, from);
+        await next(app);
+        expect(find.text('Robot #${robot + 1}'), findsOneWidget);
+        from = app.transport.sent.length;
+        final readsBefore = app.orderReads.length;
+        await _tap(tester, _lastOrder(id));
+        await app.settle(12);
+        // The order opens as before: its screen, read once.
+        expect(app.tradePages(), [id]);
+        expect(app.orderReads.length - readsBefore, 1);
+        expect(shown(tester), robot);
+        // The switch sent what the arrows send, and the order's screen its one read.
+        expect(
+          sentSince(app, from),
+          ([...byArrows, 'get /api/order/ $robot']..sort()),
+        );
+        await app.back();
+        expect(find.byType(TradeScreen, skipOffstage: false), findsNothing);
+        expect(find.text('Robot #$robot'), findsOneWidget);
+        expect(shown(tester), robot);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'an order of another Garage Key: it opens as before, the Garage does not move',
+      (tester) async {
+        final app = await _App.start(tester);
+        final id = app.first.orderId;
+        // The key changed since the order: deleted, another one in its place, drawn here.
+        final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final changed = await app.wait(
+          () async => (
+            await app.locator<GarageKeyRepository>().delete(_net),
+            await app.locator<GarageKeyRepository>().import(
+              _net,
+              otherTradeKey,
+            ),
+            await app.locator<RobotBindingRepository>().recordGeneratedKey(
+              _net,
+              other,
+            ),
+          ),
+        );
+        expect(changed.$1, isA<Ok<void, Failure>>());
+        expect(changed.$2, isA<Ok<void, Failure>>());
+        expect(changed.$3, isA<Ok<void, Failure>>());
+        await app.openGarage();
+        await next(app);
+        final before = shown(tester);
+        expect(before, isNot(app.first.robot.accountIndex));
+        final states = <GarageState>[];
+        final listening = garageOf(tester).stream.listen(states.add);
+        addTearDown(listening.cancel);
+        await _tap(tester, _lastOrder(id));
+        await app.settle(12);
+        expect(app.tradePages(), [id]);
+        expect(states, isEmpty);
+        await app.back();
+        expect(find.text('Robot #$before'), findsOneWidget);
+        expect(shown(tester), before);
+        expect(states, isEmpty);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'renewed: the Garage stays on the robot it showed while the new order waits for its bond, and shows the new order\'s robot once its bond is locked',
+      (tester) async {
+        final app = await _App.start(tester);
+        final id = app.first.orderId;
+        final robot = app.first.robot.accountIndex;
+        await app.openGarage();
+        await next(app);
+        await _tap(tester, _lastOrder(id));
+        await app.settle(12);
+        expect(shown(tester), robot);
+        await _tap(tester, _renewOrder);
+        await app.settle(12);
+        await _tap(tester, _create);
+        await app.settle(16);
+        final renewed = app.tradePages().single;
+        expect(renewed, isNot(id));
+        final made = (await app.active()).single;
+        expect(made.orderId, renewed);
+        final renewedRobot = made.robot.accountIndex;
+        expect(renewedRobot, isNot(robot));
+        // Its bond not locked: the new order read at 0 again and again, the Garage where it was.
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(seconds: 5));
+        }
+        await app.settle();
+        expect(app.coordinator.order(renewed).status, 0);
+        expect(await stored(app, made), 'makerBondStep');
+        expect(shown(tester), robot);
+        await app.back();
+        expect(find.text('Robot #$robot'), findsOneWidget);
+        // The new order opened again from « Order », its bond locked: once its screen read it public, the Garage shows its robot.
+        await tester.tap(find.text('Order'));
+        await app.settle(12);
+        expect(app.tradePages(), [renewed]);
+        app.coordinator.lockMakerBond(renewed);
+        for (var i = 0; i < 12 && shown(tester) != renewedRobot; i++) {
+          await tester.pump(const Duration(seconds: 5));
+          await app.settle(2);
+        }
+        expect(shown(tester), renewedRobot);
+        expect(await stored(app, made), 'public');
+        await app.back();
+        expect(find.text('Robot #$renewedRobot'), findsOneWidget);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'two quick taps: one screen, one switch of robot',
+      (tester) async {
+        final app = await _App.start(tester);
+        final id = app.first.orderId;
+        await app.openGarage();
+        await next(app);
+        final states = <GarageState>[];
+        final listening = garageOf(tester).stream.listen(states.add);
+        addTearDown(listening.cancel);
+        final before = app.orderReads.length;
+        await tester.tap(_lastOrder(id));
+        await tester.tap(_lastOrder(id), warnIfMissed: false);
+        await app.settle(12);
+        expect(app.tradePages(), [id]);
+        expect(app.orderReads.length - before, 1);
+        expect(states, hasLength(1));
+        expect(shown(tester), app.first.robot.accountIndex);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'a plain creation, even with the Garage following an order, leaves it on the robot it shows once the new order\'s bond is locked (what #227 does not change)',
+      (tester) async {
+        final app = await _App.start(tester);
+        final id = app.first.orderId;
+        final robot = app.first.robot.accountIndex;
+        await app.openGarage();
+        await _tap(tester, _lastOrder(id));
+        await app.settle(12);
+        await app.back();
+        expect(shown(tester), robot);
+        // An order of other terms made as « Create order » makes it, its trade opened as the create page opens it, its bond locked.
+        final made = switch (await app.make(
+          MakeHarness.request(amount: 250, premium: 4),
+        )) {
+          Ok(value: MakeStarted(:final record)) => record,
+          final other => throw StateError('$other'),
+        };
+        expect(made.robot.accountIndex, isNot(robot));
+        unawaited(
+          app.router.pushNamed(
+            P2pRouter.tradeName,
+            extra: P2pTradeRouteArgs(made),
+          ),
+        );
+        await app.settle(12);
+        app.coordinator.lockMakerBond(made.orderId);
+        for (var i = 0; i < 12; i++) {
+          await tester.pump(const Duration(seconds: 5));
+          await app.settle(2);
+        }
+        expect(await stored(app, made), 'public');
+        expect(shown(tester), robot);
+        await app.back();
+        expect(find.text('Robot #$robot'), findsOneWidget);
+        await app.close();
+      },
+    );
+  });
 }

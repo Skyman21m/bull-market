@@ -32,7 +32,7 @@ import 'robot_coordinator_panel.dart';
 /// Right after a draw whose history could not be recorded, it says so.
 /// Under the robot navigator, the panel of the robot shown ([RobotCoordinatorPanel]): the coordinator that knows it, if any, and what that coordinator says of its orders and rewards, with its own cubit for each robot, closed when the user moves to another robot.
 /// The settings of the robot (Telegram, webhook, stealth invoices) and the claim of its rewards are not shown.
-/// Under the navigator, « Last order #N » (#216, [LastOrderLines]): the reference's line of the robot shown, here read from the device's records, since each trade has a robot of its own.
+/// Under the navigator, « Last order #N » (#216, [LastOrderLines]): the reference's line of the robot shown, here read from the device's records, since each trade has a robot of its own; a tap shows that order's robot before its trade opens (#227, [GarageCubit.showOrderRobot]), so that the robot and the order on screen go together, as in the reference.
 class GarageProfile extends StatefulWidget {
   final GarageWithKey state;
   final GarageKeyClipboard clipboard;
@@ -118,8 +118,14 @@ class _GarageProfileState extends State<GarageProfile> {
             onPrevious: cubit.previous,
             onNext: cubit.next,
           ),
-          // « Last order #N » under the robot navigator, where the reference puts it (`GarageKeyProfile.tsx:214-230`), from the device's records (#216).
-          if (widget.onOpenTrade case final open?) LastOrderLines(onOpen: open),
+          // « Last order #N » under the robot navigator, where the reference puts it (`GarageKeyProfile.tsx:214-230`), from the device's records (#216); its robot shown first, then its trade opened (#227).
+          if (widget.onOpenTrade case final open?)
+            LastOrderLines(
+              onOpen: (record) {
+                cubit.showOrderRobot(record);
+                return open(record);
+              },
+            ),
           if (state.failure case final failure?) ...[
             const Gap(BullSpacing.xs),
             Text(

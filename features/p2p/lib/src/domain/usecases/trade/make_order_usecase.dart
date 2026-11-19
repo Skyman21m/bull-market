@@ -216,18 +216,17 @@ final class MakeOrderUsecase {
               return;
             }
             if (terms != kept) continue;
+            final position = TradePosition.values
+                .where(
+                  (position) =>
+                      position.name == made[trade.robot]?.trail?.position,
+                )
+                .firstOrNull;
             since.add(
               OrderMadeSince(
                 trade,
-                OrderMadeSince.standsOf(
-                  trade,
-                  TradePosition.values
-                      .where(
-                        (position) =>
-                            position.name == made[trade.robot]?.trail?.position,
-                      )
-                      .firstOrNull,
-                ),
+                OrderMadeSince.standsOf(trade, position),
+                bondLocked: OrderMadeSince.bondLockedAt(position),
               ),
             );
           }

@@ -11,6 +11,7 @@ import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
@@ -117,6 +118,7 @@ void main() {
     RobosatsNetwork network = RobosatsNetwork.testnet,
     UnacknowledgedGarageKeys? unacknowledged,
     RobotBindingRepository? bindings,
+    Stream<RobotSlot> Function(TradeRecord record)? renewedRobots,
   }) {
     storage.install();
     final repository = GarageKeyRepositoryImpl(
@@ -139,6 +141,7 @@ void main() {
       DeleteGarageKeyUsecase(repository),
       NeedsPinToDeleteGarageKeyUsecase(recorded),
       unacknowledged ?? UnacknowledgedGarageKeys(),
+      renewedRobots: renewedRobots,
     );
   }
 
@@ -1432,4 +1435,165 @@ void main() {
     },
     timeout: slow,
   );
+
+  group('« Last order #N » (#227)', () {
+    final madeAt = DateTime.utc(2026, 11, 19, 9);
+
+    TradeRecord recordOf(RobotSlot robot) => TradeRecord(
+      robot: robot,
+      coordinatorAlias: 'temple',
+      coordinatorOnion:
+          Federation.robosats.byAlias('temple')?.testnet.onion ??
+          (throw StateError('temple')),
+      orderId: 4321,
+      role: TradeRole.buyer,
+      origin: TradeOrigin.madeHere,
+      takenAt: madeAt,
+      confirmedAt: madeAt,
+      closedAt: madeAt.add(const Duration(days: 1)),
+    );
+
+    RobotSlot slot(
+      int index, {
+      RobosatsNetwork network = RobosatsNetwork.testnet,
+      GarageKeyFingerprint? key,
+    }) => RobotSlot(network, key ?? fixedFingerprint, index);
+
+    int shown(GarageCubit cubit) => (cubit.state as GarageWithKey).robot.index;
+
+    test(
+      'shows the order\'s robot, then a renewal\'s once its bond is locked, until the arrows',
+      () async {
+        final renewals = StreamController<RobotSlot>.broadcast();
+        final followed = <TradeRecord>[];
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          renewedRobots: (record) {
+            followed.add(record);
+            return renewals.stream;
+          },
+        );
+        await cubit.load();
+        expect(shown(cubit), 0);
+
+        cubit.showOrderRobot(recordOf(slot(3)));
+        final state = cubit.state as GarageWithKey;
+        expect(state.robot.index, 3);
+        expect(state.robot.nickname, switch (fixedKey.deriveIdentity(3)) {
+          Ok(:final value) => value.nickname,
+          Err() => fail('no robot 3'),
+        });
+        expect(followed, [recordOf(slot(3))]);
+        expect(renewals.hasListener, isTrue);
+
+        renewals.add(slot(5));
+        await pumpEventQueue();
+        expect(shown(cubit), 5);
+
+        // Moved with the arrows: the renewals are no longer followed.
+        cubit.next();
+        expect(shown(cubit), 6);
+        expect(renewals.hasListener, isFalse);
+        renewals.add(slot(8));
+        await pumpEventQueue();
+        expect(shown(cubit), 6);
+        await cubit.close();
+        await renewals.close();
+      },
+    );
+
+    test(
+      'an order of another Garage Key or network shows nothing; its renewal of this key, once locked, does',
+      () async {
+        final otherKey = switch (GarageKey.fromBytes(
+          Uint8List.fromList(List<int>.generate(32, (i) => 64 - i)),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final otherFingerprint = switch (GarageKeyFingerprint.of(otherKey)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final renewals = StreamController<RobotSlot>.broadcast();
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          renewedRobots: (_) => renewals.stream,
+        );
+        await cubit.load();
+        cubit.previous();
+        final before = cubit.state;
+        expect(before, isA<GarageWithKey>());
+        expect((before as GarageWithKey).failure, isNotNull);
+
+        for (final robot in [
+          slot(2, key: otherFingerprint),
+          slot(2, network: RobosatsNetwork.mainnet),
+          slot(-1),
+        ]) {
+          cubit.showOrderRobot(recordOf(robot));
+          expect(cubit.state, same(before));
+          // A renewal of another key or network shows nothing either.
+          renewals.add(slot(4, key: otherFingerprint));
+          await pumpEventQueue();
+          expect(cubit.state, same(before));
+        }
+        // The robot already shown: nothing emitted, the failure kept.
+        cubit.showOrderRobot(recordOf(slot(0)));
+        expect(cubit.state, same(before));
+
+        renewals.add(slot(4));
+        await pumpEventQueue();
+        expect(shown(cubit), 4);
+        expect((cubit.state as GarageWithKey).failure, isNull);
+        await cubit.close();
+        await renewals.close();
+      },
+    );
+
+    test(
+      'the following ends when another order is tapped, the slot is read again or the Garage is left',
+      () async {
+        final renewals = <StreamController<RobotSlot>>[];
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          renewedRobots: (_) {
+            final controller = StreamController<RobotSlot>();
+            renewals.add(controller);
+            return controller.stream;
+          },
+        );
+        await cubit.load();
+        cubit.showOrderRobot(recordOf(slot(1)));
+        expect(renewals.single.hasListener, isTrue);
+        cubit.showOrderRobot(recordOf(slot(2)));
+        expect(renewals, hasLength(2));
+        expect(renewals.first.hasListener, isFalse);
+        expect(renewals.last.hasListener, isTrue);
+        renewals.first.add(slot(7));
+        await pumpEventQueue();
+        expect(shown(cubit), 2);
+
+        await cubit.load();
+        expect(renewals.last.hasListener, isFalse);
+        expect(shown(cubit), 0);
+
+        cubit.showOrderRobot(recordOf(slot(1)));
+        expect(renewals.last.hasListener, isTrue);
+        await cubit.close();
+        expect(renewals.last.hasListener, isFalse);
+        for (final controller in renewals) {
+          await controller.close();
+        }
+      },
+    );
+
+    test('without the trades, shows the order\'s robot and follows nothing', () async {
+      final cubit = cubitOver(holding([testnetEntry]));
+      await cubit.load();
+      cubit.showOrderRobot(recordOf(slot(2)));
+      expect(shown(cubit), 2);
+      await cubit.close();
+    });
+  });
 }
