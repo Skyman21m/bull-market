@@ -3229,6 +3229,53 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pMakeWhyRangeInvalid => 'La plage de montant n’est pas valide.';
 
   @override
+  String get p2pMakeRangeMaxBelowMin =>
+      'Le maximum doit être supérieur au minimum.';
+
+  @override
+  String p2pMakeRangeMinAtLeast(String amount, String coordinator) {
+    return 'Le minimum doit être d’au moins $amount chez $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMost(String amount, String coordinator) {
+    return 'Le maximum ne peut pas dépasser $amount chez $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtLeastFor(String min, String amount) {
+    return 'Pour un minimum de $min, le maximum doit être d’au moins $amount.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMostFor(String min, String amount) {
+    return 'Pour un minimum de $min, le maximum ne peut pas dépasser $amount.';
+  }
+
+  @override
+  String p2pMakeRangeAccepted(String coordinator, String min, String max) {
+    return 'Montants acceptés chez $coordinator : de $min à $max.';
+  }
+
+  @override
+  String get p2pMakeRangeRatio =>
+      'Le maximum doit valoir plus de 1,5 fois le minimum et au plus 14,95 fois.';
+
+  @override
+  String p2pMakeRangeMinAtMost(String amount, String coordinator) {
+    return 'Le minimum ne peut pas dépasser $amount chez $coordinator : le maximum doit valoir plus de 1,5 fois le minimum.';
+  }
+
+  @override
+  String p2pMakeRangeNoRoom(String coordinator) {
+    return 'Aucune plage de montants n’est possible chez $coordinator avec cette prime : utilisez un montant exact.';
+  }
+
+  @override
+  String get p2pMakeRangeNotPositive =>
+      'Indiquez un minimum et un maximum supérieurs à 0.';
+
+  @override
   String get p2pMakeWhyDescriptionInvalid => 'La description n’est pas valide.';
 
   @override
