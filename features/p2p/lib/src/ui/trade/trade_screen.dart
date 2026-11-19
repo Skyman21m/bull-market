@@ -424,6 +424,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         rateCubit: widget.checksPayoutRate
                             ? context.read<PayoutRateCubit>()
                             : null,
+                        trade: context.read<TradeCubit>(),
                         onRetryRate: widget.checksPayoutRate
                             ? () => unawaited(
                                 context.read<PayoutRateCubit>().retry(),
@@ -597,6 +598,9 @@ class _Contract extends StatelessWidget {
 
   /// The rule's cubit, `null` without the wallet's port: what the dialog of « Confirm … sent » reads when it opens and follows while open (security review of #208, C1).
   final PayoutRateCubit? rateCubit;
+
+  /// The trade's cubit: the order the dialog of « Confirm … sent » computes its gap line from when it opens and while open, the one the screen shows (#209).
+  final TradeCubit trade;
   final VoidCallback? onRetryRate;
 
   /// Before « Submit » and the dialog of « Confirm … sent »: the rule's price read again when old ([PayoutRateCubit.beforeAct]), `false` stopping the press; `null` without the rule.
@@ -634,6 +638,7 @@ class _Contract extends StatelessWidget {
     required this.book,
     required this.payoutRate,
     required this.rateCubit,
+    required this.trade,
     required this.onRetryRate,
     required this.beforeAct,
     required this.onRenew,
@@ -951,7 +956,7 @@ class _Contract extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (order != null) ...[
-            _Line(switch (_payoutPromptAmount(status, order)) {
+            _Line(switch (_payoutPromptAmount(order)) {
               final amount? => l10n.p2pTradePayoutPrompt(
                 formats.payoutAmount(
                   amount,
@@ -967,7 +972,7 @@ class _Contract extends StatelessWidget {
           ],
           // The owner's payment rule on a maker buyer's side, before « Submit » (#182); the gap from the creation's rate under it, only without a comparison with the Bull wallet's price.
           ?_rateLines(context),
-          if (_gapLine(context, status) case final gap?) ...[
+          if (_gapLine(context) case final gap?) ...[
             gap,
             const Gap(BullSpacing.sm),
           ],
@@ -1020,7 +1025,7 @@ class _Contract extends StatelessWidget {
         children: [
           // The owner's payment rule on a maker buyer's side, before « Confirm … sent » (#182), with its « Retry »; the gap under it, only without a comparison.
           ?_rateLines(context),
-          if (_gapLine(context, status) case final gap?) ...[
+          if (_gapLine(context) case final gap?) ...[
             gap,
             const Gap(BullSpacing.sm),
           ],
@@ -1048,10 +1053,10 @@ class _Contract extends StatelessWidget {
             chatOptions: chatOptions == null
                 ? null
                 : () => chatOptions(context, chatRequest),
-            // Built from the rule's state when the dialog opens and at each change while open, never from this build's (security review of #208, C1).
+            // Built from the rule's state and the trade's order when the dialog opens and at each change of either while open, never from this build's (security review of #208, C1; #209).
             rateLines: LiveDialogLines(
-              of: (context) => _dialogLines(context, status, rateCubit?.state),
-              changes: rateCubit?.stream ?? const Stream.empty(),
+              of: (context) => _dialogLines(context, rateCubit?.state),
+              changes: _changesOf(rateCubit?.stream, trade.stream),
             ),
             beforeConfirmFiatSent: beforeAct,
           ),
@@ -1128,44 +1133,45 @@ class _Contract extends StatelessWidget {
     return state;
   }
 
-  /// [status] with the order of the contract shown and what was asked here ([TradeSeen.asked]).
-  TradeSeen _seenAt(TradeStatus status) =>
-      TradeSeen(status, order: contract.order, asked: contract.seen.asked);
-
-  /// The contract's amount of a trade made here at [status], as asked here (a range's amount kept with the contract, or the terms' fixed amount), never a figure read alone; `null` while the order read does not agree with it, or none is known (security review of #183, C2, C4). Where nothing was asked here is known ([TradeSeen.asked] unset), the order's fixed amount, as before.
-  FiatAmount? _contractAmountOf(TradeStatus status) {
-    final seen = _seenAt(status);
+  /// The contract's amount of a trade made here at [seen], as asked here (a range's amount kept with the contract, or the terms' fixed amount), never a figure read alone; `null` while the order read does not agree with it, or none is known (security review of #183, C2, C4). Where nothing was asked here is known ([TradeSeen.asked] unset), the order's fixed amount, as before.
+  static FiatAmount? _contractAmountOf(TradeSeen seen) {
     if (seen.contractAmountMoved) return null;
     if (seen.contractAmount case final amount?) return amount;
-    return switch ((seen.asked, contract.order?.amount)) {
+    return switch ((seen.asked, seen.order?.amount)) {
       (null, FixedOrderAmount(:final amount)) => amount,
       _ => null,
     };
   }
 
   /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([_contractAmountOf]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
-  double? _payoutPromptAmount(TradeStatus status, CoordinatorOrder order) {
+  double? _payoutPromptAmount(CoordinatorOrder order) {
     if (!contract.maker) {
       return (order.takenAmount ?? order.amount.max).value;
     }
-    return _contractAmountOf(status)?.value;
+    return _contractAmountOf(contract.seen)?.value;
   }
 
-  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
+  /// What the screen shows now, as the trade's cubit holds it: the contract of its last status, `null` when it shows no contract (a wait, a message, an order public again).
+  TradeSeen? get _shownNow => switch (TradeView.of(trade.state.watch)) {
+    TradeContract(:final seen) => seen,
+    _ => null,
+  };
+
+  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer; the gap and the amount computed from the order the screen shows now ([_shownNow]), so that the dialog never keeps a gap line the screen no longer shows (#209).
   List<TradeDialogLine> _dialogLines(
     BuildContext context,
-    TradeStatus status,
     PayoutRateState? now,
   ) {
     final state = _ruleOf(now);
-    final gap = _gapOf(context, status);
+    final shown = _shownNow;
+    final gap = shown == null ? null : _gapOf(context, shown);
     return [
       if (state != null)
         ...PayoutRateLines.dialogLinesOf(
           context,
           state,
           coordinator: coordinator,
-          amount: PayoutRateLines.amountOf(context, _seenAt(status)),
+          amount: PayoutRateLines.amountOf(context, shown ?? contract.seen),
         ),
       if (gap != null && !PayoutRateLines.hidesGap(state))
         (
@@ -1193,28 +1199,29 @@ class _Contract extends StatelessWidget {
   }
 
   /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only when the owner's rule shows no comparison with the Bull wallet's price (a currency it does not price, a price not read, no rule without the wallet's port); `null` for a taker, whose statuses carry no gap.
-  Widget? _gapLine(BuildContext context, TradeStatus status) {
+  Widget? _gapLine(BuildContext context) {
     if (PayoutRateLines.hidesGap(_ruleShown)) return null;
-    final gap = _gapOf(context, status);
+    final gap = _gapOf(context, contract.seen);
     if (gap == null) return null;
     return RateGapLine(gap: gap.gap, role: gap.role, text: gap.text);
   }
 
-  /// The gap of a maker's contract at 6, 8 and 9, its role and its words, from the status's own figure and the order it was read from.
+  /// The gap of a maker's contract at 6, 8 and 9, its role and its words, from [seen]'s status's own figure and the order it was read from.
   ({TradeRateGap gap, TradeRole role, String text})? _gapOf(
     BuildContext context,
-    TradeStatus status,
+    TradeSeen seen,
   ) {
-    final order = contract.order;
+    final status = seen.status;
+    final order = seen.order;
     // A contract shown with another amount than the one asked here: the state machine's alert alone, no gap beside it (C5 and C4 of #183).
-    if (_seenAt(status).contractAmountMoved) return null;
+    if (seen.contractAmountMoved) return null;
     final (gap, role, amount) = switch (status) {
       WaitingForBoth(:final rateGap, :final role) ||
       WaitingForPayout(:final rateGap, :final role) => (
         rateGap,
         role,
         // The contract's amount the gap is computed with, as asked here (#183), never the read's alone.
-        _contractAmountOf(status),
+        _contractAmountOf(seen),
       ),
       Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
         rateGap,
@@ -1280,6 +1287,18 @@ class _Contract extends StatelessWidget {
     null => null,
   };
 }
+
+/// Each change of the rule's state ([rule], none without the wallet's port) and of the trade's ([trade]), as one stream: each listener is subscribed to both, and cancelled from both (#209).
+Stream<Object?> _changesOf(Stream<Object?>? rule, Stream<Object?> trade) =>
+    Stream<Object?>.multi((controller) {
+      final subscriptions = [
+        ?rule?.listen(controller.add),
+        trade.listen(controller.add),
+      ];
+      controller.onCancel = () => Future.wait([
+        for (final subscription in subscriptions) subscription.cancel(),
+      ]);
+    });
 
 /// The project's line under a text of the reference that says a bond is returned (and, at 8 for a seller, the collateral too: [escrow]), from how the trade's payment records say each was paid ([paid], functional review of #182, U2, #207): named when paid with this wallet, said as a condition (true in every case) when the records cannot tell, `null` when neither was paid with this wallet or without the wallet's port.
 String? _backThroughSwap(

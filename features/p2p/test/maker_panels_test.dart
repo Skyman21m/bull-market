@@ -2808,6 +2808,103 @@ void main() {
     },
   );
 
+  group(
+    '« Confirm … sent » open while a read changes the sats: the dialog\'s gap line is the screen\'s, never one left from the press (#209, security review of #208, R4)',
+    () {
+      Finder inDialog(String words) => find.descendant(
+        of: find.byType(ConfirmFiatSentDialog),
+        matching: find.textContaining(words),
+      );
+
+      /// The chain to 9 with the contract fixed for [_lowSats], then a read at 9 whose sats are [later] (none when `null`).
+      Future<List<TradeSeen>> chainTo9({required int? later}) => _chain([
+        makerOrderJson(0),
+        makerOrderJson(1),
+        makerOrderJson(6, last: _lowSats),
+        makerOrderJson(8, last: _lowSats),
+        makerOrderJson(9, last: _lowSats),
+        makerOrderJson(
+          9,
+          last: later ?? _lowSats,
+          changes: {if (later == null) 'satoshis_now': null},
+        ),
+      ]);
+
+      Future<void> openDialog(WidgetTester tester) async {
+        final confirm = find.textContaining('Confirm 100 EUR sent');
+        await _reveal(tester, confirm);
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+      }
+
+      testWidgets(
+        'without the rule (no wallet\'s port): the sats gone, the gap line goes from the dialog as from the screen',
+        (tester) async {
+          final chain = await chainTo9(later: null);
+          expect(chain[5].status, isA<Chatting>());
+          expect(chain[5].order?.satoshisNow, isNull);
+          final (_, watch) = await _show(tester, chain[4]);
+          await openDialog(tester);
+          expect(inDialog('+5.85% from the rate'), findsOneWidget);
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+          expect(find.textContaining('from the rate when you made it'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'the Bull wallet\'s price not read: « rate not checked » and the gap; the sats gone, « gives no sats » and no gap line, in the dialog as on the screen',
+        (tester) async {
+          final chain = await chainTo9(later: null);
+          final (_, watch) = await _show(
+            tester,
+            chain[4],
+            rate: _rateCubit(() => const P2pWalletRateUnavailable()),
+          );
+          await tester.pump();
+          await openDialog(tester);
+          expect(inDialog('could not be read: rate not checked'), findsOneWidget);
+          expect(inDialog('+5.85% from the rate'), findsOneWidget);
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+          expect(inDialog('gives no sats for this step'), findsOneWidget);
+          expect(find.textContaining('from the rate when you made it'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'a currency the Bull wallet does not price: the coordinator\'s figure moves while the dialog is open, the dialog\'s gap is the new one, the screen\'s',
+        (tester) async {
+          final chain = await chainTo9(later: 120000);
+          final (_, watch) = await _show(
+            tester,
+            chain[4],
+            rate: _rateCubit(() => const P2pWalletRateNotPriced()),
+          );
+          await tester.pump();
+          await openDialog(tester);
+          expect(inDialog('fixed 101,000 sats'), findsOneWidget);
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+          expect(find.textContaining('fixed 101,000 sats'), findsNothing);
+          expect(inDialog('fixed 120,000 sats'), findsOneWidget);
+          expect(
+            find.textContaining('fixed 120,000 sats'),
+            findsNWidgets(2),
+            reason: 'the screen behind the dialog says the same',
+          );
+        },
+      );
+    },
+  );
+
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);
     for (final locale in const [Locale('fr'), Locale('en')]) {
