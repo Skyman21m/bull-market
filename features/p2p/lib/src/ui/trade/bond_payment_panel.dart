@@ -548,12 +548,49 @@ class _EscrowConfirmation extends StatelessWidget {
     final currency = request.currency;
     final seen = request.seen;
     final rate = confirming.rate;
+    // The contract's amount as asked here, the trade screen's own rule (#183): none while the order read shows another, and then no comparison and no gap, the state machine's alert above speaking alone (functional review of #188, C1).
+    final amount = seen.contractAmountShown;
     // The gap from the rate at the creation, only when the Bull wallet's price gives no comparison (one figure for one question, #182).
-    final gap = switch (rate) {
-      WalletRateCompared() => null,
-      _ => _gapLineOf(context, seen, coordinator),
-    };
+    final gap = amount == null || rate is WalletRateCompared
+        ? null
+        : _gapLineOf(context, seen, coordinator, amount);
+    // The comparison with the Bull wallet's price: in place, beside the amounts, within the threshold; beyond it, the line and its warning one red alert with the others above the buttons (functional review of #188, C2), never a neutral line beside it.
+    Widget? rateLines;
+    String? rateAlert;
+    if (amount != null) {
+      switch (rate) {
+        case null:
+          break;
+        case final WalletRateCompared compared:
+          final expected = formats.bigSats(compared.expected.value);
+          final line = l10n.p2pPayRateWalletEscrow(
+            formats.orderRate(compared.price),
+            compared.currency.code,
+            formats.amount(amount),
+            expected,
+            formats.gap(compared.gapHundredths),
+          );
+          if (compared.warns) {
+            final warning = l10n.p2pPayRateWarningEscrow(
+              formats.threshold(TradeTolerances.walletRateGap),
+              formats.bigSats(compared.asked.value),
+              expected,
+            );
+            rateAlert = '$line $warning';
+          } else {
+            rateLines = Text(line, style: body);
+          }
+        case WalletRateNotPriced() || WalletRateUnverified():
+          rateLines = _RateLines(
+            rate: rate,
+            coordinator: coordinator,
+            retrying: confirming.retrying,
+            onRetry: onRetry,
+          );
+      }
+    }
     final alerts = [
+      ?rateAlert,
       ...earlierEscrowAlerts(context, contract, coordinator: coordinator),
       // The order's bond, which the alert's total leaves out (security review of #187, C5): beside the alert of the escrows not back.
       if (contract.notBack.isNotEmpty)
@@ -590,14 +627,7 @@ class _EscrowConfirmation extends StatelessWidget {
           (l10n.p2pPayRowLeft, sats(walletQuote.remaining), false),
         ],
       ),
-      if (rate != null)
-        _RateLines.escrow(
-          rate: rate,
-          coordinator: coordinator,
-          retrying: confirming.retrying,
-          onRetry: onRetry,
-          escrowAmount: _contractAmountOf(seen),
-        ),
+      ?rateLines,
       ?gap,
       Text(l10n.p2pPayEscrowHeld, style: body),
       // The reference's sentence on the escrow's hold invoice, word for word (#135).
@@ -606,7 +636,7 @@ class _EscrowConfirmation extends StatelessWidget {
           l10n.p2pTradeHoldInvoiceEscrow(currency.code),
           style: text.bodySmall?.copyWith(color: colors.textMuted),
         ),
-      // The alerts in red, alone and just above the buttons (the owner's decision of 2026-11-19).
+      // The alerts in red, together and just above the buttons: the price's first, then the earlier escrows', then the bond's (the owner's decision of 2026-11-19; functional review of #188, C2).
       if (alerts.isNotEmpty)
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -655,21 +685,13 @@ class _EscrowConfirmation extends StatelessWidget {
     );
   }
 
-  /// The contract's amount the comparison is made on (the fixed amount, or a range's amount its take chose, kept with the contract), as `rateOfBond` takes it.
-  static FiatAmount? _contractAmountOf(TradeSeen seen) =>
-      seen.contractAmount ??
-      switch (seen.order?.amount) {
-        FixedOrderAmount(:final amount) => amount,
-        _ => null,
-      };
-
-  /// The gap of the contract from the rate at the creation ([RateGapLine]), from the status's own figure; `null` when the read gives none.
+  /// The gap of the contract of [amount] ([TradeSeen.contractAmountShown]) from the rate at the creation ([RateGapLine]), from the status's own figure; `null` when the read gives none.
   static Widget? _gapLineOf(
     BuildContext context,
     TradeSeen seen,
     String coordinator,
+    FiatAmount amount,
   ) {
-    if (seen.contractAmountMoved) return null;
     final status = seen.status;
     final gap = switch (status) {
       WaitingForBoth(:final rateGap) ||
@@ -684,7 +706,7 @@ class _EscrowConfirmation extends StatelessWidget {
       role: TradeRole.seller,
       coordinator: coordinator,
       sats: order.satoshisNow,
-      amount: _contractAmountOf(seen),
+      amount: amount,
       currency: order.currency,
     );
   }
@@ -806,27 +828,12 @@ class _RateLines extends StatelessWidget {
   final bool retrying;
   final VoidCallback onRetry;
 
-  /// For a maker seller's escrow (#188), the contract's amount compared, which its lines name, the gap then said to include the coordinator's fee; `null` for the bond, whose lines are #180's. A line beyond the threshold is in red with its warning, one alert.
-  final FiatAmount? escrowAmount;
-
-  /// Whether the lines are an escrow's ([escrowAmount] or not).
-  final bool escrow;
-
   const _RateLines({
     required this.rate,
     required this.coordinator,
     required this.retrying,
     required this.onRetry,
-  }) : escrowAmount = null,
-       escrow = false;
-
-  const _RateLines.escrow({
-    required this.rate,
-    required this.coordinator,
-    required this.retrying,
-    required this.onRetry,
-    required this.escrowAmount,
-  }) : escrow = true;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -889,39 +896,6 @@ class _RateLines extends StatelessWidget {
         final gap = formats.gap(gapHundredths);
         final threshold = formats.threshold(TradeTolerances.walletRateGap);
         final askedText = formats.bigSats(asked.value);
-        if (escrow) {
-          final amount = escrowAmount;
-          final line = amount == null
-              ? l10n.p2pPayRateWalletEscrowNoAmount(
-                  price,
-                  code,
-                  expectedText,
-                  gap,
-                )
-              : l10n.p2pPayRateWalletEscrow(
-                  price,
-                  code,
-                  formats.amount(amount),
-                  expectedText,
-                  gap,
-                );
-          // Beyond the threshold the line and its warning are one red alert, never a neutral line beside it.
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (rate.warns)
-                alert(
-                  '$line ${l10n.p2pPayRateWarningEscrow(threshold, askedText, expectedText)}',
-                  colors.error,
-                )
-              else
-                Text(
-                  line,
-                  style: text.bodyMedium?.copyWith(color: colors.text),
-                ),
-            ],
-          );
-        }
         final line = l10n.p2pPayRateWallet(price, code, expectedText, gap);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -469,6 +469,8 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     final step = state.step;
     if (isClosed || step is! BondPayConfirming) return;
     if (shown != null && !identical(shown, step)) return;
+    // The contract shown when « Pay » was tapped: a read of a later one while the payment ran leaves the panel to the new contract once it ends (functional review of #188, R4).
+    final take = state.followedTake;
     _sending();
     var answered = false;
     final Result<P2pWalletPayment, BondPayRefusal> paid;
@@ -520,6 +522,13 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         _followAgain(leavesSending: true, paymentExists: true);
       case Err(:final failure):
         emit(state._with(step: BondPayIdle(refused: failure)));
+    }
+    // The order taken again while this payment ran: the payment just made is the earlier contract's, said with the other escrows (`EarlierEscrowLines`), and the panel looks for the new contract's, where finding none offers the wallet (functional review of #188, R4). A confirmation shown again is said stale instead.
+    if (!isClosed &&
+        state.followedTake != take &&
+        state.step is! BondPayConfirming) {
+      emit(state._with(step: const BondPayLooking()));
+      _followAgain(leavesSending: true);
     }
   }
 

@@ -626,5 +626,45 @@ void main() {
         await cubit.close();
       },
     );
+
+    test(
+      'a contract for another take than the one shown: the confirmation said stale, at once and when it is shown again (functional review of #188, R3)',
+      () async {
+        final payments = Payments();
+        final cubit = EscrowPaymentCubit(
+          TradeScreenStatuses.record,
+          payments.balance,
+          payments.check,
+          payments.quote,
+          payments.pay,
+          payments.follow,
+          (record) => null,
+          step: InvoiceStep.escrow,
+          // The order read taken again while the quote was asked: the contract of take 1, the screen still at take 0.
+          contract: (record, walletQuote) async =>
+              Ok(contractOf(walletQuote, take: 1)),
+        )..start();
+        payments.follows.single.add(const BondPaymentNone());
+        await settle();
+        final asking = cubit.ask(seen);
+        final quote = walletQuote();
+        payments.quotes.single.complete(Ok(quote));
+        await asking;
+        final confirming = cubit.state.step;
+        if (confirming is! BondPayConfirming) fail('$confirming');
+        expect(confirming.stale, isTrue);
+        // Shown again for a contract of another take: stale too.
+        final paying = cubit.confirm(shown: confirming);
+        payments.pays.single.complete(
+          Err(BondPayConfirmAgain(contractOf(quote, take: 2))),
+        );
+        await paying;
+        final again = cubit.state.step;
+        if (again is! BondPayConfirming) fail('$again');
+        expect(again.again, isTrue);
+        expect(again.stale, isTrue);
+        await cubit.close();
+      },
+    );
   });
 }

@@ -72,6 +72,16 @@ final class TradeSeen {
     };
   }
 
+  /// The contract's amount a screen names and compares for the status shown (#183; the trade screen's and, since #188, a maker seller's escrow confirmation's, one rule for both, security review of #183, C2, C4, functional review of #188, C1): what was asked here ([contractAmount]); `null`, so that no figure is written, while the order read shows another ([contractAmountMoved]: the state machine's alert speaks alone) or none is kept; the order's fixed amount only where nothing asked here is known ([asked] unset: a taker, a status restored without its terms).
+  FiatAmount? get contractAmountShown {
+    if (contractAmountMoved) return null;
+    if (contractAmount case final amount?) return amount;
+    return switch ((asked, order?.amount)) {
+      (null, FixedOrderAmount(:final amount)) => amount,
+      _ => null,
+    };
+  }
+
   @override
   String toString() =>
       'TradeSeen($status, read: ${order != null}, stored: $stored)';

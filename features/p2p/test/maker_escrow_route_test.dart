@@ -127,7 +127,11 @@ final class _App {
   }
 
   /// A sell order of 100 EUR at +2 % made at the coordinator's 50,000 EUR/BTC, its bond locked, taken by robot 5: at 6, the escrow asked of this robot.
-  static Future<_App> start(WidgetTester tester) async {
+  static Future<_App> start(
+    WidgetTester tester, {
+    (double, double)? range,
+    double? takenAmount,
+  }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 2600 * 3)
       ..devicePixelRatio = 3;
@@ -185,7 +189,7 @@ final class _App {
     await tester.pumpWidget(routerHarness(router));
     tor.add(P2pTorState.ready);
     await app.settle();
-    final request = MakeHarness.request(sell: true);
+    final request = MakeHarness.request(sell: true, range: range);
     app.record = switch (await app.wait(
       () => locator<MakeOrderUsecase>().execute(
         request,
@@ -202,7 +206,11 @@ final class _App {
     };
     coordinator
       ..lockMakerBond(app.record.orderId)
-      ..take(app.record.orderId, TradeHarness.robotsOf(_net)[5]);
+      ..take(
+        app.record.orderId,
+        TradeHarness.robotsOf(_net)[5],
+        amount: takenAmount,
+      );
     return app;
   }
 
@@ -376,4 +384,79 @@ void main() {
       await app.close();
     },
   );
+
+  group('the contract\'s amount the confirmation names (functional review of #188, C1)', () {
+    Future<void> openConfirmation(_App app) async {
+      final invoice = app.coordinator.order(app.record.orderId).escrow;
+      if (invoice == null) fail('no escrow invoice');
+      final checked = checkedBolt11InvoiceForTesting(
+        bolt11: invoice.text,
+        amount: invoice.facts.amount,
+        network: _net,
+        paymentHash: invoice.facts.paymentHash,
+        expiresAt: invoice.facts.createdAt.add(invoice.facts.expiry),
+        now: DateTime.utc(2026, 11, 14, 9),
+      );
+      if (checked == null) fail('not a payable invoice');
+      app.wallet.scriptQuote(
+        Ok(
+          P2pWalletQuote(
+            invoice: checked,
+            payin: Sats(checked.amount.value + BigInt.from(500)),
+            networkFee: Sats.fromInt(27),
+            balance: Sats.fromInt(5000000),
+            quotedAt: DateTime.utc(2026, 11, 14, 9),
+          ),
+        ),
+      );
+      await _tap(app.tester, find.text('Pay with this wallet'));
+      await app.settle();
+    }
+
+    testWidgets('a range: the amount its take chose, kept with the contract', (
+      tester,
+    ) async {
+      final app = await _App.start(
+        tester,
+        range: (50, 150),
+        takenAmount: 120,
+      );
+      await app.openTrade();
+      await openConfirmation(app);
+      // 120 EUR at 50,000 EUR/BTC with +2 %: 235,294 sats.
+      expect(
+        find.textContaining('120 EUR are worth 235,294 sats'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('150 EUR are worth'), findsNothing);
+      await app.close();
+    });
+
+    testWidgets(
+      'an amount the coordinator reads otherwise than asked here: no comparison and no figure of it, the state machine\'s alert alone, nothing paid',
+      (tester) async {
+        final app = await _App.start(tester);
+        await app.openTrade();
+        await openConfirmation(app);
+        expect(
+          find.textContaining('100 EUR are worth 196,078 sats'),
+          findsOneWidget,
+        );
+        // The coordinator now says 1,000 EUR for the contract, the confirmation still open.
+        app.coordinator.orderChanges[app.record.orderId] = {
+          'amount': '1000.00000000',
+        };
+        for (var i = 0; i < 15; i++) {
+          app.advance(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+        }
+        await app.settle();
+        expect(find.textContaining('are worth'), findsNothing);
+        expect(find.textContaining('1,000 EUR'), findsNothing);
+        expect(find.textContaining('fee included'), findsNothing);
+        expect(app.wallet.paid, isEmpty);
+        await app.close();
+      },
+    );
+  });
 }

@@ -1448,22 +1448,12 @@ class _Contract extends StatelessWidget {
     return state;
   }
 
-  /// The contract's amount of a trade made here at [seen], as asked here (a range's amount kept with the contract, or the terms' fixed amount), never a figure read alone; `null` while the order read does not agree with it, or none is known (security review of #183, C2, C4). Where nothing was asked here is known ([TradeSeen.asked] unset), the order's fixed amount, as before.
-  static FiatAmount? _contractAmountOf(TradeSeen seen) {
-    if (seen.contractAmountMoved) return null;
-    if (seen.contractAmount case final amount?) return amount;
-    return switch ((seen.asked, seen.order?.amount)) {
-      (null, FixedOrderAmount(:final amount)) => amount,
-      _ => null,
-    };
-  }
-
-  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([_contractAmountOf]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
+  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([TradeSeen.contractAmountShown]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
   double? _payoutPromptAmount(CoordinatorOrder order) {
     if (!contract.maker) {
       return (order.takenAmount ?? order.amount.max).value;
     }
-    return _contractAmountOf(contract.seen)?.value;
+    return contract.seen.contractAmountShown?.value;
   }
 
   /// What the screen shows now, as the trade's cubit holds it (`TradeView.of` of its last state, the screen's own).
@@ -1574,7 +1564,7 @@ class _Contract extends StatelessWidget {
         rateGap,
         role,
         // The contract's amount the gap is computed with, as asked here (#183), never the read's alone.
-        _contractAmountOf(seen),
+        seen.contractAmountShown,
       ),
       Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
         rateGap,

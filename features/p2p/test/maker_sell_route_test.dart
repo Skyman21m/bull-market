@@ -14,6 +14,7 @@ import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_payment_repository.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/escrow_amounts.dart';
 import 'package:p2p/src/p2p_router.dart';
@@ -60,6 +61,7 @@ final class _Words {
   final String sellSummary;
   final String public;
   final String renew;
+  final String collateralBack;
 
   const _Words({
     required this.locale,
@@ -86,6 +88,7 @@ final class _Words {
     required this.sellSummary,
     required this.public,
     required this.renew,
+    required this.collateralBack,
   });
 
   String sats(int value) =>
@@ -124,6 +127,8 @@ const _english = _Words(
   sellSummary: 'Sell BTC for 100 USD at a 2% premium',
   public: 'Your order is public',
   renew: 'Renew',
+  collateralBack:
+      'Your collateral was paid with this wallet: once returned, it comes back through the swap service, less its fees, after a delay.',
 );
 
 const _french = _Words(
@@ -158,6 +163,8 @@ const _french = _Words(
   sellSummary: 'Vendre BTC pour 100 USD à une prime de 2 %',
   public: 'Votre ordre est public',
   renew: 'Renouveler',
+  collateralBack:
+      'Votre garantie a été payée avec ce portefeuille : une fois rendue, elle revient par le service de swap, moins ses frais, après un délai.',
 );
 
 /// The coordinators: [maker] for every robot's request, the limits and the make whatever the host; each coordinator's `/api/info/` under its own alias; the book empty (`404` with the reference's `not_found`, `api/views.py:797-801`); the chat refused (`400`), which the chat panel says, as `/api/chat/` is not played.
@@ -582,6 +589,8 @@ void main() {
         // The collateral locked, the buyer's invoice, the chat.
         journey.coordinator.lockEscrow(order.id);
         await journey.waitFor(find.text(words.payoutWaitMaker), seconds: 30);
+        // What comes back through the swap service at 8, for a maker seller: the collateral only, the bond staying locked (functional review of #188, R3, P).
+        expect(find.text(words.collateralBack), findsOneWidget);
         journey.coordinator.buyerGivesInvoice(order.id);
         await journey.waitFor(find.textContaining(words.chat), seconds: 30);
         journey.coordinator.buyerSentFiat(order.id);
@@ -594,10 +603,13 @@ void main() {
           await journey.pass(1);
         }
         expect(tester.widget<TradeButton>(received).onPressed, isNotNull);
-        // Two quick taps: one dialog, the reference's.
+        // Two presses of the button within one frame (a second tap is absorbed by the navigator until the next frame, functional review of #188, C3): one dialog, the reference's, held by the panel's own guard.
         await tester.ensureVisible(received);
-        await tester.tap(received);
-        await tester.tap(received, warnIfMissed: false);
+        await tester.pump();
+        final press = tester.widget<TradeButton>(received).onPressed;
+        if (press == null) fail('« Confirm … received » off');
+        press();
+        press();
         await settle(tester);
         expect(find.byType(Dialog), findsOneWidget);
         expect(journey.coordinator.sellerConfirmations, 0);
@@ -612,6 +624,17 @@ void main() {
         expect(journey.order.status, 13);
         // A maker seller is offered « Renew » at 13, where the buyer is still being paid (`TradeBox/index.tsx:602-631`, #185).
         expect(find.text(words.renew), findsOneWidget);
+        // « Renew »: the renewal's page with « Sell » kept, and a new sell order made (functional review of #188, R7).
+        await journey.tap(find.text(words.renew));
+        await settle(tester);
+        await settle(tester);
+        Finder inForm(Finder finder) =>
+            find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
+        await journey.waitFor(inForm(find.text(words.sellSummary)), seconds: 20);
+        await journey.tap(inForm(find.text(words.createOrder)));
+        await journey.waitFor(find.textContaining('PUBL'), seconds: 30);
+        expect(journey.coordinator.orders, hasLength(2));
+        expect(journey.coordinator.orders.values.last.type, 1);
         await tester.pumpWidget(const SizedBox.shrink());
         await settle(tester);
         await tester.pump(const Duration(seconds: 61));
@@ -894,6 +917,91 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox.shrink());
       await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'two calls of « Confirm … received » to the screen\'s cubit at once: the second does nothing, the first sends once (functional review of #188, C3)',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      journey.coordinator
+        ..lockEscrow(journey.order.id)
+        ..buyerGivesInvoice(journey.order.id)
+        ..buyerSentFiat(journey.order.id);
+      final received = find.widgetWithText(TradeButton, _english.received);
+      for (var i = 0; i < 40 * 4; i++) {
+        if (received.evaluate().isNotEmpty &&
+            tester.widget<TradeButton>(received).onPressed != null) {
+          break;
+        }
+        await journey.pass(1);
+      }
+      final cubit = BlocProvider.of<TradeCubit>(
+        find.byType(TradeScreen).evaluate().single,
+      );
+      final seen = switch (cubit.state.watch) {
+        TradeWatchStatus(:final seen) => seen,
+        final other => fail('$other'),
+      };
+      final ended = <String>[];
+      unawaited(
+        cubit.confirmFiatReceived(seen).then((_) {
+          ended.add('first');
+        }),
+      );
+      unawaited(
+        cubit.confirmFiatReceived(seen).then((_) {
+          ended.add('second');
+        }),
+      );
+      for (var i = 0; i < 40 && ended.length < 2; i++) {
+        await settle(tester);
+      }
+      // The second returned at once, the first action running (`TradeCubit._chatStep`, `actionRunning`).
+      expect(ended, ['second', 'first']);
+      expect(journey.coordinator.sellerConfirmations, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
+    'the order taken again while the previous take\'s payment is being sent: once it ends, the page left open offers the new take\'s collateral (functional review of #188, R4)',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      final walletQuote = await journey.openConfirmation();
+      final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
+      final hold = Completer<void>();
+      journey.wallet
+        ..holdPayments = hold.future
+        ..scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-e0',
+              paymentHash: escrow0.facts.paymentHash,
+            ),
+          ),
+        );
+      journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());
+      await journey.tap(journey.payOf(walletQuote));
+      await settle(tester);
+      expect(journey.wallet.paid, hasLength(1));
+      journey.takenAgain();
+      await journey.pass(20);
+      hold.complete();
+      journey.wallet.holdPayments = null;
+      await journey.waitFor(find.text(_english.earlierTitle), seconds: 30);
+      await journey.waitFor(
+        find.text(_english.payWithThisWallet),
+        seconds: 30,
+      );
+      expect(await journey.rows(journey.record), [(InvoiceStep.escrow, 0)]);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
     },
   );
 }

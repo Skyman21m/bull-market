@@ -2918,24 +2918,6 @@
       }
     }
   },
-  "p2pPayRateWalletEscrowNoAmount": "At the Bull wallet's price, {price} {currency}/BTC, with the order's premium, the contract's amount is worth {expected} sats. Gap of the collateral: {gap}, the coordinator's fee included.",
-  "@p2pPayRateWalletEscrowNoAmount": {
-    "description": "As p2pPayRateWalletEscrow (#188), the project's own, when the screen has no contract's amount to name (a read that does not give it; the comparison itself is made on the amount kept with the contract).",
-    "placeholders": {
-      "price": {
-        "type": "String"
-      },
-      "currency": {
-        "type": "String"
-      },
-      "expected": {
-        "type": "String"
-      },
-      "gap": {
-        "type": "String"
-      }
-    }
-  },
   "p2pPayRateWarningEscrow": "This collateral is more than {threshold} above that: {asked} sats asked, {expected} sats expected. Check it before you pay.",
   "@p2pPayRateWarningEscrow": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the red warning of the owner's payment rule in the confirmation of a maker seller's collateral (#188), after p2pPayRateWalletEscrow, both in red as one alert; « Pay » stays offered. {threshold} is the threshold, such as « 10% ».",
@@ -3204,43 +3186,43 @@
       }
     }
   },
-  "p2pEscrowStateRefunded": "back: refunded to this wallet, without the swap fees",
+  "p2pEscrowStateRefunded": "back, refunded to this wallet without the swap fees and the network fee",
   "@p2pEscrowStateRefunded": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap was refunded (back)."
   },
-  "p2pEscrowStateNothingSent": "back: nothing left this wallet",
+  "p2pEscrowStateNothingSent": "back, nothing left this wallet",
   "@p2pEscrowStateNothingSent": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): nothing was sent: an attempt that failed or expired with nothing sent, or no swap order of this feature for it (back)."
   },
-  "p2pEscrowStateRefundPending": "not back yet: the swap service is refunding it",
+  "p2pEscrowStateRefundPending": "not back yet, the swap service is refunding it",
   "@p2pEscrowStateRefundPending": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a refund pending, which Bull's own code does not take as final (not back yet, security review of #187, C2)."
   },
-  "p2pEscrowStatePreparing": "not back yet: its swap was being prepared, maybe never sent",
+  "p2pEscrowStatePreparing": "not back yet, its swap was being prepared and may never have been sent",
   "@p2pEscrowStatePreparing": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a swap order prepared or signed and never known as sent (counted not back, with no limit of time, security review of #187, R8)."
   },
-  "p2pEscrowStateMaybeSent": "not back yet: the payment may have been sent",
+  "p2pEscrowStateMaybeSent": "not back yet, the payment may have been sent",
   "@p2pEscrowStateMaybeSent": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a broadcast whose outcome is not known (not back yet)."
   },
-  "p2pEscrowStateWithService": "not back yet: with the swap service",
+  "p2pEscrowStateWithService": "not back yet, with the swap service",
   "@p2pEscrowStateWithService": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): sent to the swap service, not yet seen paying the invoice (not back yet)."
   },
-  "p2pEscrowStateUnderReview": "not back yet: under review at the swap service; contact Bull Bitcoin support if it lasts",
+  "p2pEscrowStateUnderReview": "not back yet, under review at the swap service; contact Bull Bitcoin support if it lasts",
   "@p2pEscrowStateUnderReview": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap service's manual review (not back yet)."
   },
-  "p2pEscrowStateAskSupport": "not back yet: the swap failed and its sats may have left this wallet; contact Bull Bitcoin support",
+  "p2pEscrowStateAskSupport": "not back yet, the swap failed and its sats may have left this wallet; contact Bull Bitcoin support",
   "@p2pEscrowStateAskSupport": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a swap failed or expired whose funds may have left (not back yet)."
   },
-  "p2pEscrowStateUnknown": "state unknown: this device cannot tell where it stands",
+  "p2pEscrowStateUnknown": "state unknown, this device cannot tell where it stands",
   "@p2pEscrowStateUnknown": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the records, or the wallet's, cannot be read, or the wallet does not hold the payment recorded (security review of #187, R6); counted not back."
   },
-  "p2pEscrowStateHeld": "not back yet: paid by the swap service, held by {coordinator}",
+  "p2pEscrowStateHeld": "not back yet, paid by the swap service and held by {coordinator}",
   "@p2pEscrowStateHeld": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap service paid the hold invoice and the coordinator holds it (`P2pWalletPaymentPending`, not back yet).",
     "placeholders": {
