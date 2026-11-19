@@ -162,15 +162,18 @@ final class BondPayConfirming extends BondPayStep {
     this.stale = false,
   });
 
-  BondPayConfirming _with({WalletRateCheck? rate, bool? retrying, bool? stale}) =>
-      BondPayConfirming(
-        walletQuote,
-        rate: rate ?? this.rate,
-        contract: contract,
-        retrying: retrying ?? this.retrying,
-        again: again,
-        stale: stale ?? this.stale,
-      );
+  BondPayConfirming _with({
+    WalletRateCheck? rate,
+    bool? retrying,
+    bool? stale,
+  }) => BondPayConfirming(
+    walletQuote,
+    rate: rate ?? this.rate,
+    contract: contract,
+    retrying: retrying ?? this.retrying,
+    again: again,
+    stale: stale ?? this.stale,
+  );
 }
 
 /// The payment is being made, after the user's confirmation, or by this process while the screen was away; [slow] once it has run for [BondPaymentCubit.stillWaitingAfter].

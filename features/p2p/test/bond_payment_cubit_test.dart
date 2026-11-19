@@ -591,8 +591,7 @@ void main() {
           payments.follow,
           (record) => null,
           step: InvoiceStep.escrow,
-          contract: (record, walletQuote) async =>
-              Ok(contractOf(walletQuote)),
+          contract: (record, walletQuote) async => Ok(contractOf(walletQuote)),
         )..start();
         payments.follows.single.add(const BondPaymentNone());
         await settle();

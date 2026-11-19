@@ -461,7 +461,10 @@ void main() {
         final bondTotal = bond.facts.amount.value.toInt() + 527;
         journey.wallet.scriptPayment(
           Ok(
-            P2pWalletPayment(id: 'swap-bond', paymentHash: bond.facts.paymentHash),
+            P2pWalletPayment(
+              id: 'swap-bond',
+              paymentHash: bond.facts.paymentHash,
+            ),
           ),
         );
         // The wallet's records hold the payment once it is made: found by the follow that starts at its end.
@@ -658,12 +661,18 @@ void main() {
     journey.wallet
       ..scriptPayment(
         Ok(
-          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow.facts.paymentHash),
+          P2pWalletPayment(
+            id: 'swap-e0',
+            paymentHash: escrow.facts.paymentHash,
+          ),
         ),
       )
       ..scriptPayment(
         Ok(
-          P2pWalletPayment(id: 'swap-e0b', paymentHash: escrow.facts.paymentHash),
+          P2pWalletPayment(
+            id: 'swap-e0b',
+            paymentHash: escrow.facts.paymentHash,
+          ),
         ),
       );
     final pay = journey.payOf(walletQuote);
@@ -692,10 +701,7 @@ void main() {
         journey.order.id,
         TradeHarness.robotsOf(_net)[5],
       );
-      await journey.waitFor(
-        find.text(_english.payWithThisWallet),
-        seconds: 60,
-      );
+      await journey.waitFor(find.text(_english.payWithThisWallet), seconds: 60);
       final walletQuote = await journey.openConfirmation();
       expect(walletQuote.amount, Sats.fromInt(245159));
       // One red alert: the comparison, the fee said included, then the warning with both amounts.
@@ -729,7 +735,10 @@ void main() {
       // Paid, its wallet id recorded, but the wallet's records hold no payment of it.
       journey.wallet.scriptPayment(
         Ok(
-          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow0.facts.paymentHash),
+          P2pWalletPayment(
+            id: 'swap-e0',
+            paymentHash: escrow0.facts.paymentHash,
+          ),
         ),
       );
       await journey.tap(journey.payOf(walletQuote));
@@ -762,9 +771,7 @@ void main() {
       );
       await journey.pass(12);
       expect(
-        find.text(
-          'Take 1: not back yet: the swap service is refunding it',
-        ),
+        find.text('Take 1: not back yet: the swap service is refunding it'),
         findsOneWidget,
       );
       journey.wallet.setProgress(payment0, const Ok(P2pWalletPaymentPending()));
@@ -790,7 +797,10 @@ void main() {
       final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
       journey.wallet.scriptPayment(
         Ok(
-          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow0.facts.paymentHash),
+          P2pWalletPayment(
+            id: 'swap-e0',
+            paymentHash: escrow0.facts.paymentHash,
+          ),
         ),
       );
       journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());

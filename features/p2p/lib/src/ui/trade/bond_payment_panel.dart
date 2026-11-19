@@ -307,19 +307,20 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
         ],
         // A maker seller's escrow (#188): its own confirmation, with the contract it states.
         final BondPayConfirming confirming &&
-            BondPayConfirming(contract: final contract?) => [
-          _EscrowConfirmation(
-            confirming: confirming,
-            contract: contract,
-            bondPaidHere: widget.bondPaidHere,
-            onRetry: () => unawaited(cubit.retryRate()),
-            coordinator: coordinator,
-            request: widget.request,
-            payKey: _payKey,
-            onCancel: cubit.dismiss,
-            onPay: () => unawaited(cubit.confirm(shown: confirming)),
-          ),
-        ],
+            BondPayConfirming(contract: final contract?) =>
+          [
+            _EscrowConfirmation(
+              confirming: confirming,
+              contract: contract,
+              bondPaidHere: widget.bondPaidHere,
+              onRetry: () => unawaited(cubit.retryRate()),
+              coordinator: coordinator,
+              request: widget.request,
+              payKey: _payKey,
+              onCancel: cubit.dismiss,
+              onPay: () => unawaited(cubit.confirm(shown: confirming)),
+            ),
+          ],
         BondPayConfirming(:final walletQuote, :final rate, :final retrying) => [
           _Confirmation(
             walletQuote: walletQuote,
@@ -540,7 +541,8 @@ class _EscrowConfirmation extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    String sats(Sats amount) => l10n.p2pAmountSats(formats.bigSats(amount.value));
+    String sats(Sats amount) =>
+        l10n.p2pAmountSats(formats.bigSats(amount.value));
     final walletQuote = confirming.walletQuote;
     final body = text.bodyMedium?.copyWith(color: colors.text);
     final currency = request.currency;
@@ -670,8 +672,8 @@ class _EscrowConfirmation extends StatelessWidget {
     if (seen.contractAmountMoved) return null;
     final status = seen.status;
     final gap = switch (status) {
-      WaitingForBoth(:final rateGap) || WaitingForEscrow(:final rateGap) =>
-        rateGap,
+      WaitingForBoth(:final rateGap) ||
+      WaitingForEscrow(:final rateGap) => rateGap,
       _ => null,
     };
     final order = seen.order;
@@ -890,7 +892,12 @@ class _RateLines extends StatelessWidget {
         if (escrow) {
           final amount = escrowAmount;
           final line = amount == null
-              ? l10n.p2pPayRateWalletEscrowNoAmount(price, code, expectedText, gap)
+              ? l10n.p2pPayRateWalletEscrowNoAmount(
+                  price,
+                  code,
+                  expectedText,
+                  gap,
+                )
               : l10n.p2pPayRateWalletEscrow(
                   price,
                   code,
@@ -908,7 +915,10 @@ class _RateLines extends StatelessWidget {
                   colors.error,
                 )
               else
-                Text(line, style: text.bodyMedium?.copyWith(color: colors.text)),
+                Text(
+                  line,
+                  style: text.bodyMedium?.copyWith(color: colors.text),
+                ),
             ],
           );
         }

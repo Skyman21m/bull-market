@@ -1257,9 +1257,7 @@ class _Contract extends StatelessWidget {
           // « you will get back the trade collateral and your bond »: both come back the same way when paid with this wallet; for a maker seller the collateral only.
           if (_backThroughSwap(
                 l10n,
-                record.origin == TradeOrigin.madeHere
-                    ? paid.escrowOnly
-                    : paid,
+                record.origin == TradeOrigin.madeHere ? paid.escrowOnly : paid,
                 escrow: true,
               )
               case final line?) ...[

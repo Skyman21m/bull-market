@@ -268,7 +268,10 @@ void main() {
       expect(confirm, findsOneWidget);
       // The confirmation of contract 0: no new contract, no alert, the comparison with the Bull wallet's price, the fee included.
       expect(find.textContaining('New contract'), findsNothing);
-      expect(find.textContaining('the coordinator\'s fee included'), findsOneWidget);
+      expect(
+        find.textContaining('the coordinator\'s fee included'),
+        findsOneWidget,
+      );
       await _tap(tester, confirm);
       await app.settle();
       // Paid once, under contract 0, the very quote confirmed.
@@ -283,9 +286,10 @@ void main() {
         Ok(:final value) => value,
         Err(:final failure) => fail('$failure'),
       };
-      expect([for (final row in rows) (row.step, row.take)], [
-        (InvoiceStep.escrow, 0),
-      ]);
+      expect(
+        [for (final row in rows) (row.step, row.take)],
+        [(InvoiceStep.escrow, 0)],
+      );
       await app.close();
     },
   );
