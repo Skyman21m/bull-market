@@ -320,6 +320,8 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
       case BondPayQuoting() || BondPayConfirming() || BondPaySending():
         break;
       case _:
+        // The earlier contract's payment is no longer the panel's: looked for again under the new contract, where finding none offers the wallet.
+        emit(state._with(step: const BondPayLooking()));
         _followAgain(leavesSending: true);
     }
   }

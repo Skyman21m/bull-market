@@ -393,7 +393,7 @@ final class _Journey {
   /// The trade shown, as its screen's cubit holds it.
   TradeRecord get record => BlocProvider.of<TradeCubit>(
     find.byType(TradeScreen).evaluate().single,
-  ).record;
+  ).state.record;
 
   /// The trade's coordinator as the panel names it.
   String get coordinatorName =>
@@ -417,15 +417,16 @@ void main() {
         await journey.tap(find.text(words.payWithThisWallet));
         await settle(tester);
         final bondTotal = bond.facts.amount.value.toInt() + 527;
-        await journey.tap(
-          find.text(words.payTotal.replaceAll('{n}', words.sats(bondTotal))),
-        );
         journey.wallet.scriptPayment(
           Ok(
             P2pWalletPayment(id: 'swap-bond', paymentHash: bond.facts.paymentHash),
           ),
         );
+        // The wallet's records hold the payment once it is made: found by the follow that starts at its end.
         journey.paidAt(bond, 'swap-bond', const P2pWalletPaymentPending());
+        await journey.tap(
+          find.text(words.payTotal.replaceAll('{n}', words.sats(bondTotal))),
+        );
         await settle(tester);
         expect(journey.wallet.paid, hasLength(1));
         journey.coordinator.lockMakerBond(order.id);
@@ -455,12 +456,12 @@ void main() {
             ),
           ),
         );
-        await journey.tap(pay0);
         final payment0 = journey.paidAt(
           escrow0,
           'swap-e0',
           const P2pWalletPaymentPending(),
         );
+        await journey.tap(pay0);
         await settle(tester);
         expect(journey.wallet.paid, hasLength(2));
 
@@ -521,10 +522,10 @@ void main() {
           findsOneWidget,
         );
         expect(find.text(words.bondHeld), findsNothing);
+        journey.paidAt(escrow1, 'swap-e1', const P2pWalletPaymentPending());
         await journey.tap(
           find.text(words.payTotal.replaceAll('{n}', words.sats(196654))),
         );
-        journey.paidAt(escrow1, 'swap-e1', const P2pWalletPaymentPending());
         await settle(tester);
         expect(journey.wallet.paid, hasLength(3));
         expect(await journey.rows(journey.record), [
