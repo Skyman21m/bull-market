@@ -1095,17 +1095,16 @@ void main() {
 
   group('what a coordinator that lies can obtain', () {
     test(
-      'a faked next contract for a second escrow: taken as a contract, bounded by the wallet\'s ceiling',
+      'a faked next contract for a second escrow, of any size: taken as a contract, with no warning (nothing bounds it but the user, after #187\'s alert of the earlier escrows not back yet, `maker_escrow_from_wallet_test.dart`)',
       () async {
         final paid = await along(s, [1, 6]);
         final second = next(
           paid,
           await made(6, role: s, taker: third, deadline: deadline1, take: 1),
         );
-        // Nothing tells it from a real take after a return to the book (design note § 3.2): this wallet pays it only under the ceiling of the contract's amount, and #187 only once the first escrow is no longer held.
+        // Nothing tells it from a real take after a return to the book (design note § 3.2): this wallet pays its escrow after an alert of the earlier ones not back yet (the owner's decision of 2026-11-19, #187) and under the owner's payment rule of 2026-11-17, both of which warn and never stop; the factor of the creation's price that bounded it before is gone.
         expect(second.warnings, isEmpty);
-        final ceiling = madeTerms(role: s).side.maker.escrowCeilingFor(null);
-        if (ceiling == null) fail('no ceiling');
+        expect(second.trail.take, 1);
         final huge = next(
           paid,
           await made(
@@ -1118,18 +1117,17 @@ void main() {
           ),
         );
         expect(huge.warnings, isEmpty);
+        expect(huge.trail.take, 1);
+        final escrow = huge.invoice;
+        if (escrow is! CheckedInvoice) fail('no escrow');
         expect(
           walletPaymentFor(
-            accepted: ceiling,
+            accepted: escrow.amount,
             status: huge,
             step: InvoiceStep.escrow,
             now: tradeNow,
           ),
-          isA<WalletPaymentRefused>().having(
-            (r) => r.reason,
-            'reason',
-            WalletPaymentRefusal.aboveAccepted,
-          ),
+          isA<WalletPaymentOffered>().having((o) => o.take, 'take', 1),
         );
       },
     );

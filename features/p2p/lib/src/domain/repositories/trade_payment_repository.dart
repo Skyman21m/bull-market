@@ -22,6 +22,20 @@ abstract interface class TradePaymentRepository {
     int take = 0,
   });
 
+  /// Every payment recorded for [trade], whatever its step and contract, ordered by contract then step (bond first): what a maker seller's escrow is checked against before this wallet pays it (#187: the escrows of the order's other contracts, and every payment hash the trade already holds), and what follows an escrow paid for a contract the trail has moved on from.
+  ///
+  /// A database that cannot be read, or a row this code never writes, is a [P2pStorageFailure].
+  @useResult
+  Future<Result<List<TradePaymentRecord>, P2pFailure>> paymentsOfTrade(
+    TradeRecord trade,
+  );
+
+  /// Whether a payment of any trade, step or contract holds [paymentHash]: an invoice already presented, which `trade_payments_hash_once` refuses to record again (#187, security review R4: said so rather than as records that could not be written).
+  ///
+  /// A database that cannot be read is a [P2pStorageFailure].
+  @useResult
+  Future<Result<bool, P2pFailure>> holdsPaymentHash(String paymentHash);
+
   /// Records, before the wallet is asked, that an attempt to pay the invoice of [paymentHash] for [trade]'s [step] starts at [at]: the payment when there was none, or a new attempt of the same invoice (its start moved to [at] unless already later, the id of the earlier attempt kept until the wallet gives a new one).
   ///
   /// `false`: nothing was written, since [trade]'s payment of [step] in contract [take] is of another invoice. A first attempt for a closed or never read trade, for a contract its trail is not at, or of a payment hash another payment of any trade, step or contract holds, is refused by the database ([P2pStorageFailure]); a new attempt of the same invoice is written whether the trade is still open or not, the caller paying only from a status it has just read and stored. Either way the wallet is not asked unless this is `true`.

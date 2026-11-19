@@ -266,9 +266,6 @@ void main() {
         expect(escrow.step, InvoiceStep.escrow);
         expect(escrow.amount, Sats.fromInt(makerEscrowOf(makerSats)));
         expect(both.trail.escrowHash, escrow.paymentHash);
-        final terms = termsOf(s);
-        final ceiling = terms.side.maker.escrowCeilingFor(null);
-        expect(ceiling, isNotNull);
         expect(
           walletPaymentFor(
             accepted: escrow.amount,

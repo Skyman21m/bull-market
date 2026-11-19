@@ -93,6 +93,15 @@ final class _Unwritable implements TradePaymentRepository {
   }) async => const Ok(null);
 
   @override
+  Future<Result<List<TradePaymentRecord>, P2pFailure>> paymentsOfTrade(
+    trade,
+  ) async => const Ok([]);
+
+  @override
+  Future<Result<bool, P2pFailure>> holdsPaymentHash(paymentHash) async =>
+      const Ok(false);
+
+  @override
   Future<Result<bool, P2pFailure>> recordStart(
     trade,
     step, {
@@ -625,77 +634,7 @@ void main() {
   });
 
   group('a maker\'s trade, opened by the reader since #179', () {
-    // The guard of money: since #180 a maker's bond at 0 is paid from this wallet, its escrow at 6 and 7 not until #187; tests of behaviour, as this file's earlier pin of its text announced (security review of #179). The maker bond's rules and refusals in full: `maker_bond_from_wallet_test.dart`.
-    Future<void> neverPaid({
-      required bool sell,
-      required InvoiceStep step,
-      void Function(MakeHarness harness)? move,
-      required Matcher at,
-    }) async {
-      final harness = await MakeHarness.start();
-      final made = await harness.makeOrder(MakeHarness.request(sell: sell));
-      final record = switch (made) {
-        Ok(value: final MakeStarted started) => started.record,
-        final other => fail('$other'),
-      };
-      move?.call(harness);
-      final run = harness.watchOf(record);
-      await harness.settle();
-      final seen = run.lastStatus.seen;
-      await run.subscription.cancel();
-      expect(seen.stored, isTrue);
-      expect(seen.status, at);
-      final invoice = seen.status.invoice;
-      expect(invoice, isA<CheckedInvoice>());
-      final checked = invoice as CheckedInvoice;
-      final fake = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)));
-      final payBond = PayBondFromWalletUsecase(
-        harness.reader,
-        harness.limiter,
-        TradePaymentRepositoryImpl(harness.database),
-        fake,
-        harness.locks,
-        BondPaymentsInFlight(),
-        step: step,
-      );
-      final walletInvoice = checkedBolt11InvoiceForTesting(
-        bolt11: checked.bolt11,
-        amount: checked.amount,
-        network: harness.network,
-        paymentHash: checked.paymentHash,
-        expiresAt: checked.facts.expiresAt,
-        now: harness.now,
-      );
-      expect(walletInvoice, isNotNull);
-      final quote = P2pWalletQuote(
-        invoice: walletInvoice ?? fail('no invoice'),
-        payin: Sats(checked.amount.value + BigInt.from(120)),
-        networkFee: Sats.fromInt(27),
-        balance: Sats.fromInt(5000000),
-        quotedAt: harness.now,
-      );
-      // What a wallet would answer, were it asked: it must not be.
-      fake
-        ..scriptQuote(Ok(quote))
-        ..scriptPayment(
-          const Ok(P2pWalletPayment(id: 'never-asked', paymentHash: 'none')),
-        );
-      expect(
-        await payBond.checkBond(record, seen),
-        isA<Err<Object?, BondPayRefusal>>(),
-      );
-      expect(
-        await payBond.quoteBond(record, seen),
-        isA<Err<Object?, BondPayRefusal>>(),
-      );
-      expect(
-        await payBond.payBond(record, accepted: quote),
-        isA<Err<Object?, BondPayRefusal>>(),
-      );
-      expect(fake.quoted, isEmpty);
-      expect(fake.paid, isEmpty);
-    }
-
+    // The guard of money: since #180 a maker's bond at 0 is paid from this wallet, and since #187 a maker seller's escrow at 6 and 7 under its own rules; tests of behaviour, as this file's earlier pin of its text announced (security review of #179). The maker bond's rules and refusals in full: `maker_bond_from_wallet_test.dart`; the escrow's: `maker_escrow_from_wallet_test.dart`.
     test(
       'the maker bond at 0: offered, quoted and paid since #180, under the step bond, and never by the escrow\'s instance',
       () async {
@@ -767,19 +706,69 @@ void main() {
 
     for (final status in [6, 7]) {
       test(
-        'a maker seller\'s escrow at $status: never offered, quoted or paid',
+        'a maker seller\'s escrow at $status: offered and quoted since #187, never paid without the confirmation of its contract',
         () async {
-          await neverPaid(
-            sell: true,
-            step: InvoiceStep.escrow,
-            move: (harness) {
-              harness.coordinator
-                ..lockMakerBond(42)
-                ..take(42, harness.robot(5));
-              harness.coordinator.order(42).status = status;
-            },
-            at: status == 6 ? isA<WaitingForBoth>() : isA<WaitingForEscrow>(),
+          final harness = await MakeHarness.start();
+          final record = switch (await harness.makeOrder(
+            MakeHarness.request(sell: true),
+          )) {
+            Ok(value: final MakeStarted started) => started.record,
+            final other => fail('$other'),
+          };
+          harness.coordinator
+            ..lockMakerBond(42)
+            ..take(42, harness.robot(5));
+          harness.coordinator.order(42).status = status;
+          final run = harness.watchOf(record);
+          await harness.settle();
+          final seen = run.lastStatus.seen;
+          await run.subscription.cancel();
+          expect(seen.stored, isTrue);
+          expect(
+            seen.status,
+            status == 6 ? isA<WaitingForBoth>() : isA<WaitingForEscrow>(),
           );
+          final fake = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)));
+          final payBond = PayBondFromWalletUsecase(
+            harness.reader,
+            harness.limiter,
+            TradePaymentRepositoryImpl(harness.database),
+            fake,
+            harness.locks,
+            BondPaymentsInFlight(),
+            step: InvoiceStep.escrow,
+          );
+          final offered = switch (await payBond.checkBond(record, seen)) {
+            Ok(:final value) => value.walletInvoice,
+            Err(:final failure) => fail('$failure'),
+          };
+          final quote = P2pWalletQuote(
+            invoice: offered,
+            payin: Sats(offered.amount.value + BigInt.from(120)),
+            networkFee: Sats.fromInt(27),
+            balance: Sats.fromInt(5000000),
+            quotedAt: harness.now,
+          );
+          fake
+            ..scriptQuote(Ok(quote))
+            ..scriptPayment(
+              const Ok(
+                P2pWalletPayment(id: 'never-asked', paymentHash: 'none'),
+              ),
+            );
+          expect(
+            await payBond.quoteBond(record, seen),
+            isA<Ok<P2pWalletQuote, BondPayRefusal>>(),
+          );
+          expect(
+            await payBond.payBond(record, accepted: quote),
+            isA<Err<Object?, BondPayRefusal>>().having(
+              (e) => e.failure,
+              'failure',
+              isA<BondPayContractNotConfirmed>(),
+            ),
+          );
+          expect(fake.paid, isEmpty);
         },
       );
     }

@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 
 import '../../../public/p2p_wallet_port.dart';
+import 'escrow_contract.dart';
 import 'wallet_payment.dart';
 
 /// Why the bond of a trade was not quoted or paid from the wallet (#100): a type for each reason, which the screen words; nothing was sent to the wallet's swap service for these, but [BondPayWalletRefused] says what the wallet itself answered.
@@ -16,7 +17,7 @@ sealed class BondPayRefusal extends Failure {
   String toString() => runtimeType.toString();
 }
 
-/// The status is not the bond step marked stored: a payment is offered only from a stored `WaitingForTakerBond`, or for an order made here a stored `WaitingForMakerBond` (#180) (`AGENTS.md`, « Rules for the screens (#88) »), and the read just before the payment no longer shows one; also every step this wallet does not pay for the trade's side (a maker seller's escrow before #187).
+/// The status is not the bond step marked stored: a payment is offered only from a stored `WaitingForTakerBond`, or for an order made here a stored `WaitingForMakerBond` (#180) (`AGENTS.md`, « Rules for the screens (#88) »), and the read just before the payment no longer shows one; also every step this wallet does not pay for the trade's side (the escrow's instance at a maker bond, the bond's at an escrow).
 final class BondPayNotAtBondStep extends BondPayRefusal {
   const BondPayNotAtBondStep();
 }
@@ -66,6 +67,26 @@ final class BondPayNotRecorded extends BondPayRefusal {
   const BondPayNotRecorded();
 }
 
+/// A maker seller's escrow (#187): what will leave the wallet, read again under the payment's lock with the quote about to be paid, is more than the confirmation showed (this escrow's quote costing more, more sats of earlier escrows not back yet, or an escrow the coordinator kept since): nothing was paid, and the confirmation is to be made again with [contract], what it is now, with the quote that would be paid (the owner's decision of 2026-11-19: a new confirmation, not a lock; the next one pays).
+final class BondPayConfirmAgain extends BondPayRefusal {
+  final EscrowContract contract;
+
+  const BondPayConfirmAgain(this.contract);
+
+  @override
+  String toString() => 'BondPayConfirmAgain(${contract.take})';
+}
+
+/// A maker seller's escrow (#187) whose payment hash was already presented: an escrow of an earlier contract (the trail's `earlier_escrows`), another payment recorded for the trade (another contract's escrow, or its bond), or a payment recorded for another trade, whether or not it was ever paid. Never paid from this wallet; the state machine refuses the first as a breach too (`EscrowNotOfThisContract`), and the database refuses a payment hash recorded twice (`trade_payments_hash_once`).
+final class BondPayEscrowSeenBefore extends BondPayRefusal {
+  const BondPayEscrowSeenBefore();
+}
+
+/// A maker seller's escrow (#187) whose confirmation did not state the contract the trail now stands at: no contract was confirmed, or the confirmed one is not the trail's read again under the payment's lock. Nothing was paid; a new confirmation is needed.
+final class BondPayContractNotConfirmed extends BondPayRefusal {
+  const BondPayContractNotConfirmed();
+}
+
 /// The wallet refused ([refusal]): nothing left it, but for [P2pWalletBroadcastUnknown], whose payment is followed.
 final class BondPayWalletRefused extends BondPayRefusal {
   final P2pWalletRefusal refusal;
@@ -112,4 +133,43 @@ final class BondPaymentUnreadable extends BondPaymentWatch {
 
   @override
   String toString() => 'BondPaymentUnreadable($failure)';
+}
+
+/// Where the escrow this wallet was asked to pay for one contract of an order made here stands (#187): the contract ([take]) and the payment's follow ([watch]), as [BondPaymentWatch] says it for the current one.
+@immutable
+final class EscrowPaymentOfContract {
+  final int take;
+  final BondPaymentWatch watch;
+
+  const EscrowPaymentOfContract(this.take, this.watch);
+
+  @override
+  String toString() => 'EscrowPaymentOfContract($take, $watch)';
+}
+
+/// Where every escrow this wallet was asked to pay for an order made here stands, contract by contract (#187, design note § 6 row 13): an escrow paid for contract n stays followed once the trail moved to the next contract, and once the trade ended.
+@immutable
+sealed class EscrowPaymentsWatch {
+  const EscrowPaymentsWatch();
+}
+
+/// Each escrow recorded for the trade, by contract, oldest first: empty when none was asked of the wallet from this device.
+final class EscrowPaymentsFollowed extends EscrowPaymentsWatch {
+  final List<EscrowPaymentOfContract> escrows;
+
+  EscrowPaymentsFollowed(Iterable<EscrowPaymentOfContract> escrows)
+    : escrows = List.unmodifiable(escrows);
+
+  @override
+  String toString() => 'EscrowPaymentsFollowed($escrows)';
+}
+
+/// The trade's records of its payments could not be read ([failure]): nothing is said of an escrow.
+final class EscrowPaymentsUnreadable extends EscrowPaymentsWatch {
+  final Failure failure;
+
+  const EscrowPaymentsUnreadable(this.failure);
+
+  @override
+  String toString() => 'EscrowPaymentsUnreadable($failure)';
 }
