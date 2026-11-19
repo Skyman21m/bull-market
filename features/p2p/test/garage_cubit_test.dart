@@ -8,9 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
@@ -117,6 +119,7 @@ void main() {
     RobosatsNetwork network = RobosatsNetwork.testnet,
     UnacknowledgedGarageKeys? unacknowledged,
     RobotBindingRepository? bindings,
+    Stream<RobotSlot?> Function(NetworkGarageKey key)? madeRobots,
   }) {
     storage.install();
     final repository = GarageKeyRepositoryImpl(
@@ -139,6 +142,7 @@ void main() {
       DeleteGarageKeyUsecase(repository),
       NeedsPinToDeleteGarageKeyUsecase(recorded),
       unacknowledged ?? UnacknowledgedGarageKeys(),
+      madeRobots: madeRobots,
     );
   }
 
@@ -1432,4 +1436,235 @@ void main() {
     },
     timeout: slow,
   );
+
+  group('the robot of the orders made here, and « Last order #N » (#227)', () {
+    final madeAt = DateTime.utc(2026, 11, 19, 9);
+
+    TradeRecord recordOf(RobotSlot robot) => TradeRecord(
+      robot: robot,
+      coordinatorAlias: 'temple',
+      coordinatorOnion:
+          Federation.robosats.byAlias('temple')?.testnet.onion ??
+          (throw StateError('temple')),
+      orderId: 4321,
+      role: TradeRole.buyer,
+      origin: TradeOrigin.madeHere,
+      takenAt: madeAt,
+      confirmedAt: madeAt,
+      closedAt: madeAt.add(const Duration(days: 1)),
+    );
+
+    final otherFingerprint = switch (GarageKey.fromBytes(
+      Uint8List.fromList(List<int>.generate(32, (i) => 64 - i)),
+    )) {
+      Ok(:final value) => switch (GarageKeyFingerprint.of(value)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      },
+      Err(:final failure) => throw StateError('$failure'),
+    };
+
+    RobotSlot slot(
+      int index, {
+      RobosatsNetwork network = RobosatsNetwork.testnet,
+      GarageKeyFingerprint? key,
+    }) => RobotSlot(network, key ?? fixedFingerprint, index);
+
+    int shown(GarageCubit cubit) => (cubit.state as GarageWithKey).robot.index;
+
+    /// The orders made here as the use case gives them: [start] first, what the Garage opens on, then what the test adds.
+    ({
+      StreamController<RobotSlot?> made,
+      List<NetworkGarageKey> asked,
+      Stream<RobotSlot?> Function(NetworkGarageKey key) follow,
+    })
+    madeStarting(RobotSlot? start) {
+      final made = StreamController<RobotSlot?>.broadcast();
+      final asked = <NetworkGarageKey>[];
+      return (
+        made: made,
+        asked: asked,
+        follow: (key) {
+          asked.add(key);
+          scheduleMicrotask(() => made.add(start));
+          return made.stream;
+        },
+      );
+    }
+
+    test(
+      'opens on the robot of the newest order made here whose bond is locked, then moves to each one seen locked',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        await cubit.load();
+        final state = cubit.state as GarageWithKey;
+        expect(state.robot.index, 3);
+        expect(state.robot.nickname, switch (fixedKey.deriveIdentity(3)) {
+          Ok(:final value) => value.nickname,
+          Err() => fail('no robot 3'),
+        });
+        expect(orders.asked, [state.key]);
+        orders.made.add(slot(5));
+        await pumpEventQueue();
+        expect(shown(cubit), 5);
+        await cubit.close();
+        expect(orders.made.hasListener, isFalse);
+        await orders.made.close();
+      },
+    );
+
+    test(
+      'opens on the first usable robot with none, or one of another key or network',
+      () async {
+        for (final start in [
+          null,
+          slot(3, key: otherFingerprint),
+          slot(3, network: RobosatsNetwork.mainnet),
+        ]) {
+          final orders = madeStarting(start);
+          final cubit = cubitOver(
+            holding([testnetEntry]),
+            madeRobots: orders.follow,
+          );
+          await cubit.load();
+          expect(shown(cubit), 0, reason: '$start');
+          // Another key's order seen locked moves nothing either.
+          final before = cubit.state;
+          orders.made.add(slot(4, key: otherFingerprint));
+          await pumpEventQueue();
+          expect(cubit.state, same(before));
+          await cubit.close();
+          await orders.made.close();
+        }
+      },
+    );
+
+    test(
+      'the arrows stop the following until the Garage is left, a read of the vault included',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        await cubit.load();
+        cubit.next();
+        expect(shown(cubit), 4);
+        expect(orders.made.hasListener, isFalse);
+        orders.made.add(slot(6));
+        await pumpEventQueue();
+        expect(shown(cubit), 4);
+        // Read again: the first usable robot, nothing followed.
+        await cubit.load();
+        expect(shown(cubit), 0);
+        expect(orders.asked, hasLength(1));
+        await cubit.close();
+        await orders.made.close();
+      },
+    );
+
+    test(
+      'one following at a time: two reads of the vault at once leave none after the Garage is left (review of #229, R3)',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        unawaited(cubit.load());
+        await cubit.load();
+        await pumpEventQueue();
+        expect(shown(cubit), 3);
+        await cubit.close();
+        expect(orders.made.hasListener, isFalse);
+        await orders.made.close();
+      },
+    );
+
+    test(
+      'the key deleted: its orders followed no more (review of #229, R4)',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        await cubit.load();
+        expect(orders.made.hasListener, isTrue);
+        await cubit.delete(reauthenticate: neverAsked);
+        expect(cubit.state, isA<GarageWithoutKey>());
+        expect(orders.made.hasListener, isFalse);
+        await cubit.close();
+        await orders.made.close();
+      },
+      timeout: slow,
+    );
+
+    test(
+      'the vault read again while following, the key gone from it: nothing followed any more (review of #229, R6)',
+      () async {
+        final orders = madeStarting(slot(3));
+        final storage = holding([testnetEntry]);
+        final cubit = cubitOver(storage, madeRobots: orders.follow);
+        await cubit.load();
+        expect(orders.made.hasListener, isTrue);
+        storage.entries.remove(testnetEntry);
+        await cubit.load();
+        expect(cubit.state, isA<GarageWithoutKey>());
+        expect(orders.made.hasListener, isFalse);
+        await cubit.close();
+        await orders.made.close();
+      },
+      timeout: slow,
+    );
+
+    test(
+      'a tap on « Last order #N » shows that order\'s robot, which what the Garage opened on does not replace; an order seen locked after it does',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        await cubit.load();
+        cubit.showOrderRobot(recordOf(slot(1)));
+        expect(shown(cubit), 1);
+        await pumpEventQueue();
+        expect(shown(cubit), 1);
+        orders.made.add(slot(7));
+        await pumpEventQueue();
+        expect(shown(cubit), 7);
+        await cubit.close();
+        await orders.made.close();
+      },
+    );
+
+    test(
+      'a tap on an order of another Garage Key or network, or on the robot shown, changes nothing',
+      () async {
+        final cubit = cubitOver(holding([testnetEntry]));
+        await cubit.load();
+        cubit.previous();
+        final before = cubit.state;
+        expect((before as GarageWithKey).failure, isNotNull);
+        for (final robot in [
+          slot(2, key: otherFingerprint),
+          slot(2, network: RobosatsNetwork.mainnet),
+          slot(-1),
+          slot(0),
+        ]) {
+          cubit.showOrderRobot(recordOf(robot));
+          expect(cubit.state, same(before), reason: '$robot');
+        }
+        cubit.showOrderRobot(recordOf(slot(2)));
+        expect(shown(cubit), 2);
+        expect((cubit.state as GarageWithKey).failure, isNull);
+        await cubit.close();
+      },
+    );
+  });
 }

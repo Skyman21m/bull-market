@@ -9,6 +9,7 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -44,6 +45,49 @@ void main() {
         }
       }
     });
+
+    test(
+      'of a record: only the same network, key and index, as the key gives it (#227)',
+      () {
+        final key = NetworkGarageKey(RobosatsNetwork.testnet, fixedKey);
+        final other = switch (GarageKey.fromBytes(
+          Uint8List.fromList(List<int>.generate(32, (i) => 64 - i)),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final fingerprint = ok(key.fingerprint);
+        for (final index in [0, 1, 7]) {
+          final robot = key.robotOf(
+            RobotSlot(RobosatsNetwork.testnet, fingerprint, index),
+          );
+          expect(robot, ok(key.firstUsableRobot(index)));
+          expect(robot?.accountIndex, index);
+          // The same index of the other network, or of another key: none.
+          expect(
+            key.robotOf(RobotSlot(RobosatsNetwork.mainnet, fingerprint, index)),
+            isNull,
+          );
+          expect(
+            key.robotOf(
+              RobotSlot(
+                RobosatsNetwork.testnet,
+                ok(
+                  NetworkGarageKey(RobosatsNetwork.testnet, other).fingerprint,
+                ),
+                index,
+              ),
+            ),
+            isNull,
+          );
+        }
+        // An index no key gives.
+        expect(
+          key.robotOf(RobotSlot(RobosatsNetwork.testnet, fingerprint, -1)),
+          isNull,
+        );
+      },
+    );
 
     test('of the same bytes on the two networks are two robots', () {
       final mainnet = ok(

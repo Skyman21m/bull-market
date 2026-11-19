@@ -38,7 +38,7 @@ final class LastOrdersUnreadable extends LastOrdersState {
   const LastOrdersUnreadable();
 }
 
-/// Lists the last finished orders of [network] while the Garage is shown: the only caller of [ListLastOrdersUsecase]. Nothing is asked of a coordinator.
+/// Lists the last finished orders of [network] while the Garage is shown, for the « Last order #N » lines; the Garage's `FollowMadeOrdersUsecase` reads the same use case once, for the robot it opens on (#227). Nothing is asked of a coordinator.
 class LastOrdersCubit extends Cubit<LastOrdersState> {
   final RobosatsNetwork network;
   final LastOrdersLister _list;

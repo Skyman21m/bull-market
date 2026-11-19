@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
@@ -5,11 +7,13 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import '../domain/network_garage_key.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/robot_binding.dart';
+import '../domain/trade_record.dart';
 import '../domain/usecases/delete_garage_key_usecase.dart';
 import '../domain/usecases/generate_garage_key_usecase.dart';
 import '../domain/usecases/import_garage_key_usecase.dart';
 import '../domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import '../domain/usecases/read_garage_key_usecase.dart';
+import '../domain/usecases/trade/follow_made_orders_usecase.dart';
 import 'garage_state.dart';
 
 /// Asks the user the wallet's re-authentication, its PIN, and completes with `true` only when the user passed it: what the screen lends [GarageCubit] for a delete that needs it.
@@ -28,6 +32,8 @@ typedef GarageReauthenticator = Future<bool> Function();
 /// A key is shown without the PIN only right after the vault drew it, while the user stays in the Garage with the app in the foreground the whole time from the tap on « Generate Garage Key » or « Generate new » ([GarageWithKey.showWithoutPin]); a pasted key never is.
 /// [conceal], called whenever the app is hidden or paused, ends that for this key: it hides a key shown, and a hide while the vault is still deleting or drawing keeps the key behind the PIN when it arrives; leaving the Garage closes the cubit.
 /// From then on, until the user saw the key and pressed « Continue » or deleted it, [UnacknowledgedGarageKeys] makes each visit show the backup alert, with the key behind the PIN.
+///
+/// The robot shown follows the orders made here with the key (#227, [FollowMadeOrdersUsecase]): the Garage opens on the robot of the newest one in progress whose bond was locked, else on the robot of the « Last order #N » line under it, else on the first usable robot, and moves to the robot of each one whose bond is seen locked while it is shown, never before, until the user moves with the arrows. A tap on « Last order #N » shows the robot of that order ([showOrderRobot]).
 class GarageCubit extends Cubit<GarageState> {
   final ReadGarageKeyUsecase _read;
   final GenerateGarageKeyUsecase _generate;
@@ -35,6 +41,15 @@ class GarageCubit extends Cubit<GarageState> {
   final DeleteGarageKeyUsecase _delete;
   final NeedsPinToDeleteGarageKeyUsecase _needsPin;
   final UnacknowledgedGarageKeys _unacknowledged;
+
+  /// [FollowMadeOrdersUsecase.execute]: the robot to open on, then the robots of the orders made here whose bond this device sees locked; `null` where the feature holds no trades.
+  final Stream<RobotSlot?> Function(NetworkGarageKey key)? _madeRobots;
+
+  /// The orders made here followed since the key was read, until the user moves with the arrows, the slot is read again or the Garage is left.
+  StreamSubscription<RobotSlot?>? _following;
+
+  /// Whether the user moved with the arrows during this visit: the Garage then follows no order made here any more (as the reference's `manualNavigationActive`, `models/Garage.model.ts:247-254`, `:473-501`), until it is left.
+  bool _movedByHand = false;
 
   /// Whether the app was hidden or paused since the user asked for a new key: the key then arrives behind the PIN.
   bool _concealedSinceAsked = false;
@@ -52,8 +67,9 @@ class GarageCubit extends Cubit<GarageState> {
     this._import,
     this._delete,
     this._needsPin,
-    this._unacknowledged,
-  ) : super(GarageWorking(network));
+    this._unacknowledged, {
+    this._madeRobots,
+  }) : super(GarageWorking(network));
 
   RobosatsNetwork get _network => state.network;
 
@@ -165,6 +181,8 @@ class GarageCubit extends Cubit<GarageState> {
 
   Future<void> _deleteKey() async {
     if (isClosed) return;
+    // The orders of the key deleted are followed no more (review of #229, R4).
+    _stopFollowing();
     emit(GarageWorking(_network));
     switch (await _delete.execute(_network)) {
       case Ok():
@@ -198,10 +216,58 @@ class GarageCubit extends Cubit<GarageState> {
   /// Shows the previous robot of the key: the last usable one before the robot shown.
   void previous() => _move((key, index) => key.lastUsableRobot(index - 1));
 
+  /// A tap on « Last order #N » of [record] (#227), before its trade opens: shows the robot of that order when it is a robot of the key shown, as the reference shows the robot whose last order it is (`basic/GaragePage/GarageKeyProfile.tsx:214-230`); an order of another Garage Key or network changes nothing.
+  ///
+  /// The robot tapped stays shown until an order made here has its bond seen locked after it (a renewal of that order, for one), or the user moves with the arrows: what the Garage opened on does not come back.
+  /// Nothing is read from a coordinator here: the panel of the robot shown reads what it reads for a robot shown with the arrows.
+  void showOrderRobot(TradeRecord record) => _showRobot(record.robot);
+
+  /// Shows the robot of [slot] when it is a robot of the key shown and not the robot shown already; nothing otherwise.
+  void _showRobot(RobotSlot slot) {
+    final current = state;
+    if (isClosed || current is! GarageWithKey) return;
+    if (current.key.robotOf(slot) case final robot?
+        when robot.accountIndex != current.robot.index) {
+      emit(current.copyWith(robot: GarageRobotFace.of(robot), failure: null));
+    }
+  }
+
+  void _stopFollowing() {
+    final following = _following;
+    _following = null;
+    if (following != null) unawaited(following.cancel());
+  }
+
+  /// Starts following the orders made here with [key], unless the user moved with the arrows or the feature holds no trades, and gives the robot to open on: that of the newest one in progress whose bond was locked, else of the « Last order #N » line, `null` for none.
+  ///
+  /// The first answer is awaited before the Garage shows a robot, so that no panel of another robot is built, and reads its coordinator, in between; later answers move the robot shown.
+  /// An [Error] of the records is a bug (AGENTS.md, rule 11): it is not caught, and the Garage stays on its wait.
+  /// Of two reads of the vault that overlap, the later one cuts the earlier one's following before its first answer, so that the earlier [load] never completes (review of #229, R7): nothing awaits it, the screens call it without waiting.
+  Future<NetworkRobot?> _startFollowing(NetworkGarageKey key) async {
+    // One following at a time: another read of the vault started meanwhile has its own (review of #229, R3).
+    _stopFollowing();
+    final madeRobots = _madeRobots;
+    if (madeRobots == null || _movedByHand) return null;
+    final start = Completer<RobotSlot?>();
+    _following = madeRobots(key).listen((robot) {
+      if (!start.isCompleted) {
+        start.complete(robot);
+      } else if (robot != null) {
+        _showRobot(robot);
+      }
+    });
+    return switch (await start.future) {
+      final robot? => key.robotOf(robot),
+      null => null,
+    };
+  }
+
   void _move(
     Result<NetworkRobot, P2pFailure> Function(NetworkGarageKey key, int index)
     step,
   ) {
+    _movedByHand = true;
+    _stopFollowing();
     final current = state;
     if (current is! GarageWithKey) return;
     emit(switch (step(current.key, current.robot.index)) {
@@ -224,6 +290,7 @@ class GarageCubit extends Cubit<GarageState> {
     bool justDrawn = false,
   }) async {
     if (isClosed) return;
+    _stopFollowing();
     emit(GarageWorking(_network));
     final read = await _read.execute(_network);
     if (isClosed) return;
@@ -233,8 +300,16 @@ class GarageCubit extends Cubit<GarageState> {
       Err() => true,
     };
     if (isClosed) return;
+    // The robot of the newest order made here with the key whose bond was seen locked, read before the state is built for the same reason (#227).
+    final made = switch (read) {
+      Ok(value: final key) => await _startFollowing(key),
+      Err() => null,
+    };
+    if (isClosed) return;
     emit(switch (read) {
-      Ok(value: final key) => switch (key.firstUsableRobot(0)) {
+      Ok(value: final key) => switch (made != null
+          ? Ok<NetworkRobot, P2pFailure>(made)
+          : key.firstUsableRobot(0)) {
         Ok(value: final robot) => switch (_unacknowledged.waits(_network)) {
           final awaitsBackup => GarageWithKey(
             _network,
@@ -264,6 +339,12 @@ class GarageCubit extends Cubit<GarageState> {
         actionFailure: failure,
       ),
     });
+  }
+
+  @override
+  Future<void> close() async {
+    _stopFollowing();
+    return super.close();
   }
 }
 
