@@ -603,7 +603,7 @@ void main() {
         );
         for (final contract in [
           null,
-          EscrowContract(take: 1, escrow: quote.amount, earlier: const []),
+          EscrowContract(take: 1, escrow: quote.total, earlier: const []),
         ]) {
           expect(
             await seller.escrow.payBond(
@@ -788,7 +788,7 @@ void main() {
         () async {
           final seller = await _Seller.start();
           final first = await seller.pay('swap-e0');
-          final firstSats = seller.escrowPayments.single.$1.amount;
+          final firstSats = seller.escrowPayments.single.$2.total;
           await seller.takenAgain();
           final shown = await seller.seen();
           expect(shown.stored, isTrue);
@@ -810,11 +810,8 @@ void main() {
           expect(earlier.sats, firstSats);
           expect(contract.notBackSats, firstSats);
           expect(contract.notBackUnknown, 0);
-          expect(contract.escrow, quote.amount);
-          expect(
-            contract.outIfPaid,
-            Sats(firstSats.value + quote.amount.value),
-          );
+          expect(contract.escrow, quote.total);
+          expect(contract.outIfPaid, Sats(firstSats.value + quote.total.value));
           expect(contract.kept, isEmpty);
           final hash = quote.invoice.paymentHash;
           seller.fake.scriptPayment(
@@ -842,7 +839,7 @@ void main() {
               accepted: quote,
               contract: EscrowContract(
                 take: 0,
-                escrow: quote.amount,
+                escrow: quote.total,
                 earlier: const [],
               ),
             ),
@@ -976,14 +973,14 @@ void main() {
         () async {
           final seller = await _Seller.start();
           await seller.pay('swap-e0');
-          final sats0 = seller.escrowPayments.last.$1.amount;
+          final sats0 = seller.escrowPayments.last.$2.total;
           await seller.takenAgain();
           final quote1 = await seller.quoted();
           final contract1 = await seller.contractOf(quote1);
           expect(contract1.notBackSats, sats0);
-          expect(contract1.outIfPaid, Sats(sats0.value + quote1.amount.value));
+          expect(contract1.outIfPaid, Sats(sats0.value + quote1.total.value));
           await seller.pay('swap-e1');
-          final sats1 = seller.escrowPayments.last.$1.amount;
+          final sats1 = seller.escrowPayments.last.$2.total;
           await seller.takenAgain(taker: 3);
           final quote2 = await seller.quoted();
           final contract2 = await seller.contractOf(quote2);
@@ -992,7 +989,7 @@ void main() {
           expect(contract2.notBackSats, Sats(sats0.value + sats1.value));
           expect(
             contract2.outIfPaid,
-            Sats(sats0.value + sats1.value + quote2.amount.value),
+            Sats(sats0.value + sats1.value + quote2.total.value),
           );
           await seller.pay('swap-e2');
           expect(seller.escrowPayments, hasLength(3));
@@ -1004,7 +1001,7 @@ void main() {
         () async {
           final seller = await _Seller.start();
           await seller.pay('swap-e0');
-          var out = seller.escrowPayments.last.$1.amount.value;
+          var out = seller.escrowPayments.last.$2.total.value;
           for (var take = 1; take <= 5; take++) {
             await seller.pretendedAgain();
             final shown = await seller.seen();
@@ -1014,9 +1011,9 @@ void main() {
             final contract = await seller.contractOf(quote);
             expect(contract.earlier, hasLength(take));
             expect(contract.notBackSats, Sats(out), reason: '$take');
-            expect(contract.outIfPaid, Sats(out + quote.amount.value));
+            expect(contract.outIfPaid, Sats(out + quote.total.value));
             await seller.pay('swap-e$take');
-            out += quote.amount.value;
+            out += quote.total.value;
           }
           expect(seller.escrowPayments, hasLength(6));
         },
@@ -1056,7 +1053,7 @@ void main() {
           final contract2 = await seller.contractOf(quote2);
           expect(
             contract2.kept.single.sats,
-            seller.escrowPayments.single.$1.amount,
+            seller.escrowPayments.single.$2.total,
           );
           seller.fake.scriptPayment(
             Ok(
@@ -1112,7 +1109,7 @@ void main() {
             Err(failure: BondPayConfirmAgain(:final contract)) => contract,
             final other => fail('$other'),
           };
-          expect(again.notBackSats, quote0.amount);
+          expect(again.notBackSats, quote0.total);
           // Confirmed again with that figure, then less out by the payment (the order expired with nothing sent): it pays.
           seller.found(
             late,
@@ -1133,12 +1130,75 @@ void main() {
               accepted: quote2,
               contract: EscrowContract(
                 take: again.take,
-                escrow: quote2.amount,
+                escrow: quote2.total,
                 earlier: again.earlier,
               ),
             ),
             isA<Ok<P2pWalletPayment, BondPayRefusal>>(),
           );
+        },
+      );
+
+      test(
+        'after a restart, one more escrow of an unknown amount out between the confirmation and the payment (an attempt with no order whose late order lands) asks a new confirmation (functional verification of #187, C2, A05)',
+        () async {
+          final seller = await _Seller.start();
+          final quote0 = await seller.quoted();
+          final contract0 = await seller.contractOf(quote0);
+          seller.fake.scriptPayment(const Err(P2pWalletServiceUnreachable()));
+          expect(
+            await seller.escrow.payBond(
+              seller.record,
+              accepted: quote0,
+              contract: contract0,
+            ),
+            isA<Err<P2pWalletPayment, BondPayRefusal>>(),
+          );
+          await seller.takenAgain();
+          // The app started again: what contract 0's attempt took out is no longer known.
+          final restarted = _Seller.payOf(
+            seller.harness.restart(),
+            seller.wallet,
+            seller.stored,
+          );
+          final shown = await seller.seen();
+          final offered = switch (await restarted.checkBond(
+            seller.record,
+            shown,
+          )) {
+            Ok(:final value) => value.walletInvoice,
+            Err(:final failure) => fail('$failure'),
+          };
+          final quote = seller.quoteOf(offered);
+          final contract = switch (await restarted.escrowContractOf(
+            seller.record,
+            quote,
+          )) {
+            Ok(value: final contract?) => contract,
+            final other => fail('$other'),
+          };
+          expect(contract.earlier.single.state, EarlierEscrowCase.back);
+          expect(contract.notBackUnknown, 0);
+          seller.found(
+            P2pWalletPayment(
+              id: 'swap-late',
+              paymentHash: quote0.invoice.paymentHash,
+            ),
+            const P2pWalletPaymentPreparing(),
+          );
+          final paid = await restarted.payBond(
+            seller.record,
+            accepted: quote,
+            contract: contract,
+          );
+          final again = switch (paid) {
+            Err(failure: BondPayConfirmAgain(:final contract)) => contract,
+            final other => fail('$other'),
+          };
+          expect(again.notBackUnknown, 1);
+          expect(again.notBackSats, Sats.zero);
+          // Only contract 0's refused attempt reached the wallet.
+          expect(seller.escrowPayments, hasLength(1));
         },
       );
 
@@ -1171,7 +1231,7 @@ void main() {
           expect(contract.earlier.single.sats, isNull);
           expect(contract.notBackUnknown, 1);
           expect(contract.notBackSats, Sats.zero);
-          expect(contract.outIfPaid, offered.amount);
+          expect(contract.outIfPaid, seller.quoteOf(offered).total);
         },
       );
 
@@ -1247,7 +1307,7 @@ void main() {
           final next = await seller.seen();
           final contract1 = await seller.contractOf(await seller.quoted(next));
           expect(contract1.earlier.single.state, EarlierEscrowCase.notBack);
-          expect(contract1.earlier.single.sats, quote.amount);
+          expect(contract1.earlier.single.sats, quote.total);
           // Its wallet id is written now, as the follow writes it.
           expect((await seller.rows()).first.walletPaymentId, 'swap-e0');
         },

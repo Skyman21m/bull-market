@@ -3015,29 +3015,17 @@
   "@p2pPayWalletUnavailable": {
     "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the other refusals of the wallet (no Instant payments wallet, unreadable, other network, too many coins, a quote no longer valid)."
   },
-  "p2pPayEscrowShownBefore": "This collateral invoice was already presented for this order. It is not paid from this wallet.",
+  "p2pPayEscrowShownBefore": "This collateral invoice was already presented to this device, for this order or another one. It is not paid from this wallet.",
   "@p2pPayEscrowShownBefore": {
-    "description": "The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the collateral invoice shown has a payment hash this trade already saw (an earlier take's collateral, or another payment recorded for the order), whether or not it was ever paid; « collateral » as the reference's title of the escrow, « garantie » in French as the project's (#96)."
+    "description": "The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the collateral invoice shown has a payment hash this device already saw (an earlier take's collateral, another payment recorded for the order, or a payment of another trade), whether or not it was ever paid; « collateral » as the reference's title of the escrow, « garantie » in French as the project's (#96)."
   },
   "p2pPayConfirmAgain": "The collaterals of earlier takes of this order changed since you confirmed. Nothing was paid: check the figures and confirm again.",
   "@p2pPayConfirmAgain": {
     "description": "The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the earlier collaterals of the order, read again just before the payment, are more out than the confirmation showed (more sats not back, or one the coordinator kept since): nothing was paid, the next confirmation pays (the owner's decision of 2026-11-19: no lock)."
   },
-  "p2pEscrowEarlierOut": "Earlier collaterals of this order, paid with this wallet, have not come back yet: {sats} sats. With this one, {total} sats will be out of this wallet.",
+  "p2pEscrowEarlierOut": "{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet}}: {sats} sats. With this one, {total} sats will be out of this wallet.",
   "@p2pEscrowEarlierOut": {
-    "description": "The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the red alert of the owner's decision of 2026-11-19 (no lock, an alert), the user free to pay. {sats} the sats of the earlier collaterals not back yet (a refund pending included, which Bull's own code does not take as final), {total} those and this collateral's.",
-    "placeholders": {
-      "sats": {
-        "type": "String"
-      },
-      "total": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pEscrowEarlierOutUnknown": "Earlier collaterals of this order, paid with this wallet, have not come back yet: {sats} sats, and {count, plural, =1{1 more whose amount this device no longer knows} other{{count} more whose amounts this device no longer knows}}. With this one, at least {total} sats will be out of this wallet.",
-  "@p2pEscrowEarlierOutUnknown": {
-    "description": "As p2pEscrowEarlierOut (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188, when some earlier collaterals not back were paid before the app started again: their sats are not kept on the device (schema 8). {count} how many.",
+    "description": "The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the red alert of the owner's decision of 2026-11-19 (no lock, an alert), the user free to pay. {sats} the sats of the earlier collaterals not back yet (a refund pending included, which Bull's own code does not take as final), {total} those and this collateral's. {count} how many; the sats are what each took out of the wallet (the confirmed quote's total, fees included), so that the total and the confirmation's « Pay » button speak of the same sats.",
     "placeholders": {
       "sats": {
         "type": "String"
@@ -3050,7 +3038,25 @@
       }
     }
   },
-  "p2pEscrowEarlierOutAllUnknown": "{count, plural, =1{An earlier collateral of this order, paid with this wallet, has not come back yet; this device no longer knows its amount.} other{{count} earlier collaterals of this order, paid with this wallet, have not come back yet; this device no longer knows their amounts.}} With this one, at least {total} sats will be out of this wallet.",
+  "p2pEscrowEarlierOutUnknown": "{known, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: {sats} sats} other{{known} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet: {sats} sats}}, and {count, plural, =1{1 more whose amount this device no longer knows} other{{count} more whose amounts this device no longer knows}}. With this one, at least {total} sats will be out of this wallet.",
+  "@p2pEscrowEarlierOutUnknown": {
+    "description": "As p2pEscrowEarlierOut (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188, when some earlier collaterals not back were paid before the app started again: their sats are not kept on the device (schema 8). {count} how many. {known} how many have an amount this device knows.",
+    "placeholders": {
+      "sats": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "known": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pEscrowEarlierOutAllUnknown": "{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount.} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet; this device no longer knows their amounts.}} With this one, at least {total} sats will be out of this wallet.",
   "@p2pEscrowEarlierOutAllUnknown": {
     "description": "As p2pEscrowEarlierOut (#187), the project's own text, minimal until the panel's texts of #188, when no earlier collateral not back has an amount this device knows (paid before the app started again; schema 8 keeps no amount). {count} how many, {total} this collateral's sats.",
     "placeholders": {

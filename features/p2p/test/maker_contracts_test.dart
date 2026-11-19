@@ -1095,14 +1095,14 @@ void main() {
 
   group('what a coordinator that lies can obtain', () {
     test(
-      'a faked next contract for a second escrow, of any size: taken as a contract, with no warning (what bounds it is #187\'s rule of one escrow held at a time, `maker_escrow_from_wallet_test.dart`)',
+      'a faked next contract for a second escrow, of any size: taken as a contract, with no warning (nothing bounds it but the user, after #187\'s alert of the earlier escrows not back yet, `maker_escrow_from_wallet_test.dart`)',
       () async {
         final paid = await along(s, [1, 6]);
         final second = next(
           paid,
           await made(6, role: s, taker: third, deadline: deadline1, take: 1),
         );
-        // Nothing tells it from a real take after a return to the book (design note § 3.2): this wallet pays its escrow only once the first one it paid is no longer held, under the owner's payment rule of 2026-11-17 (#187), which warns and never stops; the factor of the creation's price that bounded it before is gone.
+        // Nothing tells it from a real take after a return to the book (design note § 3.2): this wallet pays its escrow after an alert of the earlier ones not back yet (the owner's decision of 2026-11-19, #187) and under the owner's payment rule of 2026-11-17, both of which warn and never stop; the factor of the creation's price that bounded it before is gone.
         expect(second.warnings, isEmpty);
         expect(second.trail.take, 1);
         final huge = next(

@@ -2155,26 +2155,47 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayEscrowShownBefore =>
-      'Cette facture de garantie a déjà été présentée pour cet ordre. Elle n’est pas payée depuis ce portefeuille.';
+      'Cette facture de garantie a déjà été présentée à cet appareil, pour cet ordre ou pour un autre. Elle n’est pas payée depuis ce portefeuille.';
 
   @override
   String get p2pPayConfirmAgain =>
       'Les garanties des prises précédentes de cet ordre ont changé depuis votre confirmation. Rien n’a été payé : vérifiez les montants et confirmez de nouveau.';
 
   @override
-  String p2pEscrowEarlierOut(String sats, String total) {
-    return 'Des garanties précédentes de cet ordre, payées avec ce portefeuille, ne sont pas encore revenues : $sats sats. Avec celle-ci, $total sats seront hors de ce portefeuille.';
+  String p2pEscrowEarlierOut(String sats, String total, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count garanties précédentes de cet ordre, payées ou tentées avec ce portefeuille, ne sont pas encore revenues',
+      one:
+          'Une garantie précédente de cet ordre, payée ou tentée avec ce portefeuille, n’est pas encore revenue',
+    );
+    return '$_temp0 : $sats sats. Avec celle-ci, $total sats seront hors de ce portefeuille.';
   }
 
   @override
-  String p2pEscrowEarlierOutUnknown(String sats, String total, int count) {
+  String p2pEscrowEarlierOutUnknown(
+    String sats,
+    String total,
+    int count,
+    int known,
+  ) {
     String _temp0 = intl.Intl.pluralLogic(
+      known,
+      locale: localeName,
+      other:
+          '$known garanties précédentes de cet ordre, payées ou tentées avec ce portefeuille, ne sont pas encore revenues : $sats sats',
+      one:
+          'Une garantie précédente de cet ordre, payée ou tentée avec ce portefeuille, n’est pas encore revenue : $sats sats',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
       other: '$count autres dont cet appareil ne connaît plus les montants',
       one: 'une autre dont cet appareil ne connaît plus le montant',
     );
-    return 'Des garanties précédentes de cet ordre, payées avec ce portefeuille, ne sont pas encore revenues : $sats sats, et $_temp0. Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
+    return '$_temp0, et $_temp1. Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
   }
 
   @override
@@ -2183,9 +2204,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
       count,
       locale: localeName,
       other:
-          '$count garanties précédentes de cet ordre, payées avec ce portefeuille, ne sont pas encore revenues ; cet appareil ne connaît plus leurs montants.',
+          '$count garanties précédentes de cet ordre, payées ou tentées avec ce portefeuille, ne sont pas encore revenues ; cet appareil ne connaît plus leurs montants.',
       one:
-          'Une garantie précédente de cet ordre, payée avec ce portefeuille, n’est pas encore revenue ; cet appareil ne connaît plus son montant.',
+          'Une garantie précédente de cet ordre, payée ou tentée avec ce portefeuille, n’est pas encore revenue ; cet appareil ne connaît plus son montant.',
     );
     return '$_temp0 Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
   }

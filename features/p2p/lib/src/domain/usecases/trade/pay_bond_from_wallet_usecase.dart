@@ -24,7 +24,7 @@ import 'trade_take_locks.dart';
 
 /// Pays a trade's bond (#100, W4), or a seller's escrow (#97), from the wallet's Instant Payments wallet, inside the trade screen: the only caller of [P2pWalletPort.payInvoice] (`wallet_port_architecture_test.dart`).
 ///
-/// One instance per [step], the same code for both: the bond is paid from a stored `WaitingForTakerBond` within [TradeTerms.bondCeiling], or for an order made here from a stored `WaitingForMakerBond` within the same getter, which is then `MakerTerms.bondCeiling` (#180); the escrow from a stored `WaitingForBoth` or `WaitingForEscrow`, a taker seller's within [TradeTerms.escrowCeiling], a maker seller's (#187) under the owner's payment rule of 2026-11-17 and « one escrow held at a time » (below); the methods keep the bond's names, the step it was written for first.
+/// One instance per [step], the same code for both: the bond is paid from a stored `WaitingForTakerBond` within [TradeTerms.bondCeiling], or for an order made here from a stored `WaitingForMakerBond` within the same getter, which is then `MakerTerms.bondCeiling` (#180); the escrow from a stored `WaitingForBoth` or `WaitingForEscrow`, a taker seller's within [TradeTerms.escrowCeiling], a maker seller's (#187) under the owner's payment rule of 2026-11-17 and, for a retaken order, after an alert of the earlier escrows not back yet (the owner's decision of 2026-11-19, below); the methods keep the bond's names, the step it was written for first.
 ///
 /// A maker seller's escrow (#187, design note `docs/design/phase-3-making-an-order.md` § 3.3, § 4.3, § 6 row 13): no ceiling (the owner's rule replaced it), but the exact agreements the state machine checks (the invoice equal to `escrow_satoshis` and `trade_satoshis`, the implied fee within the announced one), any warning of which forbids the wallet (`walletPaymentFor`); the comparison with the contract's amount at the wallet's own price ([rateOfBond]), information and a warning only; the contract the confirmation states ([escrowContractOf]: a new contract after the order's first take, the earlier escrows of the order this wallet was asked to pay with their sats and case, what is not back yet and what will be out with this one, those the coordinator kept: an alert, never a refusal, the owner's decision of 2026-11-19), which [payBond] takes back, checks against the trail read again under the payment's lock, and has confirmed again when more is out by then ([BondPayConfirmAgain]); never an escrow whose payment hash was presented before ([BondPayEscrowSeenBefore]). Each escrow is recorded under its contract (`trade_payments.take`), and followed under it ([followBond] for the current one, [followEscrows] for every one, after the trade's end too).
 ///
@@ -202,7 +202,7 @@ final class PayBondFromWalletUsecase {
       record,
       take: trail.take,
       paymentHash: hash,
-      escrow: quote.amount,
+      escrow: quote.total,
       earlierEscrows: trail.earlierEscrows,
     )) {
       Ok(:final value) => Ok(value),
@@ -314,7 +314,7 @@ final class PayBondFromWalletUsecase {
         return const Err(BondPayInvoiceChanged());
       }
       if (_isMakerEscrow(advanced.trade.terms)) {
-        switch (await _stillThisContract(record, offered, contract)) {
+        switch (await _stillThisContract(record, offered, accepted, contract)) {
           case Ok():
             break;
           case Err(:final failure):
@@ -329,9 +329,9 @@ final class PayBondFromWalletUsecase {
         take: offered.take,
       )) {
         case Ok(value: true):
-          // The sats of a maker seller's escrow, for the confirmation of a next contract (#187).
+          // What this escrow takes out of the wallet, the quote confirmed's total (the invoice, the swap service's fee and the network fee), for the confirmation of a next contract (#187).
           if (_isMakerEscrow(advanced.trade.terms)) {
-            _amounts.keep(invoice.paymentHash, invoice.amount);
+            _amounts.keep(invoice.paymentHash, accepted.total);
           }
         case Ok(value: false) || Err():
           return const Err(BondPayNotRecorded());
@@ -558,7 +558,7 @@ final class PayBondFromWalletUsecase {
       terms.side is MadeSide &&
       terms.role == TradeRole.seller;
 
-  /// The contract of a maker seller's escrow of [paymentHash], of [escrow] sats, at contract [take], with the escrows of the order's other contracts this wallet was asked to pay (#187, design note § 6 row 13, the owner's decision of 2026-11-19): read from every payment recorded for the trade, whatever its contract, the maker bond's left aside, and the wallet's records of each ([EarlierEscrow.of]), their sats from [EscrowAmounts] when this run paid them.
+  /// The contract of a maker seller's escrow of [paymentHash], [escrow] being what it takes out of the wallet (the quote's total; the invoice's amount where no quote was asked yet, `checkBond`), at contract [take], with the escrows of the order's other contracts this wallet was asked to pay (#187, design note § 6 row 13, the owner's decision of 2026-11-19): read from every payment recorded for the trade, whatever its contract, the maker bond's left aside, and the wallet's records of each ([EarlierEscrow.of]), their sats from [EscrowAmounts] when this run paid them.
   ///
   /// Refused only with [BondPayEscrowSeenBefore] when [paymentHash] is one of [earlierEscrows] (the trail's), the hash of another payment recorded for the trade (another contract's escrow, the bond), or of a payment recorded for another trade (which the database would refuse at `recordStart`, `trade_payments_hash_once`); with [BondPayRecordsUnreadable] when the records cannot be read. Earlier escrows not back, or kept, are never a refusal.
   Future<Result<EscrowContract, BondPayRefusal>> _contractOf(
@@ -629,6 +629,7 @@ final class PayBondFromWalletUsecase {
   Future<Result<EscrowContract, BondPayRefusal>> _stillThisContract(
     TradeRecord record,
     WalletPaymentOffered offered,
+    P2pWalletQuote accepted,
     EscrowContract? confirmed,
   ) async {
     if (confirmed == null || confirmed.take != offered.take) {
@@ -652,7 +653,7 @@ final class PayBondFromWalletUsecase {
       record,
       take: offered.take,
       paymentHash: hash,
-      escrow: offered.walletInvoice.amount,
+      escrow: accepted.total,
       earlierEscrows: trail.earlierEscrows,
     )) {
       case Ok(:final value):

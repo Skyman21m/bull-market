@@ -44,7 +44,7 @@ final class EarlierEscrow {
 
   final EarlierEscrowCase state;
 
-  /// Its sats, as this run of the app asked the wallet to pay them (the invoice's amount of the quote confirmed); `null` when this run did not pay it (the app started again since): `trade_payments` keeps no amount (schema 8), and the wallet's port gives none.
+  /// What it took out of the wallet, as this run of the app asked the wallet to pay it: the total of the quote confirmed (the invoice, the swap service's fee and the network fee, none of which comes back with a refund but the invoice's part); `null` when this run did not pay it (the app started again since): `trade_payments` keeps no amount (schema 8), and the wallet's port gives none.
   final Sats? sats;
 
   /// Where the wallet's records say its payment stands; `null` when they hold no payment of this feature for its invoice, or cannot be read.
@@ -100,7 +100,7 @@ final class EscrowContract {
   /// The contract of the escrow (`TradeTrail.take`): 0 for the order's first take.
   final int take;
 
-  /// The sats of this escrow, the invoice of the quote confirmed.
+  /// What this escrow takes out of the wallet: the total of the quote confirmed, the same sats as the confirmation's « Pay » button.
   final Sats escrow;
 
   /// The escrows this wallet was asked to pay for the order's other contracts, by contract, oldest first.
