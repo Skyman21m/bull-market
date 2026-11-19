@@ -1006,10 +1006,19 @@ void main() {
       hold.complete();
       journey.wallet.holdPayments = null;
       await journey.waitFor(find.text(_english.earlierTitle), seconds: 30);
-      await journey.waitFor(
-        find.text(_english.payWithThisWallet),
-        seconds: 30,
-      );
+      // « Pay with this wallet » offered for the new take, not the earlier payment's « Sending… » left on the page.
+      final pay = find.widgetWithText(TradeButton, _english.payWithThisWallet);
+      for (var i = 0; i < 30 * 4; i++) {
+        if (pay.evaluate().isNotEmpty &&
+            tester.widget<TradeButton>(pay).onPressed != null &&
+            !tester.widget<TradeButton>(pay).busy) {
+          break;
+        }
+        await journey.pass(1);
+      }
+      expect(tester.widget<TradeButton>(pay).onPressed, isNotNull);
+      expect(tester.widget<TradeButton>(pay).busy, isFalse);
+      expect(find.text('Sending the payment…'), findsNothing);
       expect(await journey.rows(journey.record), [(InvoiceStep.escrow, 0)]);
       await tester.pumpWidget(const SizedBox.shrink());
       await settle(tester);
