@@ -6,7 +6,7 @@ import '../../presentation/p2p_formats.dart';
 
 /// The red alerts the confirmation of a maker seller's escrow says of the order's earlier escrows (#187, the owner's decision of 2026-11-19: no lock, an alert, the user free to pay), in the user's language: first the earlier escrows not back yet, what they took out of the wallet and what will be out with this one (the confirmed quotes' totals, fees included, the same sats as « Pay »), agreed in number; then each escrow the coordinator kept. Empty when nothing is to be said.
 ///
-/// Written for #188's confirmation, which no screen shows before it: kept in the catalogue and composed by `escrow_contract_lines_test.dart`. [coordinator] is the coordinator's name as the panel words it (`bondPaymentCoordinator`); no other text of the coordinator.
+/// Shown in red above the buttons of a maker seller's confirmation (#188, `bond_payment_panel.dart`), tested by `escrow_contract_lines_test.dart`. [coordinator] is the coordinator's name as the panel words it (`bondPaymentCoordinator`); no other text of the coordinator.
 List<String> earlierEscrowAlerts(
   BuildContext context,
   EscrowContract contract, {

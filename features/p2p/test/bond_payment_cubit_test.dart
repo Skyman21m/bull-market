@@ -530,4 +530,101 @@ void main() {
     );
     await expectLater(paying, completes);
   });
+
+  group('a maker seller\'s escrow (#188)', () {
+    EscrowContract contractOf(P2pWalletQuote quote, {int take = 0}) =>
+        EscrowContract(take: take, escrow: quote.total, earlier: const []);
+
+    test(
+      'the confirmation states the contract built from the very quote it pays, and « Pay » passes that contract with that quote',
+      () async {
+        final payments = Payments();
+        final read = <P2pWalletQuote>[];
+        final cubit = EscrowPaymentCubit(
+          TradeScreenStatuses.record,
+          payments.balance,
+          payments.check,
+          payments.quote,
+          payments.pay,
+          payments.follow,
+          (record) => null,
+          step: InvoiceStep.escrow,
+          contract: (record, walletQuote) async {
+            read.add(walletQuote);
+            return Ok(contractOf(walletQuote));
+          },
+        )..start();
+        payments.follows.single.add(const BondPaymentNone());
+        await settle();
+        final asking = cubit.ask(seen);
+        final quote = walletQuote();
+        payments.quotes.single.complete(Ok(quote));
+        await asking;
+        final confirming = cubit.state.step;
+        if (confirming is! BondPayConfirming) fail('$confirming');
+        expect(read, [same(quote)]);
+        expect(confirming.contract?.escrow, quote.total);
+        // A tap drawn for another confirmation pays nothing.
+        await cubit.confirm(
+          shown: BondPayConfirming(quote, contract: contractOf(quote)),
+        );
+        expect(payments.pays, isEmpty);
+        unawaited(cubit.confirm(shown: confirming));
+        await settle();
+        expect(payments.accepted, [same(quote)]);
+        expect(payments.contracts, [same(confirming.contract)]);
+        await cubit.close();
+      },
+    );
+
+    test(
+      'more out under the payment\'s lock: the confirmation again, for the same quote, with the contract the refusal carries; its « Pay » passes it',
+      () async {
+        final payments = Payments();
+        final cubit = EscrowPaymentCubit(
+          TradeScreenStatuses.record,
+          payments.balance,
+          payments.check,
+          payments.quote,
+          payments.pay,
+          payments.follow,
+          (record) => null,
+          step: InvoiceStep.escrow,
+          contract: (record, walletQuote) async =>
+              Ok(contractOf(walletQuote)),
+        )..start();
+        payments.follows.single.add(const BondPaymentNone());
+        await settle();
+        final asking = cubit.ask(seen);
+        final quote = walletQuote();
+        payments.quotes.single.complete(Ok(quote));
+        await asking;
+        final paying = cubit.confirm();
+        final now = EscrowContract(
+          take: 0,
+          escrow: quote.total,
+          earlier: const [
+            EarlierEscrow(
+              take: 0,
+              state: EarlierEscrowCase.kept,
+              sats: null,
+              progress: P2pWalletPaymentPaid(),
+            ),
+          ],
+        );
+        payments.pays.single.complete(Err(BondPayConfirmAgain(now)));
+        await paying;
+        final again = cubit.state.step;
+        if (again is! BondPayConfirming) fail('$again');
+        expect(again.again, isTrue);
+        expect(again.walletQuote, same(quote));
+        expect(again.contract, same(now));
+        unawaited(cubit.confirm(shown: again));
+        await settle();
+        expect(payments.contracts, [isNotNull, same(now)]);
+        expect(payments.accepted, [same(quote), same(quote)]);
+        await cubit.close();
+      },
+    );
+  });
 }
