@@ -2159,7 +2159,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayConfirmAgain =>
-      'Les garanties des prises précédentes de cet ordre ont changé depuis votre confirmation. Rien n’a été payé : vérifiez les montants et confirmez de nouveau.';
+      'Ce qui sortira de ce portefeuille a changé depuis votre confirmation. Rien n’a été payé : vérifiez les montants et confirmez de nouveau.';
 
   @override
   String p2pEscrowEarlierOut(String sats, String total, int count) {
@@ -2171,7 +2171,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
       one:
           'Une garantie précédente de cet ordre, payée ou tentée avec ce portefeuille, n’est pas encore revenue',
     );
-    return '$_temp0 : $sats sats. Avec celle-ci, $total sats seront hors de ce portefeuille.';
+    return '$_temp0 : $sats sats. Avec celle-ci, $total sats seront hors de ce portefeuille pour les garanties de cet ordre, caution non comprise.';
   }
 
   @override
@@ -2195,7 +2195,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
       other: '$count autres dont cet appareil ne connaît plus les montants',
       one: 'une autre dont cet appareil ne connaît plus le montant',
     );
-    return '$_temp0, et $_temp1. Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
+    return '$_temp0, et $_temp1. Avec celle-ci, au moins $total sats seront hors de ce portefeuille pour les garanties de cet ordre, caution non comprise.';
   }
 
   @override
@@ -2208,7 +2208,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
       one:
           'Une garantie précédente de cet ordre, payée ou tentée avec ce portefeuille, n’est pas encore revenue ; cet appareil ne connaît plus son montant.',
     );
-    return '$_temp0 Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
+    return '$_temp0 Avec celle-ci, au moins $total sats seront hors de ce portefeuille pour les garanties de cet ordre, caution non comprise.';
   }
 
   @override

@@ -67,7 +67,7 @@ final class BondPayNotRecorded extends BondPayRefusal {
   const BondPayNotRecorded();
 }
 
-/// A maker seller's escrow (#187): the earlier escrows of the order, read again under the payment's lock, are more out than the confirmation showed (more sats not back yet, or an escrow the coordinator kept since): nothing was paid, and the confirmation is to be made again with [contract], what they are now (the owner's decision of 2026-11-19: a new confirmation, not a lock; the next one pays).
+/// A maker seller's escrow (#187): what will leave the wallet, read again under the payment's lock with the quote about to be paid, is more than the confirmation showed (this escrow's quote costing more, more sats of earlier escrows not back yet, or an escrow the coordinator kept since): nothing was paid, and the confirmation is to be made again with [contract], what it is now, with the quote that would be paid (the owner's decision of 2026-11-19: a new confirmation, not a lock; the next one pays).
 final class BondPayConfirmAgain extends BondPayRefusal {
   final EscrowContract contract;
 

@@ -55,7 +55,7 @@ void main() {
       expect(contract.notBackSats, Sats.fromInt(196127));
       expect(contract.outIfPaid, Sats.fromInt(392254));
       expect(await linesOf(tester, contract), [
-        'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: 196,127 sats. With this one, 392,254 sats will be out of this wallet.',
+        'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: 196,127 sats. With this one, 392,254 sats will be out of this wallet for the collaterals of this order, bond not included.',
         'The collateral of an earlier take (196,000 sats) was kept by Temple of Sats: check this order in the official RoboSats app before paying another one.',
       ]);
       final french = await linesOf(
@@ -65,7 +65,12 @@ void main() {
       );
       expect(french, hasLength(2));
       expect(french.first, contains('n’est pas encore revenue'));
-      expect(french.first, contains('hors de ce portefeuille'));
+      expect(
+        french.first,
+        contains(
+          'hors de ce portefeuille pour les garanties de cet ordre, caution non comprise',
+        ),
+      );
       expect(french.last, contains('a été encaissée par Temple of Sats'));
       for (final line in [...french, ...await linesOf(tester, contract)]) {
         expect(line, isNot(contains('Troc')));
@@ -87,7 +92,7 @@ void main() {
         ],
       );
       expect(await linesOf(tester, contract), [
-        'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount. With this one, at least 1,000 sats will be out of this wallet.',
+        'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount. With this one, at least 1,000 sats will be out of this wallet for the collaterals of this order, bond not included.',
         'The collateral of an earlier take was kept by Temple of Sats: check this order in the official RoboSats app before paying another one.',
       ]);
     },
@@ -106,7 +111,7 @@ void main() {
         ],
       );
       expect(await linesOf(tester, contract), [
-        'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: 2,000 sats, and 2 more whose amounts this device no longer knows. With this one, at least 3,000 sats will be out of this wallet.',
+        'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: 2,000 sats, and 2 more whose amounts this device no longer knows. With this one, at least 3,000 sats will be out of this wallet for the collaterals of this order, bond not included.',
       ]);
     },
   );
@@ -123,7 +128,7 @@ void main() {
         ],
       );
       expect(await linesOf(tester, contract), [
-        '2 earlier collaterals of this order, paid or attempted with this wallet, have not come back yet: 393,308 sats. With this one, 589,962 sats will be out of this wallet.',
+        '2 earlier collaterals of this order, paid or attempted with this wallet, have not come back yet: 393,308 sats. With this one, 589,962 sats will be out of this wallet for the collaterals of this order, bond not included.',
       ]);
       expect(
         (await linesOf(tester, contract, locale: const Locale('fr'))).single,

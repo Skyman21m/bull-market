@@ -3470,22 +3470,22 @@ abstract class P2pLocalizations {
   /// **'This collateral invoice was already presented to this device, for this order or another one. It is not paid from this wallet.'**
   String get p2pPayEscrowShownBefore;
 
-  /// The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the earlier collaterals of the order, read again just before the payment, are more out than the confirmation showed (more sats not back, or one the coordinator kept since): nothing was paid, the next confirmation pays (the owner's decision of 2026-11-19: no lock).
+  /// The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: just before the payment, under its lock, what will leave the wallet is more than the confirmation showed (this collateral's quote costing more, more sats of earlier collaterals not back, or one the coordinator kept since): nothing was paid, the next confirmation pays (the owner's decision of 2026-11-19: no lock).
   ///
   /// In en, this message translates to:
-  /// **'The collaterals of earlier takes of this order changed since you confirmed. Nothing was paid: check the figures and confirm again.'**
+  /// **'What will leave this wallet changed since you confirmed. Nothing was paid: check the amounts and confirm again.'**
   String get p2pPayConfirmAgain;
 
-  /// The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the red alert of the owner's decision of 2026-11-19 (no lock, an alert), the user free to pay. {sats} the sats of the earlier collaterals not back yet (a refund pending included, which Bull's own code does not take as final), {total} those and this collateral's. {count} how many; the sats are what each took out of the wallet (the confirmed quote's total, fees included), so that the total and the confirmation's « Pay » button speak of the same sats.
+  /// The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the red alert of the owner's decision of 2026-11-19 (no lock, an alert), the user free to pay. {sats} the sats of the earlier collaterals not back yet (a refund pending included, which Bull's own code does not take as final), {total} those and this collateral's. {count} how many; the sats are what each took out of the wallet (the confirmed quote's total, fees included), so that the total and the confirmation's « Pay » button speak of the same sats. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet}}: {sats} sats. With this one, {total} sats will be out of this wallet.'**
+  /// **'{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet}}: {sats} sats. With this one, {total} sats will be out of this wallet for the collaterals of this order, bond not included.'**
   String p2pEscrowEarlierOut(String sats, String total, int count);
 
-  /// As p2pEscrowEarlierOut (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188, when some earlier collaterals not back were paid before the app started again: their sats are not kept on the device (schema 8). {count} how many. {known} how many have an amount this device knows.
+  /// As p2pEscrowEarlierOut (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188, when some earlier collaterals not back were paid before the app started again: their sats are not kept on the device (schema 8). {count} how many. {known} how many have an amount this device knows. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
   ///
   /// In en, this message translates to:
-  /// **'{known, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: {sats} sats} other{{known} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet: {sats} sats}}, and {count, plural, =1{1 more whose amount this device no longer knows} other{{count} more whose amounts this device no longer knows}}. With this one, at least {total} sats will be out of this wallet.'**
+  /// **'{known, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: {sats} sats} other{{known} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet: {sats} sats}}, and {count, plural, =1{1 more whose amount this device no longer knows} other{{count} more whose amounts this device no longer knows}}. With this one, at least {total} sats will be out of this wallet for the collaterals of this order, bond not included.'**
   String p2pEscrowEarlierOutUnknown(
     String sats,
     String total,
@@ -3493,10 +3493,10 @@ abstract class P2pLocalizations {
     int known,
   );
 
-  /// As p2pEscrowEarlierOut (#187), the project's own text, minimal until the panel's texts of #188, when no earlier collateral not back has an amount this device knows (paid before the app started again; schema 8 keeps no amount). {count} how many, {total} this collateral's sats.
+  /// As p2pEscrowEarlierOut (#187), the project's own text, minimal until the panel's texts of #188, when no earlier collateral not back has an amount this device knows (paid before the app started again; schema 8 keeps no amount). {count} how many, {total} this collateral's sats. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount.} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet; this device no longer knows their amounts.}} With this one, at least {total} sats will be out of this wallet.'**
+  /// **'{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount.} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet; this device no longer knows their amounts.}} With this one, at least {total} sats will be out of this wallet for the collaterals of this order, bond not included.'**
   String p2pEscrowEarlierOutAllUnknown(String total, int count);
 
   /// The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: an earlier collateral of the order paid with this wallet was settled, the coordinator kept it (a red alert, apart from those not back yet, the owner's decision of 2026-11-19). {coordinator} the coordinator's name of the federation list.

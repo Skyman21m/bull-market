@@ -1140,6 +1140,94 @@ void main() {
       );
 
       test(
+        'confirmed with one quote, paid with a dearer one (security review of #187, SECUB1, C4): nothing paid nor recorded, a new confirmation with the quote that would be paid, which then pays; a cheaper one pays at once',
+        () async {
+          final seller = await _Seller.start();
+          await seller.pay('swap-e0');
+          final sats0 = seller.escrowPayments.single.$2.total;
+          await seller.takenAgain();
+          final small = await seller.quoted();
+          final contract = await seller.contractOf(small);
+          expect(contract.outIfPaid, Sats(sats0.value + small.total.value));
+          P2pWalletQuote quoteAt(int fees) => P2pWalletQuote(
+            invoice: small.invoice,
+            payin: Sats(small.invoice.amount.value + BigInt.from(fees)),
+            networkFee: Sats.fromInt(27),
+            balance: Sats.fromInt(5000000),
+            quotedAt: seller.harness.now,
+          );
+          final big = quoteAt(90000);
+          final paid = await seller.escrow.payBond(
+            seller.record,
+            accepted: big,
+            contract: contract,
+          );
+          final again = switch (paid) {
+            Err(failure: BondPayConfirmAgain(:final contract)) => contract,
+            final other => fail('$other'),
+          };
+          expect(again.escrow, big.total);
+          expect(again.outIfPaid, Sats(sats0.value + big.total.value));
+          expect(again.notBackSats, sats0);
+          expect(seller.escrowPayments, hasLength(1));
+          expect([for (final row in await seller.rows()) row.take], [0]);
+          // Confirmed with the dearer quote: it pays.
+          seller.fake.scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-e1',
+                paymentHash: small.invoice.paymentHash,
+              ),
+            ),
+          );
+          expect(
+            await seller.escrow.payBond(
+              seller.record,
+              accepted: big,
+              contract: again,
+            ),
+            isA<Ok<P2pWalletPayment, BondPayRefusal>>(),
+          );
+          expect(seller.escrowPayments.last.$2.total, big.total);
+        },
+      );
+
+      test(
+        'confirmed with one quote, paid with a cheaper one: less out, it pays',
+        () async {
+          final seller = await _Seller.start();
+          await seller.pay('swap-e0');
+          await seller.takenAgain();
+          final quote = await seller.quoted();
+          final contract = await seller.contractOf(quote);
+          final cheaper = P2pWalletQuote(
+            invoice: quote.invoice,
+            payin: quote.invoice.amount,
+            networkFee: Sats.fromInt(10),
+            balance: Sats.fromInt(5000000),
+            quotedAt: seller.harness.now,
+          );
+          expect(cheaper.total.value < quote.total.value, isTrue);
+          seller.fake.scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-e1',
+                paymentHash: quote.invoice.paymentHash,
+              ),
+            ),
+          );
+          expect(
+            await seller.escrow.payBond(
+              seller.record,
+              accepted: cheaper,
+              contract: contract,
+            ),
+            isA<Ok<P2pWalletPayment, BondPayRefusal>>(),
+          );
+        },
+      );
+
+      test(
         'after a restart, one more escrow of an unknown amount out between the confirmation and the payment (an attempt with no order whose late order lands) asks a new confirmation (functional verification of #187, C2, A05)',
         () async {
           final seller = await _Seller.start();

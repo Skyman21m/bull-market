@@ -2131,7 +2131,7 @@ class P2pLocalizationsUk extends P2pLocalizations {
 
   @override
   String get p2pPayConfirmAgain =>
-      'The collaterals of earlier takes of this order changed since you confirmed. Nothing was paid: check the figures and confirm again.';
+      'What will leave this wallet changed since you confirmed. Nothing was paid: check the amounts and confirm again.';
 
   @override
   String p2pEscrowEarlierOut(String sats, String total, int count) {
@@ -2143,7 +2143,7 @@ class P2pLocalizationsUk extends P2pLocalizations {
       one:
           'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet',
     );
-    return '$_temp0: $sats sats. With this one, $total sats will be out of this wallet.';
+    return '$_temp0: $sats sats. With this one, $total sats will be out of this wallet for the collaterals of this order, bond not included.';
   }
 
   @override
@@ -2167,7 +2167,7 @@ class P2pLocalizationsUk extends P2pLocalizations {
       other: '$count more whose amounts this device no longer knows',
       one: '1 more whose amount this device no longer knows',
     );
-    return '$_temp0, and $_temp1. With this one, at least $total sats will be out of this wallet.';
+    return '$_temp0, and $_temp1. With this one, at least $total sats will be out of this wallet for the collaterals of this order, bond not included.';
   }
 
   @override
@@ -2180,7 +2180,7 @@ class P2pLocalizationsUk extends P2pLocalizations {
       one:
           'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount.',
     );
-    return '$_temp0 With this one, at least $total sats will be out of this wallet.';
+    return '$_temp0 With this one, at least $total sats will be out of this wallet for the collaterals of this order, bond not included.';
   }
 
   @override

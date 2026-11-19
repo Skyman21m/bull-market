@@ -143,9 +143,11 @@ final class EscrowContract {
   /// Whether the confirmation alerts: an earlier escrow not back yet, or kept.
   bool get alerts => notBack.isNotEmpty || kept.isNotEmpty;
 
-  /// Whether [now], the same contract read again under the payment's lock, shows more out than this confirmation showed: more sats not back, more not back of an unknown amount, or an escrow kept that this confirmation did not show kept. Then the payment asks a new confirmation; less or the same out pays.
+  /// Whether [now], the same contract read again under the payment's lock with the quote about to be paid, shows more out than this confirmation showed: this escrow costing more (another quote than the one confirmed, security review of #187, C4) or more out in all, more sats not back, more not back of an unknown amount, or an escrow kept that this confirmation did not show kept. Then the payment asks a new confirmation; less or the same out pays.
   bool needsNewConfirmation(EscrowContract now) {
-    if (now.notBackSats.value > notBackSats.value ||
+    if (now.escrow.value > escrow.value ||
+        now.outIfPaid.value > outIfPaid.value ||
+        now.notBackSats.value > notBackSats.value ||
         now.notBackUnknown > notBackUnknown) {
       return true;
     }
