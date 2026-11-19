@@ -39,6 +39,7 @@ import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
 import 'ui/trade/active_trades_sheet.dart';
 import 'ui/trade/bond_payment_panel.dart';
+import 'ui/trade/earlier_escrow_lines.dart';
 import 'ui/trade/chat_actions.dart';
 import 'ui/trade/chat_panel.dart';
 import 'ui/trade/host_rating_section.dart';
@@ -283,6 +284,10 @@ final class P2pRouter {
             walletEscrowLine: P2pLocator.paysBondFromWallet(locator)
                 ? (_, escrowHeld) =>
                       BondPaymentLine(bondHeld: escrowHeld, escrow: true)
+                : null,
+            // The escrows of a maker seller's other contracts (#188).
+            walletEarlierEscrows: P2pLocator.paysBondFromWallet(locator)
+                ? (_) => const EarlierEscrowLines()
                 : null,
             coordinatorDetails: (request) =>
                 locator<CoordinatorDetailsCubit>(param1: request),

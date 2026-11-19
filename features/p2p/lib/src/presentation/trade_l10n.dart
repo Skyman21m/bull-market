@@ -466,8 +466,7 @@ extension MakeOrderRequestL10n on MakeOrderRequest {
     final formats = P2pFormats.of(context);
     final start = switch (type) {
       OrderType.buy => l10n.p2pMakeBuyBtcFor,
-      // Never made in this version.
-      OrderType.sell => l10n.p2pMakeOrderFor,
+      OrderType.sell => l10n.p2pMakeSellBtcFor,
     };
     final shown = switch (amount) {
       FixedOrderAmount(:final amount) => formats.typedNumber(amount.value),

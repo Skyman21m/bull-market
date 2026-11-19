@@ -684,7 +684,7 @@ final class P2pLocator {
         payments.followBond,
         payments.bondPaymentRunning,
         step: payments.step,
-        // The maker bond's comparison with the wallet's own price (#180); the escrow's cubit has none until #187.
+        // The maker bond's comparison with the wallet's own price (#180).
         rate: payments.rateOfBond,
       );
     });
@@ -704,6 +704,10 @@ final class P2pLocator {
         payments.followBond,
         payments.bondPaymentRunning,
         step: payments.step,
+        // A maker seller's escrow (#188): the comparison with the wallet's own price, the contract its confirmation states, and every escrow of the trade followed; each gives nothing for a taker.
+        rate: payments.rateOfBond,
+        contract: payments.escrowContractOf,
+        escrowsFollower: payments.followEscrows,
       );
     });
     // The buyer's payout from the wallet (#90): the wallet's invoice and address in the payout panel, resolved only where the wallet's port was lent, as the bond's payment; one use case for the run, which remembers at which step it gave each invoice.

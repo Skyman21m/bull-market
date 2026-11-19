@@ -7,6 +7,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../public/p2p_wallet_port.dart';
 import '../domain/trade/bond_payment.dart';
+import '../domain/trade/escrow_contract.dart';
 import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade/wallet_payment.dart';
@@ -39,12 +40,24 @@ typedef BondRateChecker =
       P2pWalletQuote walletQuote,
     );
 
+/// [PayBondFromWalletUsecase.escrowContractOf]: for a maker seller's escrow (#187), the contract the confirmation of a quote states.
+typedef EscrowContractReader =
+    Future<Result<EscrowContract?, BondPayRefusal>> Function(
+      TradeRecord record,
+      P2pWalletQuote walletQuote,
+    );
+
 /// [PayBondFromWalletUsecase.payBond].
 typedef BondPayer =
     Future<Result<P2pWalletPayment, BondPayRefusal>> Function(
       TradeRecord record, {
       required P2pWalletQuote accepted,
+      EscrowContract? contract,
     });
+
+/// [PayBondFromWalletUsecase.followEscrows].
+typedef EscrowsFollower =
+    Stream<EscrowPaymentsWatch> Function(TradeRecord record);
 
 /// [PayBondFromWalletUsecase.followBond].
 typedef BondFollower = Stream<BondPaymentWatch> Function(TradeRecord record);
@@ -63,20 +76,38 @@ final class BondPaymentState {
 
   final BondPayStep step;
 
+  /// For a maker seller's escrow (#188), where every escrow this wallet was asked to pay for the order stands, contract by contract (`followEscrows`); `null` until read, and for every other payment.
+  final EscrowPaymentsWatch? escrows;
+
+  /// The contract whose escrow [step] follows (`TradeTrail.take` when the follow started): the escrows of the other contracts are said apart ([escrows]).
+  final int followedTake;
+
+  /// The escrows whose refund was pending and which a later state of the wallet's records shows held again or kept (security review of #187, C2): by contract, with the state that followed; an alert for the page's life.
+  final Map<int, P2pWalletPaymentProgress> refundsUndone;
+
   const BondPaymentState({
     this.balance,
     this.offer,
     this.step = const BondPayLooking(),
+    this.escrows,
+    this.followedTake = 0,
+    this.refundsUndone = const {},
   });
 
   BondPaymentState _with({
     Result<Sats, P2pWalletRefusal>? balance,
     Result<void, BondPayRefusal>? offer,
     BondPayStep? step,
+    EscrowPaymentsWatch? escrows,
+    int? followedTake,
+    Map<int, P2pWalletPaymentProgress>? refundsUndone,
   }) => BondPaymentState(
     balance: balance ?? this.balance,
     offer: offer ?? this.offer,
     step: step ?? this.step,
+    escrows: escrows ?? this.escrows,
+    followedTake: followedTake ?? this.followedTake,
+    refundsUndone: refundsUndone ?? this.refundsUndone,
   );
 }
 
@@ -107,13 +138,39 @@ final class BondPayQuoting extends BondPayStep {
 final class BondPayConfirming extends BondPayStep {
   final P2pWalletQuote walletQuote;
 
-  /// For an order made here, how the bond quoted compares with the bond at the wallet's own price (#180, the owner's payment rule of 2026-11-17): shown in the confirmation, a red warning beyond the owner's threshold; `null` for a take.
+  /// For an order made here, how the bond or the escrow quoted compares with what the order implies at the wallet's own price (#180, #188, the owner's payment rule of 2026-11-17): shown in the confirmation, a red warning beyond the owner's threshold; `null` for a take.
   final WalletRateCheck? rate;
+
+  /// For a maker seller's escrow (#188), the contract the confirmation states, built from [walletQuote] itself, the quote « Pay » pays (security review of #187, C4, point (a) of #188): a new contract, the earlier escrows not back or kept; the payment takes it back. `null` for every other payment.
+  final EscrowContract? contract;
 
   /// Whether the wallet's price is being read again ([BondPaymentCubit.retryRate]), the comparison being [WalletRateUnverified] meanwhile: « Pay » stays offered.
   final bool retrying;
 
-  const BondPayConfirming(this.walletQuote, {this.rate, this.retrying = false});
+  /// Whether this confirmation is asked again ([BondPayConfirmAgain]): more was out under the payment's lock than the confirmation before showed, nothing was paid, and [contract] holds the figures now.
+  final bool again;
+
+  /// Whether the order was taken again since this confirmation opened (#188): its contract is no longer the trail's, its « Pay » would pay nothing ([BondPayContractNotConfirmed]), and the panel says so.
+  final bool stale;
+
+  const BondPayConfirming(
+    this.walletQuote, {
+    this.rate,
+    this.contract,
+    this.retrying = false,
+    this.again = false,
+    this.stale = false,
+  });
+
+  BondPayConfirming _with({WalletRateCheck? rate, bool? retrying, bool? stale}) =>
+      BondPayConfirming(
+        walletQuote,
+        rate: rate ?? this.rate,
+        contract: contract,
+        retrying: retrying ?? this.retrying,
+        again: again,
+        stale: stale ?? this.stale,
+      );
 }
 
 /// The payment is being made, after the user's confirmation, or by this process while the screen was away; [slow] once it has run for [BondPaymentCubit.stillWaitingAfter].
@@ -162,8 +219,18 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   final BondPaymentRunning _running;
   final Duration _stillWaitingAfter;
 
-  /// The comparison of a quote with the wallet's own price, for an order made here (#180); `null` where the cubit was given none (the escrow's, until #187), and the confirmation then shows the quote alone, as before.
+  /// The comparison of a quote with the wallet's own price, for an order made here (#180, the escrow's since #188); `null` where the cubit was given none, and the confirmation then shows the quote alone, as before.
   final BondRateChecker? _rate;
+
+  /// The contract of a maker seller's escrow (#188), `null` where the cubit was given none (the bond's).
+  final EscrowContractReader? _contract;
+
+  /// Every escrow of the trade, contract by contract (#188), `null` where the cubit was given none (the bond's).
+  final EscrowsFollower? _escrowsFollower;
+  StreamSubscription<EscrowPaymentsWatch>? _escrows;
+
+  /// The progress of each escrow followed last, by contract: a refund pending that turns held or kept again is an alert ([BondPaymentState.refundsUndone]).
+  final Map<int, P2pWalletPaymentProgress> _lastProgress = {};
 
   /// The invoice this cubit pays, the step of the use case whose functions it was given (the locator passes `PayBondFromWalletUsecase.step`): the panel offers the wallet only for a request of that step.
   final InvoiceStep step;
@@ -186,11 +253,14 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     this._stillWaitingAfter = BondPaymentCubit.stillWaitingAfter,
     this.step = InvoiceStep.bond,
     this._rate,
+    this._contract,
+    this._escrowsFollower,
   }) : super(const BondPaymentState());
 
-  /// Reads the balance and looks for a payment of the bond made earlier: once.
+  /// Reads the balance and looks for a payment of the bond made earlier: once. For a maker seller's escrow, every escrow of the trade is followed first (#188), before any check of the wallet's offer.
   void start() {
     if (isClosed || _balances != null) return;
+    _followEscrows();
     _balances = _balance(record.network).listen((balance) {
       if (!isClosed) emit(state._with(balance: balance));
     });
@@ -220,9 +290,12 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   }
 
   /// Checks, without asking the swap service, whether the wallet is offered for the bond as [seen] shows it: once per status shown.
+  ///
+  /// A maker seller's order taken again (#188, a later contract in [seen]'s trail): every escrow is followed again (`followEscrows` reads the records once), the payment followed becomes the new contract's, and a confirmation open for the earlier contract is said stale (its « Pay » would pay nothing).
   Future<void> offerFor(TradeSeen seen) async {
     if (isClosed || identical(seen, _checked)) return;
     _checked = seen;
+    _contractMoved(seen.status.trail.take);
     final offer = await _check(record, seen);
     if (isClosed || !identical(seen, _checked)) return;
     emit(
@@ -235,7 +308,49 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     );
   }
 
-  /// Asks the swap service for its quote of the bond as [seen] shows it: on the tap of « Pay with this wallet » only; for an order made here, then compares the quote with the wallet's own price (#180) before the confirmation shows both.
+  /// The contract [take] shown, for a cubit that follows a maker seller's escrows: when it is not the one followed, every escrow is followed again and so is the payment of the new contract, unless a quote, a confirmation or a payment is under way (a confirmation then said stale, the payment's end following the new contract).
+  void _contractMoved(int take) {
+    if (_escrowsFollower == null || take == state.followedTake) return;
+    emit(state._with(followedTake: take));
+    _followEscrows();
+    switch (state.step) {
+      case final BondPayConfirming confirming
+          when confirming.contract?.take != take:
+        emit(state._with(step: confirming._with(stale: true)));
+      case BondPayQuoting() || BondPayConfirming() || BondPaySending():
+        break;
+      case _:
+        _followAgain(leavesSending: true);
+    }
+  }
+
+  /// Follows every escrow of the trade again (#188): `followEscrows` reads the records once, when it is listened to.
+  void _followEscrows() {
+    final follower = _escrowsFollower;
+    if (follower == null || isClosed) return;
+    unawaited(_escrows?.cancel());
+    _escrows = follower(record).listen((watch) {
+      if (isClosed) return;
+      var undone = state.refundsUndone;
+      if (watch case EscrowPaymentsFollowed(:final escrows)) {
+        for (final escrow in escrows) {
+          if (escrow.watch case BondPaymentFollowed(:final progress)) {
+            final before = _lastProgress[escrow.take];
+            _lastProgress[escrow.take] = progress;
+            // A refund pending is not final in Bull's own code (security review of #187, C2): one that turns held or kept again is said.
+            if (before is P2pWalletPaymentRefundPending &&
+                (progress is P2pWalletPaymentPending ||
+                    progress is P2pWalletPaymentPaid)) {
+              undone = {...undone, escrow.take: progress};
+            }
+          }
+        }
+      }
+      emit(state._with(escrows: watch, refundsUndone: undone));
+    });
+  }
+
+  /// Asks the swap service for its quote of the bond as [seen] shows it: on the tap of « Pay with this wallet » only; for an order made here, then compares the quote with the wallet's own price (#180) before the confirmation shows both; for a maker seller's escrow, first the contract the confirmation states, built from that very quote (#188).
   ///
   /// The follow of an earlier payment stops here: from the quote to the end of the payment, no event of the wallet's records moves the panel (a preparation left by an earlier run that expires meanwhile would offer to pay again while this payment runs).
   Future<void> ask(TradeSeen seen) async {
@@ -253,6 +368,18 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         emit(state._with(step: BondPayIdle(refused: failure)));
         return;
     }
+    // The contract of a maker seller's escrow, from the quote « Pay » will pay (security review of #187, C4): never another quote's.
+    final EscrowContract? contract;
+    switch (await _contract?.call(record, walletQuote)) {
+      case null || Ok(value: null):
+        contract = null;
+      case Ok(:final value?):
+        contract = value;
+      case Err(:final failure):
+        if (!isClosed) emit(state._with(step: BondPayIdle(refused: failure)));
+        return;
+    }
+    if (isClosed) return;
     final WalletRateCheck? rate;
     switch (await _rate?.call(record, walletQuote)) {
       case null || Ok(value: null):
@@ -264,7 +391,17 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         return;
     }
     if (isClosed) return;
-    emit(state._with(step: BondPayConfirming(walletQuote, rate: rate)));
+    emit(
+      state._with(
+        step: BondPayConfirming(
+          walletQuote,
+          rate: rate,
+          contract: contract,
+          // Taken again while the quote was asked: said at once.
+          stale: contract != null && contract.take != state.followedTake,
+        ),
+      ),
+    );
   }
 
   /// Reads the wallet's price again for the quote the confirmation shows, when its price could not be read ([WalletRateUnverified]): on the tap of « Retry » only, once at a time; the quote is kept, never asked again.
@@ -280,18 +417,27 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         step.rate is! WalletRateUnverified) {
       return;
     }
-    final retrying = BondPayConfirming(
-      step.walletQuote,
-      rate: step.rate,
-      retrying: true,
-    );
+    final retrying = step._with(retrying: true);
     emit(state._with(step: retrying));
     final read = await rate(record, step.walletQuote);
-    if (isClosed || !identical(state.step, retrying)) return;
+    final now = state.step;
+    if (isClosed || now is! BondPayConfirming || !identical(now, retrying)) {
+      // A confirmation said stale meanwhile keeps its retry's end: the read is dropped, the line stays « not checked ».
+      if (!isClosed && now is BondPayConfirming && now.retrying && now.stale) {
+        emit(state._with(step: now._with(retrying: false)));
+      }
+      return;
+    }
     emit(
       state._with(
         step: switch (read) {
-          Ok(:final value) => BondPayConfirming(step.walletQuote, rate: value),
+          Ok(:final value) => BondPayConfirming(
+            step.walletQuote,
+            rate: value,
+            contract: step.contract,
+            again: step.again,
+            stale: step.stale,
+          ),
           Err(:final failure) => BondPayIdle(refused: failure),
         },
       ),
@@ -304,17 +450,23 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     emit(state._with(step: const BondPayIdle()));
   }
 
-  /// Pays the quote the confirmation shows: on its tap only, once.
+  /// Pays the quote the confirmation shows: on its tap only, once. [shown] is the confirmation the tapped button was drawn for: a tap on a confirmation that is no longer the one on screen (a new one shown meanwhile, with other figures) pays nothing.
   ///
+  /// For a maker seller's escrow the confirmation's contract goes with it (#188), built from that very quote; when more is out under the payment's lock ([BondPayConfirmAgain]), nothing is paid and the confirmation shows again with the contract the refusal carries, for the same quote, its next « Pay » paying.
   /// An [Error] of the payment is not caught (AGENTS.md, rule 11): the panel then says it cannot tell where the payment stands, and follows the wallet's records again, before the error goes on.
-  Future<void> confirm() async {
+  Future<void> confirm({BondPayConfirming? shown}) async {
     final step = state.step;
     if (isClosed || step is! BondPayConfirming) return;
+    if (shown != null && !identical(shown, step)) return;
     _sending();
     var answered = false;
     final Result<P2pWalletPayment, BondPayRefusal> paid;
     try {
-      paid = await _payer(record, accepted: step.walletQuote);
+      paid = await _payer(
+        record,
+        accepted: step.walletQuote,
+        contract: step.contract,
+      );
       answered = true;
     } finally {
       _stillWaiting?.cancel();
@@ -322,9 +474,24 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         emit(state._with(step: const BondPayUnreadable(paymentMayExist: true)));
         _followAgain(leavesSending: true, paymentExists: true);
       }
+      // A payment recorded or attempted: every escrow of the trade followed again, its record included (#188).
+      if (!isClosed) _followEscrows();
     }
     if (isClosed) return;
     switch (paid) {
+      case Err(failure: BondPayConfirmAgain(:final contract)):
+        // More out than confirmed (the owner's decision of 2026-11-19): the confirmation again, with the figures now, for the very quote; the next « Pay » pays.
+        emit(
+          state._with(
+            step: BondPayConfirming(
+              step.walletQuote,
+              rate: step.rate,
+              contract: contract,
+              again: true,
+              stale: contract.take != state.followedTake,
+            ),
+          ),
+        );
       case Ok():
         // The funding was broadcast: the payment is sent, whatever the records say next.
         emit(state._with(step: const BondPayFollowing(P2pWalletPaymentSent())));
@@ -363,7 +530,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     return const BondPaySending();
   }
 
-  /// Follows the payment recorded for the bond. Its events never move the panel out of a quote or a confirmation, nor out of a payment being sent unless [leavesSending] (the follow started once that payment answered or ended); when [paymentExists], finding nothing keeps the payment shown, or says the records cannot tell where it stands.
+  /// Follows the payment recorded for the bond (for a maker seller's escrow, the contract's the trail stands at when the follow starts). Its events never move the panel out of a quote or a confirmation, nor out of a payment being sent unless [leavesSending] (the follow started once that payment answered or ended); when [paymentExists], finding nothing keeps the payment shown, or says the records cannot tell where it stands.
   void _followAgain({bool leavesSending = false, bool paymentExists = false}) {
     unawaited(_follow?.cancel());
     _follow = _follower(record).listen((watch) {
@@ -406,12 +573,14 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   Future<void> close() async {
     _stillWaiting?.cancel();
     await _balances?.cancel();
+    // Not awaited: a follow waiting for the wallet's next change ends only at that change, as the payment's own follow (`PayBondFromWalletUsecase.followEscrows`).
+    unawaited(_escrows?.cancel());
     await _follow?.cancel();
     return super.close();
   }
 }
 
-/// The wallet's payment of a seller's escrow (#97): the same cubit, over the functions of the escrow's [PayBondFromWalletUsecase] and its [step], of a type of its own so that one trade page provides both.
+/// The wallet's payment of a seller's escrow (#97): the same cubit, over the functions of the escrow's [PayBondFromWalletUsecase] and its [step], of a type of its own so that one trade page provides both. For a maker seller's escrow (#188) it is also given the comparison with the wallet's own price, the contract the confirmation states, and the follow of every escrow of the trade, which give nothing for a taker.
 final class EscrowPaymentCubit extends BondPaymentCubit {
   EscrowPaymentCubit(
     super.record,
@@ -423,5 +592,8 @@ final class EscrowPaymentCubit extends BondPaymentCubit {
     super.running, {
     super.stillWaitingAfter,
     required super.step,
+    super.rate,
+    super.contract,
+    super.escrowsFollower,
   });
 }

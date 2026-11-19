@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/trade/bond_payment.dart';
+import 'package:p2p/src/domain/trade/escrow_contract.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_payment.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -20,6 +21,9 @@ final class Payments {
   final List<Completer<Result<P2pWalletQuote, BondPayRefusal>>> quotes = [];
   final List<Completer<Result<P2pWalletPayment, BondPayRefusal>>> pays = [];
   final List<P2pWalletQuote> accepted = [];
+
+  /// The contract given with each payment (#188), `null` where none was.
+  final List<EscrowContract?> contracts = [];
   int checks = 0;
 
   /// The payment of the bond this process is making now, as the use case knows it.
@@ -48,8 +52,10 @@ final class Payments {
   Future<Result<P2pWalletPayment, BondPayRefusal>> pay(
     TradeRecord record, {
     required P2pWalletQuote accepted,
+    EscrowContract? contract,
   }) {
     this.accepted.add(accepted);
+    contracts.add(contract);
     final answer = Completer<Result<P2pWalletPayment, BondPayRefusal>>();
     pays.add(answer);
     return answer.future;

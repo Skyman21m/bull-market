@@ -38,7 +38,7 @@ import 'widgets/trade_button.dart';
 
 /// The « Create » page: the official client's basic form (`components/MakerForm/MakerForm.tsx`, `basic/MakerPage/index.tsx`, commit ff1998c; design note `docs/design/phase-3-making-an-order.md` § 1.11, § 2.1), in the wallet's look (#181).
 ///
-/// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy », and « Sell » disabled with « Selling as maker is coming in a later version. »; with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location », disabled with « Coming in a later version. » (#189); « Premium over Market (%) * »; with the advanced options, « Description », « Password » (disabled until #189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
+/// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy » and « Sell » (« Sell » since #188); with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location », disabled with « Coming in a later version. » (#189); « Premium over Market (%) * »; with the advanced options, « Description », « Password » (disabled until #189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
 ///
 /// What is typed stays here; it is judged by [MakerFormCheck] at each build, and the request « Create order » sends is the one the summary shows, taken at the press. From the press the fields are locked: « You do not have a Garage Key » without a key, else « Store your garage key », whose « Done » sends the make once ([MakeOrderCubit.make]), its « Go back » sending nothing. A made order opens its trade ([onMade]); a make refused or not made says why; a make whose outcome is unknown locks the form.
 ///
@@ -46,7 +46,7 @@ import 'widgets/trade_button.dart';
 ///
 /// A renewal (#185, [MakeOrderState.renewing]) is the same page titled « Renew Order », its fields filled with the terms this device kept of the order renewed and locked, on that order's coordinator: the same summary, « Estimated Bond », rate and Bull wallet's comparison, the same press and the same make; « Create order » sends only when the form judges its fields into exactly the kept request, and with no « Store your garage key », as the reference's renewal sends at once (`TradeBox/index.tsx:146-200`). Going back sends nothing.
 class CreateOrderScreen extends StatefulWidget {
-  /// « Buy » chosen when the form opens, as the reference starts from the book's choice (`fav.type`); `null` for none.
+  /// « Buy » or « Sell » chosen when the form opens, as the reference starts from the book's choice (`fav.type`); `null` for none.
   final OrderType? initialType;
 
   /// Builds the cubit of a coordinator's dialog, from « Select Host ».
@@ -106,9 +106,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   Duration _publicDuration = MakerFormCheck.publicDurationDefault;
   Duration _escrowDuration = MakerFormCheck.escrowDurationDefault;
   double _bondSize = MakerFormCheck.bondSizeDefault;
-  late OrderType? _type = widget.initialType == OrderType.buy
-      ? OrderType.buy
-      : null;
+  late OrderType? _type = widget.initialType;
   final List<String> _methods = [];
 
   /// Whether a dialog of the press is open, or the make is being handed to the cubit: a second press opens nothing more and the fields stay locked.
@@ -263,7 +261,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         if (_check(cubit.state).request != request ||
             settled == null ||
             (!settled.sameLineAs(seen) &&
-                settled.verdict != MakePriceVerdict.within)) {
+                settled.verdict.stopsPressFor(request.type))) {
           setState(() => _stopped = _PressStopped.priceRead);
           return;
         }
@@ -672,8 +670,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           _Side(
                             type: _type,
                             enabled: !fieldsLocked,
-                            // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
-                            onBuy: () => setState(() => _type = OrderType.buy),
+                            // As the reference's « Buy » and « Sell », a choice, never a toggle (`MakerForm.tsx:766-775`, `:800-809`).
+                            onChoose: (side) => setState(() => _type = side),
                           ),
                           const Gap(BullSpacing.md),
                           if (_advanced) ...[
@@ -815,6 +813,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           check: check,
                           state: state,
                           coordinator: coordinatorName,
+                          type: _type,
                         ),
                       ],
                     },
@@ -896,19 +895,33 @@ class _AdvancedOptions extends StatelessWidget {
   }
 }
 
-/// « Buy or Sell Bitcoin? * », « Buy » and « Sell », the latter disabled with its line.
+/// « Buy or Sell Bitcoin? * », « Buy » and « Sell » (`MakerForm.tsx:750-827`), each a choice, never a toggle (#188: « Sell » enabled).
 class _Side extends StatelessWidget {
   final OrderType? type;
   final bool enabled;
-  final VoidCallback onBuy;
+  final ValueChanged<OrderType> onChoose;
 
-  const _Side({required this.type, required this.enabled, required this.onBuy});
+  const _Side({
+    required this.type,
+    required this.enabled,
+    required this.onChoose,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
+    Widget choice(OrderType side, String label) => Expanded(
+      child: Semantics(
+        selected: type == side,
+        child: TradeButton(
+          label: label,
+          outlined: type != side,
+          onPressed: enabled ? () => onChoose(side) : null,
+        ),
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -920,31 +933,10 @@ class _Side extends StatelessWidget {
         const Gap(BullSpacing.xs),
         Row(
           children: [
-            Expanded(
-              child: Semantics(
-                selected: type == OrderType.buy,
-                child: TradeButton(
-                  label: l10n.p2pMakeBuy,
-                  outlined: type != OrderType.buy,
-                  onPressed: enabled ? onBuy : null,
-                ),
-              ),
-            ),
+            choice(OrderType.buy, l10n.p2pMakeBuy),
             const Gap(BullSpacing.sm),
-            Expanded(
-              child: TradeButton(
-                label: l10n.p2pMakeSell,
-                outlined: true,
-                onPressed: null,
-              ),
-            ),
+            choice(OrderType.sell, l10n.p2pMakeSell),
           ],
-        ),
-        const Gap(BullSpacing.xs),
-        Text(
-          l10n.p2pMakeSellComingLater,
-          textAlign: TextAlign.center,
-          style: text.labelMedium?.copyWith(color: colors.textMuted),
         ),
       ],
     );
@@ -1417,8 +1409,7 @@ class _Summary extends StatelessWidget {
     final start = switch (type) {
       null => l10n.p2pMakeOrderFor,
       OrderType.buy => l10n.p2pMakeBuyBtcFor,
-      // Never chosen in this version.
-      OrderType.sell => l10n.p2pMakeOrderFor,
+      OrderType.sell => l10n.p2pMakeSellBtcFor,
     };
     final price = premium == 0
         ? l10n.p2pMakeAtMarketPrice
@@ -1728,16 +1719,20 @@ class _Matches extends StatelessWidget {
   }
 }
 
-/// « Order current rate: … {{currencyCode}}/BTC » with its tooltip (`MakerForm.tsx:1340-1363`), then the Bull wallet's indicative price for comparison and, beyond the owner's threshold either way, a red warning; for a currency the Bull wallet does not price, or a price it could not read, a line in the warning colour (with « Retry » for the latter). None of it stops « Create order ».
+/// « Order current rate: … {{currencyCode}}/BTC » with its tooltip (`MakerForm.tsx:1340-1363`), then the Bull wallet's indicative price for comparison and, beyond the owner's threshold on the side that costs the maker of the side chosen ([MakePriceCheck.warnsFor]: either way for a buyer or no side, below only for a seller, #188), a red warning in that maker's words; for a currency the Bull wallet does not price, or a price it could not read, a line in the warning colour (with « Retry » for the latter). None of it stops « Create order ».
 class _Rate extends StatelessWidget {
   final MakerFormCheck check;
   final MakeOrderState state;
   final String coordinator;
 
+  /// The side chosen: a seller is warned of a price too low only, in a seller's words.
+  final OrderType? type;
+
   const _Rate({
     required this.check,
     required this.state,
     required this.coordinator,
+    required this.type,
   });
 
   @override
@@ -1773,24 +1768,24 @@ class _Rate extends StatelessWidget {
               formats.gap(check.gapHundredths),
             );
             final threshold = formats.threshold(TradeTolerances.walletRateGap);
-            children.add(_Line(line, color: check.warns ? colors.error : null));
-            switch (check.side) {
-              case MakePriceSide.within:
-                break;
-              case MakePriceSide.below:
-                children.add(
-                  _Alert(
-                    l10n.p2pMakeRateBelow(coordinator, threshold),
-                    colors.error,
+            final warns = check.warnsFor(type);
+            children.add(_Line(line, color: warns ? colors.error : null));
+            if (warns) {
+              final selling = type == OrderType.sell;
+              children.add(
+                _Alert(switch (check.side) {
+                  MakePriceSide.below when selling => l10n.p2pMakeRateBelowSell(
+                    coordinator,
+                    threshold,
                   ),
-                );
-              case MakePriceSide.above:
-                children.add(
-                  _Alert(
+                  MakePriceSide.below => l10n.p2pMakeRateBelow(
+                    coordinator,
+                    threshold,
+                  ),
+                  MakePriceSide.above || MakePriceSide.within =>
                     l10n.p2pMakeRateAbove(coordinator, threshold),
-                    colors.error,
-                  ),
-                );
+                }, colors.error),
+              );
             }
           case MakePriceNotPriced():
             children.add(
