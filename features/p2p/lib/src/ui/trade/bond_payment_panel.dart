@@ -541,7 +541,7 @@ class _EscrowConfirmation extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     String sats(Sats amount) => l10n.p2pAmountSats(formats.bigSats(amount.value));
-    final quote = confirming.walletQuote;
+    final walletQuote = confirming.walletQuote;
     final body = text.bodyMedium?.copyWith(color: colors.text);
     final currency = request.currency;
     final seen = request.seen;
@@ -568,7 +568,7 @@ class _EscrowConfirmation extends StatelessWidget {
         liveRegion: true,
         child: Text(
           l10n.p2pPayEscrowConfirmTitle(
-            formats.sats(quote.amount.value.toInt()),
+            formats.sats(walletQuote.amount.value.toInt()),
           ),
           style: text.headlineMedium?.copyWith(color: colors.text),
         ),
@@ -581,11 +581,11 @@ class _EscrowConfirmation extends StatelessWidget {
         _InfoLine(l10n.p2pPayEscrowNewContract('${contract.take + 1}')),
       _AmountRows(
         rows: [
-          (l10n.p2pPayRowCollateral, sats(quote.amount), false),
-          (l10n.p2pPayRowSwapFees, sats(quote.serviceFee), false),
-          (l10n.p2pPayRowNetworkFee, sats(quote.networkFee), false),
-          (l10n.p2pPayRowTotal, sats(quote.total), true),
-          (l10n.p2pPayRowLeft, sats(quote.remaining), false),
+          (l10n.p2pPayRowCollateral, sats(walletQuote.amount), false),
+          (l10n.p2pPayRowSwapFees, sats(walletQuote.serviceFee), false),
+          (l10n.p2pPayRowNetworkFee, sats(walletQuote.networkFee), false),
+          (l10n.p2pPayRowTotal, sats(walletQuote.total), true),
+          (l10n.p2pPayRowLeft, sats(walletQuote.remaining), false),
         ],
       ),
       if (rate != null)
@@ -641,7 +641,7 @@ class _EscrowConfirmation extends StatelessWidget {
               key: payKey,
               child: TradeButton(
                 label: l10n.p2pPayConfirm(
-                  formats.sats(quote.total.value.toInt()),
+                  formats.sats(walletQuote.total.value.toInt()),
                 ),
                 // A confirmation of a contract the order moved on from pays nothing: not offered.
                 onPressed: confirming.stale ? null : onPay,

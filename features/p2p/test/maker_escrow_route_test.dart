@@ -33,7 +33,7 @@ import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// A maker seller's escrow on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`), #187: the real router, records, use cases, state machine and trade screen, the coordinator played by `ScriptedMakerCoordinator` (never a real one), the wallet `FakeP2pWalletPort`.
 ///
-/// « Sell » is not in the create form before #188: the sell order is made by the composition's own make use case, as « Create order » would make it. The escrow panel is the one a taker seller has had since #97; its confirmation of a maker's escrow (the gap, the new contract's line) is #188's, so here the panel is only seen to offer, to refuse, and never to pay a maker's escrow without the confirmation of its contract.
+/// The sell order is made by the composition's own make use case, as « Create order » makes it (the form's gestures are `maker_sell_route_test.dart`'s, #188). The escrow panel is the one a taker seller has had since #97, with a maker seller's confirmation since #188: its « Pay » passes the contract it states, built from the quote it pays.
 const _net = RobosatsNetwork.testnet;
 
 /// The scripted maker coordinator for every robot's request and the anonymous information and limits; the book, anonymous and unknown to it, to an empty fake.
@@ -221,7 +221,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 void main() {
   testWidgets(
-    'contract 0: « Pay with this wallet » offered for a maker seller\'s escrow, and the panel without the confirmation of its contract (#188) pays nothing',
+    'contract 0: « Pay with this wallet » offered for a maker seller\'s escrow, and the panel\'s « Pay » pays it under the contract its confirmation states (#188)',
     (tester) async {
       final app = await _App.start(tester);
       await app.openTrade();
@@ -266,13 +266,16 @@ void main() {
       expect(app.wallet.quoted, hasLength(1));
       final confirm = find.text('Pay 196,654 sats');
       expect(confirm, findsOneWidget);
+      // The confirmation of contract 0: no new contract, no alert, the comparison with the Bull wallet's price, the fee included.
+      expect(find.textContaining('New contract'), findsNothing);
+      expect(find.textContaining('the coordinator\'s fee included'), findsOneWidget);
       await _tap(tester, confirm);
       await app.settle();
-      // Refused before the wallet: the panel gives no contract, which a maker seller's escrow needs.
-      expect(app.wallet.paid, isEmpty);
+      // Paid once, under contract 0, the very quote confirmed.
+      expect(app.wallet.paid, hasLength(1));
       expect(
         find.text('The order moved on before the payment. Nothing was paid.'),
-        findsOneWidget,
+        findsNothing,
       );
       final rows = switch (await app.wait(
         () => app.locator<TradePaymentRepository>().paymentsOfTrade(app.record),
@@ -280,7 +283,9 @@ void main() {
         Ok(:final value) => value,
         Err(:final failure) => fail('$failure'),
       };
-      expect(rows, isEmpty);
+      expect([for (final row in rows) (row.step, row.take)], [
+        (InvoiceStep.escrow, 0),
+      ]);
       await app.close();
     },
   );
@@ -289,7 +294,7 @@ void main() {
     'a new contract while the escrow of contract 0, paid from this wallet, is held: « Pay with this wallet » is offered, no lock',
     (tester) async {
       final app = await _App.start(tester);
-      // Contract 0's escrow paid from this wallet through the composition's own use case, with the confirmation of its contract (#188's panel will give it), from the status the trade screen stored.
+      // Contract 0's escrow paid from this wallet through the composition's own use case, with the confirmation of its contract (as the panel gives it since #188), from the status the trade screen stored.
       await app.openTrade();
       expect(find.text('Pay with this wallet'), findsOneWidget);
       final escrow = app.escrow;
@@ -356,7 +361,7 @@ void main() {
       app.coordinator.take(app.record.orderId, TradeHarness.robotsOf(_net)[4]);
       await app.openTrade();
       expect(find.textContaining('as collateral'), findsWidgets);
-      // No lock (the owner's decision of 2026-11-19): contract 1 is offered; the alert with contract 0's sats is its confirmation's, #188's (`escrow_contract_lines_test.dart`).
+      // No lock (the owner's decision of 2026-11-19): contract 1 is offered; the alert with contract 0's sats is its confirmation's (`maker_sell_route_test.dart`).
       expect(find.text('Pay with this wallet'), findsOneWidget);
       expect(
         find.textContaining('Pay this collateral with another wallet'),
