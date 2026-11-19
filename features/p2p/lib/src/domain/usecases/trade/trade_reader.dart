@@ -488,11 +488,12 @@ final class TradeReader {
       at,
       requestedAt: request.leftAt,
     );
-    if (seen.status.position != end.position ||
-        seen.status.runtimeType != end.runtimeType ||
-        seen.order == null) {
-      return null;
-    }
+    final atThatEnd = switch (end.position) {
+      TradePosition.succeeded => seen.status is Succeeded,
+      TradePosition.expired => seen.status is Expired,
+      _ => false,
+    };
+    if (!atThatEnd || seen.order == null) return null;
     return seen;
   }
 

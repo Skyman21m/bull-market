@@ -176,18 +176,19 @@ final class MakeOrderUsecase {
           final kept = record.origin == TradeOrigin.madeHere
               ? _keptRequest(made[record.robot])
               : null;
-          if (kept == null) {
+          // The records list the trades in the order they were written (`taken_at`, then the robot, whose index a fresh robot takes after): the orders made after this one are the ones listed after it.
+          final at = list.indexWhere((trade) => trade.robot == record.robot);
+          if (kept == null || at < 0) {
             out.add(const Err(P2pStorageFailure()));
             return;
           }
           out.add(
             Ok(
               OrderRenewals(kept, [
-                for (final trade in list)
+                for (final trade in list.skip(at + 1))
                   if (trade.origin == TradeOrigin.madeHere &&
-                      trade.robot != record.robot &&
                       trade.coordinatorAlias == record.coordinatorAlias &&
-                      trade.takenAt.isAfter(record.takenAt) &&
+                      !trade.takenAt.isBefore(record.takenAt) &&
                       _keptRequest(made[trade.robot]) == kept)
                     trade,
               ]),

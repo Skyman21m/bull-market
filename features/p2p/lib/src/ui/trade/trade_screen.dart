@@ -13,6 +13,7 @@ import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
 import '../../domain/trade/maker_terms.dart';
 import '../../domain/trade/trade_chat_step.dart';
+import '../../domain/trade/trade_edges.dart';
 import '../../domain/trade/trade_pause.dart';
 import '../../domain/trade/trade_renewal.dart';
 import '../../domain/trade/trade_status.dart';
@@ -547,11 +548,24 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
           color: colors.warning,
         ),
       // Where a renewal is offered (#216, #217): the terms kept here, and an order already made since with them.
-      if (watch case TradeWatchStatus(
-        :final record,
-        :final seen,
-      ) when _renewalOf(record, seen) != null)
+      if (watch case TradeWatchStatus(:final record, :final seen)
+          when _renewalOf(record, seen) != null)
         ..._renewalLines(context, record),
+      // An end opened again that could not be read again shows the records' end as « This trade is over for this robot. », with no panel of the end: the renewal its records allow is offered here, in the reference's words of that end (#216).
+      if ((watch, TradeView.of(watch)) case (
+        TradeWatchStatus(:final record, :final seen),
+        TradeMessage(kind: TradeMessageKind.ended),
+      ))
+        if (_renewalOf(record, seen) case final renew?)
+          TradeButton(
+            key: const ValueKey('trade-renew'),
+            label: seen.status.position == TradePosition.succeeded
+                ? l10n.p2pRenew
+                : l10n.p2pRenewOrder,
+            outlined: true,
+            busy: _renewing,
+            onPressed: renew,
+          ),
     ];
   }
 
