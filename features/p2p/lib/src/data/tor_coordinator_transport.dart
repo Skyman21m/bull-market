@@ -467,9 +467,11 @@ final class TorCoordinatorTransport
     final key = base64.encode(
       List<int>.generate(16, (_) => _handshakeRandom.nextInt(256)),
     );
+    // What is left of the deadline is rounded up past the next whole millisecond: a `Timer` counts in whole milliseconds, so that one set to what is left could fire a fraction of a millisecond before the deadline's own clock says it has passed, and a connection given up at that instant was taken for one to try again on a new Tor session (#196).
     Duration budget() {
       final left = deadline.left;
-      return left < _attemptTimeout ? left : _attemptTimeout;
+      if (left >= _attemptTimeout) return _attemptTimeout;
+      return Duration(milliseconds: left.inMilliseconds + 1);
     }
 
     HttpClientRequest? request;
