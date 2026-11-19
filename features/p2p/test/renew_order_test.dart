@@ -686,6 +686,31 @@ void main() {
         makerFee: stored.makerFee,
       );
 
+      /// [stored] as written by another [version] of the terms' record.
+      MakerTermsRecord withVersion(MakerTermsRecord stored, int version) =>
+          MakerTermsRecord(
+            version: version,
+            network: stored.network,
+            coordinatorAlias: stored.coordinatorAlias,
+            role: stored.role,
+            type: stored.type,
+            currencyId: stored.currencyId,
+            amount: stored.amount,
+            minAmount: stored.minAmount,
+            maxAmount: stored.maxAmount,
+            premiumPercent: stored.premiumPercent,
+            paymentMethod: stored.paymentMethod,
+            bondSizePercent: stored.bondSizePercent,
+            publicSeconds: stored.publicSeconds,
+            escrowSeconds: stored.escrowSeconds,
+            description: stored.description,
+            hasPassword: stored.hasPassword,
+            latitude: stored.latitude,
+            longitude: stored.longitude,
+            createdPrice: stored.createdPrice,
+            makerFee: stored.makerFee,
+          );
+
       /// [stored] as kept for an order made at the coordinator [alias].
       MakerTermsRecord elsewhere(MakerTermsRecord stored, String alias) =>
           MakerTermsRecord(
@@ -954,6 +979,132 @@ void main() {
             MadeSinceStands.expired,
           ]);
           expect(renewals.shown?.record.orderId, first.orderId);
+          // A third one, cancelled (error 1043 at its read): said cancelled, never expired (functional review of #220, R9, its mutant N4).
+          final third = await renew();
+          harness.coordinator.order(third.orderId).status = 4;
+          await read(harness, third);
+          renewals = valueOf(await harness.make.renewalsOf(record).first);
+          expect(renewals.since.map((made) => made.stands), [
+            MadeSinceStands.running,
+            MadeSinceStands.expired,
+            MadeSinceStands.cancelled,
+          ]);
+        },
+      );
+
+      test(
+        'an order of the same terms made while the device\'s clock was set back two hours is still seen: « after » by the fresh robot\'s index, never by the clock alone (security review of #220, C2)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          harness.setClockOnly(const Duration(hours: -2));
+          final renewal = valueOf(await harness.make.renewal(record));
+          final renewed =
+              valueOf(
+                    await harness.make.execute(
+                      renewal.request,
+                      coordinator: renewal.coordinator,
+                      network: renewal.network,
+                      seen: seenNow(harness, renewal.request),
+                    ),
+                  )
+                  as MakeStarted;
+          expect(renewed.record.takenAt.isBefore(record.takenAt), isTrue);
+          expect(
+            renewed.record.robot.accountIndex,
+            greaterThan(record.robot.accountIndex),
+          );
+          final renewals = valueOf(await harness.make.renewalsOf(record).first);
+          expect(renewals.since.map((made) => made.record), [renewed.record]);
+        },
+      );
+
+      test(
+        'an order made after whose kept terms cannot be read (a version this code does not write), after the app started again over the same records: not known, never « none » (security review of #220, C3)',
+        () async {
+          final first = await MakeHarness.start();
+          final record = await expiredOrder(first);
+          final renewal = valueOf(await first.make.renewal(record));
+          final renewed =
+              valueOf(
+                    await first.make.execute(
+                      renewal.request,
+                      coordinator: renewal.coordinator,
+                      network: renewal.network,
+                      seen: seenNow(first, renewal.request),
+                    ),
+                  )
+                  as MakeStarted;
+          final harness = first.restart();
+          expect(
+            valueOf(await harness.make.renewalsOf(record).first).since,
+            hasLength(1),
+          );
+          harness.trails.madeHistories = (stored) => {
+            for (final MapEntry(:key, :value) in stored.entries)
+              key: key == renewed.record.robot
+                  ? StoredMadeHistory(
+                      terms: switch (value.terms) {
+                        final terms? => withVersion(terms, 99),
+                        null => null,
+                      },
+                      trail: value.trail,
+                    )
+                  : value,
+          };
+          expect(
+            await harness.make.renewalsOf(record).first,
+            isA<Err<OrderRenewals, P2pFailure>>(),
+          );
+        },
+      );
+
+      test(
+        'a make of the same terms whose answer was lost, still pending: said pending; one of other terms is not (security review of #220, R2)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          harness.coordinator.failNext(
+            ScriptedMakerRequest.make,
+            ScriptedFault.answerLost,
+          );
+          expect(
+            valueOf(await harness.makeOrder(MakeHarness.request(amount: 250))),
+            isA<MakePending>(),
+          );
+          expect(
+            valueOf(
+              await harness.make.renewalsOf(record).first,
+            ).pendingSameTerms,
+            isFalse,
+          );
+          harness.coordinator.failNext(
+            ScriptedMakerRequest.make,
+            ScriptedFault.answerLost,
+          );
+          expect(valueOf(await harness.makeOrder()), isA<MakePending>());
+          final renewals = valueOf(await harness.make.renewalsOf(record).first);
+          expect(renewals.pendingSameTerms, isTrue);
+          expect(renewals.since, isEmpty);
+        },
+      );
+
+      test(
+        'the last finished orders are of their network only: an order ended on testnet is none of mainnet\'s (security review of #220, its mutant M15)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          final last = ListLastOrdersUsecase(harness.records);
+          expect(
+            valueOf(
+              await last.execute(RobosatsNetwork.testnet).first,
+            ).map((trade) => trade.orderId),
+            [record.orderId],
+          );
+          expect(
+            valueOf(await last.execute(RobosatsNetwork.mainnet).first),
+            isEmpty,
+          );
         },
       );
 

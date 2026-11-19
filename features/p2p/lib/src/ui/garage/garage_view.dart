@@ -43,7 +43,7 @@ class GarageView extends StatefulWidget {
   coordinatorDetails;
 
   /// Opens the trade of « Last order #N » on the profile (#216), with a `LastOrdersCubit` above the Garage; `null` where the feature holds no trades, and the profile shows no such line.
-  final ValueChanged<TradeRecord>? onOpenTrade;
+  final Future<void> Function(TradeRecord record)? onOpenTrade;
 
   const GarageView({
     super.key,

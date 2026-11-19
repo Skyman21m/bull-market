@@ -34,7 +34,7 @@ import 'package:p2p/src/presentation/renewals_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
-import 'package:p2p/src/ui/trade/renew_same_terms_dialog.dart';
+import 'package:p2p/src/ui/trade/renew_check_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
@@ -311,10 +311,17 @@ final class _Renewal {
         ),
       );
 
-  PendingMakesCubit pendingCubit() => PendingMakesCubit(
+  /// What a resolution of a pending make gives, a make left pending by default.
+  MakeOutcome Function(PendingMake make)? resolveWith;
+
+  /// The last pending makes' cubit [pendingCubit] made.
+  PendingMakesCubit? pending;
+
+  PendingMakesCubit pendingCubit() => pending = PendingMakesCubit(
     RobosatsNetwork.mainnet,
     (network) => pendingMakes.stream,
-    (make) async => MakePending(make, MakePendingReason.unread),
+    (make) async =>
+        resolveWith?.call(make) ?? MakePending(make, MakePendingReason.unread),
     (make) async => const Ok(true),
   );
 
@@ -525,7 +532,7 @@ void main() {
           await tester.pump();
           await tester.pump();
           if (made) {
-            expect(find.byType(RenewSameTermsDialog), findsOneWidget);
+            expect(find.byType(RenewCheckDialog), findsOneWidget);
             expect(
               find.text(
                 'An order with the same terms was already made here after this one: order 777, still running here. Renewing makes one more order, under a new robot, with a new bond to pay.',
@@ -537,7 +544,7 @@ void main() {
             await tester.pumpAndSettle();
             expect(pages.opened, isEmpty);
           } else {
-            expect(find.byType(RenewSameTermsDialog), findsNothing);
+            expect(find.byType(RenewCheckDialog), findsNothing);
             expect(pages.opened, [_madeRecord()]);
           }
         },
@@ -585,6 +592,80 @@ void main() {
         );
         expect(find.textContaining('could not be read again'), findsNothing);
         expect(_renewOrder, findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the records cannot tell whether an order with the same terms was made since: said, and « Renew Order » through « Renew this order? » saying it (security review of #220, C3, its mutant M8)',
+      (tester) async {
+        final renewals = RenewalsCubit(
+          _madeRecord(),
+          (_) => Stream.value(const Err(P2pStorageFailure())),
+        )..start();
+        addTearDown(renewals.close);
+        final pages = _Pages();
+        await _showTrade(
+          tester,
+          await tester.runAsync(_expired) ?? (throw StateError('none')),
+          record: _madeRecord(),
+          pages: pages,
+          renewals: renewals,
+        );
+        await tester.pump();
+        expect(
+          find.text(
+            'Bull Market could not read its records to tell whether an order with the same terms was made here since this one.',
+          ),
+          findsOneWidget,
+        );
+        await _tap(tester, _renewOrder);
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(RenewCheckDialog), findsOneWidget);
+        expect(
+          find.textContaining(
+            'Bull Market could not check whether an order with the same terms was already made here.',
+          ),
+          findsOneWidget,
+        );
+        expect(pages.opened, isEmpty);
+        await tester.tap(find.text('Renew anyway'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(pages.opened, [_madeRecord()]);
+      },
+    );
+
+    testWidgets(
+      'the records not answering within 10 seconds of a tap on « Renew Order »: « Renew this order? » saying the app could not check, never the page at once (security review of #220, R3)',
+      (tester) async {
+        final records = StreamController<Result<OrderRenewals, P2pFailure>>();
+        addTearDown(records.close);
+        final renewals = RenewalsCubit(_madeRecord(), (_) => records.stream)
+          ..start();
+        addTearDown(renewals.close);
+        final pages = _Pages();
+        await _showTrade(
+          tester,
+          await tester.runAsync(_expired) ?? (throw StateError('none')),
+          record: _madeRecord(),
+          pages: pages,
+          renewals: renewals,
+        );
+        await _tap(tester, _renewOrder);
+        await tester.pump(const Duration(seconds: 9));
+        expect(find.byType(RenewCheckDialog), findsNothing);
+        expect(pages.opened, isEmpty);
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pump();
+        expect(find.byType(RenewCheckDialog), findsOneWidget);
+        expect(
+          find.textContaining(
+            'Bull Market could not check whether an order with the same terms was already made here.',
+          ),
+          findsOneWidget,
+        );
+        expect(pages.opened, isEmpty);
       },
     );
 
@@ -1161,6 +1242,61 @@ void main() {
           await tester.tap(_create, warnIfMissed: false);
           await settle(tester);
           expect(renewal.made, isEmpty);
+        },
+      );
+
+      testWidgets(
+        'its own make sent with an outcome unknown, then confirmed by a resolution whose read of the order\'s terms fails: the page stays locked, saying it does not know, and a press sends nothing more (security review of #220, R1, its mutant M14)',
+        (tester) async {
+          final own = PendingMake(
+            robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 1),
+            coordinatorAlias: 'temple',
+            coordinatorOnion: _madeRecord().coordinatorOnion,
+            role: TradeRole.buyer,
+            writtenAt: madeAt,
+            closedAt: null,
+          );
+          final bondStep =
+              await tester.runAsync(() => _at([makerOrderJson(0)])) ??
+              (throw StateError('none'));
+          final made = TradeRecord(
+            robot: own.robot,
+            coordinatorAlias: 'temple',
+            coordinatorOnion: own.coordinatorOnion,
+            orderId: 777,
+            role: TradeRole.buyer,
+            origin: TradeOrigin.madeHere,
+            takenAt: madeAt,
+            confirmedAt: madeAt,
+            closedAt: null,
+          );
+          final renewal = _Renewal()
+            ..answer = Ok(MakePending(own, MakePendingReason.unread))
+            ..madeAsRenewal = ((_, _) => false)
+            ..resolveWith = ((_) =>
+                MakeStarted(made, bondStep.status, stored: true));
+          final opened = await _showRenewal(tester, renewal);
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.made, hasLength(1));
+          // The records list the make, a resolution confirms it, the list empties.
+          renewal.pendingMakes.add(
+            Ok([ActivePendingMake(own, neverSent: false)]),
+          );
+          await settle(tester);
+          await renewal.pending?.resolve(own);
+          renewal.pendingMakes.add(const Ok([]));
+          await settle(tester);
+          expect(opened, isEmpty);
+          expect(find.byType(CreateOrderScreen), findsOneWidget);
+          expect(
+            find.textContaining('does not know yet whether'),
+            findsWidgets,
+          );
+          expect(_enabled(tester, _create), isFalse);
+          await tester.tap(_create, warnIfMissed: false);
+          await settle(tester);
+          expect(renewal.made, hasLength(1));
         },
       );
 

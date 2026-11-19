@@ -153,7 +153,7 @@ void main() {
   );
 
   test(
-    'an order read no longer at its successful end is not taken: the end stays, marked shown otherwise, never « not read » (#216, functional review of #220, C1)',
+    'an order read no longer at its successful end, at 13 (the buyer being paid): not taken, the end stays, marked possibly under way, never « not read » (#216, reviews of #220, C1)',
     () async {
       final (app, record) = await finishedThenRestarted();
       app.coordinator.moveTo(13);
@@ -161,7 +161,7 @@ void main() {
       await app.settle();
       expect(run.states, hasLength(2));
       expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-      expect(run.lastStatus.endReread, isA<TradeEndShownOtherwise>());
+      expect(run.lastStatus.endReread, isA<TradeEndShownAlive>());
       expect(readsOf(app), 1);
     },
   );

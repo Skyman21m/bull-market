@@ -599,8 +599,10 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
       };
 
   /// The network's last pending make is resolved or set aside (#182, functional review C1): a form locked by a make whose outcome was unknown is free again, nothing sent; any other state is left as it is.
+  ///
+  /// Never for a renewal (security review of #220, R1): its own make, sent with an outcome unknown, may be the very order a resolution has just confirmed, which [pendingStarted] opens; if that read cannot tell, the form stays locked, saying it does not know, rather than free for a second order and a second bond. The page left and opened again starts afresh.
   void pendingCleared() {
-    if (isClosed || state.progress is! MakeUncertain) return;
+    if (isClosed || state.progress is! MakeUncertain || state.renewing) return;
     emit(state._with(progress: const MakeIdle()));
   }
 

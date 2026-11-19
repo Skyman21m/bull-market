@@ -8,6 +8,7 @@ import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
+import '../../presentation/last_orders_cubit.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
@@ -46,7 +47,7 @@ class GarageProfile extends StatefulWidget {
   coordinatorDetails;
 
   /// Opens the trade of a « Last order #N » line (#216), read by the `LastOrdersCubit` above the Garage; `null`, and no such line, where the feature holds no trades.
-  final ValueChanged<TradeRecord>? onOpenTrade;
+  final Future<void> Function(TradeRecord record)? onOpenTrade;
 
   const GarageProfile({
     super.key,
@@ -137,11 +138,28 @@ class _GarageProfileState extends State<GarageProfile> {
             key: ValueKey((state.key, robot.index)),
             create: (_) =>
                 widget.robotCoordinator(state.key, robot.index)..load(),
-            child: RobotCoordinatorPanel(
-              nickname: robot.nickname,
-              network: state.network,
-              coordinatorDetails: widget.coordinatorDetails,
-            ),
+            child: widget.onOpenTrade == null
+                ? RobotCoordinatorPanel(
+                    nickname: robot.nickname,
+                    network: state.network,
+                    coordinatorDetails: widget.coordinatorDetails,
+                  )
+                // The orders the « Last order #N » lines open, so that the panel does not say them again (functional review of #220, R4).
+                : BlocBuilder<LastOrdersCubit, LastOrdersState>(
+                    builder: (context, last) => RobotCoordinatorPanel(
+                      nickname: robot.nickname,
+                      network: state.network,
+                      coordinatorDetails: widget.coordinatorDetails,
+                      lastOrdersShown: switch (last) {
+                        LastOrdersListed(:final orders) => {
+                          for (final record in orders)
+                            (record.coordinatorAlias, record.orderId),
+                        },
+                        LastOrdersLoading() ||
+                        LastOrdersUnreadable() => const {},
+                      },
+                    ),
+                  ),
           ),
           const Gap(BullSpacing.md),
           Container(

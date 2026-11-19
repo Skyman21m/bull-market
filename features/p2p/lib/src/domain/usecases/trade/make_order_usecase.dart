@@ -154,57 +154,106 @@ final class MakeOrderUsecase {
     );
   }
 
-  /// The request this device kept of the order of [record], and the orders made here after it with that very request, on its coordinator and network (#216, #217): its renewals, or an order made again by hand with the same terms, which this device cannot tell apart and which say the same to the user (an order with these terms already exists). Oldest first: a new list after each write of the records or of the terms, read from the device only, nothing sent.
+  /// The request this device kept of the order of [record], the orders made here after it with that very request, on its coordinator and network, and whether such a make is still pending (#216, #217): its renewals, or an order made again by hand with the same terms, which this device cannot tell apart and which say the same to the user (an order with these terms already exists). Oldest first: a new list after each write of the records or of the terms, read from the device only, nothing sent.
   ///
   /// The reference, which renews with the same robot, has a second renewal refused while the first order is active (`api/logics.py:75-100`, error 1000); here each renewal has a fresh robot, so nothing refuses it, and the trade screen says it instead (never a lock: renewing again stays the user's choice). [Err] when the records cannot be read, or the terms kept of [record] do not restore: whether it was renewed is then not known, never « not renewed ». An order whose own terms do not restore is never counted as one of them.
   Stream<Result<OrderRenewals, P2pFailure>> renewalsOf(TradeRecord record) {
     final network = record.network;
     Result<List<TradeRecord>, P2pFailure>? recorded;
     Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>? histories;
-    StreamSubscription<Result<List<TradeRecord>, P2pFailure>>? recordedSub;
-    StreamSubscription<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>?
-    historiesSub;
+    Result<List<PendingMake>, P2pFailure>? pending;
+    final subscriptions = <StreamSubscription<Object?>>[];
     late final StreamController<Result<OrderRenewals, P2pFailure>> out;
 
+    // Made after [record]: never by the device's clock alone, which may have been set back (security review of #220, C2). A fresh robot of the same Garage Key always takes a higher index than every robot used before (`TradeRobots.robotForNewTrade`: the first index neither bound nor recorded, and neither binding nor record is ever deleted); another key's robot is judged by the time written. Either says « after »: counted rather than missed.
+    bool after(RobotSlot robot, DateTime writtenAt) =>
+        robot != record.robot &&
+        ((robot.keyFingerprint == record.robot.keyFingerprint &&
+                robot.accountIndex > record.robot.accountIndex) ||
+            writtenAt.isAfter(record.takenAt));
+
     void emit() {
-      final (t, h) = (recorded, histories);
-      if (t == null || h == null) return;
-      switch ((t, h)) {
-        case (Err(:final failure), _) || (_, Err(:final failure)):
+      final (t, h, p) = (recorded, histories, pending);
+      if (t == null || h == null || p == null) return;
+      switch ((t, h, p)) {
+        case (Err(:final failure), _, _) ||
+            (_, Err(:final failure), _) ||
+            (_, _, Err(:final failure)):
           out.add(Err(failure));
-        case (Ok(value: final list), Ok(value: final made)):
+        case (
+          Ok(value: final list),
+          Ok(value: final made),
+          Ok(value: final makes),
+        ):
           final kept = record.origin == TradeOrigin.madeHere
-              ? _keptRequest(made[record.robot], of: record)
+              ? _keptRequest(
+                  made[record.robot],
+                  network: record.network,
+                  alias: record.coordinatorAlias,
+                  role: record.role,
+                )
               : null;
-          // The records list the trades in the order they were written (`taken_at`, then the robot, whose index a fresh robot takes after): the orders made after this one are the ones listed after it.
-          final at = list.indexWhere((trade) => trade.robot == record.robot);
-          if (kept == null || at < 0) {
+          if (kept == null) {
             out.add(const Err(P2pStorageFailure()));
             return;
           }
+          final since = <OrderMadeSince>[];
+          for (final trade in list) {
+            if (trade.origin != TradeOrigin.madeHere ||
+                trade.coordinatorAlias != record.coordinatorAlias ||
+                !after(trade.robot, trade.takenAt)) {
+              continue;
+            }
+            final terms = _keptRequest(
+              made[trade.robot],
+              network: trade.network,
+              alias: trade.coordinatorAlias,
+              role: trade.role,
+            );
+            // Terms of an order made after this one that cannot be read: whether it has the same is not known, never « none » (security review of #220, C3).
+            if (terms == null) {
+              out.add(const Err(P2pStorageFailure()));
+              return;
+            }
+            if (terms != kept) continue;
+            since.add(
+              OrderMadeSince(
+                trade,
+                OrderMadeSince.standsOf(
+                  trade,
+                  TradePosition.values
+                      .where(
+                        (position) =>
+                            position.name == made[trade.robot]?.trail?.position,
+                      )
+                      .firstOrNull,
+                ),
+              ),
+            );
+          }
+          // A make of the same terms whose answer was lost, still pending (security review of #220, R2); one whose terms were never written never left, and is none.
+          var pendingSameTerms = false;
+          for (final make in makes) {
+            if (!make.isActive ||
+                make.coordinatorAlias != record.coordinatorAlias ||
+                !after(make.robot, make.writtenAt) ||
+                made[make.robot] == null) {
+              continue;
+            }
+            final terms = _keptRequest(
+              made[make.robot],
+              network: make.network,
+              alias: make.coordinatorAlias,
+              role: make.role,
+            );
+            if (terms == null) {
+              out.add(const Err(P2pStorageFailure()));
+              return;
+            }
+            if (terms == kept) pendingSameTerms = true;
+          }
           out.add(
-            Ok(
-              OrderRenewals(kept, [
-                for (final trade in list.skip(at + 1))
-                  if (trade.origin == TradeOrigin.madeHere &&
-                      trade.coordinatorAlias == record.coordinatorAlias &&
-                      !trade.takenAt.isBefore(record.takenAt) &&
-                      _keptRequest(made[trade.robot], of: trade) == kept)
-                    OrderMadeSince(
-                      trade,
-                      OrderMadeSince.standsOf(
-                        trade,
-                        TradePosition.values
-                            .where(
-                              (position) =>
-                                  position.name ==
-                                  made[trade.robot]?.trail?.position,
-                            )
-                            .firstOrNull,
-                      ),
-                    ),
-              ]),
-            ),
+            Ok(OrderRenewals(kept, since, pendingSameTerms: pendingSameTerms)),
           );
       }
     }
@@ -219,18 +268,30 @@ final class MakeOrderUsecase {
 
     out = StreamController(
       onListen: () {
-        recordedSub = _records.watchTrades(network).listen((value) {
-          recorded = value;
-          emit();
-        }, onError: failed);
-        historiesSub = _trails.watchMadeHistories(network).listen((value) {
-          histories = value;
-          emit();
-        }, onError: failed);
+        subscriptions
+          ..add(
+            _records.watchTrades(network).listen((value) {
+              recorded = value;
+              emit();
+            }, onError: failed),
+          )
+          ..add(
+            _trails.watchMadeHistories(network).listen((value) {
+              histories = value;
+              emit();
+            }, onError: failed),
+          )
+          ..add(
+            _records.watchPendingMakes(network).listen((value) {
+              pending = value;
+              emit();
+            }, onError: failed),
+          );
       },
       onCancel: () async {
-        await recordedSub?.cancel();
-        await historiesSub?.cancel();
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
       },
     );
     return out.stream;
@@ -254,18 +315,20 @@ final class MakeOrderUsecase {
     };
   }
 
-  /// The request kept in [history], the terms of the make of [of], or `null` when none is stored, they are of another network, coordinator or side than [of]'s record (as [renewal] refuses them), or they do not restore.
+  /// The request kept in [history], the terms of one make, or `null` when none is stored, they are of another [network], coordinator ([alias]) or side ([role]) than its record's (as [renewal] refuses them), or they do not restore.
   static MakeOrderRequest? _keptRequest(
     StoredMadeHistory? history, {
-    required TradeRecord of,
+    required RobosatsNetwork network,
+    required String alias,
+    required TradeRole role,
   }) {
     final terms = history?.terms;
     if (history == null ||
         history.unreadable ||
         terms == null ||
-        terms.network != of.network.name ||
-        terms.coordinatorAlias != of.coordinatorAlias ||
-        terms.role != of.role.name) {
+        terms.network != network.name ||
+        terms.coordinatorAlias != alias ||
+        terms.role != role.name) {
       return null;
     }
     return switch (MakerTerms.restore(terms)) {

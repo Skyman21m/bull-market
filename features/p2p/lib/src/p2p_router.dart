@@ -697,7 +697,7 @@ class _P2pPageState extends State<_P2pPage> {
                     locator<CoordinatorDetailsCubit>(param1: request),
                 // « Last order #N » (#216): the trade of the last finished orders, opened above the tab as from « Active trades ».
                 onOpenTrade: lastOrders
-                    ? (record) => unawaited(_openTrade(context, record))
+                    ? (record) => _openTrade(context, record)
                     : null,
               );
               return BlocProvider(

@@ -19,7 +19,7 @@ import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
-import 'package:p2p/src/ui/trade/renew_same_terms_dialog.dart';
+import 'package:p2p/src/ui/trade/renew_check_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -50,13 +50,21 @@ final class _Coordinators implements CoordinatorTransport {
   final ScriptedMakerCoordinator maker;
   final FakeTransport rest = FakeTransport(network: _net);
 
+  /// When set, every read of an order waits for it before it reaches the coordinator: a slow coordinator.
+  Future<void>? holdReads;
+
   _Coordinators(this.maker);
 
   @override
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
     CoordinatorRequest request,
-  ) {
+  ) async {
     final path = request.url.path;
+    if (holdReads case final hold?
+        when path == '/api/order/' &&
+            request.method == CoordinatorHttpMethod.get) {
+      await hold;
+    }
     if (request.robot != null ||
         path == '/api/info/' ||
         path == '/api/limits/' ||
@@ -72,9 +80,16 @@ final class _App {
   final GetIt locator;
   final GoRouter router;
   final ScriptedMakerCoordinator coordinator;
+  final _Coordinators transport;
   late TradeRecord first;
 
-  _App(this.tester, this.locator, this.router, this.coordinator);
+  _App(
+    this.tester,
+    this.locator,
+    this.router,
+    this.coordinator,
+    this.transport,
+  );
 
   /// Every make that reached the coordinator.
   List<CoordinatorRequest> get makes => [
@@ -184,13 +199,14 @@ final class _App {
       robots: TradeHarness.robotsOf(_net),
       clock: () => clock,
     );
+    final transport = _Coordinators(coordinator);
     final locator = GetIt.asNewInstance();
     addTearDown(locator.reset);
     final tor = StreamController<P2pTorState>.broadcast();
     addTearDown(tor.close);
     setUpP2pForTesting(
       locator,
-      transport: _Coordinators(coordinator),
+      transport: transport,
       torStates: () => tor.stream,
       clock: () => clock,
       garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
@@ -203,7 +219,7 @@ final class _App {
       initialLocation: P2pFeature.path,
       routes: [const P2pFeature().route(locator, network: (_) => _net)],
     );
-    final app = _App(tester, locator, router, coordinator);
+    final app = _App(tester, locator, router, coordinator, transport);
     // The Garage Key of the tests (fake bytes), recorded as drawn here.
     final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
       Ok(:final value) => value,
@@ -294,7 +310,7 @@ void main() {
       await _tap(tester, _renewOrder);
       await app.settle(12);
       expect(find.byType(CreateOrderScreen), findsOneWidget);
-      expect(find.byType(RenewSameTermsDialog), findsNothing);
+      expect(find.byType(RenewCheckDialog), findsNothing);
       await _tap(tester, _create);
       await tester.tap(_create, warnIfMissed: false);
       await app.settle(16);
@@ -320,11 +336,11 @@ void main() {
       // Renewing again asks first; « Go back » opens nothing.
       await _tap(tester, _renewOrder);
       await app.settle();
-      expect(find.byType(RenewSameTermsDialog), findsOneWidget);
+      expect(find.byType(RenewCheckDialog), findsOneWidget);
       expect(find.text('Renew this order?'), findsOneWidget);
       await tester.tap(find.text('Go back'));
       await app.settle();
-      expect(find.byType(RenewSameTermsDialog), findsNothing);
+      expect(find.byType(RenewCheckDialog), findsNothing);
       expect(find.byType(CreateOrderScreen), findsNothing);
       // « Renew anyway »: the renewal's page, nothing sent; left, nothing made.
       await _tap(tester, _renewOrder);
@@ -347,11 +363,30 @@ void main() {
     },
   );
 
-  for (final (name, change, line)
+  /// « Renew Order », then « Renew this order? » with [reason] and « Renew anyway »: the renewal's page with the kept terms; nothing sent.
+  Future<void> renewThroughDialog(
+    WidgetTester tester,
+    _App app,
+    String reason,
+  ) async {
+    await _tap(tester, _renewOrder);
+    await app.settle();
+    expect(find.byType(RenewCheckDialog), findsOneWidget);
+    expect(find.textContaining(reason), findsOneWidget);
+    expect(find.byType(CreateOrderScreen), findsNothing);
+    await tester.tap(find.text('Renew anyway'));
+    await app.settle(12);
+    expect(find.byType(CreateOrderScreen), findsOneWidget);
+    expect(find.text('Buy BTC for 100 EUR at a 2% premium'), findsOneWidget);
+    expect(app.makes, hasLength(1));
+  }
+
+  for (final (name, change, line, reason)
       in <
         (
           String,
           void Function(ScriptedMakerCoordinator coordinator, int id),
+          String,
           String,
         )
       >[
@@ -362,20 +397,23 @@ void main() {
             ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable)
             ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable),
           'This order could not be read again from Temple of Sats: what is shown is what this device kept when it ended, on ',
+          'The end of this order was not confirmed by Temple of Sats.',
         ),
         (
           'the coordinator answering it does not know the order (404)',
           (c, id) => c.orders.remove(id),
           'Temple of Sats answered that it does not know this order: what is shown is what this device kept when it ended, on ',
+          'The end of this order was not confirmed by Temple of Sats.',
         ),
         (
-          'the coordinator answering the order public again (1)',
-          (c, id) => c.order(id).status = 1,
+          'the coordinator answering the order cancelled (1043)',
+          (c, id) => c.order(id).status = 4,
           'Temple of Sats now shows this order otherwise than this device kept it when it ended, on ',
+          'Temple of Sats shows this order otherwise than this device kept it.',
         ),
       ]) {
     testWidgets(
-      'opened again, $name: the end the records hold, the line true to what the read gave, with the date and the kept terms; « Renew Order » under the text, still offered (functional review of #220, C1, R7)',
+      'opened again, $name: the end the records hold, the line true to what the read gave, with the date and the kept terms; « Renew Order » under the text, through « Renew this order? » (functional review of #220, C1, R7; security review of #220, C1)',
       (tester) async {
         final app = await _App.start(tester);
         final id = app.first.orderId;
@@ -391,6 +429,7 @@ void main() {
           'could not be read again',
           'does not know this order',
           'now shows this order otherwise',
+          'still running',
         ]) {
           if (!line.contains(other)) {
             expect(find.textContaining(other), findsNothing, reason: other);
@@ -406,19 +445,117 @@ void main() {
                 .dy,
           ),
         );
-        // The renewal the records allow, on its page with the kept terms; nothing sent.
-        await _tap(tester, _renewOrder);
-        await app.settle(12);
-        expect(find.byType(CreateOrderScreen), findsOneWidget);
-        expect(
-          find.text('Buy BTC for 100 EUR at a 2% premium'),
-          findsOneWidget,
-        );
-        expect(app.makes, hasLength(1));
+        await renewThroughDialog(tester, app, reason);
         await app.close();
       },
     );
   }
+
+  for (final (name, change)
+      in <(String, void Function(ScriptedMadeOrder order))>[
+        ('public again (1)', (order) => order.status = 1),
+        (
+          'taken, its trade under way (6)',
+          (order) => order
+            ..taker = TradeHarness.robotsOf(_net)[5]
+            ..deadline = DateTime.utc(2026, 11, 14, 12)
+            ..status = 6,
+        ),
+      ]) {
+    testWidgets(
+      'opened again, the coordinator showing the ended order $name: the alert that it may still be under way and to check it in the official app, never « over »; « Renew Order » through « Renew this order? » saying why (security review of #220, C1)',
+      (tester) async {
+        final app = await _App.start(tester);
+        final id = app.first.orderId;
+        change(app.coordinator.order(id));
+        await app.openGarage();
+        await _tap(tester, _lastOrder(id));
+        await app.settle(12);
+        expect(
+          find.text(
+            'Temple of Sats now shows this order as still running: it may still be under way there, its bond may still be locked and it may be taken. Check it in the official RoboSats app with your Garage Key before you create another.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('This trade is over for this robot.'), findsNothing);
+        expect(
+          find.textContaining('This device kept this order as ended on '),
+          findsOneWidget,
+        );
+        expect(find.textContaining('could not be read again'), findsNothing);
+        await renewThroughDialog(
+          tester,
+          app,
+          'Temple of Sats shows this order still running: its bond may still be locked and it may be taken.',
+        );
+        await app.close();
+      },
+    );
+  }
+
+  testWidgets(
+    'opened again, a slow coordinator: the order said being read again, never « over », the renewal through « Renew this order? »; the honest answer (5): « The order has expired », the renewal at once (security review of #220, C1)',
+    (tester) async {
+      final app = await _App.start(tester);
+      final id = app.first.orderId;
+      final slow = Completer<void>();
+      app.transport.holdReads = slow.future;
+      await app.openGarage();
+      await _tap(tester, _lastOrder(id));
+      await app.settle(12);
+      expect(
+        find.text('Reading this order again from Temple of Sats…'),
+        findsOneWidget,
+      );
+      expect(find.text('This trade is over for this robot.'), findsNothing);
+      await _tap(tester, _renewOrder);
+      await app.settle();
+      expect(find.byType(RenewCheckDialog), findsOneWidget);
+      expect(
+        find.textContaining(
+          'The end of this order was not confirmed by Temple of Sats.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Go back'));
+      await app.settle();
+      expect(find.byType(CreateOrderScreen), findsNothing);
+      // The coordinator answers, honest: the end confirmed.
+      app.transport.holdReads = null;
+      slow.complete();
+      await app.settle(12);
+      expect(find.text('The order has expired'), findsOneWidget);
+      expect(find.textContaining('Reading this order again'), findsNothing);
+      await _tap(tester, _renewOrder);
+      await app.settle(12);
+      expect(find.byType(RenewCheckDialog), findsNothing);
+      expect(find.byType(CreateOrderScreen), findsOneWidget);
+      expect(app.makes, hasLength(1));
+      await app.close();
+    },
+  );
+
+  testWidgets(
+    'two quick taps on « Last order #N »: one screen, one read (security review of #220, R4)',
+    (tester) async {
+      final app = await _App.start(tester);
+      final id = app.first.orderId;
+      await app.openGarage();
+      final before = app.orderReads.length;
+      await tester.tap(_lastOrder(id));
+      await tester.tap(_lastOrder(id), warnIfMissed: false);
+      await app.settle(12);
+      expect(app.tradePages(), [id]);
+      expect(app.orderReads.length - before, 1);
+      // Back to the Garage: a tap opens it again.
+      await app.back();
+      expect(find.byType(TradeScreen, skipOffstage: false), findsNothing);
+      await _tap(tester, _lastOrder(id));
+      await app.settle(12);
+      expect(app.tradePages(), [id]);
+      await app.close();
+    },
+  );
 
   testWidgets(
     'opened again, the coordinator now reads the ended order with other terms: its alert shown, and that it shows the order otherwise; the renewal\'s page still the kept terms (functional review of #220, C1)',
@@ -441,9 +578,32 @@ void main() {
       );
       expect(find.textContaining('could not be read again'), findsNothing);
       expect(find.textContaining(_keptLine), findsOneWidget);
-      await _tap(tester, _renewOrder);
-      await app.settle(12);
-      expect(find.text('Buy BTC for 100 EUR at a 2% premium'), findsOneWidget);
+      // The advice of an order made here, and the alert of the panel before the line that says the coordinator shows it otherwise (functional review of #220, R10).
+      final advice = find.text(
+        'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact Temple of Sats if something looks wrong.',
+      );
+      expect(advice, findsOneWidget);
+      expect(
+        tester
+            .getTopLeft(
+              find
+                  .text(
+                    'The terms of the order are not those of the order taken.',
+                  )
+                  .first,
+            )
+            .dy,
+        lessThan(
+          tester
+              .getTopLeft(find.textContaining('now shows this order otherwise'))
+              .dy,
+        ),
+      );
+      await renewThroughDialog(
+        tester,
+        app,
+        'Temple of Sats shows this order otherwise than this device kept it.',
+      );
       await app.close();
     },
   );
@@ -506,7 +666,17 @@ void main() {
             ),
           );
           await app.settle(12);
+          // A make of the same terms still pending: said, and the renewal through « Renew this order? » (security review of #220, R2).
+          expect(
+            find.text(
+              'An order with the same terms is still being created here.',
+            ),
+            findsOneWidget,
+          );
           await _tap(tester, _renewOrder);
+          await app.settle();
+          expect(find.byType(RenewCheckDialog), findsOneWidget);
+          await tester.tap(find.text('Renew anyway'));
           await app.settle(20);
           expect(
             find.byType(CreateOrderScreen, skipOffstage: false),

@@ -3728,11 +3728,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pRenewSameTermsTitle => 'Renouveler cet ordre ?';
 
   @override
-  String p2pRenewSameTermsText(String orderId, String stands) {
-    return 'Un ordre aux mêmes termes a déjà été créé ici après celui-ci : l’ordre $orderId, $stands. Renouveler crée un ordre de plus, sous un nouveau robot, avec une nouvelle caution à payer.';
-  }
-
-  @override
   String get p2pRenewSameTermsGo => 'Renouveler quand même';
 
   @override
@@ -3748,6 +3743,53 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pTradeEndOtherwise(String coordinator, String date) {
     return '$coordinator montre maintenant cet ordre autrement que cet appareil l’a gardé à sa fin, le $date.';
+  }
+
+  @override
+  String p2pRenewEndNotConfirmed(String coordinator) {
+    return 'La fin de cet ordre n’a pas été confirmée par $coordinator.';
+  }
+
+  @override
+  String p2pRenewEndAlive(String coordinator) {
+    return '$coordinator montre cet ordre encore en cours : sa caution est peut-être encore bloquée et il peut être pris.';
+  }
+
+  @override
+  String p2pRenewEndOtherwise(String coordinator) {
+    return '$coordinator montre cet ordre autrement que cet appareil l’a gardé.';
+  }
+
+  @override
+  String p2pRenewSameTermsMade(String orderId, String stands) {
+    return 'Un ordre aux mêmes termes a déjà été créé ici après celui-ci : l’ordre $orderId, $stands.';
+  }
+
+  @override
+  String get p2pRenewSameTermsUnknown =>
+      'Bull Market n’a pas pu vérifier si un ordre aux mêmes termes a déjà été créé ici.';
+
+  @override
+  String get p2pRenewOneMore =>
+      'Renouveler crée un ordre de plus, sous un nouveau robot, avec une nouvelle caution à payer.';
+
+  @override
+  String get p2pSameTermsPending =>
+      'Un ordre aux mêmes termes est encore en cours de création ici.';
+
+  @override
+  String p2pTradeEndReading(String coordinator) {
+    return 'Relecture de cet ordre chez $coordinator…';
+  }
+
+  @override
+  String p2pTradeEndAlive(String coordinator) {
+    return '$coordinator montre maintenant cet ordre comme toujours en cours : il est peut-être encore en cours chez lui, sa caution est peut-être encore bloquée et il peut être pris. Vérifiez-le dans l’application officielle RoboSats avec votre clé de garage avant d’en créer un autre.';
+  }
+
+  @override
+  String p2pTradeEndKeptEnded(String date) {
+    return 'Cet appareil a gardé cet ordre comme terminé le $date.';
   }
 
   @override

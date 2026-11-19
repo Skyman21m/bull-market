@@ -104,16 +104,19 @@ final class TradeWatchSession {
             }
           }
           if (_stopped) return;
+          final readsEnd = TradeReader.readsEndOnce(trade.seen.status.position);
           _emit(
             TradeWatchStatus(
               record,
               trade.seen,
               recordProblem: problem,
               takePending: record.isPendingTake,
+              // The end not confirmed yet while its one read runs (security review of #220, C1).
+              endReread: readsEnd ? const TradeEndReading() : null,
             ),
           );
           // A successful end and an expired order are read once, as the reference reads an order whenever its page opens: the coordinator sums up the first in every read (#95), and gives the second's terms and reason, for an order opened again to renew it (#216).
-          if (TradeReader.readsEndOnce(trade.seen.status.position)) {
+          if (readsEnd) {
             await _readEndOnce(trade, record, problem);
           }
           await _finish();

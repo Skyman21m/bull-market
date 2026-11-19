@@ -3677,11 +3677,6 @@ class P2pLocalizationsPt extends P2pLocalizations {
   String get p2pRenewSameTermsTitle => 'Renew this order?';
 
   @override
-  String p2pRenewSameTermsText(String orderId, String stands) {
-    return 'An order with the same terms was already made here after this one: order $orderId, $stands. Renewing makes one more order, under a new robot, with a new bond to pay.';
-  }
-
-  @override
   String get p2pRenewSameTermsGo => 'Renew anyway';
 
   @override
@@ -3697,6 +3692,53 @@ class P2pLocalizationsPt extends P2pLocalizations {
   @override
   String p2pTradeEndOtherwise(String coordinator, String date) {
     return '$coordinator now shows this order otherwise than this device kept it when it ended, on $date.';
+  }
+
+  @override
+  String p2pRenewEndNotConfirmed(String coordinator) {
+    return 'The end of this order was not confirmed by $coordinator.';
+  }
+
+  @override
+  String p2pRenewEndAlive(String coordinator) {
+    return '$coordinator shows this order still running: its bond may still be locked and it may be taken.';
+  }
+
+  @override
+  String p2pRenewEndOtherwise(String coordinator) {
+    return '$coordinator shows this order otherwise than this device kept it.';
+  }
+
+  @override
+  String p2pRenewSameTermsMade(String orderId, String stands) {
+    return 'An order with the same terms was already made here after this one: order $orderId, $stands.';
+  }
+
+  @override
+  String get p2pRenewSameTermsUnknown =>
+      'Bull Market could not check whether an order with the same terms was already made here.';
+
+  @override
+  String get p2pRenewOneMore =>
+      'Renewing makes one more order, under a new robot, with a new bond to pay.';
+
+  @override
+  String get p2pSameTermsPending =>
+      'An order with the same terms is still being created here.';
+
+  @override
+  String p2pTradeEndReading(String coordinator) {
+    return 'Reading this order again from $coordinator…';
+  }
+
+  @override
+  String p2pTradeEndAlive(String coordinator) {
+    return '$coordinator now shows this order as still running: it may still be under way there, its bond may still be locked and it may be taken. Check it in the official RoboSats app with your Garage Key before you create another.';
+  }
+
+  @override
+  String p2pTradeEndKeptEnded(String date) {
+    return 'This device kept this order as ended on $date.';
   }
 
   @override

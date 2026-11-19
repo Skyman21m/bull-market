@@ -222,7 +222,15 @@ sealed class TradeEndReread {
   const TradeEndReread();
 }
 
-/// No answer to tell from: the coordinator out of reach, a timeout, an error of the transport, an answer that does not parse, or a read held back. The app could not read the order again.
+/// The one read of the end runs: no answer yet, so the end the records hold is not confirmed (security review of #220, C1): the screen says the order is being read again, never that it is over.
+final class TradeEndReading extends TradeEndReread {
+  const TradeEndReading();
+
+  @override
+  String toString() => 'TradeEndReading';
+}
+
+/// No answer to tell from: the coordinator out of reach, a timeout, an error of the transport, an answer that does not parse (`package:robosats` refuses as malformed an order of another number, or one that shows another robot as its maker), or a read held back. The app could not read the order again.
 final class TradeEndNotRead extends TradeEndReread {
   const TradeEndNotRead();
 
@@ -238,13 +246,24 @@ final class TradeEndUnknownToCoordinator extends TradeEndReread {
   String toString() => 'TradeEndUnknownToCoordinator';
 }
 
-/// The coordinator answered otherwise than the end this device kept: another status, the order cancelled (1043) or not available to this robot (1044), another order, or that end with other terms. [warnings] are the state machine's alerts of that answer when the screen keeps showing the end the records hold; empty when the screen shows the answer's own status, which carries them.
+/// The coordinator answered with the order at a status that is not an end (0, 1, 2, 3, 6 to 11, 13, 15, 16): the order may still be under way there, its bond locked, open to a take, while this device's record of it is closed and nothing follows it any more (security review of #220, C1). The screen keeps the end the records hold, never as « over », and says it in the colour of an alert.
+final class TradeEndShownAlive extends TradeEndReread {
+  const TradeEndShownAlive();
+
+  @override
+  String toString() => 'TradeEndShownAlive';
+}
+
+/// The coordinator answered otherwise than the end this device kept, at another end: another end status, the order cancelled (1043) or not available to this robot (1044), or that very end with other terms ([asRead]). [warnings] are the state machine's alerts of that answer when the screen keeps showing the end the records hold; empty when the screen shows the answer's own status ([asRead]), which carries them.
 final class TradeEndShownOtherwise extends TradeEndReread {
   final List<TradeWarning> warnings;
 
-  TradeEndShownOtherwise(Iterable<TradeWarning> warnings)
+  /// Whether the status shown is the answer's own, that very end read with other terms, whose panel says its alerts.
+  final bool asRead;
+
+  TradeEndShownOtherwise(Iterable<TradeWarning> warnings, {this.asRead = false})
     : warnings = List.unmodifiable(warnings);
 
   @override
-  String toString() => 'TradeEndShownOtherwise($warnings)';
+  String toString() => 'TradeEndShownOtherwise($warnings, asRead: $asRead)';
 }

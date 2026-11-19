@@ -3629,8 +3629,8 @@ void main() {
           await showPanel(tester, locale: locale);
           final l10n = _text(tester);
 
-          // Said once, under the navigator, from the records (functional review of #220, R4): never as a line of the panel that opens nothing.
-          expect(find.text(l10n.p2pRobotLastOrder('4321')), findsNothing);
+          // A last order no « Last order #N » line of the Garage opens (here, none: no record of it on this device), said by the panel as the coordinator says it (functional review of #220, R4, and its verification); one a line opens is not said again (`reopen_order_route_test.dart`).
+          expect(find.text(l10n.p2pRobotLastOrder('4321')), findsOneWidget);
           expect(find.text(l10n.p2pRobotNoOrders), findsNothing);
           expect(find.text(l10n.p2pRobotUsedInTrade), findsOneWidget);
           expect(find.text(l10n.p2pRobotRewards), findsOneWidget);

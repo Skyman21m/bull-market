@@ -62,8 +62,14 @@ final class OrderRenewals {
   /// The orders made here since with [kept], oldest first; empty when there is none.
   final List<OrderMadeSince> since;
 
-  OrderRenewals(this.kept, Iterable<OrderMadeSince> since)
-    : since = List.unmodifiable(since);
+  /// Whether a make of [kept] on the same coordinator, made after this order, is still pending (its answer lost, its order id not known yet: security review of #220, R2).
+  final bool pendingSameTerms;
+
+  OrderRenewals(
+    this.kept,
+    Iterable<OrderMadeSince> since, {
+    this.pendingSameTerms = false,
+  }) : since = List.unmodifiable(since);
 
   /// The one the trade screen names: the newest of [since] still running here, so that the user knows an order is alive, else the newest; `null` when there is none.
   OrderMadeSince? get shown {
@@ -77,17 +83,20 @@ final class OrderRenewals {
   bool operator ==(Object other) =>
       other is OrderRenewals &&
       other.kept == kept &&
+      other.pendingSameTerms == pendingSameTerms &&
       other.since.length == since.length &&
       Iterable<int>.generate(
         since.length,
       ).every((i) => other.since[i] == since[i]);
 
   @override
-  int get hashCode => Object.hash(kept, Object.hashAll(since));
+  int get hashCode =>
+      Object.hash(kept, pendingSameTerms, Object.hashAll(since));
 
   /// Never the request: only how many orders were made since.
   @override
-  String toString() => 'OrderRenewals(${since.length} since)';
+  String toString() =>
+      'OrderRenewals(${since.length} since, pending: $pendingSameTerms)';
 }
 
 /// Where this device last saw an order made since with the same terms stand, from its records only (its record and its stored trail), never read anew.
