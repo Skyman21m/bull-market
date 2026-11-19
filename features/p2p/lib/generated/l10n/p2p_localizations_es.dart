@@ -2127,7 +2127,11 @@ class P2pLocalizationsEs extends P2pLocalizations {
 
   @override
   String get p2pPayEarlierEscrowHeld =>
-      'This wallet paid the collateral of an earlier take of this order, and the swap service has not reported it released yet. Pay this collateral with another wallet.';
+      'An attempt to pay the collateral of an earlier take of this order was made with this wallet, and it is not established that that collateral was released. Pay this collateral with another wallet.';
+
+  @override
+  String get p2pPayEscrowShownBefore =>
+      'This collateral invoice was already presented for this order. It is not paid from this wallet.';
 
   @override
   String get p2pPayEscrowWalletUnavailable =>

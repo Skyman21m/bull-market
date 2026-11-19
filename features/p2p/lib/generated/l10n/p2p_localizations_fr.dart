@@ -2155,7 +2155,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayEarlierEscrowHeld =>
-      'Ce portefeuille a payé la garantie d’une prise précédente de cet ordre, et le service de swap ne l’a pas encore signalée libérée. Payez cette garantie avec un autre portefeuille.';
+      'Une tentative de paiement de la garantie d’une prise précédente de cet ordre a été faite avec ce portefeuille, et il n’est pas établi que cette garantie a été signalée comme libérée. Payez cette garantie avec un autre portefeuille.';
+
+  @override
+  String get p2pPayEscrowShownBefore =>
+      'Cette facture de garantie a déjà été présentée pour cet ordre. Elle n’est pas payée depuis ce portefeuille.';
 
   @override
   String get p2pPayEscrowWalletUnavailable =>

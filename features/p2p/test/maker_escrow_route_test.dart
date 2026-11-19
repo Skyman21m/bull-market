@@ -221,7 +221,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 /// The minimal refusal of #187, until the panel's words of #188.
 const _earlierHeld =
-    'This wallet paid the collateral of an earlier take of this order, and the swap service has not reported it released yet. Pay this collateral with another wallet.';
+    'An attempt to pay the collateral of an earlier take of this order was made with this wallet, and it is not established that that collateral was released. Pay this collateral with another wallet.';
 
 void main() {
   testWidgets(
@@ -379,8 +379,6 @@ void main() {
       await app.openTrade();
       expect(find.text(_earlierHeld), findsNothing);
       expect(find.text('Pay with this wallet'), findsOneWidget);
-      // Left as the user leaves it (closing the harness with this page still open never ends the test's teardown, a cause not established, the page left by the back gesture closing its cubits as the app does).
-      await app.back();
       await app.close();
     },
   );

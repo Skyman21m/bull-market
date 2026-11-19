@@ -82,6 +82,62 @@ final class _KilledBeforeWallet implements TradePaymentRepository {
   );
 }
 
+/// Payments whose wallet id cannot be written because the app is killed right then: after the wallet answered, before its id is recorded.
+final class _KilledAfterWallet implements TradePaymentRepository {
+  final TradePaymentRepository inner;
+  bool armed = true;
+
+  _KilledAfterWallet(this.inner);
+
+  @override
+  Future<Result<TradePaymentRecord?, P2pFailure>> paymentOf(
+    TradeRecord trade,
+    InvoiceStep step, {
+    int take = 0,
+  }) => inner.paymentOf(trade, step, take: take);
+
+  @override
+  Future<Result<List<TradePaymentRecord>, P2pFailure>> paymentsOfTrade(
+    TradeRecord trade,
+  ) => inner.paymentsOfTrade(trade);
+
+  @override
+  Future<Result<bool, P2pFailure>> recordStart(
+    TradeRecord trade,
+    InvoiceStep step, {
+    required String paymentHash,
+    required DateTime at,
+    int take = 0,
+  }) => inner.recordStart(
+    trade,
+    step,
+    paymentHash: paymentHash,
+    at: at,
+    take: take,
+  );
+
+  @override
+  Future<Result<bool, P2pFailure>> recordWalletPayment(
+    TradeRecord trade,
+    InvoiceStep step, {
+    required String paymentHash,
+    required String walletPaymentId,
+    int take = 0,
+  }) {
+    if (armed) {
+      armed = false;
+      throw AppKilled();
+    }
+    return inner.recordWalletPayment(
+      trade,
+      step,
+      paymentHash: paymentHash,
+      walletPaymentId: walletPaymentId,
+      take: take,
+    );
+  }
+}
+
 /// The records as the database holds them, with [extra] rows besides: a payment hash the database would hold for another contract or trade.
 final class _WithRows implements TradePaymentRepository {
   final TradePaymentRepository inner;
@@ -201,6 +257,9 @@ final class _Seller {
   final TradePaymentRepositoryImpl stored;
   final PayBondFromWalletUsecase escrow;
 
+  /// The payment hash of the maker bond paid from this wallet at 0, `null` when it was locked from another wallet.
+  final String? bondHash;
+
   _Seller(
     this.harness,
     this.record,
@@ -208,41 +267,110 @@ final class _Seller {
     this.wallet,
     this.stored,
     this.escrow,
+    this.bondHash,
   );
 
-  /// 100 EUR at +2 % (`MakeHarness.request`), made at the coordinator's price of 50,000 EUR/BTC and taken at [takenAt] (the same by default) by robot 5, a range of [range] taken for [amount] if given; the wallet's price [rate].
+  /// 100 EUR at +2 % (`MakeHarness.request`), made at the coordinator's price of 50,000 EUR/BTC, its maker bond paid from this wallet at 0 and held by the coordinator (the owner's path of APK 3; from another wallet unless [bondFromWallet]), taken at [takenAt] (the same by default) by robot 5, a range of [range] taken for [amount] if given; the wallet's price [rate]. With [harness], a further order of the same Garage Key on that run.
   static Future<_Seller> start({
     double takenAt = 50000,
     P2pWalletBitcoinRate? rate,
     (double, double)? range,
     double? amount,
+    bool bondFromWallet = true,
+    MakeHarness? harness,
+    FakeP2pWalletPort? fake,
     TradePaymentRepository Function(TradePaymentRepository stored)? payments,
   }) async {
-    final harness = await MakeHarness.start();
-    harness.coordinator.prices[_eur] = 50000;
-    final record = switch (await harness.makeOrder(
+    final run = harness ?? await MakeHarness.start();
+    run.coordinator.prices[_eur] = 50000;
+    final record = switch (await run.makeOrder(
       MakeHarness.request(sell: true, range: range),
     )) {
       Ok(value: final MakeStarted started) => started.record,
       final other => throw StateError('not made: $other'),
     };
-    harness.coordinator
+    final port =
+        fake ??
+        (FakeP2pWalletPort(Ok(Sats.fromInt(5000000)))
+          ..rate = rate ?? P2pWalletRateRead(50000));
+    final wallet = _Unreadable(port);
+    final stored = TradePaymentRepositoryImpl(run.database);
+    final bondHash = bondFromWallet
+        ? await _payBond(run, record, port, wallet, stored)
+        : null;
+    run.coordinator
       ..lockMakerBond(record.orderId)
       ..prices[_eur] = takenAt
-      ..take(record.orderId, harness.robot(5), amount: amount);
-    final fake = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)))
-      ..rate = rate ?? P2pWalletRateRead(50000);
-    final wallet = _Unreadable(fake);
-    final stored = TradePaymentRepositoryImpl(harness.database);
+      ..take(record.orderId, run.robot(5), amount: amount);
     return _Seller(
-      harness,
+      run,
       record,
-      fake,
+      port,
       wallet,
       stored,
-      payOf(harness, wallet, payments?.call(stored) ?? stored),
+      payOf(run, wallet, payments?.call(stored) ?? stored),
+      bondHash,
     );
   }
+
+  /// The maker bond of [record] at 0 paid from this wallet through the bond's instance, then held by the coordinator for the order's life (`P2pWalletPaymentPending` in the wallet's records); its payment hash.
+  static Future<String> _payBond(
+    MakeHarness harness,
+    TradeRecord record,
+    FakeP2pWalletPort fake,
+    P2pWalletPort wallet,
+    TradePaymentRepository stored,
+  ) async {
+    final run = harness.watchOf(record);
+    await harness.settle();
+    final seen = run.lastStatus.seen;
+    await run.subscription.cancel();
+    final bond = payOf(harness, wallet, stored, step: InvoiceStep.bond);
+    final offered = switch (await bond.checkBond(record, seen)) {
+      Ok(:final value) => value.walletInvoice,
+      Err(:final failure) => throw StateError('bond not offered: $failure'),
+    };
+    final quote = P2pWalletQuote(
+      invoice: offered,
+      payin: Sats(offered.amount.value + BigInt.from(120)),
+      networkFee: Sats.fromInt(27),
+      balance: Sats.fromInt(5000000),
+      quotedAt: harness.now,
+    );
+    final payment = P2pWalletPayment(
+      id: 'swap-bond-${record.orderId}',
+      paymentHash: offered.paymentHash,
+    );
+    fake
+      ..scriptQuote(Ok(quote))
+      ..scriptPayment(Ok(payment));
+    if (await bond.quoteBond(record, seen) is! Ok) throw StateError('no quote');
+    if (await bond.payBond(record, accepted: quote) is! Ok) {
+      throw StateError('bond not paid');
+    }
+    fake
+      ..setFound(
+        payment.paymentHash,
+        P2pWalletPaymentFound(
+          payment: payment,
+          progress: const P2pWalletPaymentPending(),
+        ),
+      )
+      ..setProgress(payment, const Ok(P2pWalletPaymentPending()));
+    return payment.paymentHash;
+  }
+
+  /// The escrows quoted by the wallet, the bond's quote left out.
+  List<CheckedBolt11Invoice> get escrowQuotes => [
+    for (final invoice in fake.quoted)
+      if (invoice.paymentHash != bondHash) invoice,
+  ];
+
+  /// The escrows the wallet was asked to pay, the bond's payment left out.
+  List<(CheckedBolt11Invoice, P2pWalletQuote)> get escrowPayments => [
+    for (final paid in fake.paid)
+      if (paid.$1.paymentHash != bondHash) paid,
+  ];
 
   static PayBondFromWalletUsecase payOf(
     MakeHarness harness,
@@ -373,11 +501,17 @@ final class _Seller {
   }
 
   /// Every payment recorded for the trade.
-  Future<List<TradePaymentRecord>> rows() async =>
+  Future<List<TradePaymentRecord>> allRows() async =>
       switch (await stored.paymentsOfTrade(record)) {
         Ok(:final value) => value,
         Err(:final failure) => throw StateError('$failure'),
       };
+
+  /// Every escrow recorded for the trade.
+  Future<List<TradePaymentRecord>> rows() async => [
+    for (final row in await allRows())
+      if (row.step == InvoiceStep.escrow) row,
+  ];
 
   /// The refusal of the check of the escrow shown.
   Future<BondPayRefusal> refusedAt(TradeSeen shown) async =>
@@ -431,7 +565,7 @@ void main() {
           contract: contract,
         );
         expect(paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
-        expect(seller.fake.paid.single.$1.paymentHash, hash);
+        expect(seller.escrowPayments.single.$1.paymentHash, hash);
         final rows = await seller.rows();
         expect(rows.single.step, InvoiceStep.escrow);
         expect(rows.single.take, 0);
@@ -470,7 +604,7 @@ void main() {
             ),
           );
         }
-        expect(seller.fake.paid, isEmpty);
+        expect(seller.escrowPayments, isEmpty);
         expect(await seller.rows(), isEmpty);
       },
     );
@@ -654,7 +788,7 @@ void main() {
           await seller.escrow.quoteBond(seller.record, shown),
           isA<Err<P2pWalletQuote, BondPayRefusal>>(),
         );
-        expect(seller.fake.quoted, hasLength(1));
+        expect(seller.escrowQuotes, hasLength(1));
         // The coordinator returned the escrow at the return to the book (`api/logics.py:445-458`); the swap service reports its refund pending.
         seller.found(
           P2pWalletPayment(id: 'swap-e0', paymentHash: first),
@@ -696,7 +830,7 @@ void main() {
     );
 
     test(
-      'released only by a refund pending or done, or a failure or an expiry with nothing sent; every other state, an unreadable one, and no wallet id count as held',
+      'released only by a refund pending or done, a failure or an expiry with nothing sent, or an attempt the wallet holds no order of; every other state, and unreadable records, count as held',
       () async {
         const released = <P2pWalletPaymentProgress>[
           P2pWalletPaymentRefundPending(),
@@ -748,7 +882,7 @@ void main() {
           EarlierEscrow.of(row, const Err(P2pWalletUnavailable())),
           isA<EarlierEscrowUnknown>(),
         );
-        // No wallet id: held, whatever the wallet would say.
+        // No wallet id: the wallet's order, when it holds one, tells; when it holds none, nothing of this feature left the wallet; unreadable records stay held.
         final noId = TradePaymentRecord(
           step: InvoiceStep.escrow,
           paymentHash: 'a' * 64,
@@ -756,6 +890,19 @@ void main() {
         );
         expect(
           EarlierEscrow.of(noId, Ok(at(const P2pWalletPaymentRefunded()))),
+          isA<EarlierEscrowReleased>(),
+        );
+        expect(
+          EarlierEscrow.of(noId, Ok(at(const P2pWalletPaymentSent()))),
+          isA<EarlierEscrowHeld>(),
+        );
+        expect(
+          EarlierEscrow.of(noId, const Ok(null)),
+          isA<EarlierEscrowNeverStarted>(),
+        );
+        expect(EarlierEscrow.of(noId, const Ok(null)).held, isFalse);
+        expect(
+          EarlierEscrow.of(noId, const Err(P2pWalletUnavailable())),
           isA<EarlierEscrowUnknown>(),
         );
         // And through the use case: each held state of contract 0 refuses contract 1, each released one lets it be quoted.
@@ -788,7 +935,7 @@ void main() {
             reason: '$progress',
           );
         }
-        expect(seller.fake.paid, hasLength(1));
+        expect(seller.escrowPayments, hasLength(1));
       },
     );
 
@@ -809,8 +956,8 @@ void main() {
             reason: '$take',
           );
         }
-        expect(seller.fake.quoted, hasLength(1));
-        expect(seller.fake.paid, hasLength(1));
+        expect(seller.escrowQuotes, hasLength(1));
+        expect(seller.escrowPayments, hasLength(1));
         // Contract 0's escrow released: contract 40's is paid, and from then on the next one is refused again.
         seller.found(
           P2pWalletPayment(id: 'swap-e0', paymentHash: first),
@@ -826,13 +973,13 @@ void main() {
           [for (final e in refusal.contract.earlier) (e.take, e.held)],
           [(0, false), (40, true)],
         );
-        expect(seller.fake.paid, hasLength(2));
+        expect(seller.escrowPayments, hasLength(2));
         expect([for (final row in await seller.rows()) row.take], [0, 40]);
       },
     );
 
     test(
-      'the app killed between the record and the wallet: the same escrow may be paid again, the next contract\'s only from another wallet (a record with no wallet id counts as held)',
+      'the app killed between the record and the wallet, before the wallet made its order: the same escrow may be paid again, and the next contract\'s is payable (the wallet holds no order for it, the record no wallet id)',
       () async {
         late _KilledBeforeWallet killed;
         final seller = await _Seller.start(
@@ -848,10 +995,11 @@ void main() {
           ),
           throwsA(isA<AppKilled>()),
         );
-        expect(seller.fake.paid, isEmpty);
-        expect((await seller.rows()).single.walletPaymentId, isNull);
+        expect(seller.escrowPayments, isEmpty);
+        final first = (await seller.rows()).single;
+        expect(first.walletPaymentId, isNull);
         killed.armed = false;
-        // The app started again over the same records: the same escrow is still payable, the wallet asked once.
+        // The app started again over the same records: the same escrow is still payable.
         final again = _Seller.payOf(
           seller.harness.restart(),
           seller.wallet,
@@ -862,14 +1010,98 @@ void main() {
           await again.checkBond(seller.record, shown),
           isA<Ok<WalletPaymentOffered, BondPayRefusal>>(),
         );
-        // Taken again before anything was paid: the record without a wallet id holds contract 1 back.
+        // Taken again before anything was paid: the wallet holds no order for contract 0's invoice, so nothing left through it.
         await seller.takenAgain();
         final next = await seller.seen();
         expect(next.status.trail.take, 1);
+        final quote1 = await seller.quoted(next);
+        final contract1 = await seller.contractOf(quote1);
+        expect(contract1.earlier.single, isA<EarlierEscrowNeverStarted>());
+        expect(contract1.earlierHeld, isFalse);
+        expect(seller.fake.found, contains(first.paymentHash));
+      },
+    );
+
+    test(
+      'the app killed after the wallet made and sent its order, before its id was written: the next contract finds it, writes its id, and is held back while it is',
+      () async {
+        final seller = await _Seller.start(
+          payments: (stored) => _KilledAfterWallet(stored),
+        );
+        final quote = await seller.quoted();
+        final contract = await seller.contractOf(quote);
+        final payment = P2pWalletPayment(
+          id: 'swap-e0',
+          paymentHash: quote.invoice.paymentHash,
+        );
+        seller.fake.scriptPayment(Ok(payment));
+        await expectLater(
+          seller.escrow.payBond(
+            seller.record,
+            accepted: quote,
+            contract: contract,
+          ),
+          throwsA(isA<AppKilled>()),
+        );
+        expect(seller.escrowPayments, hasLength(1));
+        expect((await seller.rows()).single.walletPaymentId, isNull);
+        seller.found(payment, const P2pWalletPaymentPending());
+        await seller.takenAgain();
+        final next = await seller.seen();
         final refusal = await seller.refusedAt(next);
         if (refusal is! BondPayEarlierEscrowHeld) fail('$refusal');
-        expect(refusal.contract.earlier.single, isA<EarlierEscrowUnknown>());
-        expect(seller.fake.found, isEmpty);
+        expect(refusal.contract.earlier.single, isA<EarlierEscrowHeld>());
+        // Its wallet id is written now, as the follow writes it.
+        expect((await seller.rows()).first.walletPaymentId, 'swap-e0');
+      },
+    );
+
+    test(
+      'the wallet refused with nothing sent and no order (« Pay » tapped, the wallet unavailable), the collateral paid with another wallet, the order taken again: the next contract is payable from this wallet',
+      () async {
+        final seller = await _Seller.start();
+        final quote = await seller.quoted();
+        final contract = await seller.contractOf(quote);
+        seller.fake.scriptPayment(const Err(P2pWalletUnavailable()));
+        expect(
+          await seller.escrow.payBond(
+            seller.record,
+            accepted: quote,
+            contract: contract,
+          ),
+          isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<BondPayWalletRefused>(),
+          ),
+        );
+        expect((await seller.rows()).single.walletPaymentId, isNull);
+        await seller.takenAgain();
+        final next = await seller.seen();
+        expect(next.status.trail.take, 1);
+        final quote1 = await seller.quoted(next);
+        final contract1 = await seller.contractOf(quote1);
+        expect(contract1.earlier.single, isA<EarlierEscrowNeverStarted>());
+        // But a refusal of the wallet whose order stays in its records (made, never funded) holds the next contract back until that order ends with nothing sent.
+        seller.found(
+          P2pWalletPayment(
+            id: 'swap-unfunded',
+            paymentHash: quote.invoice.paymentHash,
+          ),
+          const P2pWalletPaymentPreparing(),
+        );
+        expect(await seller.refusedAt(next), isA<BondPayEarlierEscrowHeld>());
+        seller.found(
+          P2pWalletPayment(
+            id: 'swap-unfunded',
+            paymentHash: quote.invoice.paymentHash,
+          ),
+          const P2pWalletPaymentExpired(P2pWalletFunds.notSent),
+        );
+        expect(
+          await seller.escrow.checkBond(seller.record, next),
+          isA<Ok<WalletPaymentOffered, BondPayRefusal>>(),
+        );
       },
     );
 
@@ -904,7 +1136,7 @@ void main() {
           );
         }
         expect(seller.fake.found, isEmpty);
-        expect(seller.fake.quoted, isEmpty);
+        expect(seller.escrowQuotes, isEmpty);
       },
     );
 
@@ -941,8 +1173,85 @@ void main() {
             isA<BondPayEarlierEscrowHeld>(),
           ),
         );
-        expect(seller.fake.paid, hasLength(1));
+        expect(seller.escrowPayments, hasLength(1));
         expect([for (final row in await seller.rows()) row.take], [0]);
+      },
+    );
+  });
+
+  group('the owner\'s path, and the other trades of the Garage Key (#187)', () {
+    test(
+      'the maker bond paid from this wallet and held by the coordinator is no escrow: contract 0\'s escrow is offered and paid, and only escrows are followed',
+      () async {
+        final seller = await _Seller.start();
+        final bondHash = seller.bondHash;
+        if (bondHash == null) fail('no bond paid');
+        expect(
+          [
+            for (final row in await seller.allRows())
+              (row.step, row.take, row.paymentHash == bondHash),
+          ],
+          [(InvoiceStep.bond, 0, true)],
+        );
+        final quote = await seller.quoted();
+        final contract = await seller.contractOf(quote);
+        expect(contract.earlier, isEmpty);
+        await seller.pay('swap-e0');
+        expect(
+          [for (final row in await seller.allRows()) (row.step, row.take)],
+          [(InvoiceStep.bond, 0), (InvoiceStep.escrow, 0)],
+        );
+        final follow = await seller.escrow.followEscrows(seller.record).first;
+        if (follow is! EscrowPaymentsFollowed) fail('$follow');
+        expect([for (final e in follow.escrows) e.take], [0]);
+      },
+    );
+
+    test(
+      'at 7 (`WaitingForEscrow`): paid as at 6, and refused as at 6 while an earlier escrow is held',
+      () async {
+        final seller = await _Seller.start();
+        seller.order.status = 7;
+        final seven = await seller.seen();
+        expect(seven.status, isA<WaitingForEscrow>());
+        final first = await seller.pay('swap-e0');
+        expect(seller.escrowPayments.single.$1.paymentHash, first);
+        await seller.takenAgain();
+        seller.order.status = 7;
+        final next = await seller.seen();
+        expect(next.status, isA<WaitingForEscrow>());
+        expect(next.status.trail.take, 1);
+        expect(await seller.refusedAt(next), isA<BondPayEarlierEscrowHeld>());
+      },
+    );
+
+    test(
+      'another order of the same Garage Key, its escrow held, holds nothing of this one back: each trade\'s payments are its own robot\'s',
+      () async {
+        final first = await _Seller.start();
+        final second = await _Seller.start(
+          harness: first.harness,
+          fake: first.fake,
+        );
+        expect(second.record.robot, isNot(first.record.robot));
+        expect(
+          second.record.robot.keyFingerprint,
+          first.record.robot.keyFingerprint,
+        );
+        // The second order's escrow paid from this wallet, and held.
+        await second.pay('swap-other');
+        // The first order seen at its contract 0, then taken again before its own escrow was paid: contract 1, nothing of its own recorded.
+        expect((await first.seen()).status.trail.take, 0);
+        await first.takenAgain();
+        final next = await first.seen();
+        expect(next.status.trail.take, 1);
+        final quote = await first.quoted(next);
+        final contract = await first.contractOf(quote);
+        expect(contract.earlier, isEmpty);
+        expect(
+          [for (final row in await first.allRows()) row.step],
+          [InvoiceStep.bond],
+        );
       },
     );
   });
@@ -1040,11 +1349,15 @@ void main() {
         };
         expect(
           [for (final row in rows) (row.step, row.take, row.paymentHash)],
-          [(InvoiceStep.escrow, 0, first), (InvoiceStep.escrow, 1, second)],
+          [
+            (InvoiceStep.bond, 0, seller.bondHash),
+            (InvoiceStep.escrow, 0, first),
+            (InvoiceStep.escrow, 1, second),
+          ],
         );
         // A trade with nothing recorded: none.
-        final other = await _Seller.start();
-        expect(await other.rows(), isEmpty);
+        final other = await _Seller.start(bondFromWallet: false);
+        expect(await other.allRows(), isEmpty);
       },
     );
   });

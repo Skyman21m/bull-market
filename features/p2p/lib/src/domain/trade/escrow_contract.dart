@@ -31,26 +31,25 @@ sealed class EarlierEscrow {
 
   const EarlierEscrow(this.take);
 
-  /// The state of the escrow of [record], an attempt recorded for an earlier contract, from what the wallet found for its payment hash ([found], `P2pWalletPort.findPayment`); [found] is not looked at when the record has no wallet id.
+  /// The state of the escrow of [record], an attempt recorded for an earlier contract, from what the wallet found for its payment hash ([found], `P2pWalletPort.findPayment`, asked for every record, with or without a wallet id).
   ///
-  /// [EarlierEscrowUnknown], which counts as held, when the record has no wallet id (an attempt the app was killed in, between its record and the wallet's answer, or one the wallet refused before giving one), when the wallet's records cannot be read, or when they hold no payment of that hash although the record names one. Otherwise the wallet's latest payment of that hash tells: the wallet pays an invoice again only while every earlier order of it is provably unspent (`P2pWalletPort.payInvoice`), so the latest is the one that may hold funds.
+  /// - The wallet holds a payment of this feature for that hash: its latest one tells ([EarlierEscrowReleased] or [EarlierEscrowHeld]); the wallet pays an invoice again only while every earlier order of it is provably unspent (`P2pWalletPort.payInvoice`), so the latest is the one that may hold funds. This also covers a record whose wallet id was never written (the app killed after the wallet created its order, before the id was written).
+  /// - The wallet holds none, and the record names no wallet id: [EarlierEscrowNeverStarted], released. The wallet's records then hold no order of this feature for that invoice, and nothing of this feature is ever signed, saved or broadcast without such an order: the swap order's record is written (« creating ») before its request leaves (`OrderSwapRepositoryImpl._createOrderLocked`), deleted only when the service is known not to have created it, and the signed payin is saved on that record before anything is broadcast (`PayCheckedInvoiceUsecase`, step 7, `savePreparedPayin`). So the attempt was refused, or stopped, before anything could leave the wallet through « Pay with this wallet » (a refusal without a handle, or the app killed before the wallet's order existed). A payment of the same invoice made by the wallet's own Send screen is not this feature's and is not seen here, as a payment from another wallet.
+  /// - The wallet holds none although the record names a wallet id (a record the wallet no longer has), or its records cannot be read: [EarlierEscrowUnknown], which counts as held.
   static EarlierEscrow of(
     TradePaymentRecord record,
-    Result<P2pWalletPaymentFound?, P2pWalletRefusal>? found,
-  ) {
-    if (record.walletPaymentId == null) {
-      return EarlierEscrowUnknown(record.take);
-    }
-    return switch (found) {
-      Ok(value: final payment?) when escrowNoLongerHeld(payment.progress) =>
-        EarlierEscrowReleased(record.take, payment.progress),
-      Ok(value: final payment?) => EarlierEscrowHeld(
-        record.take,
-        payment.progress,
-      ),
-      Ok(value: null) || Err() || null => EarlierEscrowUnknown(record.take),
-    };
-  }
+    Result<P2pWalletPaymentFound?, P2pWalletRefusal> found,
+  ) => switch (found) {
+    Ok(value: final payment?) when escrowNoLongerHeld(payment.progress) =>
+      EarlierEscrowReleased(record.take, payment.progress),
+    Ok(value: final payment?) => EarlierEscrowHeld(
+      record.take,
+      payment.progress,
+    ),
+    Ok(value: null) when record.walletPaymentId == null =>
+      EarlierEscrowNeverStarted(record.take),
+    Ok(value: null) || Err() => EarlierEscrowUnknown(record.take),
+  };
 
   /// Whether this escrow may still be held: then this wallet pays no escrow of a later contract of the order, and only « Pay with another wallet » stays.
   bool get held;
@@ -82,7 +81,18 @@ final class EarlierEscrowHeld extends EarlierEscrow {
   String toString() => 'EarlierEscrowHeld($take, $progress)';
 }
 
-/// An earlier escrow whose state cannot be told: no wallet id recorded, the wallet's records unreadable, or no payment found for a recorded one. It counts as held.
+/// An earlier attempt that never reached the wallet's records: refused, or stopped, before any order of this feature existed for its invoice, so nothing left the wallet through it ([EarlierEscrow.of]). Released.
+final class EarlierEscrowNeverStarted extends EarlierEscrow {
+  const EarlierEscrowNeverStarted(super.take);
+
+  @override
+  bool get held => false;
+
+  @override
+  String toString() => 'EarlierEscrowNeverStarted($take)';
+}
+
+/// An earlier escrow whose state cannot be told: the wallet's records unreadable, or no payment found for a recorded wallet id. It counts as held.
 final class EarlierEscrowUnknown extends EarlierEscrow {
   const EarlierEscrowUnknown(super.take);
 

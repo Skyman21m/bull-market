@@ -550,7 +550,7 @@ final class PayBondFromWalletUsecase {
 
   /// The contract of a maker seller's escrow of [paymentHash] at contract [take], with the escrows of the order's other contracts this wallet was asked to pay (#187, design note § 6 row 13): read from every payment recorded for the trade, whatever its contract, and the wallet's records of each.
   ///
-  /// Refused with [BondPayEscrowSeenBefore] when [paymentHash] is one of [earlierEscrows] (the trail's) or the hash of another payment recorded for the trade (another contract's escrow, the bond); with [BondPayEarlierEscrowHeld] when an escrow of another contract may still be held ([EarlierEscrow.held]: only a refund pending or done, or a failure or an expiry with nothing sent, counts as released; a record with no wallet id, or whose state the wallet cannot tell, counts as held); with [BondPayRecordsUnreadable] when the records cannot be read.
+  /// Refused with [BondPayEscrowSeenBefore] when [paymentHash] is one of [earlierEscrows] (the trail's) or the hash of another payment recorded for the trade (another contract's escrow, the bond); with [BondPayEarlierEscrowHeld] when an escrow of another contract may still be held ([EarlierEscrow.held]: only a refund pending or done, a failure or an expiry with nothing sent, or an attempt of which the wallet holds no order and the record no wallet id, counts as released; a recorded wallet id the wallet does not know, or records it cannot read, count as held); with [BondPayRecordsUnreadable] when the records cannot be read.
   Future<Result<EscrowContract, BondPayRefusal>> _contractOf(
     TradeRecord record, {
     required int take,
@@ -575,9 +575,19 @@ final class PayBondFromWalletUsecase {
         return const Err(BondPayEscrowSeenBefore());
       }
       if (payment.step != InvoiceStep.escrow) continue;
-      final found = payment.walletPaymentId == null
-          ? null
-          : await _wallet.findPayment(payment.paymentHash);
+      final found = await _wallet.findPayment(payment.paymentHash);
+      // A wallet id never written (the app killed between the wallet's answer and its record), or written for an earlier attempt: written now, as the follow does.
+      if (found case Ok(
+        value: final known?,
+      ) when known.payment.id != payment.walletPaymentId) {
+        final _ = await _payments.recordWalletPayment(
+          record,
+          InvoiceStep.escrow,
+          paymentHash: payment.paymentHash,
+          walletPaymentId: known.payment.id,
+          take: payment.take,
+        );
+      }
       earlier.add(EarlierEscrow.of(payment, found));
     }
     final contract = EscrowContract(take: take, earlier: earlier);
