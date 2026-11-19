@@ -686,6 +686,31 @@ void main() {
         makerFee: stored.makerFee,
       );
 
+      /// [stored] as kept for an order made at the coordinator [alias].
+      MakerTermsRecord elsewhere(MakerTermsRecord stored, String alias) =>
+          MakerTermsRecord(
+            version: stored.version,
+            network: stored.network,
+            coordinatorAlias: alias,
+            role: stored.role,
+            type: stored.type,
+            currencyId: stored.currencyId,
+            amount: stored.amount,
+            minAmount: stored.minAmount,
+            maxAmount: stored.maxAmount,
+            premiumPercent: stored.premiumPercent,
+            paymentMethod: stored.paymentMethod,
+            bondSizePercent: stored.bondSizePercent,
+            publicSeconds: stored.publicSeconds,
+            escrowSeconds: stored.escrowSeconds,
+            description: stored.description,
+            hasPassword: stored.hasPassword,
+            latitude: stored.latitude,
+            longitude: stored.longitude,
+            createdPrice: stored.createdPrice,
+            makerFee: stored.makerFee,
+          );
+
       test(
         'terms kept as a sell order of a seller, consistent in themselves but not the record\'s role: refused as unreadable, nothing sent (security review of #185, R2, its mutant M04)',
         () async {
@@ -812,8 +837,10 @@ void main() {
                   as MakeStarted;
           final requests = harness.coordinator.requests.length;
           final after = valueOf(await harness.make.renewalsOf(record).first);
-          expect(after.since, [renewed.record]);
-          expect(after.latest, renewed.record);
+          expect(after.since, [
+            OrderMadeSince(renewed.record, MadeSinceStands.running),
+          ]);
+          expect(after.shown?.record, renewed.record);
           expect(harness.coordinator.requests.length, requests);
           // The order of other terms has none: the renewal is of another request.
           expect(
@@ -825,6 +852,108 @@ void main() {
             valueOf(await harness.make.renewalsOf(renewed.record).first).since,
             isEmpty,
           );
+        },
+      );
+
+      test(
+        'an order of the same terms made after at ANOTHER coordinator is none of them (functional review of #220, C2, its mutant M8)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          final renewal = valueOf(await harness.make.renewal(record));
+          final renewed =
+              valueOf(
+                    await harness.make.execute(
+                      renewal.request,
+                      coordinator: renewal.coordinator,
+                      network: renewal.network,
+                      seen: seenNow(harness, renewal.request),
+                    ),
+                  )
+                  as MakeStarted;
+          expect(
+            valueOf(await harness.make.renewalsOf(record).first).since,
+            hasLength(1),
+          );
+          // The same order read as made at another coordinator of the list, its record and its kept terms alike: the very request, elsewhere.
+          final other = Federation.robosats
+              .on(harness.network)
+              .firstWhere(
+                (coordinator) =>
+                    coordinator.shortAlias != harness.host.shortAlias,
+              );
+          final moved = renewed.record.robot;
+          harness.records.trades = (stored) => [
+            for (final trade in stored)
+              trade.robot == moved
+                  ? TradeRecord(
+                      robot: trade.robot,
+                      coordinatorAlias: other.shortAlias,
+                      coordinatorOnion: trade.coordinatorOnion,
+                      orderId: trade.orderId,
+                      role: trade.role,
+                      origin: trade.origin,
+                      takenAt: trade.takenAt,
+                      confirmedAt: trade.confirmedAt,
+                      closedAt: trade.closedAt,
+                    )
+                  : trade,
+          ];
+          harness.trails.madeHistories = (stored) => {
+            for (final MapEntry(:key, :value) in stored.entries)
+              key: key == moved
+                  ? StoredMadeHistory(
+                      terms: switch (value.terms) {
+                        final terms? => elsewhere(terms, other.shortAlias),
+                        null => null,
+                      },
+                      trail: value.trail,
+                    )
+                  : value,
+          };
+          expect(
+            valueOf(await harness.make.renewalsOf(record).first).since,
+            isEmpty,
+          );
+        },
+      );
+
+      test(
+        'where each order made since stands, from the records: running, then expired with no bond; the one named is a running one when there is one, else the newest (functional review of #220, R1)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          Future<TradeRecord> renew() async {
+            final renewal = valueOf(await harness.make.renewal(record));
+            return (valueOf(
+                      await harness.make.execute(
+                        renewal.request,
+                        coordinator: renewal.coordinator,
+                        network: renewal.network,
+                        seen: seenNow(harness, renewal.request),
+                      ),
+                    )
+                    as MakeStarted)
+                .record;
+          }
+
+          final first = await renew();
+          var renewals = valueOf(await harness.make.renewalsOf(record).first);
+          expect(renewals.since.single.stands, MadeSinceStands.running);
+          // A second one, then expired at 0, its bond never locked, as the watch reads it: the running one is still the one named, though older.
+          final second = await renew();
+          harness.coordinator.expire(second.orderId);
+          expect((await read(harness, second)).status, isA<Expired>());
+          renewals = valueOf(await harness.make.renewalsOf(record).first);
+          expect(renewals.since.map((made) => made.record.orderId), [
+            first.orderId,
+            second.orderId,
+          ]);
+          expect(renewals.since.map((made) => made.stands), [
+            MadeSinceStands.running,
+            MadeSinceStands.expired,
+          ]);
+          expect(renewals.shown?.record.orderId, first.orderId);
         },
       );
 

@@ -125,7 +125,7 @@ final class TradeWatchSession {
     }
   }
 
-  /// One read of [trade]'s end (a successful end, or an expired order, [TradeReader.readsEndOnce]), through the robot's places as every read of the watch, never sent while an action of the trade runs: what it shows is emitted with [record] when [TradeReader.endShown] takes it (the summary, the payment's lines, the rating, an expired order's terms and reason, with the state machine's warnings); a read that fails, is held back, an order the coordinator no longer knows or one no longer at that end leave the end shown as the records hold it, marked [TradeWatchStatus.endNotReadAgain], which the screen says (#216). Nothing is written, the record is not touched, and no other read follows.
+  /// One read of [trade]'s end (a successful end, or an expired order, [TradeReader.readsEndOnce]), through the robot's places as every read of the watch, never sent while an action of the trade runs: what it shows is emitted with [record] as [TradeReader.endRead] judges it (the summary, the payment's lines, the rating, an expired order's terms and reason, with the state machine's warnings); a read that fails, is held back, an order the coordinator no longer knows or one no longer at that end leave the end shown as the records hold it, marked [TradeWatchStatus.endReread] with what it gave, which the screen says (#216, functional review of #220, C1). Nothing is written, the record is not touched, and no other read follows.
   Future<void> _readEndOnce(
     OpenTrade trade,
     TradeRecord record,
@@ -145,27 +145,23 @@ final class TradeWatchSession {
         watch: true,
       );
       if (_stopped) return;
-      final seen = switch (read) {
-        Ok(value: final result) when !times.heldBack =>
-          switch (TradeAnswer.ofRead(result)) {
-            final answer? => _reader.endShown(
-              trade,
-              answer,
-              at: _reader.now(),
-              request: times,
-            ),
-            null => null,
-          },
-        _ => null,
+      final (:seen, :reread) = switch (read) {
+        Ok(value: final result) when !times.heldBack => _reader.endRead(
+          trade,
+          result,
+          at: _reader.now(),
+          request: times,
+        ),
+        _ => (seen: trade.seen, reread: const TradeEndNotRead()),
       };
       if (_stopped) return;
       _emit(
         TradeWatchStatus(
           record,
-          seen ?? trade.seen,
+          seen,
           recordProblem: problem,
           takePending: record.isPendingTake,
-          endNotReadAgain: seen == null,
+          endReread: reread,
         ),
       );
     } finally {

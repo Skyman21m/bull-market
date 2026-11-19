@@ -7,6 +7,7 @@ import '../trade_record.dart';
 import 'trade_status.dart';
 import 'trade_storable.dart';
 import 'trade_tolerances.dart';
+import 'trade_warning.dart';
 
 /// A status of a trade as the user saw it, with the order it was read from: what `CancelTradeUsecase` cancels with.
 @immutable
@@ -105,8 +106,8 @@ final class TradeWatchStatus extends TradeWatchState {
   /// Whether the trade is a take whose answer was lost, and no read has shown yet whether it happened: the reads go on until one shows this robot as the taker, or brings the take to an end ([TradeWatchTakeNotMade]).
   final bool takePending;
 
-  /// Whether the one read of an end that the screen asks when it opens a trade ended at 5 or 14 (#95, #216) gave nothing to show: no answer, an order the coordinator no longer knows, or one no longer at that end. [seen] is then the end the records hold, and the screen says that the order could not be read again, never as if it had been (#216).
-  final bool endNotReadAgain;
+  /// What the one read of an end that the screen asks when it opens a trade ended at 5 or 14 (#95, #216) gave, when it did not show that end as this device kept it; `null` when it did, or no such read was made (functional review of #220, C1). [seen] is then the end the records hold, unless the read showed that very end with other terms ([TradeEndShownOtherwise] with the read's status as [seen]).
+  final TradeEndReread? endReread;
 
   const TradeWatchStatus(
     this.record,
@@ -115,7 +116,7 @@ final class TradeWatchStatus extends TradeWatchState {
     this.lastReadFailure,
     this.recordProblem,
     required this.takePending,
-    this.endNotReadAgain = false,
+    this.endReread,
   });
 
   /// Whether [seen]'s status is the one this read stored ([TradeSeen.stored]): show an invoice, or offer a payment, only when it is.
@@ -123,7 +124,7 @@ final class TradeWatchStatus extends TradeWatchState {
 
   @override
   String toString() =>
-      'TradeWatchStatus($record, ${seen.status}, stored: $stored, failed: $failedReads, problem: ${recordProblem?.runtimeType}, pending: $takePending, endNotReadAgain: $endNotReadAgain)';
+      'TradeWatchStatus($record, ${seen.status}, stored: $stored, failed: $failedReads, problem: ${recordProblem?.runtimeType}, pending: $takePending, endReread: $endReread)';
 }
 
 /// The trade's stored records cannot be restored: shown read-only with [reason], never resumed, and nothing is sent ([TradeRecordMalformed], [TradeRecordOfAnotherTrade], or [TradeCoordinatorGone] for a coordinator that left the federation list).
@@ -213,4 +214,37 @@ enum TradeWatchSignal {
 
   /// Read now, as on the return of the app to the foreground: at once, or right after the read in flight.
   readNow,
+}
+
+/// What the one read of an end gave when it did not show that end as this device kept it (#216, functional review of #220, C1): each said in its own words, never one for another.
+@immutable
+sealed class TradeEndReread {
+  const TradeEndReread();
+}
+
+/// No answer to tell from: the coordinator out of reach, a timeout, an error of the transport, an answer that does not parse, or a read held back. The app could not read the order again.
+final class TradeEndNotRead extends TradeEndReread {
+  const TradeEndNotRead();
+
+  @override
+  String toString() => 'TradeEndNotRead';
+}
+
+/// The coordinator answered that it does not know the order: error 1042 (`api/views.py:240-242`, with a `404`), or a `404` without a code.
+final class TradeEndUnknownToCoordinator extends TradeEndReread {
+  const TradeEndUnknownToCoordinator();
+
+  @override
+  String toString() => 'TradeEndUnknownToCoordinator';
+}
+
+/// The coordinator answered otherwise than the end this device kept: another status, the order cancelled (1043) or not available to this robot (1044), another order, or that end with other terms. [warnings] are the state machine's alerts of that answer when the screen keeps showing the end the records hold; empty when the screen shows the answer's own status, which carries them.
+final class TradeEndShownOtherwise extends TradeEndReread {
+  final List<TradeWarning> warnings;
+
+  TradeEndShownOtherwise(Iterable<TradeWarning> warnings)
+    : warnings = List.unmodifiable(warnings);
+
+  @override
+  String toString() => 'TradeEndShownOtherwise($warnings)';
 }

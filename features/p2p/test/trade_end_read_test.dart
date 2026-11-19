@@ -107,7 +107,7 @@ void main() {
       expect(own?.receivedSats?.value.toInt(), 164126);
       expect(shown.seen.order?.id, record.orderId);
       expect(shown.seen.stored, isFalse);
-      expect(shown.endNotReadAgain, isFalse);
+      expect(shown.endReread, isNull);
       expect(readsOf(app), 1);
       expect(app.trails.stores, storesBefore);
       expect(shown.record.closedAt, record.closedAt);
@@ -122,7 +122,7 @@ void main() {
   );
 
   test(
-    'the coordinator no longer knows the order: the end stays, marked not read again (#216)',
+    'the coordinator answers that it does not know the order: the end stays, marked so, never « not read » (#216, functional review of #220, C1)',
     () async {
       final (app, record) = await finishedThenRestarted();
       app.coordinator.orderForgotten = true;
@@ -130,7 +130,7 @@ void main() {
       await app.settle();
       expect(run.states, hasLength(2));
       expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-      expect(run.lastStatus.endNotReadAgain, isTrue);
+      expect(run.lastStatus.endReread, isA<TradeEndUnknownToCoordinator>());
       expect(run.lastStatus.failedReads, 0);
       expect(readsOf(app), 1);
       expect(run.done, isTrue);
@@ -138,7 +138,7 @@ void main() {
   );
 
   test(
-    'the read fails: the end stays, marked not read again (#216), no retry',
+    'the read fails: the end stays, marked not read (#216), no retry',
     () async {
       final (app, record) = await finishedThenRestarted();
       app.coordinator.failNext(read, ScriptedFault.unreachable);
@@ -147,13 +147,13 @@ void main() {
       await app.elapse(const Duration(minutes: 30));
       expect(run.states, hasLength(2));
       expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-      expect(run.lastStatus.endNotReadAgain, isTrue);
+      expect(run.lastStatus.endReread, isA<TradeEndNotRead>());
       expect(readsOf(app), 1);
     },
   );
 
   test(
-    'an order read no longer at its successful end is not taken: the end stays, marked not read again (#216)',
+    'an order read no longer at its successful end is not taken: the end stays, marked shown otherwise, never « not read » (#216, functional review of #220, C1)',
     () async {
       final (app, record) = await finishedThenRestarted();
       app.coordinator.moveTo(13);
@@ -161,7 +161,7 @@ void main() {
       await app.settle();
       expect(run.states, hasLength(2));
       expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-      expect(run.lastStatus.endNotReadAgain, isTrue);
+      expect(run.lastStatus.endReread, isA<TradeEndShownOtherwise>());
       expect(readsOf(app), 1);
     },
   );

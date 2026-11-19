@@ -427,6 +427,9 @@ final class MakeRecords implements TradeRecordRepository {
   /// How many confirmations of a make were asked.
   int confirms = 0;
 
+  /// When set, what [watchTrades] gives in place of each list stored: a database whose rows read otherwise.
+  List<TradeRecord> Function(List<TradeRecord> stored)? trades;
+
   MakeRecords(this._inner, this._kill);
 
   @override
@@ -516,7 +519,14 @@ final class MakeRecords implements TradeRecordRepository {
   @override
   Stream<Result<List<TradeRecord>, P2pFailure>> watchTrades(
     RobosatsNetwork network,
-  ) => _inner.watchTrades(network);
+  ) => _inner
+      .watchTrades(network)
+      .map(
+        (result) => switch ((result, trades)) {
+          (Ok(:final value), final change?) => Ok(change(value)),
+          _ => result,
+        },
+      );
 }
 
 /// The terms and trails, stopping the app, or failing a write, where the test says.

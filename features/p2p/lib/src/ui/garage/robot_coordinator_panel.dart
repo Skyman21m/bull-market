@@ -357,14 +357,13 @@ class _Known extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Line(switch ((active, last)) {
-          (final active?, _) => l10n.p2pRobotActiveOrder('$active'),
-          (null, final last?) => l10n.p2pRobotLastOrder('$last'),
-          (null, null) => l10n.p2pRobotNoOrders,
-        }, live: true),
+        // « Last order #N » is not said here (functional review of #220, R4): the Garage says it once, under the robot navigator where the reference puts it, from the records, and a tap opens it (`LastOrderLines`, #216); a coordinator's last order this device holds no trade of could not be opened.
+        if (active != null)
+          _Line(l10n.p2pRobotActiveOrder('$active'), live: true)
+        else if (last == null)
+          _Line(l10n.p2pRobotNoOrders, live: true),
         // As the official client, which counts a last order of unknown status as used: Troc does not read the order yet.
         if (active == null && last != null) ...[
-          const Gap(BullSpacing.sm),
           BullInfoBar(
             message: l10n.p2pRobotUsedInTrade,
             icon: Icons.info_outline,

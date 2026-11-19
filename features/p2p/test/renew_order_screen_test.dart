@@ -29,9 +29,11 @@ import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
+import 'package:p2p/src/presentation/renewals_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
+import 'package:p2p/src/ui/trade/renew_same_terms_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
@@ -148,6 +150,7 @@ Future<void> _showTrade(
   TradeSeen seen, {
   required TradeRecord record,
   _Pages? pages,
+  RenewalsCubit? renewals,
   Locale locale = const Locale('en'),
 }) async {
   tester.view
@@ -190,6 +193,7 @@ Future<void> _showTrade(
           providers: [
             BlocProvider.value(value: trade),
             BlocProvider.value(value: page),
+            if (renewals != null) BlocProvider.value(value: renewals),
           ],
           // A screen of its own at each show, so that a page opened by a show before is not kept.
           child: TradeScreen(
@@ -197,6 +201,7 @@ Future<void> _showTrade(
             now: () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             onRenew: pages?.call,
+            readsRenewals: renewals != null,
           ),
         ),
       ),
@@ -464,6 +469,69 @@ void main() {
         _noInternalNames(tester);
       },
     );
+
+    for (final made in [true, false]) {
+      testWidgets(
+        'a tap on « Renew Order » before the records said whether an order with the same terms was made since: their answer awaited, then ${made ? '« Renew this order? » first' : 'the page at once'} (functional review of #220, R3)',
+        (tester) async {
+          final records = StreamController<Result<OrderRenewals, P2pFailure>>();
+          addTearDown(records.close);
+          final renewals = RenewalsCubit(_madeRecord(), (_) => records.stream)
+            ..start();
+          addTearDown(renewals.close);
+          final pages = _Pages();
+          await _showTrade(
+            tester,
+            await tester.runAsync(_expired) ?? (throw StateError('none')),
+            record: _madeRecord(),
+            pages: pages,
+            renewals: renewals,
+          );
+          expect(renewals.state, isA<RenewalsReading>());
+          await _tap(tester, _renewOrder);
+          await tester.pump();
+          // Nothing decided while the records are read: no page, the button busy.
+          expect(pages.opened, isEmpty);
+          expect(_enabled(tester, _renewOrder), isFalse);
+          final since = TradeRecord(
+            robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 1),
+            coordinatorAlias: 'temple',
+            coordinatorOnion: _madeRecord().coordinatorOnion,
+            orderId: 777,
+            role: TradeRole.buyer,
+            origin: TradeOrigin.madeHere,
+            takenAt: madeAt.add(const Duration(days: 1)),
+            confirmedAt: madeAt.add(const Duration(days: 1)),
+            closedAt: null,
+          );
+          records.add(
+            Ok(
+              OrderRenewals(_kept, [
+                if (made) OrderMadeSince(since, MadeSinceStands.running),
+              ]),
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          if (made) {
+            expect(find.byType(RenewSameTermsDialog), findsOneWidget);
+            expect(
+              find.text(
+                'An order with the same terms was already made here after this one: order 777, still running here. Renewing makes one more order, under a new robot, with a new bond to pay.',
+              ),
+              findsOneWidget,
+            );
+            expect(pages.opened, isEmpty);
+            await tester.tap(find.text('Go back'));
+            await tester.pumpAndSettle();
+            expect(pages.opened, isEmpty);
+          } else {
+            expect(find.byType(RenewSameTermsDialog), findsNothing);
+            expect(pages.opened, [_madeRecord()]);
+          }
+        },
+      );
+    }
 
     testWidgets(
       '5 not marked stored, or a screen that cannot make an order: no « Renew Order »',

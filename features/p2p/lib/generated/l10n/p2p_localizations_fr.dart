@@ -3691,38 +3691,63 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Cet ordre ne peut plus être renouvelé tel quel : créez un nouvel ordre.';
 
   @override
-  String get p2pRenewAgainTitle => 'Renouveler encore cet ordre ?';
-
-  @override
-  String p2pRenewAgainText(String orderId) {
-    return 'L’ordre $orderId a déjà été créé ici, après celui-ci, avec les termes gardés de cet ordre. Renouveler encore crée un ordre de plus, sous un nouveau robot, avec une nouvelle caution à payer.';
-  }
-
-  @override
-  String get p2pRenewAgain => 'Renouveler encore';
-
-  @override
-  String p2pRenewedAlready(String orderId) {
-    return 'Déjà renouvelé : l’ordre $orderId a été créé ici après celui-ci, avec les mêmes termes.';
-  }
-
-  @override
-  String p2pRenewedOpen(String orderId) {
-    return 'Ouvrir l’ordre $orderId';
-  }
-
-  @override
-  String get p2pRenewedUnknown =>
-      'Bull Market n’a pas pu lire ses enregistrements pour savoir si cet ordre a déjà été renouvelé.';
-
-  @override
   String p2pTradeKeptTerms(String date, String summary) {
     return 'Créé ici le $date, avec les termes gardés sur cet appareil : $summary.';
   }
 
   @override
-  String p2pTradeEndNotReadAgain(String coordinator, String date) {
-    return '$coordinator n’a pas pu être interrogé de nouveau sur cet ordre : ce qui est affiché est ce que cet appareil a gardé à sa fin, le $date.';
+  String p2pSameTermsMade(String orderId, String stands) {
+    return 'Un ordre aux mêmes termes a été créé ici après celui-ci : l’ordre $orderId, $stands.';
+  }
+
+  @override
+  String get p2pSameTermsRunning => 'toujours en cours ici';
+
+  @override
+  String get p2pSameTermsExpired => 'expiré';
+
+  @override
+  String get p2pSameTermsCancelled => 'annulé';
+
+  @override
+  String get p2pSameTermsCompleted => 'mené à terme';
+
+  @override
+  String get p2pSameTermsEnded => 'terminé';
+
+  @override
+  String p2pSameTermsOpen(String orderId) {
+    return 'Ouvrir l’ordre $orderId';
+  }
+
+  @override
+  String get p2pSameTermsUnknown =>
+      'Bull Market n’a pas pu lire ses enregistrements pour savoir si un ordre aux mêmes termes a été créé ici depuis celui-ci.';
+
+  @override
+  String get p2pRenewSameTermsTitle => 'Renouveler cet ordre ?';
+
+  @override
+  String p2pRenewSameTermsText(String orderId, String stands) {
+    return 'Un ordre aux mêmes termes a déjà été créé ici après celui-ci : l’ordre $orderId, $stands. Renouveler crée un ordre de plus, sous un nouveau robot, avec une nouvelle caution à payer.';
+  }
+
+  @override
+  String get p2pRenewSameTermsGo => 'Renouveler quand même';
+
+  @override
+  String p2pTradeEndNotRead(String coordinator, String date) {
+    return 'Cet ordre n’a pas pu être relu chez $coordinator : ce qui est affiché est ce que cet appareil a gardé à sa fin, le $date.';
+  }
+
+  @override
+  String p2pTradeEndUnknown(String coordinator, String date) {
+    return '$coordinator a répondu qu’il ne connaît pas cet ordre : ce qui est affiché est ce que cet appareil a gardé à sa fin, le $date.';
+  }
+
+  @override
+  String p2pTradeEndOtherwise(String coordinator, String date) {
+    return '$coordinator montre maintenant cet ordre autrement que cet appareil l’a gardé à sa fin, le $date.';
   }
 
   @override

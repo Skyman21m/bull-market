@@ -190,7 +190,19 @@ final class MakeOrderUsecase {
                       trade.coordinatorAlias == record.coordinatorAlias &&
                       !trade.takenAt.isBefore(record.takenAt) &&
                       _keptRequest(made[trade.robot], of: trade) == kept)
-                    trade,
+                    OrderMadeSince(
+                      trade,
+                      OrderMadeSince.standsOf(
+                        trade,
+                        TradePosition.values
+                            .where(
+                              (position) =>
+                                  position.name ==
+                                  made[trade.robot]?.trail?.position,
+                            )
+                            .firstOrNull,
+                      ),
+                    ),
               ]),
             ),
           );

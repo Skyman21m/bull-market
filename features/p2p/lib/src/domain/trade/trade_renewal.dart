@@ -53,20 +53,25 @@ final class OrderRenewal {
 
 /// What the records say of an order made here once it ended (#216, #217): the request this device kept of it, and the orders made here since with that very request, on its coordinator (`MakeOrderUsecase.renewalsOf`), oldest first.
 ///
-/// Those orders are its renewals, or orders made again by hand with the same terms: this device cannot tell them apart, and they say the same to the user, an order with these terms already exists.
+/// Those orders may be its renewals, or orders made again by hand with the same terms, and a renewal may since have been cancelled or have expired with no bond: the device cannot tell them apart, so the screens say only what is established, an order with the same terms was made here after this one, and where this device saw it stand (functional review of #220, R1).
 @immutable
 final class OrderRenewals {
   /// The request this device kept of the order: what a renewal sends.
   final MakeOrderRequest kept;
 
   /// The orders made here since with [kept], oldest first; empty when there is none.
-  final List<TradeRecord> since;
+  final List<OrderMadeSince> since;
 
-  OrderRenewals(this.kept, Iterable<TradeRecord> since)
+  OrderRenewals(this.kept, Iterable<OrderMadeSince> since)
     : since = List.unmodifiable(since);
 
-  /// The newest of [since], the one the trade screen opens; `null` when there is none.
-  TradeRecord? get latest => since.lastOrNull;
+  /// The one the trade screen names: the newest of [since] still running here, so that the user knows an order is alive, else the newest; `null` when there is none.
+  OrderMadeSince? get shown {
+    for (final made in since.reversed) {
+      if (made.stands == MadeSinceStands.running) return made;
+    }
+    return since.lastOrNull;
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -83,6 +88,58 @@ final class OrderRenewals {
   /// Never the request: only how many orders were made since.
   @override
   String toString() => 'OrderRenewals(${since.length} since)';
+}
+
+/// Where this device last saw an order made since with the same terms stand, from its records only (its record and its stored trail), never read anew.
+enum MadeSinceStands {
+  /// Its record is open: the order may be alive (waiting for its bond, public, paused, taken).
+  running,
+
+  /// Closed at 5.
+  expired,
+
+  /// Closed after error 1043: cancelled.
+  cancelled,
+
+  /// Closed at a successful end (14).
+  completed,
+
+  /// Closed at another end, or with no trail this device can read.
+  ended,
+}
+
+/// An order made here after another with the very same terms (#217): its record, and where this device saw it stand.
+@immutable
+final class OrderMadeSince {
+  final TradeRecord record;
+  final MadeSinceStands stands;
+
+  const OrderMadeSince(this.record, this.stands);
+
+  /// Where a record stands, closed at the stored [position] (`null`: none readable).
+  static MadeSinceStands standsOf(
+    TradeRecord record,
+    TradePosition? position,
+  ) => record.closedAt == null
+      ? MadeSinceStands.running
+      : switch (position) {
+          TradePosition.expired => MadeSinceStands.expired,
+          TradePosition.cancelled => MadeSinceStands.cancelled,
+          TradePosition.succeeded => MadeSinceStands.completed,
+          _ => MadeSinceStands.ended,
+        };
+
+  @override
+  bool operator ==(Object other) =>
+      other is OrderMadeSince &&
+      other.record == record &&
+      other.stands == stands;
+
+  @override
+  int get hashCode => Object.hash(record, stands);
+
+  @override
+  String toString() => 'OrderMadeSince(${record.orderId}, ${stands.name})';
 }
 
 /// Why an order cannot be renewed from this device: nothing is sent, and a screen words each type with a text of its own.

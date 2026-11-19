@@ -19,7 +19,7 @@ import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
-import 'package:p2p/src/ui/trade/renew_again_dialog.dart';
+import 'package:p2p/src/ui/trade/renew_same_terms_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -272,12 +272,14 @@ const _keptLine =
 
 void main() {
   testWidgets(
-    '« Last order #N » of the Garage opens the ended order again: read once, its kept terms, « Renew Order » renews it once; opened again, « Already renewed », one tap more to renew again, « Open order » opens the new one',
+    '« Last order #N » of the Garage, said once, opens the ended order again: read once, its kept terms, « Renew Order » renews it once; opened again, an order with the same terms said with where it stands, one tap more to renew again, « Open order » opens the new one',
     (tester) async {
       final app = await _App.start(tester);
       final id = app.first.orderId;
       await app.openGarage();
       expect(_lastOrder(id), findsOneWidget);
+      // Said once in the Garage, where the reference says it: the robot panel, which shows the robot of that very order, no longer says it as plain text (functional review of #220, R4).
+      expect(find.text('Last order #$id'), findsOneWidget);
       final readsBefore = app.orderReads.length;
       await _tap(tester, _lastOrder(id));
       await app.settle(12);
@@ -286,13 +288,13 @@ void main() {
       expect(find.text('The order has expired'), findsOneWidget);
       expect(app.orderReads.length - readsBefore, 1);
       expect(find.textContaining(_keptLine), findsOneWidget);
-      expect(find.textContaining('could not be asked'), findsNothing);
-      expect(find.textContaining('Already renewed'), findsNothing);
+      expect(find.textContaining('could not be read again'), findsNothing);
+      expect(find.textContaining('same terms was made'), findsNothing);
       // « Renew Order », then « Create order »: one make, the kept request, another robot; the new trade in place of the old one.
       await _tap(tester, _renewOrder);
       await app.settle(12);
       expect(find.byType(CreateOrderScreen), findsOneWidget);
-      expect(find.byType(RenewAgainDialog), findsNothing);
+      expect(find.byType(RenewSameTermsDialog), findsNothing);
       await _tap(tester, _create);
       await tester.tap(_create, warnIfMissed: false);
       await app.settle(16);
@@ -311,23 +313,23 @@ void main() {
       expect(app.tradePages(), [id]);
       expect(
         find.text(
-          'Already renewed: order $renewed was made here after this one, with the same terms.',
+          'An order with the same terms was made here after this one: order $renewed, still running here.',
         ),
         findsOneWidget,
       );
       // Renewing again asks first; « Go back » opens nothing.
       await _tap(tester, _renewOrder);
       await app.settle();
-      expect(find.byType(RenewAgainDialog), findsOneWidget);
-      expect(find.text('Renew this order again?'), findsOneWidget);
+      expect(find.byType(RenewSameTermsDialog), findsOneWidget);
+      expect(find.text('Renew this order?'), findsOneWidget);
       await tester.tap(find.text('Go back'));
       await app.settle();
-      expect(find.byType(RenewAgainDialog), findsNothing);
+      expect(find.byType(RenewSameTermsDialog), findsNothing);
       expect(find.byType(CreateOrderScreen), findsNothing);
-      // « Renew again »: the renewal's page, nothing sent; left, nothing made.
+      // « Renew anyway »: the renewal's page, nothing sent; left, nothing made.
       await _tap(tester, _renewOrder);
       await app.settle();
-      await tester.tap(find.text('Renew again'));
+      await tester.tap(find.text('Renew anyway'));
       await app.settle(12);
       expect(find.byType(CreateOrderScreen), findsOneWidget);
       await app.back();
@@ -345,38 +347,65 @@ void main() {
     },
   );
 
-  for (final (name, forget) in [
-    (
-      'the coordinator out of reach',
-      (ScriptedMakerCoordinator c, int id) => c
-        ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable)
-        ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable)
-        ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable),
-    ),
-    (
-      'the order forgotten by the coordinator',
-      (ScriptedMakerCoordinator c, int id) => c.orders.remove(id),
-    ),
-  ]) {
+  for (final (name, change, line)
+      in <
+        (
+          String,
+          void Function(ScriptedMakerCoordinator coordinator, int id),
+          String,
+        )
+      >[
+        (
+          'the coordinator out of reach: the order not read again',
+          (c, id) => c
+            ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable)
+            ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable)
+            ..failNext(ScriptedMakerRequest.order, ScriptedFault.unreachable),
+          'This order could not be read again from Temple of Sats: what is shown is what this device kept when it ended, on ',
+        ),
+        (
+          'the coordinator answering it does not know the order (404)',
+          (c, id) => c.orders.remove(id),
+          'Temple of Sats answered that it does not know this order: what is shown is what this device kept when it ended, on ',
+        ),
+        (
+          'the coordinator answering the order public again (1)',
+          (c, id) => c.order(id).status = 1,
+          'Temple of Sats now shows this order otherwise than this device kept it when it ended, on ',
+        ),
+      ]) {
     testWidgets(
-      'opened again, $name: the end the records hold, said as not read again, with the kept terms and the date; « Renew Order » still offered',
+      'opened again, $name: the end the records hold, the line true to what the read gave, with the date and the kept terms; « Renew Order » under the text, still offered (functional review of #220, C1, R7)',
       (tester) async {
         final app = await _App.start(tester);
         final id = app.first.orderId;
-        forget(app.coordinator, id);
+        change(app.coordinator, id);
         await app.openGarage();
         await _tap(tester, _lastOrder(id));
         await app.settle(12);
         // Not « The order has expired », which the coordinator did not say now: the end the records hold, as the screen words an end of a status it did not read.
         expect(find.text('The order has expired'), findsNothing);
         expect(find.text('This trade is over for this robot.'), findsOneWidget);
-        expect(
-          find.textContaining(
-            'Temple of Sats could not be asked about this order again: what is shown is what this device kept when it ended, on ',
-          ),
-          findsOneWidget,
-        );
+        expect(find.textContaining(line), findsOneWidget);
+        for (final other in [
+          'could not be read again',
+          'does not know this order',
+          'now shows this order otherwise',
+        ]) {
+          if (!line.contains(other)) {
+            expect(find.textContaining(other), findsNothing, reason: other);
+          }
+        }
         expect(find.textContaining(_keptLine), findsOneWidget);
+        // « Renew Order » under « This trade is over for this robot. », as under the expiry's reason.
+        expect(
+          tester.getTopLeft(_renewOrder).dy,
+          greaterThan(
+            tester
+                .getTopLeft(find.text('This trade is over for this robot.'))
+                .dy,
+          ),
+        );
         // The renewal the records allow, on its page with the kept terms; nothing sent.
         await _tap(tester, _renewOrder);
         await app.settle(12);
@@ -392,7 +421,7 @@ void main() {
   }
 
   testWidgets(
-    'opened again, the coordinator now reads the ended order with other terms: its alert shown; the renewal\'s page still the kept terms',
+    'opened again, the coordinator now reads the ended order with other terms: its alert shown, and that it shows the order otherwise; the renewal\'s page still the kept terms (functional review of #220, C1)',
     (tester) async {
       final app = await _App.start(tester);
       final id = app.first.orderId;
@@ -404,6 +433,13 @@ void main() {
         find.text('The terms of the order are not those of the order taken.'),
         findsWidgets,
       );
+      expect(
+        find.textContaining(
+          'Temple of Sats now shows this order otherwise than this device kept it when it ended, on ',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('could not be read again'), findsNothing);
       expect(find.textContaining(_keptLine), findsOneWidget);
       await _tap(tester, _renewOrder);
       await app.settle(12);

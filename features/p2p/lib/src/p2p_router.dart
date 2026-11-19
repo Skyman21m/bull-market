@@ -331,10 +331,8 @@ final class P2pRouter {
             onRenew: renews
                 ? (record) => openRenewal(context, record, book: args.book)
                 : null,
-            // An order already made since with the terms of this one (#217): said, and opened in place of this page, as a renewal made opens its new trade.
-            renewals: readsRenewals
-                ? (context) => context.watch<RenewalsCubit>().state
-                : null,
+            // An order made since with the terms of this one (#217): said, and opened in place of this page, as a renewal made opens its new trade.
+            readsRenewals: readsRenewals,
             onOpenTrade: readsRenewals
                 ? (record) => context.pushReplacementNamed(
                     tradeName,

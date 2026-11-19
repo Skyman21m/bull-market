@@ -3629,7 +3629,8 @@ void main() {
           await showPanel(tester, locale: locale);
           final l10n = _text(tester);
 
-          expect(find.text(l10n.p2pRobotLastOrder('4321')), findsOneWidget);
+          // Said once, under the navigator, from the records (functional review of #220, R4): never as a line of the panel that opens nothing.
+          expect(find.text(l10n.p2pRobotLastOrder('4321')), findsNothing);
           expect(find.text(l10n.p2pRobotNoOrders), findsNothing);
           expect(find.text(l10n.p2pRobotUsedInTrade), findsOneWidget);
           expect(find.text(l10n.p2pRobotRewards), findsOneWidget);
