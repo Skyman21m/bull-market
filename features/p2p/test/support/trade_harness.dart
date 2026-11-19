@@ -345,6 +345,11 @@ final class _KillingRecords implements TradeRecordRepository {
   Stream<Result<List<TradeRecord>, P2pFailure>> watchActiveTrades(
     RobosatsNetwork network,
   ) => _inner.watchActiveTrades(network);
+
+  @override
+  Stream<Result<List<TradeRecord>, P2pFailure>> watchTrades(
+    RobosatsNetwork network,
+  ) => _inner.watchTrades(network);
 }
 
 /// The terms and trails, stopping the app, or failing a write, where the test says.

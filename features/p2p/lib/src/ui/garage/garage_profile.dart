@@ -4,9 +4,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/network_garage_key.dart';
+import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
+import '../../presentation/last_orders_cubit.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
@@ -17,6 +19,7 @@ import 'delete_garage_key_dialog.dart';
 import 'garage_key_history_notice.dart';
 import 'garage_reauthentication.dart';
 import 'garage_wizard.dart' show RobotNickname;
+import 'last_order_lines.dart';
 import 'robot_coordinator_panel.dart';
 
 /// The profile of the Garage when a Garage Key is stored, as the official client draws it (`basic/GaragePage/GarageKeyProfile.tsx` at commit ff1998c): the nickname, the avatar, the robot navigator, then the Garage Key and « Delete All ».
@@ -29,6 +32,7 @@ import 'robot_coordinator_panel.dart';
 /// Right after a draw whose history could not be recorded, it says so.
 /// Under the robot navigator, the panel of the robot shown ([RobotCoordinatorPanel]): the coordinator that knows it, if any, and what that coordinator says of its orders and rewards, with its own cubit for each robot, closed when the user moves to another robot.
 /// The settings of the robot (Telegram, webhook, stealth invoices) and the claim of its rewards are not shown.
+/// Under the navigator, « Last order #N » (#216, [LastOrderLines]): the reference's line of the robot shown, here read from the device's records, since each trade has a robot of its own.
 class GarageProfile extends StatefulWidget {
   final GarageWithKey state;
   final GarageKeyClipboard clipboard;
@@ -42,6 +46,9 @@ class GarageProfile extends StatefulWidget {
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
 
+  /// Opens the trade of a « Last order #N » line (#216), read by the `LastOrdersCubit` above the Garage; `null`, and no such line, where the feature holds no trades.
+  final Future<void> Function(TradeRecord record)? onOpenTrade;
+
   const GarageProfile({
     super.key,
     required this.state,
@@ -49,6 +56,7 @@ class GarageProfile extends StatefulWidget {
     required this.reauthenticate,
     required this.robotCoordinator,
     required this.coordinatorDetails,
+    this.onOpenTrade,
   });
 
   @override
@@ -110,6 +118,8 @@ class _GarageProfileState extends State<GarageProfile> {
             onPrevious: cubit.previous,
             onNext: cubit.next,
           ),
+          // « Last order #N » under the robot navigator, where the reference puts it (`GarageKeyProfile.tsx:214-230`), from the device's records (#216).
+          if (widget.onOpenTrade case final open?) LastOrderLines(onOpen: open),
           if (state.failure case final failure?) ...[
             const Gap(BullSpacing.xs),
             Text(
@@ -128,11 +138,28 @@ class _GarageProfileState extends State<GarageProfile> {
             key: ValueKey((state.key, robot.index)),
             create: (_) =>
                 widget.robotCoordinator(state.key, robot.index)..load(),
-            child: RobotCoordinatorPanel(
-              nickname: robot.nickname,
-              network: state.network,
-              coordinatorDetails: widget.coordinatorDetails,
-            ),
+            child: widget.onOpenTrade == null
+                ? RobotCoordinatorPanel(
+                    nickname: robot.nickname,
+                    network: state.network,
+                    coordinatorDetails: widget.coordinatorDetails,
+                  )
+                // The orders the « Last order #N » lines open, so that the panel does not say them again (functional review of #220, R4).
+                : BlocBuilder<LastOrdersCubit, LastOrdersState>(
+                    builder: (context, last) => RobotCoordinatorPanel(
+                      nickname: robot.nickname,
+                      network: state.network,
+                      coordinatorDetails: widget.coordinatorDetails,
+                      lastOrdersShown: switch (last) {
+                        LastOrdersListed(:final orders) => {
+                          for (final record in orders)
+                            (record.coordinatorAlias, record.orderId),
+                        },
+                        LastOrdersLoading() ||
+                        LastOrdersUnreadable() => const {},
+                      },
+                    ),
+                  ),
           ),
           const Gap(BullSpacing.md),
           Container(

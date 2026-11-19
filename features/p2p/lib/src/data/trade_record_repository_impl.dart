@@ -142,6 +142,11 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'AND order_id IS NOT NULL '
       'ORDER BY taken_at, key_fingerprint, robot_index';
 
+  /// Every record of one network that has an order id, active or closed, oldest first (#216, #217): a pending make is not one.
+  static const String _tradesSql =
+      'SELECT * FROM trades WHERE network = ? AND order_id IS NOT NULL '
+      'ORDER BY taken_at, key_fingerprint, robot_index';
+
   /// The pending makes of one network, oldest first.
   static const String _pendingMakesSql =
       "SELECT * FROM trades WHERE network = ? AND origin = 'madeHere' "
@@ -500,9 +505,20 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   @override
   Stream<Result<List<TradeRecord>, P2pFailure>> watchActiveTrades(
     RobosatsNetwork network,
+  ) => _watchRecords(_activeSql, network);
+
+  @override
+  Stream<Result<List<TradeRecord>, P2pFailure>> watchTrades(
+    RobosatsNetwork network,
+  ) => _watchRecords(_tradesSql, network);
+
+  /// The records [sql] selects on [network], each read back as [_recordFrom] reads it: a new list after each write of the records.
+  Stream<Result<List<TradeRecord>, P2pFailure>> _watchRecords(
+    String sql,
+    RobosatsNetwork network,
   ) => _database
       .customSelect(
-        _activeSql,
+        sql,
         variables: [Variable.withString(_networkValue(network))],
         readsFrom: {_database.trades},
       )

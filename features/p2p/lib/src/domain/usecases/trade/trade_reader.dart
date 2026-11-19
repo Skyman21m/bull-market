@@ -469,18 +469,41 @@ final class TradeReader {
     );
   }
 
-  /// What a read of an end reached with success shows, written nowhere (#95): the status after [answer] over [trade]'s own end, with the order read, only when [trade] stands at a successful end (14), the read is not superseded ([TradeReadOrder.claim]) and still shows that end with its order; `null` otherwise, and the trade stays as it is.
+  /// What the one read of [trade]'s end gave, written nowhere (#95, #216, functional review of #220, C1): the status to show, and why it is not the end as this device kept it, if it is not. Only for a trade at a successful end (14) or an expired order (5) ([readsEndOnce]).
   ///
-  /// The reference reads an order again whenever its page opens, and the coordinator sums up a finished trade in every read of it at 13, 14 and 15 (`api/views.py:490-504`); [advance] never leaves an end nor writes it again, so the watch reads an end once through this, for the summary, the payment's lines and the rating. Nothing here stores a trail or touches the record.
-  TradeSeen? endShown(
+  /// The reference reads an order again whenever its page opens (`basic/OrderPage/index.tsx`), and the coordinator sums up a finished trade in every read of it at 13, 14 and 15 (`api/views.py:490-504`) and gives an expired order's terms and reason to its maker (`:470-498`); [advance] never leaves an end nor writes it again, so the watch reads such an end once through this.
+  /// - [result] is the read's own: an order the coordinator does not know (1042, or a `404` without a code) is [TradeEndUnknownToCoordinator]; a failure that says nothing of the trade (no answer, a timeout, a malformed answer) is [TradeEndNotRead]; so is a read superseded by a newer one ([TradeReadOrder.claim]).
+  /// - An answer is judged by the state machine over [trade]'s own end: still that end with its order, its status is shown (the summary, the payment's lines, the rating at 14; at 5 what the coordinator says now), marked [TradeEndShownOtherwise] with [TradeEndShownOtherwise.asRead] when it carries warnings (other terms), whose alerts it carries; an order at a status that is no end leaves [trade]'s end shown, marked [TradeEndShownAlive] (security review of #220, C1); any other end, error 1043 or 1044 included, leaves [trade]'s end shown, marked [TradeEndShownOtherwise] with that status's warnings; never a status the screen would act on.
+  /// Nothing here stores a trail or touches the record.
+  ({TradeSeen seen, TradeEndReread? reread}) endRead(
     OpenTrade trade,
-    TradeAnswer answer, {
+    Result<CoordinatorOrder, CoordinatorFailure> result, {
     required DateTime at,
     required RequestTimes request,
   }) {
-    final end = trade.seen.status;
-    if (end.position != TradePosition.succeeded) return null;
-    if (_requestOrder.claim(trade.record.robot, request) != null) return null;
+    final kept = trade.seen;
+    final end = kept.status;
+    if (!readsEndOnce(end.position)) {
+      return (seen: kept, reread: const TradeEndNotRead());
+    }
+    final TradeAnswer answer;
+    switch ((result, TradeAnswer.ofRead(result))) {
+      case (
+        Err(
+          failure: OrderNotFound() ||
+              CoordinatorUnexpectedStatus(statusCode: 404),
+        ),
+        _,
+      ):
+        return (seen: kept, reread: const TradeEndUnknownToCoordinator());
+      case (_, final read?):
+        answer = read;
+      case (_, null):
+        return (seen: kept, reread: const TradeEndNotRead());
+    }
+    if (_requestOrder.claim(trade.record.robot, request) != null) {
+      return (seen: kept, reread: const TradeEndNotRead());
+    }
     final seen = _seenAfter(
       end,
       answer,
@@ -488,9 +511,41 @@ final class TradeReader {
       at,
       requestedAt: request.leftAt,
     );
-    if (seen.status is! Succeeded || seen.order == null) return null;
-    return seen;
+    final atThatEnd = switch (end.position) {
+      TradePosition.succeeded => seen.status is Succeeded,
+      TradePosition.expired => seen.status is Expired,
+      _ => false,
+    };
+    if (atThatEnd && seen.order != null) {
+      return (
+        seen: seen,
+        reread: seen.status.warnings.isEmpty
+            ? null
+            : TradeEndShownOtherwise(const [], asRead: true),
+      );
+    }
+    // An order read at a status that is no end: the order may still be under way (security review of #220, C1), whatever the state machine, which never leaves an end, makes of it.
+    if (answer case TradeOrderRead(
+      :final order,
+    ) when !_endStatuses.contains(order.status)) {
+      return (seen: kept, reread: const TradeEndShownAlive());
+    }
+    return (seen: kept, reread: TradeEndShownOtherwise(seen.status.warnings));
   }
+
+  /// The statuses of an order that end it (`api/models/order.py:35-54`): cancelled (4, 12), expired (5), successful (14), a dispute decided (17, 18). Any other status read of an order this device kept ended shows it possibly under way ([TradeEndShownAlive]).
+  static const Set<CoordinatorOrderStatus> _endStatuses = {
+    CoordinatorOrderStatus.cancelled,
+    CoordinatorOrderStatus.expired,
+    CoordinatorOrderStatus.collaborativelyCancelled,
+    CoordinatorOrderStatus.successful,
+    CoordinatorOrderStatus.makerLostDispute,
+    CoordinatorOrderStatus.takerLostDispute,
+  };
+
+  /// Whether a trade opened at the end [position] is read once ([endRead]): a successful end (14, #95) and an expired order (5, #216), the ends where the reference offers its maker a renewal to both sides.
+  static bool readsEndOnce(TradePosition position) =>
+      position == TradePosition.succeeded || position == TradePosition.expired;
 
   /// The order's amount as the maker of [terms] asked it ([TradeSeen.asked]), `null` for a taker.
   static OrderAmount? askedOf(TradeTerms terms) => switch (terms.side) {

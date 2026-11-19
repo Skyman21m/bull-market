@@ -68,6 +68,7 @@ import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
+import 'domain/usecases/trade/list_last_orders_usecase.dart';
 import 'domain/usecases/trade/make_order_usecase.dart';
 import 'domain/usecases/trade/pause_order_usecase.dart';
 import 'domain/usecases/trade/pauses_in_flight.dart';
@@ -90,6 +91,7 @@ import 'domain/usecases/trade/watch_chat_usecase.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/active_trades_cubit.dart';
+import 'presentation/last_orders_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/chat_cubit.dart';
@@ -102,6 +104,7 @@ import 'presentation/payout_cubit.dart';
 import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
+import 'presentation/renewals_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
@@ -407,6 +410,7 @@ final class P2pLocator {
             RobosatsCurrency.fromCode('USD') ??
             (throw StateError('USD is in the RoboSats currencies')),
         readRenewal: locator<MakeOrderUsecase>().renewal,
+        madeAsRenewal: locator<MakeOrderUsecase>().madeAsRenewal,
         listHosts: locator<ListRobotHostsUsecase>().execute,
         fetchInfo: locator<FetchCoordinatorInfoUsecase>().execute,
         fetchLimits: locator<FetchCoordinatorLimitsUsecase>().execute,
@@ -434,6 +438,11 @@ final class P2pLocator {
         memory: locator<PayoutRateMemory>(),
         now: clock,
       ),
+    );
+    // The renewals of an order made here (#217): the orders made here since with its kept terms, read from the device, one cubit per trade screen that offers its renewal.
+    locator.registerFactoryParam<RenewalsCubit, TradeRecord, void>(
+      (record, _) =>
+          RenewalsCubit(record, locator<MakeOrderUsecase>().renewalsOf),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(
@@ -705,6 +714,14 @@ final class P2pLocator {
         network,
         locator<ListActiveTradesUsecase>().execute,
       ),
+    );
+    // « Last order #N » of the Garage (#216): the last finished orders of the network, read from the device only.
+    locator.registerFactory<ListLastOrdersUsecase>(
+      () => ListLastOrdersUsecase(locator()),
+    );
+    locator.registerFactoryParam<LastOrdersCubit, RobosatsNetwork, void>(
+      (network, _) =>
+          LastOrdersCubit(network, locator<ListLastOrdersUsecase>().execute),
     );
   }
 

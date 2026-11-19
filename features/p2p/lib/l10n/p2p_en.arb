@@ -1315,7 +1315,7 @@
   },
   "p2pRobotLastOrder": "Last order #{orderId}",
   "@p2pRobotLastOrder": {
-    "description": "The last order of the robot, when it has none in progress, as its coordinator says; plain text. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`). {orderId} is the number of the order.",
+    "description": "RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx:226`): « Last order #N » under the robot navigator of the Garage, the last finished order made here or trade taken here, from the records, which a tap opens (#216); the robot panel no longer says it as plain text (functional review of #220, R4). {orderId} is the number of the order.",
     "placeholders": {
       "orderId": {
         "type": "String"
@@ -3419,6 +3419,10 @@
   "@p2pEndNotSentReadRefused": {
     "description": "Not in the RoboSats texts: the project's own: an action of the chat step (« Confirm … sent », …) pressed while the order read just before it is refused by the state machine (a read of a coordinator that changed the order's terms, a status that does not follow the trade): nothing was sent, and the alert of that read is shown above (security review of #219, C2). Where the order really moved on, p2pEndMovedOn and its siblings."
   },
+  "p2pEndNotSent": "Nothing was sent.",
+  "@p2pEndNotSent": {
+    "description": "Not in the RoboSats texts: the project's own: an action of the chat step pressed while the order read just before it shows no order and carries no alert to point at (an order the coordinator says cancelled, error 1043): only that nothing was sent (security review of #219, R5). With an alert, p2pEndNotSentReadRefused."
+  },
   "p2pEndTradeMovedOn": "The trade moved on: your request was not sent.",
   "@p2pEndTradeMovedOn": {
     "description": "Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95)."
@@ -5223,6 +5227,189 @@
   "p2pRenewNoLongerAsKept": "This order can no longer be renewed as it was: create a new order.",
   "@p2pRenewNoLongerAsKept": {
     "description": "Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page (#185, functional review R3) when the form or the make refuses the kept terms (an amount outside the coordinator's limits now, a currency it no longer prices, a payment method or option no longer accepted), which cannot be changed on that page; the reference sends and shows the coordinator's refusal, leaving the user with nothing to do."
+  },
+  "p2pTradeKeptTerms": "Made here on {date}, with the terms kept on this device: {summary}.",
+  "@p2pTradeKeptTerms": {
+    "description": "Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered (#216): the day it was made and the terms this device kept of it, what a renewal sends. {summary} is the create form's summary of those terms (p2pMakeBuyBtcFor, the amount, the currency, p2pMakeAtMarketPrice or its siblings).",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pSameTermsMade": "An order with the same terms was made here after this one: order {orderId}, {stands}.",
+  "@p2pSameTermsMade": {
+    "description": "Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, when the records hold an order made here after it with the very terms kept of it, on its coordinator (#217): a renewal, or an order made again by hand, which may since have been cancelled or have expired; only what is established is said (functional review of #220, R1). {orderId} is the newest such order still running here, else the newest; {stands} is p2pSameTermsRunning or one of its siblings.",
+    "placeholders": {
+      "orderId": {
+        "type": "String"
+      },
+      "stands": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pSameTermsRunning": "still running here",
+  "@p2pSameTermsRunning": {
+    "description": "Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: the record of that order is open on this device."
+  },
+  "p2pSameTermsExpired": "expired",
+  "@p2pSameTermsExpired": {
+    "description": "Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order expire."
+  },
+  "p2pSameTermsCancelled": "cancelled",
+  "@p2pSameTermsCancelled": {
+    "description": "Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order cancelled."
+  },
+  "p2pSameTermsCompleted": "completed",
+  "@p2pSameTermsCompleted": {
+    "description": "Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order's trade end with success."
+  },
+  "p2pSameTermsEnded": "ended",
+  "@p2pSameTermsEnded": {
+    "description": "Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order end otherwise."
+  },
+  "p2pSameTermsOpen": "Open order {orderId}",
+  "@p2pSameTermsOpen": {
+    "description": "Not in the RoboSats texts: the project's own: the button under p2pSameTermsMade that opens the trade of that order in place of the page (#217).",
+    "placeholders": {
+      "orderId": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pSameTermsUnknown": "Bull Market could not read its records to tell whether an order with the same terms was made here since this one.",
+  "@p2pSameTermsUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, when the records or the terms kept of the order cannot be read (#217): never shown as « none »."
+  },
+  "p2pRenewSameTermsTitle": "Renew this order?",
+  "@p2pRenewSameTermsTitle": {
+    "description": "Not in the RoboSats texts: the project's own: the title of the dialog « Renew Order » or « Renew » opens when an order with the same terms was made here after this one (#217); the reference, which renews with the same robot, has the coordinator refuse a second active order (`api/logics.py:75-100`, error 1000)."
+  },
+  "p2pRenewSameTermsGo": "Renew anyway",
+  "@p2pRenewSameTermsGo": {
+    "description": "Not in the RoboSats texts: the project's own: the button of « Renew this order? » that opens the renewal's page (#217); « Go back » opens nothing."
+  },
+  "p2pTradeEndNotRead": "This order could not be read again from {coordinator}: what is shown is what this device kept when it ended, on {date}.",
+  "@p2pTradeEndNotRead": {
+    "description": "Not in the RoboSats texts: the project's own: a trade opened again at its end (an expired order, a successful end), whose one read got no answer to tell from: out of reach, a timeout, a transport error, an answer that does not parse (#216, functional review of #220, C1). The status shown is the one the records hold.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeEndUnknown": "{coordinator} answered that it does not know this order: what is shown is what this device kept when it ended, on {date}.",
+  "@p2pTradeEndUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: a trade opened again at its end whose one read was answered that the coordinator does not know the order (error 1042, or a 404) (#216, functional review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeEndOtherwise": "{coordinator} now shows this order otherwise than this device kept it when it ended, on {date}.",
+  "@p2pTradeEndOtherwise": {
+    "description": "Not in the RoboSats texts: the project's own: a trade opened again at its end whose one read was answered otherwise than the end kept (another status, cancelled, not available, another order, other terms): said under the state machine's alerts of that answer (#216, functional review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewEndNotConfirmed": "The end of this order was not confirmed by {coordinator}.",
+  "@p2pRenewEndNotConfirmed": {
+    "description": "Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again runs, got no answer, or was answered that the order is unknown (security review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewEndAlive": "{coordinator} shows this order still running: it may still be taken or need an action from you, and sats may still be locked in it.",
+  "@p2pRenewEndAlive": {
+    "description": "Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again shows the order at a status that is no end (security review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewEndOtherwise": "{coordinator} shows this order otherwise than this device kept it.",
+  "@p2pRenewEndOtherwise": {
+    "description": "Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again shows another end, or other terms (security review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewSameTermsMade": "An order with the same terms was already made here after this one: order {orderId}, {stands}.",
+  "@p2pRenewSameTermsMade": {
+    "description": "Not in the RoboSats texts: the project's own: a reason in « Renew this order? » (#217), as p2pSameTermsMade.",
+    "placeholders": {
+      "orderId": {
+        "type": "String"
+      },
+      "stands": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewSameTermsUnknown": "Bull Market could not check whether an order with the same terms was already made here.",
+  "@p2pRenewSameTermsUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the records could not tell, or did not answer within 10 seconds (security review of #220, C3, R3)."
+  },
+  "p2pRenewOneMore": "Renewing makes one more order, under a new robot, with a new bond to pay.",
+  "@p2pRenewOneMore": {
+    "description": "Not in the RoboSats texts: the project's own: the last sentence of « Renew this order? », after its reasons (#217)."
+  },
+  "p2pSameTermsPending": "An order with the same terms is still being created here.",
+  "@p2pSameTermsPending": {
+    "description": "Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, and in « Renew this order? »: a make of the same terms on the same coordinator, made after this order, whose answer was lost, still pending (security review of #220, R2)."
+  },
+  "p2pTradeEndReading": "Reading this order again from {coordinator}…",
+  "@p2pTradeEndReading": {
+    "description": "Not in the RoboSats texts: the project's own: a trade opened again at its end while its one read runs: the end the records hold is not confirmed yet, so it is not said over (security review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeEndAlive": "{coordinator} now shows this order as still running: it may still be taken or need an action from you, and sats may still be locked in it. Check it in the official RoboSats app with your Garage Key before you create another.",
+  "@p2pTradeEndAlive": {
+    "description": "Not in the RoboSats texts: the project's own: the alert of a trade opened again at its end whose one read shows the order at a status that is no end (0, 1, 2, 3, 6 to 11, 13, 15, 16), while this device's record of it is closed and nothing follows it any more (security review of #220, C1).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeEndKeptEnded": "This device kept this order as ended on {date}.",
+  "@p2pTradeEndKeptEnded": {
+    "description": "Not in the RoboSats texts: the project's own: in place of « This trade is over for this robot. » when the coordinator shows the order still running (p2pTradeEndAlive): where the end shown comes from (security review of #220, C1).",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pRenewUnverified": "Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».",
+  "@p2pRenewUnverified": {
+    "description": "Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when whether the renewal made an order cannot be told: an order of the network confirmed while the page was open whose terms could not be read, or the page's own make no longer pending (confirmed or closed since) (security review of #220, R1, N1): the page sends nothing more, and says how to go on; « Order » is the tab's entry (p2pNavOrder)."
   },
   "p2pMakeSubmit": "Submit",
   "@p2pMakeSubmit": {

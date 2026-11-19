@@ -12,6 +12,7 @@ import '../domain/trade/trade_take.dart';
 import '../domain/trade/trade_terms.dart';
 import '../domain/trade/trade_warning.dart';
 import 'p2p_failure_l10n.dart';
+import 'p2p_formats.dart';
 import 'take_order_cubit.dart';
 import 'trade_cubit.dart';
 import 'trade_panel.dart';
@@ -340,8 +341,13 @@ extension ChatStepNoticeL10n on ChatStepNotice {
         ChatStepTooEarly() => l10n.p2pEndDisputeTooEarly,
         // The fresh read refused (a status kept from no order, or none understood): nothing moved, the read carries an alert, which the screen shows above (security review of #219, C2).
         ChatStepStatusMoved(:final seen)
-            when seen.order == null || seen.status is StatusUnknown =>
+            when (seen.order == null || seen.status is StatusUnknown) &&
+                seen.status.warnings.isNotEmpty =>
           l10n.p2pEndNotSentReadRefused,
+        // Refused before sending with no alert to point at (an order the coordinator says cancelled, error 1043): only that nothing was sent (security review of #219, R5).
+        ChatStepStatusMoved(:final seen)
+            when seen.order == null || seen.status is StatusUnknown =>
+          l10n.p2pEndNotSent,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => movedOn,
         ChatStepReadFailed() when action == ChatStepAction.rate =>
@@ -451,4 +457,29 @@ String disputeWait(P2pLocalizations l10n, Duration left) {
     '${minutes ~/ 60}',
     '${minutes % 60}'.padLeft(2, '0'),
   );
+}
+
+extension MakeOrderRequestL10n on MakeOrderRequest {
+  /// The terms kept of an order made here, as the create form's summary says them (« Buy BTC for 100 EUR at market price », `MakerForm.tsx:576-625`), a range as « min-max » with every decimal kept: the trade screen's line of the terms kept (#216). Only the side, the amount, the currency and the premium: the payment methods and the options are shown on the renewal's page.
+  String summary(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final start = switch (type) {
+      OrderType.buy => l10n.p2pMakeBuyBtcFor,
+      // Never made in this version.
+      OrderType.sell => l10n.p2pMakeOrderFor,
+    };
+    final shown = switch (amount) {
+      FixedOrderAmount(:final amount) => formats.typedNumber(amount.value),
+      RangeOrderAmount(:final min, :final max) =>
+        '${formats.typedNumber(min.value)}-${formats.typedNumber(max.value)}',
+    };
+    final percent = premium.percent;
+    final price = percent == 0
+        ? l10n.p2pMakeAtMarketPrice
+        : percent > 0
+        ? l10n.p2pMakeAtPremium(formats.number(percent))
+        : l10n.p2pMakeAtDiscount(formats.number(-percent));
+    return '$start$shown ${currency.code}$price';
+  }
 }
