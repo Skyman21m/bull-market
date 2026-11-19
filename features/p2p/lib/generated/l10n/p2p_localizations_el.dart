@@ -2051,16 +2051,6 @@ class P2pLocalizationsEl extends P2pLocalizations {
   }
 
   @override
-  String p2pPayRateWalletEscrowNoAmount(
-    String price,
-    String currency,
-    String expected,
-    String gap,
-  ) {
-    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, the contract\'s amount is worth $expected sats. Gap of the collateral: $gap, the coordinator\'s fee included.';
-  }
-
-  @override
   String p2pPayRateWarningEscrow(
     String threshold,
     String asked,
@@ -2270,41 +2260,41 @@ class P2pLocalizationsEl extends P2pLocalizations {
 
   @override
   String get p2pEscrowStateRefunded =>
-      'back: refunded to this wallet, without the swap fees';
+      'back, refunded to this wallet without the swap fees and the network fee';
 
   @override
-  String get p2pEscrowStateNothingSent => 'back: nothing left this wallet';
+  String get p2pEscrowStateNothingSent => 'back, nothing left this wallet';
 
   @override
   String get p2pEscrowStateRefundPending =>
-      'not back yet: the swap service is refunding it';
+      'not back yet, the swap service is refunding it';
 
   @override
   String get p2pEscrowStatePreparing =>
-      'not back yet: its swap was being prepared, maybe never sent';
+      'not back yet, its swap was being prepared and may never have been sent';
 
   @override
   String get p2pEscrowStateMaybeSent =>
-      'not back yet: the payment may have been sent';
+      'not back yet, the payment may have been sent';
 
   @override
-  String get p2pEscrowStateWithService => 'not back yet: with the swap service';
+  String get p2pEscrowStateWithService => 'not back yet, with the swap service';
 
   @override
   String get p2pEscrowStateUnderReview =>
-      'not back yet: under review at the swap service; contact Bull Bitcoin support if it lasts';
+      'not back yet, under review at the swap service; contact Bull Bitcoin support if it lasts';
 
   @override
   String get p2pEscrowStateAskSupport =>
-      'not back yet: the swap failed and its sats may have left this wallet; contact Bull Bitcoin support';
+      'not back yet, the swap failed and its sats may have left this wallet; contact Bull Bitcoin support';
 
   @override
   String get p2pEscrowStateUnknown =>
-      'state unknown: this device cannot tell where it stands';
+      'state unknown, this device cannot tell where it stands';
 
   @override
   String p2pEscrowStateHeld(String coordinator) {
-    return 'not back yet: paid by the swap service, held by $coordinator';
+    return 'not back yet, paid by the swap service and held by $coordinator';
   }
 
   @override

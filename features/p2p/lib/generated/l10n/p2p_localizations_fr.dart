@@ -2077,16 +2077,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayRateWalletEscrowNoAmount(
-    String price,
-    String currency,
-    String expected,
-    String gap,
-  ) {
-    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, le montant du contrat vaut $expected sats. Écart de la garantie : $gap, frais du coordinateur compris.';
-  }
-
-  @override
   String p2pPayRateWarningEscrow(
     String threshold,
     String asked,
@@ -2298,43 +2288,43 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pEscrowStateRefunded =>
-      'revenue : remboursée sur ce portefeuille, sans les frais de swap';
+      'revenue, remboursée sur ce portefeuille sans les frais de swap ni les frais de réseau';
 
   @override
   String get p2pEscrowStateNothingSent =>
-      'revenue : rien n’est sorti de ce portefeuille';
+      'revenue, rien n’est sorti de ce portefeuille';
 
   @override
   String get p2pEscrowStateRefundPending =>
-      'pas encore revenue : le service de swap la rembourse';
+      'pas encore revenue, le service de swap la rembourse';
 
   @override
   String get p2pEscrowStatePreparing =>
-      'pas encore revenue : son swap était en préparation, peut-être jamais envoyé';
+      'pas encore revenue, son swap était en préparation et n’a peut-être jamais été envoyé';
 
   @override
   String get p2pEscrowStateMaybeSent =>
-      'pas encore revenue : le paiement a peut-être été envoyé';
+      'pas encore revenue, le paiement a peut-être été envoyé';
 
   @override
   String get p2pEscrowStateWithService =>
-      'pas encore revenue : chez le service de swap';
+      'pas encore revenue, chez le service de swap';
 
   @override
   String get p2pEscrowStateUnderReview =>
-      'pas encore revenue : en vérification au service de swap ; contactez le support de Bull Bitcoin si cela dure';
+      'pas encore revenue, en vérification au service de swap ; contactez le support de Bull Bitcoin si cela dure';
 
   @override
   String get p2pEscrowStateAskSupport =>
-      'pas encore revenue : le swap a échoué et ses sats sont peut-être sortis de ce portefeuille ; contactez le support de Bull Bitcoin';
+      'pas encore revenue, le swap a échoué et ses sats sont peut-être sortis de ce portefeuille ; contactez le support de Bull Bitcoin';
 
   @override
   String get p2pEscrowStateUnknown =>
-      'état inconnu : cet appareil ne peut pas dire où elle en est';
+      'état inconnu, cet appareil ne peut pas dire où elle en est';
 
   @override
   String p2pEscrowStateHeld(String coordinator) {
-    return 'pas encore revenue : payée par le service de swap, retenue par $coordinator';
+    return 'pas encore revenue, payée par le service de swap et retenue par $coordinator';
   }
 
   @override

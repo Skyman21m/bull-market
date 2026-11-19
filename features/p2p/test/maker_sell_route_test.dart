@@ -738,6 +738,18 @@ void main() {
       );
       final colors = Theme.of(tester.element(line)).extension<BullTheme>();
       expect(tester.widget<Text>(line).style?.color, colors?.error);
+      // With the other red alerts just above the buttons, after the neutral paragraphs, and no neutral line of the price beside it (functional review of #188, C2).
+      expect(
+        tester.getTopLeft(line).dy,
+        greaterThan(
+          tester.getTopLeft(find.textContaining('Until the trade ends')).dy,
+        ),
+      );
+      expect(
+        tester.getTopLeft(line).dy,
+        lessThan(tester.getTopLeft(find.text('Go back')).dy),
+      );
+      expect(find.textContaining('are worth'), findsOneWidget);
       expect(
         tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
         isNotNull,
@@ -771,7 +783,7 @@ void main() {
       await journey.waitFor(find.text(_english.earlierTitle), seconds: 60);
       expect(
         find.text(
-          'Take 1: state unknown: this device cannot tell where it stands',
+          'Take 1: state unknown, this device cannot tell where it stands',
         ),
         findsOneWidget,
       );
@@ -794,7 +806,7 @@ void main() {
       );
       await journey.pass(12);
       expect(
-        find.text('Take 1: not back yet: the swap service is refunding it'),
+        find.text('Take 1: not back yet, the swap service is refunding it'),
         findsOneWidget,
       );
       journey.wallet.setProgress(payment0, const Ok(P2pWalletPaymentPending()));

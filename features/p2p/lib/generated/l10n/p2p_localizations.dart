@@ -3356,17 +3356,6 @@ abstract class P2pLocalizations {
     String gap,
   );
 
-  /// As p2pPayRateWalletEscrow (#188), the project's own, when the screen has no contract's amount to name (a read that does not give it; the comparison itself is made on the amount kept with the contract).
-  ///
-  /// In en, this message translates to:
-  /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, the contract\'s amount is worth {expected} sats. Gap of the collateral: {gap}, the coordinator\'s fee included.'**
-  String p2pPayRateWalletEscrowNoAmount(
-    String price,
-    String currency,
-    String expected,
-    String gap,
-  );
-
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the red warning of the owner's payment rule in the confirmation of a maker seller's collateral (#188), after p2pPayRateWalletEscrow, both in red as one alert; « Pay » stays offered. {threshold} is the threshold, such as « 10% ».
   ///
   /// In en, this message translates to:
@@ -3619,61 +3608,61 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap was refunded (back).
   ///
   /// In en, this message translates to:
-  /// **'back: refunded to this wallet, without the swap fees'**
+  /// **'back, refunded to this wallet without the swap fees and the network fee'**
   String get p2pEscrowStateRefunded;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): nothing was sent: an attempt that failed or expired with nothing sent, or no swap order of this feature for it (back).
   ///
   /// In en, this message translates to:
-  /// **'back: nothing left this wallet'**
+  /// **'back, nothing left this wallet'**
   String get p2pEscrowStateNothingSent;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a refund pending, which Bull's own code does not take as final (not back yet, security review of #187, C2).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: the swap service is refunding it'**
+  /// **'not back yet, the swap service is refunding it'**
   String get p2pEscrowStateRefundPending;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a swap order prepared or signed and never known as sent (counted not back, with no limit of time, security review of #187, R8).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: its swap was being prepared, maybe never sent'**
+  /// **'not back yet, its swap was being prepared and may never have been sent'**
   String get p2pEscrowStatePreparing;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a broadcast whose outcome is not known (not back yet).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: the payment may have been sent'**
+  /// **'not back yet, the payment may have been sent'**
   String get p2pEscrowStateMaybeSent;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): sent to the swap service, not yet seen paying the invoice (not back yet).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: with the swap service'**
+  /// **'not back yet, with the swap service'**
   String get p2pEscrowStateWithService;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap service's manual review (not back yet).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: under review at the swap service; contact Bull Bitcoin support if it lasts'**
+  /// **'not back yet, under review at the swap service; contact Bull Bitcoin support if it lasts'**
   String get p2pEscrowStateUnderReview;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a swap failed or expired whose funds may have left (not back yet).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: the swap failed and its sats may have left this wallet; contact Bull Bitcoin support'**
+  /// **'not back yet, the swap failed and its sats may have left this wallet; contact Bull Bitcoin support'**
   String get p2pEscrowStateAskSupport;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the records, or the wallet's, cannot be read, or the wallet does not hold the payment recorded (security review of #187, R6); counted not back.
   ///
   /// In en, this message translates to:
-  /// **'state unknown: this device cannot tell where it stands'**
+  /// **'state unknown, this device cannot tell where it stands'**
   String get p2pEscrowStateUnknown;
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap service paid the hold invoice and the coordinator holds it (`P2pWalletPaymentPending`, not back yet).
   ///
   /// In en, this message translates to:
-  /// **'not back yet: paid by the swap service, held by {coordinator}'**
+  /// **'not back yet, paid by the swap service and held by {coordinator}'**
   String p2pEscrowStateHeld(String coordinator);
 
   /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): settled, the coordinator kept it (`P2pWalletPaymentPaid`), said in the colour of an error.

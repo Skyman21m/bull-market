@@ -433,7 +433,7 @@ void main() {
     });
 
     testWidgets(
-      'an amount the coordinator reads otherwise than asked here: no comparison and no figure of it, the state machine\'s alert alone, nothing paid',
+      'a fixed amount the coordinator reads otherwise, the confirmation open: never its figure; what is compared is still the amount asked here',
       (tester) async {
         final app = await _App.start(tester);
         await app.openTrade();
@@ -442,7 +442,6 @@ void main() {
           find.textContaining('100 EUR are worth 196,078 sats'),
           findsOneWidget,
         );
-        // The coordinator now says 1,000 EUR for the contract, the confirmation still open.
         app.coordinator.orderChanges[app.record.orderId] = {
           'amount': '1000.00000000',
         };
@@ -451,8 +450,43 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
         }
         await app.settle();
+        for (final text in tester.widgetList<Text>(find.byType(Text))) {
+          final data = text.data ?? '';
+          expect(data, isNot(contains('1,000 EUR')));
+          expect(data, isNot(contains('1000 EUR')));
+          if (data.contains('are worth')) {
+            expect(data, contains('100 EUR are worth 196,078 sats'));
+          }
+        }
+        expect(app.wallet.paid, isEmpty);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'a range\'s amount taken the coordinator reads otherwise, the confirmation open: no comparison and no figure of it, the state machine\'s alert alone',
+      (tester) async {
+        final app = await _App.start(
+          tester,
+          range: (50, 150),
+          takenAmount: 120,
+        );
+        await app.openTrade();
+        await openConfirmation(app);
+        expect(
+          find.textContaining('120 EUR are worth 235,294 sats'),
+          findsOneWidget,
+        );
+        app.coordinator.orderChanges[app.record.orderId] = {
+          'amount': '130.00000000',
+        };
+        for (var i = 0; i < 15; i++) {
+          app.advance(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+        }
+        await app.settle();
         expect(find.textContaining('are worth'), findsNothing);
-        expect(find.textContaining('1,000 EUR'), findsNothing);
+        expect(find.textContaining('130 EUR'), findsNothing);
         expect(find.textContaining('fee included'), findsNothing);
         expect(app.wallet.paid, isEmpty);
         await app.close();
