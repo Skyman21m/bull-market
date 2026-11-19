@@ -3266,6 +3266,7 @@ void main() {
       bool torReady = true,
       Set<String> offline = const {},
       bool bookSettled = true,
+      Set<(String, int)> lastOrdersShown = const {},
     }) async {
       // A panel shown before is gone first, with its cubit.
       await tester.pumpWidget(const SizedBox.shrink());
@@ -3343,6 +3344,7 @@ void main() {
                 child: RobotCoordinatorPanel(
                   nickname: robotAt(index, network).identity.nickname,
                   network: network,
+                  lastOrdersShown: lastOrdersShown,
                   coordinatorDetails: (request) => CoordinatorDetailsCubit(
                     request,
                     FetchCoordinatorInfoUsecase(
@@ -3647,6 +3649,15 @@ void main() {
             findsOneWidget,
           );
           expect(robotCoordinators.firstContacts, isEmpty);
+
+          // The same order opened by a « Last order #N » line of the Garage: not said again by the panel (functional review of #220, R4).
+          await showPanel(
+            tester,
+            locale: locale,
+            lastOrdersShown: {('temple', 4321)},
+          );
+          expect(find.text(l10n.p2pRobotLastOrder('4321')), findsNothing);
+          expect(find.text(l10n.p2pRobotUsedInTrade), findsOneWidget);
         },
       );
 

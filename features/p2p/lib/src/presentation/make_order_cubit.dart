@@ -276,6 +276,9 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// Whether an order a resolution confirmed is this renewal's own (#217); `null` for a creation.
   final MadeAsRenewal? _madeAsRenewal;
 
+  /// How many checks of [pendingStarted] run: [make] sends nothing meanwhile.
+  int _checkingStarted = 0;
+
   /// Bumped at each read of limits or of the wallet's price, so that an answer for a coordinator or a currency no longer shown is dropped.
   int _limitsRead = 0;
   int _priceRead = 0;
@@ -607,11 +610,20 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   }
 
   /// A pending make of the network that a resolution confirmed while the renewal's page is open, the order of [record] (#217, security review of #185, R3): [MakeMade], which the screen opens in place of the order renewed, only when that order is made with this renewal's very request on its coordinator (an earlier try of this renewal whose answer was lost); a make unrelated to it, confirmed meanwhile, neither closes the page nor takes the place of the order renewed, and the page stays as it is. Nothing while a make of this page runs or made an order; nothing for a creation, whose screen opens such a trade at once (#182).
+  ///
+  /// While that check runs, [make] sends nothing (security review of #220, R1, its mutant M14): the pending list may empty meanwhile and turn « Create order » on, and the order just confirmed may be this renewal's own.
   Future<void> pendingStarted(TradeRecord record) async {
     final check = _madeAsRenewal;
     final renewal = _renewal;
     if (isClosed || check == null || renewal == null || _busy) return;
-    if (!await check(record, renewal) || isClosed || _busy) return;
+    _checkingStarted++;
+    final bool own;
+    try {
+      own = await check(record, renewal);
+    } finally {
+      _checkingStarted--;
+    }
+    if (!own || isClosed || _busy) return;
     emit(state._with(progress: MakeMade(record)));
   }
 
@@ -629,7 +641,11 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     required Coordinator coordinator,
     required MakePriceSeen seen,
   }) async {
-    if (state.progress is! MakeIdle || state.coordinator != coordinator) return;
+    if (state.progress is! MakeIdle ||
+        state.coordinator != coordinator ||
+        _checkingStarted > 0) {
+      return;
+    }
     // A renewal sends its order's kept request to its order's coordinator, nothing else (#185).
     if (state.renewing) {
       final renewal = _renewal;

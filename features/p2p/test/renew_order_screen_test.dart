@@ -266,8 +266,8 @@ final class _Renewal {
   Result<OrderRenewal, RenewalRefusal> read;
 
   /// Whether an order a resolution confirmed is made with the renewal's request (#217): played by the test, every such order counted as the renewal's own by default, as an earlier try of the same renewal.
-  bool Function(TradeRecord made, OrderRenewal renewal) madeAsRenewal =
-      (_, _) => true;
+  FutureOr<bool> Function(TradeRecord made, OrderRenewal renewal)
+  madeAsRenewal = (_, _) => true;
 
   /// What the Bull wallet's price check reads.
   P2pWalletBitcoinRate rate = P2pWalletRateRead(91711.15);
@@ -332,7 +332,7 @@ final class _Renewal {
     _madeRecord(),
     placeholder: usd,
     readRenewal: (_) async => read,
-    madeAsRenewal: (made, renewal) async => madeAsRenewal(made, renewal),
+    madeAsRenewal: (made, renewal) async => await madeAsRenewal(made, renewal),
     listHosts: (network) => RobotHosts(network, [
       for (final coordinator in Federation.robosats.on(network))
         RobotHost(coordinator, refusesFirstContacts: false),
@@ -1241,6 +1241,54 @@ void main() {
           expect(_enabled(tester, _create), isFalse);
           await tester.tap(_create, warnIfMissed: false);
           await settle(tester);
+          expect(renewal.made, isEmpty);
+        },
+      );
+
+      testWidgets(
+        'an earlier try of this renewal confirmed while the page is open: while its terms are read, the pending list emptied, a press on « Create order » sends nothing; read, the page closes on that order (security review of #220, R1, its mutant M14)',
+        (tester) async {
+          final earlier = PendingMake(
+            robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 1),
+            coordinatorAlias: 'temple',
+            coordinatorOnion: _madeRecord().coordinatorOnion,
+            role: TradeRole.buyer,
+            writtenAt: madeAt,
+            closedAt: null,
+          );
+          final bondStep =
+              await tester.runAsync(() => _at([makerOrderJson(0)])) ??
+              (throw StateError('none'));
+          final made = TradeRecord(
+            robot: earlier.robot,
+            coordinatorAlias: 'temple',
+            coordinatorOnion: earlier.coordinatorOnion,
+            orderId: 777,
+            role: TradeRole.buyer,
+            origin: TradeOrigin.madeHere,
+            takenAt: madeAt,
+            confirmedAt: madeAt,
+            closedAt: null,
+          );
+          final check = Completer<bool>();
+          final renewal = _Renewal()
+            ..listedMakes = [ActivePendingMake(earlier, neverSent: false)]
+            ..resolveWith = ((_) =>
+                MakeStarted(made, bondStep.status, stored: true));
+          final opened = await _showRenewal(tester, renewal);
+          expect(_enabled(tester, _create), isFalse);
+          // The check of the confirmed order held; the list empties meanwhile.
+          renewal.madeAsRenewal = (_, _) => check.future;
+          await renewal.pending?.resolve(earlier);
+          await tester.pump();
+          renewal.pendingMakes.add(const Ok([]));
+          await settle(tester);
+          await tester.tap(_create, warnIfMissed: false);
+          await settle(tester);
+          expect(renewal.made, isEmpty);
+          check.complete(true);
+          await settle(tester);
+          expect(opened, [made]);
           expect(renewal.made, isEmpty);
         },
       );
