@@ -4574,20 +4574,24 @@
       }
     }
   },
-  "p2pMakeRangeAdjusted": "Range adjusted to {min}–{max}. {why}",
-  "@p2pMakeRangeAdjusted": {
-    "description": "Not in the RoboSats texts: the project's own (#225). In the range's box, in the colour of a warning, when the form set the range by itself in place of one it refused (a bound typed and its field left, the premium or the coordinator changed): {min} is the new minimum, {max} the new maximum with the currency code, {why} the sentence of the rule the refused range broke (`p2pMakeRangeMinAtLeast` and the others). Shown until the range is changed again.",
+  "p2pMakeRangeAccepted": "Amounts accepted with {coordinator}: {min} to {max}.",
+  "@p2pMakeRangeAccepted": {
+    "description": "Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The two amounts under the slider's ends (the form's smallest and largest amount for this coordinator, currency and premium, `updateAmountLimits`, `MakerForm.tsx:140-158`): {min} without its currency, {max} with the currency code, {coordinator} the coordinator's name.",
     "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
       "min": {
         "type": "String"
       },
       "max": {
         "type": "String"
-      },
-      "why": {
-        "type": "String"
       }
     }
+  },
+  "p2pMakeRangeRatio": "The maximum must be between 1.5 and just under 15 times the minimum.",
+  "@p2pMakeRangeRatio": {
+    "description": "Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The ratio the form's check of the bounds takes (1.5 to 14.95, `AmountRange.tsx:57-77`)."
   },
   "p2pMakeWhyDescriptionInvalid": "The description is not valid.",
   "@p2pMakeWhyDescriptionInvalid": {

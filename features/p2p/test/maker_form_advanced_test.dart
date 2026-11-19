@@ -401,7 +401,7 @@ void main() {
 
   group('why a range typed is refused (#225)', () {
     test('one reason, the first that applies, with the bound the form takes', () {
-      // The form's limits here are 103 and 980: a minimum from 101.97, a maximum to 989.8.
+      // The form's limits here are 103 and 980, the amounts under the slider's ends: a minimum is taken from 101.97, a maximum to 989.8.
       final limits = checkOf().limits;
       expect(MakerRangeProblem.of(200, 400, limits), isNull);
       expect(
@@ -410,11 +410,11 @@ void main() {
       );
       expect(
         MakerRangeProblem.of(56, 826, limits),
-        isA<MakerRangeMinTooSmall>().having((p) => p.atLeast, 'atLeast', 102),
+        isA<MakerRangeMinTooSmall>().having((p) => p.atLeast, 'atLeast', 103),
       );
       expect(
         MakerRangeProblem.of(200, 1400, limits),
-        isA<MakerRangeMaxTooBig>().having((p) => p.atMost, 'atMost', 989),
+        isA<MakerRangeMaxTooBig>().having((p) => p.atMost, 'atMost', 980),
       );
       expect(
         MakerRangeProblem.of(200, 250, limits),

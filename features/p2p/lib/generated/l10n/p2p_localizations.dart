@@ -5136,11 +5136,17 @@ abstract class P2pLocalizations {
   /// **'For a minimum of {min}, the maximum cannot exceed {amount}.'**
   String p2pMakeRangeMaxAtMostFor(String min, String amount);
 
-  /// Not in the RoboSats texts: the project's own (#225). In the range's box, in the colour of a warning, when the form set the range by itself in place of one it refused (a bound typed and its field left, the premium or the coordinator changed): {min} is the new minimum, {max} the new maximum with the currency code, {why} the sentence of the rule the refused range broke (`p2pMakeRangeMinAtLeast` and the others). Shown until the range is changed again.
+  /// Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The two amounts under the slider's ends (the form's smallest and largest amount for this coordinator, currency and premium, `updateAmountLimits`, `MakerForm.tsx:140-158`): {min} without its currency, {max} with the currency code, {coordinator} the coordinator's name.
   ///
   /// In en, this message translates to:
-  /// **'Range adjusted to {min}–{max}. {why}'**
-  String p2pMakeRangeAdjusted(String min, String max, String why);
+  /// **'Amounts accepted with {coordinator}: {min} to {max}.'**
+  String p2pMakeRangeAccepted(String coordinator, String min, String max);
+
+  /// Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The ratio the form's check of the bounds takes (1.5 to 14.95, `AmountRange.tsx:57-77`).
+  ///
+  /// In en, this message translates to:
+  /// **'The maximum must be between 1.5 and just under 15 times the minimum.'**
+  String get p2pMakeRangeRatio;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 526), with its French (`fr.json`, line 526). Why « Create order » is disabled (`MakerForm.tsx:561-563`, #183).
   ///

@@ -3253,9 +3253,13 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pMakeRangeAdjusted(String min, String max, String why) {
-    return 'Plage ajustée à $min–$max. $why';
+  String p2pMakeRangeAccepted(String coordinator, String min, String max) {
+    return 'Montants acceptés chez $coordinator : de $min à $max.';
   }
+
+  @override
+  String get p2pMakeRangeRatio =>
+      'Le maximum doit valoir entre 1,5 fois et un peu moins de 15 fois le minimum.';
 
   @override
   String get p2pMakeWhyDescriptionInvalid => 'La description n’est pas valide.';

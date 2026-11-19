@@ -263,13 +263,12 @@ sealed class MakerRangeProblem {
     if (!errors.min && !errors.max) return null;
     if (high < low) return const MakerRangeMaxBelowMin();
     if (limits != null) {
-      final floor = limits.min * MakerAmountLimits.rangeMinMargin;
-      if (low < floor) {
-        return MakerRangeMinTooSmall(MakerRange._toward(floor, up: true));
+      // The bounds the slider shows under itself, to 3 significant digits: within the margins the check gives a typed bound (1 %), so each is taken when typed as shown.
+      if (low < limits.min * MakerAmountLimits.rangeMinMargin) {
+        return MakerRangeMinTooSmall(significant(limits.min, 3));
       }
-      final ceiling = limits.max * MakerAmountLimits.rangeMaxMargin;
-      if (high > ceiling) {
-        return MakerRangeMaxTooBig(MakerRange._toward(ceiling, up: false));
+      if (high > limits.max * MakerAmountLimits.rangeMaxMargin) {
+        return MakerRangeMaxTooBig(significant(limits.max, 3));
       }
     }
     if (low * MakerFormCheck.typedMinRangeRatio > high) {
@@ -290,14 +289,14 @@ final class MakerRangeMaxBelowMin extends MakerRangeProblem {
   const MakerRangeMaxBelowMin();
 }
 
-/// « From » is below the smallest amount the form takes for this coordinator, currency and premium; [atLeast] is that amount, rounded up.
+/// « From » is below the smallest amount the form takes for this coordinator, currency and premium; [atLeast] is that amount as the slider shows it, to 3 significant digits.
 final class MakerRangeMinTooSmall extends MakerRangeProblem {
   final double atLeast;
 
   const MakerRangeMinTooSmall(this.atLeast);
 }
 
-/// « to » is above the largest amount the form takes for this coordinator, currency and premium; [atMost] is that amount, rounded down.
+/// « to » is above the largest amount the form takes for this coordinator, currency and premium; [atMost] is that amount as the slider shows it, to 3 significant digits.
 final class MakerRangeMaxTooBig extends MakerRangeProblem {
   final double atMost;
 
