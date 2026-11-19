@@ -218,6 +218,34 @@ void main() {
         expect(await follow([made({})], lines: Ok([lastOrder(slot(1))])), [
           slot(1),
         ]);
+        // A record closed is never in progress, wherever it is listed.
+        final closed = open(slot(1));
+        expect(
+          await follow([
+            Ok([
+              ActiveTrade(
+                TradeRecord(
+                  robot: closed.robot,
+                  coordinatorAlias: closed.coordinatorAlias,
+                  coordinatorOnion: closed.coordinatorOnion,
+                  orderId: closed.orderId,
+                  role: closed.role,
+                  origin: closed.origin,
+                  takenAt: closed.takenAt,
+                  confirmedAt: closed.confirmedAt,
+                  closedAt: DateTime.utc(2026, 11, 19, 11),
+                ),
+                const ActiveTradeAt(
+                  TradePosition.succeeded,
+                  deadline: null,
+                  breached: false,
+                  historyUnknown: false,
+                ),
+              ),
+            ]),
+          ], lines: Ok([lastOrder(slot(2))])),
+          [slot(2)],
+        );
         // A taken trade in progress is not an order made here.
         expect(
           await follow([
