@@ -615,6 +615,95 @@ void main() {
       ),
     );
 
+    // Each step of the handshake has its own timer: the connection itself (slowed here, as a cold Tor does), and the wait for the relay's answer (the relay silent, the connection immediate).
+    // The wait for the answer is given up at the wrong instant less often than the connection: it is repeated twice as many times.
+    for (final (step, connectDelay, publications) in [
+      ('the connection', const Duration(milliseconds: 40), 240),
+      ('the wait for the relay\'s answer', null, 480),
+    ]) {
+      test(
+        'a step given up at the deadline is never taken for a connection to try again, $step: no retry over many short publications, whatever fraction of a millisecond the deadline falls on (#196)',
+        () async {
+          final (server, _) = await silentRelay();
+          final printed = <String>[];
+          final print = debugPrint;
+          debugPrint = (String? line, {int? wrapWidth}) {
+            if (line != null) printed.add(line);
+          };
+          try {
+            final publisher = transport(
+              deadline: const Duration(milliseconds: 20),
+              attemptTimeout: const Duration(seconds: 10),
+              createHttpClient: (_) {
+                final client = HttpClient();
+                if (connectDelay != null) {
+                  client.connectionFactory = (uri, proxyHost, proxyPort) async {
+                    final socket = Future<void>.delayed(
+                      connectDelay,
+                    ).then((_) => Socket.connect(uri.host, uri.port));
+                    return ConnectionTask.fromSocket(socket, () {
+                      socket.then((value) => value.destroy()).ignore();
+                    });
+                  };
+                }
+                return client;
+              },
+            );
+            for (var i = 0; i < publications; i++) {
+              // The work before the attempt varies, so that the deadline falls on every fraction of a millisecond of the timers' clock.
+              await Future<void>.delayed(
+                Duration(microseconds: 137 * (i % 23)),
+              );
+              final outcome = await publisher.publish(
+                Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+                message,
+                robot: us.sessionKey,
+              );
+              expect(outcome, isA<NostrRelayTimedOut>());
+            }
+            // Past the slowed connections.
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+          } finally {
+            debugPrint = print;
+            await server.close();
+          }
+          expect(printed.where((line) => line.contains('retrying')), isEmpty);
+        },
+      );
+    }
+
+    test(
+      'a session given up between a publication picking it and taking it is never used: the publication goes on another session and ends on its own deadline (independent review of #222, B1)',
+      () async {
+        final (server, _) = await silentRelay();
+        try {
+          final publisher = transport(
+            deadline: const Duration(milliseconds: 20),
+            attemptTimeout: const Duration(seconds: 10),
+          );
+          final relay = Uri.parse('ws://127.0.0.1:${server.port}/relay/');
+          // One turn of the event loop for these timers, in this order: the second publication starts, then the first one's step is given up and its session retired. No microtask runs between two timers of one turn, so the second publication has picked the session and not taken it yet when it is retired and its client closed.
+          // The event loop is held past the first publication's deadline, from before the second one's timer is due, so that both are due at the next turn. On a slow start the second one's timer joins the hold's own turn: the second publication then takes the session before it is retired, which is no failure either.
+          Timer(const Duration(milliseconds: 2), () {
+            final hold = Stopwatch()..start();
+            while (hold.elapsedMilliseconds < 40) {}
+          });
+          final second = Completer<NostrRelayOutcome>();
+          Timer(const Duration(milliseconds: 12), () {
+            second.complete(
+              publisher.publish(relay, message, robot: us.sessionKey),
+            );
+          });
+          final first = publisher.publish(relay, message, robot: us.sessionKey);
+          expect(await first, isA<NostrRelayTimedOut>());
+          // Never an error of a closed client (`Bad state: Client is closed`), which would end the publication on an [Error].
+          expect(await second.future, isA<NostrRelayTimedOut>());
+        } finally {
+          await server.close();
+        }
+      },
+    );
+
     test(
       'the websocket is closed when the deadline passes while it waits for the OKs, not at the end of the attempt (second review of #158)',
       () async {
