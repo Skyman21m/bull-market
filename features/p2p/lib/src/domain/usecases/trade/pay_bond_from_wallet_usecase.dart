@@ -441,10 +441,11 @@ final class PayBondFromWalletUsecase {
 
     out = StreamController<EscrowPaymentsWatch>(
       onListen: () => unawaited(start()),
-      onCancel: () async {
+      // Not awaited: a follow waiting for the wallet's next change ends only at that change (an `async*` body stops at its next `yield`), as the panel's own follow is left (`BondPaymentCubit`).
+      onCancel: () {
         cancelled = true;
         for (final follow in follows) {
-          await follow.cancel();
+          unawaited(follow.cancel());
         }
       },
     );
