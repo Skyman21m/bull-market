@@ -1804,6 +1804,37 @@ void main() {
     );
 
     testWidgets(
+      'a currency changed under a range the reference would keep and the form refuse there: the range is set again within the form\'s limits in the new currency (#225)',
+      (tester) async {
+        // EUR at 91,711.15 and USD at 100,000, 20,000 to 5,000,000 sats: at -30 % the form's largest amount is 3,430 USD and 3,145.7 EUR.
+        await _show(tester, _Form());
+        await tester.tap(find.text('Buy'));
+        await _addMethod(tester, 'Revolut');
+        await tester.enterText(_premiumField, '-30');
+        await settle(tester);
+        await _open(tester);
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        await tester.tap(find.text('USD'));
+        await settle(tester);
+        // A range the form takes in USD, whose maximum is above the form's largest amount in EUR, and within the coordinator's orders there (4,585.56 EUR), where the reference keeps it.
+        await tester.enterText(_minField, '1000');
+        await tester.enterText(_maxField, '3400');
+        await settle(tester);
+        expect(_createEnabled(tester), isTrue);
+        await tester.tap(find.text('USD'));
+        await settle(tester);
+        await tester.tap(find.text('EUR'));
+        await settle(tester);
+        // A quarter and three quarters of 3,145.7, each to 2 significant digits.
+        expect(textOf(tester, _minField), '790');
+        expect(textOf(tester, _maxField), '2400');
+        expect(startingWith('The maximum cannot exceed '), findsNothing);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
       'opened with a discount that puts the reference\'s range above the form\'s largest amount: the range filled in is one the form takes, the order can be created at once (#225)',
       (tester) async {
         // 150 to 4,000 EUR: the reference fills in 1,000 to 3,000, and at -30 % the form's largest amount is 4,000 × 0.7 × 0.98 = 2,744.
