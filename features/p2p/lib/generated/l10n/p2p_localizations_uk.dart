@@ -3515,6 +3515,18 @@ class P2pLocalizationsUk extends P2pLocalizations {
   }
 
   @override
+  String p2pPayoutRateWalletAsked(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, the $amount $currency asked here are worth $expected sats. The payout invoice this app saw asked for this contract is of $received sats: gap $gap.';
+  }
+
+  @override
   String p2pPayoutRateWarning(
     String threshold,
     String received,

@@ -131,7 +131,10 @@ sealed class TradeView {
       StatusUnknown(isTerminal: true) => const TradeMessage(
         TradeMessageKind.ended,
       ),
-      StatusUnknown() => const TradeWaiting(),
+      // A wait with the alerts the status carries, each once: a read refused for terms changed (a fixed amount read as another, #211) is said, never drawn as a plain wait.
+      StatusUnknown(:final warnings) => TradeWaiting(
+        warnings: eachKindOnce(warnings),
+      ),
       Cancelled() => const TradeMessage(TradeMessageKind.cancelled),
       TakenByAnother() ||
       PreTakeUnavailable() => const TradeMessage(TradeMessageKind.notAvailable),
@@ -148,9 +151,12 @@ sealed class TradeView {
   }
 }
 
-/// Nothing understood yet: a spinner, as the official client's order page before its order arrives.
+/// Nothing understood yet: a spinner, as the official client's order page before its order arrives; with the alerts of the status it waits on ([warnings], #211), none before any status.
 final class TradeWaiting extends TradeView {
-  const TradeWaiting();
+  /// What the status carries ([TradeStatus.warnings], each kind once): a read refused because the coordinator changed the order's terms (`TradeTermsChanged`), a breach of the trade's history (`CoordinatorInconsistent`), a next contract seen late (`ContractSeenLate`, information); empty for a plain wait.
+  final List<TradeWarning> warnings;
+
+  const TradeWaiting({this.warnings = const []});
 }
 
 /// A message alone, as the official client shows a `bad_request` on the order page, or a state the watch gives that it has no screen for.
@@ -358,16 +364,21 @@ InvoiceDisplay invoiceDisplayOf(
 
 /// The warnings a status shows at [now], each once (the three amount checks share one text, so they are kept apart here and worded by the screen), its invoice's own included, and [InvoiceExpired] once the screen's clock passed the invoice's `payableUntil` ([invoiceExpiredAt]).
 List<TradeWarning> warningsOf(TradeStatus status, {required DateTime now}) {
-  final seen = <Type>{};
   final invoice = status.invoice;
+  return eachKindOnce([
+    ...status.warnings,
+    if (invoice case UnusableInvoice(:final reason)) reason,
+    if (invoice case CheckedInvoice(:final warnings)) ...warnings,
+    if (invoice != null && invoiceExpiredAt(invoice, now))
+      const InvoiceExpired(),
+  ]);
+}
+
+/// [warnings] in their order, each kind once: the first of each kept.
+List<TradeWarning> eachKindOnce(Iterable<TradeWarning> warnings) {
+  final seen = <Type>{};
   return [
-    for (final warning in [
-      ...status.warnings,
-      if (invoice case UnusableInvoice(:final reason)) reason,
-      if (invoice case CheckedInvoice(:final warnings)) ...warnings,
-      if (invoice != null && invoiceExpiredAt(invoice, now))
-        const InvoiceExpired(),
-    ])
+    for (final warning in warnings)
       if (seen.add(warning.runtimeType)) warning,
   ];
 }

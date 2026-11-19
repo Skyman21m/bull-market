@@ -1552,16 +1552,21 @@ void main() {
           await tester.pump();
           await tester.pump();
           expect(find.textContaining('do not add up'), findsOneWidget);
-          expect(
-            find.textContaining('You receive 49,988 sats'),
-            findsOneWidget,
-          );
+          // The kept invoice compared beside the alert: the amount named as the one asked here, the sats as the invoice's, never as « You receive » a figure of now (#211).
+          const askedOnly =
+              'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, the 100 EUR asked here are worth 106,899 sats. The payout invoice this app saw asked for this contract is of 49,988 sats: gap -53.24%.';
+          expect(find.text(askedOnly), findsOneWidget);
+          expect(find.textContaining('You receive 49,988 sats'), findsNothing);
           expect(find.textContaining('fewer sats than that'), findsOneWidget);
           final confirm = find.textContaining('Confirm 100 EUR sent');
           await _reveal(tester, confirm);
           await tester.tap(confirm);
           await tester.pumpAndSettle();
-          for (final words in ['do not add up', 'fewer sats than that']) {
+          for (final words in [
+            'do not add up',
+            'fewer sats than that',
+            'the 100 EUR asked here are worth',
+          ]) {
             expect(
               find.descendant(
                 of: find.byType(ConfirmFiatSentDialog),

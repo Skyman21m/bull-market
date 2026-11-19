@@ -339,7 +339,12 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       const Gap(BullSpacing.sm),
                     ],
                     switch (view) {
-                      TradeWaiting() => TradeFirstReadWait(
+                      TradeWaiting(:final warnings) when warnings.isEmpty =>
+                        TradeFirstReadWait(coordinator: coordinator),
+                      // A status that carries alerts while the screen waits (a read refused for terms changed): said, never a plain wait (#211).
+                      TradeWaiting(:final warnings) => _AlertedWait(
+                        warnings: warnings,
+                        madeHere: record.origin == TradeOrigin.madeHere,
                         coordinator: coordinator,
                       ),
                       TradeMessage(:final kind) => _Message(
@@ -728,18 +733,7 @@ class _Contract extends StatelessWidget {
         ),
         Divider(height: BullSpacing.lg, color: colors.outlineVariant),
         for (final warning in warnings) ...[
-          // A next contract seen late is information, not an alert (#178, #182): its own words, in the text colour.
-          if (warning is ContractSeenLate)
-            _Line(
-              warning.toText(context, coordinator: coordinator),
-              icon: Icons.info_outline,
-            )
-          else
-            _Line(
-              warning.toText(context, coordinator: coordinator),
-              color: colors.warning,
-              icon: Icons.warning_amber_rounded,
-            ),
+          _warningLine(context, warning, coordinator),
           const Gap(BullSpacing.sm),
         ],
         // An order made here whose coordinator contradicted the trade's history (a breach): what to do (design note § 6, row 8, #182).
@@ -1280,6 +1274,54 @@ class _Contract extends StatelessWidget {
     ),
     null => null,
   };
+}
+
+/// The line of [warning] under a contract's title or above the wait (#211): a next contract seen late is information, not an alert (#178, #182), its own words in the text colour; every other in the warning colour.
+Widget _warningLine(
+  BuildContext context,
+  TradeWarning warning,
+  String coordinator,
+) => warning is ContractSeenLate
+    ? _Line(
+        warning.toText(context, coordinator: coordinator),
+        icon: Icons.info_outline,
+      )
+    : _Line(
+        warning.toText(context, coordinator: coordinator),
+        color: context.bull.warning,
+        icon: Icons.warning_amber_rounded,
+      );
+
+/// The wait of a status that carries alerts (#211): each alert, with the words it has under a contract, then, for an order made here, what to do (open it in the official app), then the wait itself; nothing to tap, nothing blocked.
+class _AlertedWait extends StatelessWidget {
+  final List<TradeWarning> warnings;
+  final bool madeHere;
+  final String coordinator;
+
+  const _AlertedWait({
+    required this.warnings,
+    required this.madeHere,
+    required this.coordinator,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final warning in warnings) ...[
+        _warningLine(context, warning, coordinator),
+        const Gap(BullSpacing.sm),
+      ],
+      // The advice the contract gives an order made here whose coordinator broke the trade's history (design note § 6, row 8, #182), here for any alert: the screen can show nothing else of the order while it waits.
+      if (madeHere && warnings.any((warning) => warning is! ContractSeenLate))
+        _Line(
+          P2pLocalizations.of(context).p2pTradeBreachWhatToDo(coordinator),
+          color: context.bull.warning,
+          icon: Icons.info_outline,
+        ),
+      TradeFirstReadWait(coordinator: coordinator),
+    ],
+  );
 }
 
 /// Each change of the rule's state ([rule], none without the wallet's port) and of the trade's ([trade]), as one stream: each listener is subscribed to both, and cancelled from both (#209).

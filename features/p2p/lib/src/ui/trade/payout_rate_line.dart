@@ -79,14 +79,24 @@ class PayoutRateLines extends StatelessWidget {
           ) =>
             [
               (
-                text: l10n.p2pPayoutRateWallet(
-                  formats.orderRate(price),
-                  check.currency.code,
-                  amount,
-                  formats.bigSats(expected.value),
-                  formats.bigSats(check.asked.value),
-                  formats.gap(gapHundredths),
-                ),
+                // At 9, the invoice this app kept compared alone beside the state machine's alert: the amount named as the one asked here, the sats as the invoice's (#211).
+                text: basis is PayoutRateAskedOnly
+                    ? l10n.p2pPayoutRateWalletAsked(
+                        formats.orderRate(price),
+                        check.currency.code,
+                        amount,
+                        formats.bigSats(expected.value),
+                        formats.bigSats(check.asked.value),
+                        formats.gap(gapHundredths),
+                      )
+                    : l10n.p2pPayoutRateWallet(
+                        formats.orderRate(price),
+                        check.currency.code,
+                        amount,
+                        formats.bigSats(expected.value),
+                        formats.bigSats(check.asked.value),
+                        formats.gap(gapHundredths),
+                      ),
                 tone: TradeDialogTone.plain,
               ),
               // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).

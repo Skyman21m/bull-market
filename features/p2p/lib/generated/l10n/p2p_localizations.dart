@@ -5571,6 +5571,19 @@ abstract class P2pLocalizations {
     String gap,
   );
 
+  /// Not in the RoboSats texts: the project's own: the line of p2pPayoutRateWallet at 9 when the coordinator's figures are missing or do not agree with each other and the invoice's sats this app kept for the contract at 6 or 8 are compared alone, beside the state machine's alert (`PayoutRateAskedOnly`, second security review of #182, R8): it names the amount as the one asked here and the sats as those of the invoice this app saw asked, so that neither reads as a figure of the coordinator beside that alert (#211). {price} is the Bull wallet's price of a bitcoin without the premium; {expected} the sats {amount} is worth at it with the premium, rounded down; {received} the invoice's sats kept; {gap} their gap in percent with its sign.
+  ///
+  /// In en, this message translates to:
+  /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, the {amount} {currency} asked here are worth {expected} sats. The payout invoice this app saw asked for this contract is of {received} sats: gap {gap}.'**
+  String p2pPayoutRateWalletAsked(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  );
+
   /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule on a maker buyer's side (#182), beyond the threshold, nothing blocked. {threshold} is the threshold as a percentage, such as « 10% ».
   ///
   /// In en, this message translates to:

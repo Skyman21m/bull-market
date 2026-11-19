@@ -3566,6 +3566,18 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pPayoutRateWalletAsked(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String received,
+    String gap,
+  ) {
+    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, les $amount $currency demandés ici valent $expected sats. La facture de paiement demandée pour ce contrat, vue par cette app, est de $received sats : écart $gap.';
+  }
+
+  @override
   String p2pPayoutRateWarning(
     String threshold,
     String received,
