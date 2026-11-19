@@ -269,6 +269,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     final view = TradeView.of(state.watch);
     final coordinator = _coordinatorName(state);
     final lines = _lines(context, state, coordinator);
+    // What an action of the chat step gave, said under a wait too: a « Confirm » pressed while a read is refused sends nothing, and the wait says so (security review of #219, C2).
+    final waitNotice = switch (state.chatStep) {
+      ChatStepIdle(:final notice?, :final action) => (notice, action),
+      _ => null,
+    };
     return BlocListener<TradeCubit, TradeScreenState>(
       listener: (context, state) {
         _findIfPublic(state);
@@ -339,13 +344,15 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       const Gap(BullSpacing.sm),
                     ],
                     switch (view) {
-                      TradeWaiting(:final warnings) when warnings.isEmpty =>
+                      TradeWaiting(:final warnings)
+                          when warnings.isEmpty && waitNotice == null =>
                         TradeFirstReadWait(coordinator: coordinator),
-                      // A status that carries alerts while the screen waits (a read refused for terms changed): said, never a plain wait (#211).
+                      // A status that carries alerts while the screen waits (a read refused for terms changed): said, never a plain wait (#211); and what an action of the chat step gave meanwhile, never a silent wait (security review of #219, C2).
                       TradeWaiting(:final warnings) => _AlertedWait(
                         warnings: warnings,
                         madeHere: record.origin == TradeOrigin.madeHere,
                         coordinator: coordinator,
+                        notice: waitNotice,
                       ),
                       TradeMessage(:final kind) => _Message(
                         text: kind.toText(context, coordinator: coordinator),
@@ -1044,6 +1051,7 @@ class _Contract extends StatelessWidget {
             // Built from the rule's state and the trade's order when the dialog opens and at each change of either while open, never from this build's (security review of #208, C1; #209).
             rateLines: LiveDialogLines(
               of: (context) => _dialogLines(context, rateCubit?.state),
+              alerts: _dialogAlerts,
               changes: _changesOf(rateCubit?.stream, trade.stream),
             ),
             beforeConfirmFiatSent: beforeAct,
@@ -1105,11 +1113,11 @@ class _Contract extends StatelessWidget {
   }
 
   /// The rule's state for the step shown, `null` when it is another step's or there is none: never the check of a step before.
-  PayoutRateState? get _ruleShown => _ruleOf(payoutRate);
+  PayoutRateState? get _ruleShown => _ruleOf(payoutRate, contract.status);
 
-  /// [state] when it is the rule's state for the step shown, `null` otherwise.
-  PayoutRateState? _ruleOf(PayoutRateState? state) {
-    final shown = PayoutRateStep.of(contract.status);
+  /// [state] when it is the rule's state for the step of [status], `null` otherwise.
+  static PayoutRateState? _ruleOf(PayoutRateState? state, TradeStatus status) {
+    final shown = PayoutRateStep.of(status);
     final step = switch (state) {
       PayoutRateReading(:final step) ||
       PayoutRateChecked(:final step) ||
@@ -1139,33 +1147,65 @@ class _Contract extends StatelessWidget {
     return _contractAmountOf(contract.seen)?.value;
   }
 
-  /// What the screen shows now, as the trade's cubit holds it: the contract of its last status, `null` when it shows no contract (a wait, a message, an order public again).
-  TradeSeen? get _shownNow => switch (TradeView.of(trade.state.watch)) {
-    TradeContract(:final seen) => seen,
-    _ => null,
-  };
+  /// What the screen shows now, as the trade's cubit holds it (`TradeView.of` of its last state, the screen's own).
+  TradeView get _viewNow => TradeView.of(trade.state.watch);
 
-  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer; the gap computed from the order the screen shows now ([_shownNow]), so that the dialog never keeps a gap line the screen no longer shows (#209). The rule's lines name the contract's amount of the order shown now too, the one the rule compares (a next contract's for a range), or the press's while the order shown names none (an amount moved, the rule then about to compare nothing).
+  /// The alerts « Confirm … sent » says first, those the screen shows now, in its words and its colours (security review of #219, C2): under a contract, the state machine's warnings of its status and, for an order made here whose coordinator broke the trade's history, what to do; above a wait, the alerts of the status it waits on and, for an order made here, what to do; a message shown alone, that message. Never the rule's « do not add up » in their place: the warnings name the cause (terms changed, amounts that do not add up, a status refused).
+  List<TradeDialogLine> _dialogAlerts(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    TradeDialogLine alertOf(TradeWarning warning) => (
+      text: warning.toText(context, coordinator: coordinator),
+      tone: warning is ContractSeenLate
+          ? TradeDialogTone.plain
+          : TradeDialogTone.warning,
+    );
+    final advice = (
+      text: l10n.p2pTradeBreachWhatToDo(coordinator),
+      tone: TradeDialogTone.warning,
+    );
+    final madeHere = record.origin == TradeOrigin.madeHere;
+    return switch (_viewNow) {
+      TradeContract(:final status) => [
+        for (final warning in warningsOf(status, now: clock()))
+          alertOf(warning),
+        if (madeHere &&
+            (status.trail.breached || status.has<CoordinatorInconsistent>()))
+          advice,
+      ],
+      TradeWaiting(:final warnings) => [
+        for (final warning in warnings) alertOf(warning),
+        if (madeHere && warnings.any((warning) => warning is! ContractSeenLate))
+          advice,
+      ],
+      TradeMessage(:final kind) => [
+        (
+          text: kind.toText(context, coordinator: coordinator),
+          tone: TradeDialogTone.warning,
+        ),
+      ],
+      TradeOrderOnly() => const [],
+    };
+  }
+
+  /// The lines « Confirm … sent » says after the reference's text for a maker buyer (#182), from the status the screen shows now, never the press's (#209; security review of #219, C1): the rule's lines for the step of that status only, none when it shows another step or no contract (a wait, a message); and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
   List<TradeDialogLine> _dialogLines(
     BuildContext context,
     PayoutRateState? now,
   ) {
-    final state = _ruleOf(now);
-    final shown = _shownNow;
-    final gap = shown == null ? null : _gapOf(context, shown);
-    final amount = switch (shown) {
-      final seen? => PayoutRateLines.amountOf(context, seen),
-      null => '',
+    final shown = switch (_viewNow) {
+      TradeContract(:final seen) => seen,
+      _ => null,
     };
+    if (shown == null) return const [];
+    final state = _ruleOf(now, shown.status);
+    final gap = _gapOf(context, shown);
     return [
       if (state != null)
-        ...PayoutRateLines.dialogLinesOf(
+        ...PayoutRateLines.linesOf(
           context,
           state,
           coordinator: coordinator,
-          amount: amount.isEmpty
-              ? PayoutRateLines.amountOf(context, contract.seen)
-              : amount,
+          amount: PayoutRateLines.amountOf(context, shown),
         ),
       if (gap != null && !PayoutRateLines.hidesGap(state))
         (
@@ -1298,16 +1338,20 @@ Widget _warningLine(
         icon: Icons.warning_amber_rounded,
       );
 
-/// The wait of a status that carries alerts (#211): each alert, with the words it has under a contract, then, for an order made here, what to do (open it in the official app), then the wait itself; nothing to tap, nothing blocked.
+/// The wait of a status that carries alerts (#211): each alert, with the words it has under a contract, then, for an order made here, what to do (open it in the official app), then the wait itself, then what an action of the chat step gave meanwhile; nothing to tap, nothing blocked.
 class _AlertedWait extends StatelessWidget {
   final List<TradeWarning> warnings;
   final bool madeHere;
   final String coordinator;
 
+  /// What an action of the chat step gave, said under the wait (security review of #219, C2); `null` for none.
+  final (ChatStepNotice, ChatStepAction)? notice;
+
   const _AlertedWait({
     required this.warnings,
     required this.madeHere,
     required this.coordinator,
+    this.notice,
   });
 
   @override
@@ -1326,6 +1370,12 @@ class _AlertedWait extends StatelessWidget {
           icon: Icons.info_outline,
         ),
       TradeFirstReadWait(coordinator: coordinator),
+      if (notice case (final notice, final action))
+        ChatStepNoticeLine(
+          notice: notice,
+          coordinator: coordinator,
+          action: action,
+        ),
     ],
   );
 }

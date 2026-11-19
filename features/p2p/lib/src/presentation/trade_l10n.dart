@@ -6,6 +6,7 @@ import '../domain/p2p_failure.dart';
 import '../domain/trade/trade_cancel.dart';
 import '../domain/trade/trade_chat_step.dart';
 import '../domain/trade/trade_pause.dart';
+import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_storable.dart';
 import '../domain/trade/trade_take.dart';
 import '../domain/trade/trade_terms.dart';
@@ -337,6 +338,10 @@ extension ChatStepNoticeL10n on ChatStepNotice {
               : l10n.p2pEndNeedsReadNotSent,
         // Too early by the fresh read: the reference coordinator's own words, as its 1054 would say; no countdown here, which would stand still (the countdown is under « Open Dispute »), and the panel stops showing it once the dispute's time has come (review of #156).
         ChatStepTooEarly() => l10n.p2pEndDisputeTooEarly,
+        // The fresh read refused (a status kept from no order, or none understood): nothing moved, the read carries an alert, which the screen shows above (security review of #219, C2).
+        ChatStepStatusMoved(:final seen)
+            when seen.order == null || seen.status is StatusUnknown =>
+          l10n.p2pEndNotSentReadRefused,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => movedOn,
         ChatStepReadFailed() when action == ChatStepAction.rate =>

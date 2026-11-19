@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
+import 'package:p2p/src/data/tor_coordinator_transport.dart'
+    show coordinatorRequestDeadline;
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
@@ -109,7 +111,10 @@ final class _Pauses {
   final List<Completer<Result<PauseOutcome, PauseRefusal>>> answers = [];
 
   /// What stays uncertain after an outcome unknown, as the use case keeps it ([PausesInFlight]), on [elapsed], the time that only moves forward the test moves.
-  late final PausesInFlight registry = PausesInFlight(elapsed: () => elapsed);
+  late final PausesInFlight registry = PausesInFlight(
+    elapsed: () => elapsed,
+    requestDeadline: coordinatorRequestDeadline,
+  );
   Duration elapsed = Duration.zero;
 
   Future<Result<PauseOutcome, PauseRefusal>> call(
@@ -548,8 +553,8 @@ void main() {
         await tester.pump();
         expect(find.text(reserve), findsOneWidget);
         expect(find.textContaining('cannot be seen or taken'), findsNothing);
-        // Read paused again, three minutes later on both: settled, the reference's sentence back.
-        pauses.elapsed = const Duration(minutes: 3, seconds: 10);
+        // Read paused again, more than three minutes and the transport's deadline later on the time that only moves forward: settled, the reference's sentence back.
+        pauses.elapsed = const Duration(minutes: 5, seconds: 20);
         watch.add(
           TradeScreenStatuses.watched(
             _readAt(
@@ -1313,7 +1318,14 @@ void main() {
           expect(find.text(reserve), findsOneWidget);
           expect(find.text(referencePaused), findsNothing);
           expect(find.textContaining('without ruling it out'), findsOneWidget);
-          // Read paused again, three minutes later: settled, the reference's sentence back.
+          // Read paused again, three minutes later: the reserve kept, the second read taken into account less than three minutes and the transport's deadline after the first (security review of #219, R1).
+          await tester.runAsync(
+            () => harness.elapse(const Duration(minutes: 3)),
+          );
+          await settleBoth(tester, harness);
+          expect(find.text(reserve), findsOneWidget);
+          expect(find.text(referencePaused), findsNothing);
+          // Three minutes more: settled, the reference's sentence back.
           await tester.runAsync(
             () => harness.elapse(const Duration(minutes: 3)),
           );

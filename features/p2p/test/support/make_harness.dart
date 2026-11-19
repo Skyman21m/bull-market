@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:p2p/src/data/p2p_database.dart';
+import 'package:p2p/src/data/tor_coordinator_transport.dart'
+    show coordinatorRequestDeadline;
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
@@ -113,6 +115,7 @@ final class MakeHarness {
   /// The pauses running in this run (#184, functional review R1), their uncertainty on [elapsed] (#214).
   late final PausesInFlight pausesInFlight = PausesInFlight(
     elapsed: () => elapsed,
+    requestDeadline: coordinatorRequestDeadline,
   );
 
   /// The time that only moves forward of this run: moved with the clock by [elapse], never by [setClockOnly] (a device's clock set forward or back).

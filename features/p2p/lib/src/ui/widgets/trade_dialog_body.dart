@@ -29,6 +29,9 @@ class TradeDialogBody extends StatelessWidget {
   /// Lines of the app under [note] (#182: the owner's payment rule on the buyer's side, the gap from the creation's rate), each in the colour of its [TradeDialogTone]; empty for a dialog without them.
   final List<TradeDialogLine> lines;
 
+  /// Lines of the app said first, under the title, each in the colour of its [TradeDialogTone]: the alerts the screen shows behind the dialog (security review of #219, C2); empty for a dialog without them.
+  final List<TradeDialogLine> alerts;
+
   /// What the button that goes on does; `null` while it waits (« Wait ({{time}}) », `TradeBox/Dialogs/ConfirmUndoFiatSent.tsx`).
   final VoidCallback? onGo;
 
@@ -61,6 +64,7 @@ class TradeDialogBody extends StatelessWidget {
     this.bullets = const [],
     this.note,
     this.lines = const [],
+    this.alerts = const [],
   });
 
   @override
@@ -82,6 +86,10 @@ class TradeDialogBody extends StatelessWidget {
               style: styles.headlineLarge?.copyWith(color: colors.text),
             ),
           ),
+          for (final line in alerts) ...[
+            const Gap(BullSpacing.sm),
+            _lineText(context, line),
+          ],
           const Gap(BullSpacing.md),
           WordFitText(
             text,
@@ -140,19 +148,7 @@ class TradeDialogBody extends StatelessWidget {
           ],
           for (final line in lines) ...[
             const Gap(BullSpacing.sm),
-            WordFitText(
-              line.text,
-              style: styles.bodyMedium?.copyWith(
-                color: switch (line.tone) {
-                  TradeDialogTone.plain => colors.text,
-                  TradeDialogTone.warning => colors.warning,
-                  TradeDialogTone.alert => colors.error,
-                },
-                fontWeight: line.tone == TradeDialogTone.plain
-                    ? null
-                    : FontWeight.bold,
-              ),
-            ),
+            _lineText(context, line),
           ],
           const Gap(BullSpacing.lg),
           TradeButton(
@@ -174,6 +170,22 @@ class TradeDialogBody extends StatelessWidget {
       ),
     );
   }
+
+  /// [line] in the colour of its tone, bold unless plain.
+  static Widget _lineText(BuildContext context, TradeDialogLine line) {
+    final colors = context.bull;
+    return WordFitText(
+      line.text,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: switch (line.tone) {
+          TradeDialogTone.plain => colors.text,
+          TradeDialogTone.warning => colors.warning,
+          TradeDialogTone.alert => colors.error,
+        },
+        fontWeight: line.tone == TradeDialogTone.plain ? null : FontWeight.bold,
+      ),
+    );
+  }
 }
 
 /// How a line of the app in a dialog is drawn: in the text colour, in the warning colour (a gap against the user, a check that could not be made), or in the error colour (the red warning of the owner's rule).
@@ -182,11 +194,12 @@ enum TradeDialogTone { plain, warning, alert }
 /// A line of the app in a dialog, and its tone.
 typedef TradeDialogLine = ({String text, TradeDialogTone tone});
 
-/// Lines a dialog builds from the state of the moment it opens ([of], with the dialog's own context), and builds again at each event of [changes] while it is open: never the lines of a build before (security review of #208, C1).
+/// Lines a dialog builds from the state of the moment it opens ([of], with the dialog's own context), and builds again at each event of [changes] while it is open: never the lines of a build before (security review of #208, C1); [alerts], built the same way, are said first, under the title (security review of #219, C2).
 @immutable
 final class LiveDialogLines {
   final List<TradeDialogLine> Function(BuildContext context) of;
+  final List<TradeDialogLine> Function(BuildContext context)? alerts;
   final Stream<Object?> changes;
 
-  const LiveDialogLines({required this.of, required this.changes});
+  const LiveDialogLines({required this.of, required this.changes, this.alerts});
 }

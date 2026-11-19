@@ -135,7 +135,7 @@ sealed class TradePauseState {
 
 /// No pause runs; [notice] says what the last one gave when it says something, [wanted] what the user had asked then.
 ///
-/// [pausedHere] holds from a pause that this screen saw done ([PauseDone] of [PauseWanted.paused]) while the order is read paused: a later read that shows it public again, which no tap of this screen asked, is then said ([PausePublicAgain]), since a public order can be taken.
+/// [pausedHere] holds from a pause that this screen saw done ([PauseDone] of [PauseWanted.paused]) while the order is read paused or at any status that is no end (taken, back in the book, #214), until it is read public: a later read that shows it public again, which no tap of this screen asked, is then said ([PausePublicAgain]), since a public order can be taken.
 final class PauseIdle extends TradePauseState {
   final TradePauseNotice? notice;
   final PauseWanted? wanted;

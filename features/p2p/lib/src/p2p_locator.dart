@@ -470,7 +470,10 @@ final class P2pLocator {
     // One for the feature: the pauses running now, so that a trade screen opened again meanwhile shows its order's pause running (functional review of #184, R1); what stays uncertain after one settles on a time that only moves forward, as the limiter's busy window (#214).
     locator.registerLazySingleton<PausesInFlight>(() {
       final running = Stopwatch()..start();
-      return PausesInFlight(elapsed: () => running.elapsed);
+      return PausesInFlight(
+        elapsed: () => running.elapsed,
+        requestDeadline: coordinatorRequestDeadline,
+      );
     });
     locator.registerFactory<PauseOrderUsecase>(
       () => PauseOrderUsecase(

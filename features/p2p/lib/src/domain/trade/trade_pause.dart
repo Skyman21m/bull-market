@@ -53,7 +53,7 @@ bool showsPublicOrder(TradeSeen seen) =>
 ///
 /// Until a read sent after the request shows the order paused, it is to be counted as possibly public ([pausedSinceRequest] false); once one does, a request still on its way could make it public again, so a reserve stays until a second read, at least [settleAfter] after the first, still shows it paused. The transport gives no sure bound past which a request sent can no longer reach the coordinator (a request leaves once, `retries = 0` for a `POST`, but bytes already relayed over Tor may arrive after the app gave up at its deadline of 132 s), hence two reads apart rather than a delay: they lower the risk without ruling it out (security review of #184, R-a, #214).
 /// A read showing the order public restarts the wait; a read at another status (taken, expired, cancelled) ends it, a toggle being refused there (1033). Reads not marked stored, from no order, or sent before the request count for nothing.
-/// The two reads must be [settleAfter] apart both on the device's clock (when each was sent, [TradeSeen.requestedAt]) and on a time that only moves forward (when each was taken into account, the `elapsed` of [observe]), so that a device's clock set forward does not lift the reserve sooner (security review of #184, R-d, #214); a clock set back keeps it longer, which is the safe side.
+/// The two reads must be [settleAfter] apart on the device's clock (when each was sent, [TradeSeen.requestedAt]) and [settleAfter] plus the transport's deadline for one request apart on a time that only moves forward (when each was taken into account, the `elapsed` of [observe]; `requestDeadline`, the deadline the transport sets, `coordinatorRequestDeadline`, 132 s): a read is taken into account at most that deadline after it was sent, so the second read was sent at least [settleAfter] after the first whatever the device's clock did (security review of #184, R-d, #214; security review of #219, R1: a clock set forward with a slow second answer let two reads sent 48 s apart lift it). A clock set back keeps it longer, the safe side; the device's clock still counts for a read taken into account late (a screen opened again on a read already older), where the time that only moves forward says nothing of when it was sent.
 @immutable
 final class PauseUncertainty {
   /// How far apart the two reads showing the order paused must be: a choice, past the transport's deadline of 132 s, at the reference's cadence for a paused order (180 s, `TradeCadence`).
@@ -77,8 +77,12 @@ final class PauseUncertainty {
   /// Whether a read sent after the request has shown the order paused.
   bool get pausedSinceRequest => pausedReadAt != null;
 
-  /// What is left after [seen], taken into account at [elapsed] on a time that only moves forward (a running `Stopwatch`'s): `null` once settled, or once the order is no longer public or paused.
-  PauseUncertainty? observe(TradeSeen seen, {required Duration elapsed}) {
+  /// What is left after [seen], taken into account at [elapsed] on a time that only moves forward (a running `Stopwatch`'s), a request taking at most [requestDeadline] (the transport's): `null` once settled, or once the order is no longer public or paused.
+  PauseUncertainty? observe(
+    TradeSeen seen, {
+    required Duration elapsed,
+    required Duration requestDeadline,
+  }) {
     final readAt = seen.requestedAt;
     if (!seen.stored || seen.order == null || readAt == null) return this;
     if (!readAt.isAfter(requestLeftAt)) return this;
@@ -90,7 +94,7 @@ final class PauseUncertainty {
       )) {
         (final first?, final firstObserved?)
             when readAt.difference(first) >= settleAfter &&
-                elapsed - firstObserved >= settleAfter =>
+                elapsed - firstObserved >= settleAfter + requestDeadline =>
           null,
         (_?, _?) => this,
         _ => PauseUncertainty(

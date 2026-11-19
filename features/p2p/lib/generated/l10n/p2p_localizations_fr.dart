@@ -2435,6 +2435,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String get p2pEndNotSentReadRefused =>
+      'Rien n’a été envoyé : l’ordre relu à l’instant porte l’alerte affichée ci-dessus.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'L’échange a changé : votre demande n’a pas été envoyée.';
 

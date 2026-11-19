@@ -18,6 +18,7 @@ import 'package:robosats/robosats.dart';
 import 'support/fakes.dart' show FakeTransport, coordinator, testNow;
 import 'support/harness.dart';
 import 'support/make_harness.dart';
+import 'support/trade_harness.dart' show TradeHarness;
 
 /// A read refused because the coordinator shows another amount than the fixed one asked here (#211, security review of #183, R8): over the real path, never a status built by hand nor an order attached by the test (the real `MakeOrderUsecase`, `WatchTradeUsecase`, `TradeReader`, a `TradeCubit` built as the locator builds it, the real `TradeScreen`), the coordinator played by `ScriptedMakerCoordinator`, as the reference answers a maker, then hostile through its `orderChanges`; nothing paid, no network.
 ///
@@ -178,4 +179,88 @@ void main() {
       );
     }
   }
+
+  testWidgets(
+    'a taker whose page is opened again while its coordinator sends a status that does not follow the trade (3 after 6): the alert above the wait, never the advice of an order made here (functional review of #219, its mutant M2)',
+    (tester) async {
+      tester.view
+        ..physicalSize = const Size(390, 1600) * 3
+        ..devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final app = await tester.runAsync(TradeHarness.start);
+      if (app == null) fail('no app');
+      final record = await tester.runAsync(() async {
+        final taken = await app.takeShown();
+        app.coordinator.lockBond(app.robot(0));
+        return TradeHarness.recordOf(taken);
+      });
+      if (record == null) fail('no record');
+      expect(record.origin, isNot(TradeOrigin.madeHere));
+      Future<TradeCubit> mountTaker() async {
+        final trade = TradeCubit(
+          record,
+          app.watch.execute,
+          app.cancel.execute,
+          lastStored: app.watch.lastStored,
+        )..start();
+        final reads = FakeTransport();
+        final page = TradeOrderPageCubit(
+          coordinator('temple'),
+          RobosatsNetwork.testnet,
+          FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+          FindPublicOrderUsecase(
+            CoordinatorClient(reads, clock: () => testNow),
+          ).execute,
+        );
+        addTearDown(page.close);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MultiBlocProvider(
+                providers: [
+                  BlocProvider.value(value: trade),
+                  BlocProvider.value(value: page),
+                ],
+                child: TradeScreen(
+                  now: () => app.now,
+                  coordinatorDetails: (_) => throw StateError('not opened'),
+                ),
+              ),
+            ),
+          ),
+        );
+        return trade;
+      }
+
+      Future<void> settleApp() async {
+        for (var i = 0; i < 6; i++) {
+          await tester.runAsync(app.settle);
+          await tester.pump();
+        }
+      }
+
+      final honest = await mountTaker();
+      await settleApp();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(honest.close);
+      app.coordinator.moveTo(3);
+      await tester.runAsync(() => app.elapse(const Duration(seconds: 5)));
+      final trade = await mountTaker();
+      await settleApp();
+      expect(trade.state.seen?.status, isA<StatusUnknown>());
+      expect(
+        find.text(
+          'Temple of Sats sent a status that does not follow this trade. It was ignored.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(reading), findsOneWidget);
+      expect(find.text(advice), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(trade.close);
+    },
+  );
 }

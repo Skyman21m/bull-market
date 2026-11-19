@@ -1,14 +1,22 @@
+import 'package:get_it/get_it.dart';
+import 'package:p2p/src/data/tor_coordinator_transport.dart'
+    show coordinatorRequestDeadline;
+import 'package:p2p/src/domain/p2p_tor_state.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_pause.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
-import 'package:p2p/testing.dart' show ScriptedFault, ScriptedMakerRequest;
+import 'package:p2p/src/domain/usecases/trade/pauses_in_flight.dart';
+import 'package:p2p/testing.dart'
+    show ScriptedFault, ScriptedMakerRequest, setUpP2pForTesting;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart' show Secrets;
 import 'package:test/test.dart';
 
+import 'support/fakes.dart' show FakeTransport;
 import 'support/holding_transport.dart';
 import 'support/make_harness.dart';
 
@@ -46,6 +54,11 @@ void main() {
   int pauses(MakeHarness harness) => harness.coordinator.received
       .where((kind) => kind == ScriptedMakerRequest.pause)
       .length;
+
+  final deadline = coordinatorRequestDeadline;
+
+  TradeSeen sentAt(TradeSeen of, DateTime when) =>
+      TradeSeen(of.status, order: of.order, stored: true, requestedAt: when);
 
   int statusAt(MakeHarness harness, TradeRecord record) =>
       harness.coordinator.order(record.orderId).status;
@@ -615,19 +628,29 @@ void main() {
         );
         expect(
           uncertain
-              .observe(notStored, elapsed: Duration.zero)
+              .observe(
+                notStored,
+                elapsed: Duration.zero,
+                requestDeadline: deadline,
+              )
               ?.pausedSinceRequest,
           isFalse,
         );
         expect(
-          uncertain.observe(paused, elapsed: Duration.zero)?.pausedSinceRequest,
+          uncertain
+              .observe(
+                paused,
+                elapsed: Duration.zero,
+                requestDeadline: deadline,
+              )
+              ?.pausedSinceRequest,
           isTrue,
         );
       },
     );
 
     test(
-      'only reads sent after the request count; two reads paused three minutes apart settle it; a read public restarts it; another status ends it',
+      'only reads sent after the request count; two reads paused three minutes apart, taken into account three minutes and the transport\'s deadline apart, settle it; a read public restarts it; another status ends it',
       () async {
         final (harness, record, seen) = await shown();
         final done = valueOf(await harness.pause.execute(record, seen));
@@ -645,7 +668,11 @@ void main() {
           PauseUncertainty? uncertain,
           TradeSeen of,
           Duration after,
-        ) => uncertain?.observe(at(of, readAt.add(after)), elapsed: after);
+        ) => uncertain?.observe(
+          at(of, readAt.add(after)),
+          elapsed: after,
+          requestDeadline: deadline,
+        );
         final uncertain = PauseUncertainty(readAt);
         // Sent as the request, not after it: nothing.
         expect(
@@ -655,8 +682,13 @@ void main() {
         final once = observe(uncertain, paused, const Duration(seconds: 1));
         expect(once?.pausedSinceRequest, isTrue);
         expect(observe(once, paused, const Duration(minutes: 2)), isNotNull);
+        // Three minutes: not enough on the time that only moves forward, the second read possibly sent up to the transport's deadline before it was taken into account (security review of #219, R1).
         expect(
           observe(once, paused, const Duration(minutes: 3, seconds: 1)),
+          isNotNull,
+        );
+        expect(
+          observe(once, paused, const Duration(minutes: 5, seconds: 13)),
           isNull,
         );
         // Read public meanwhile: the wait starts again.
@@ -693,28 +725,32 @@ void main() {
         final once = uncertain.observe(
           at(readAt.add(const Duration(seconds: 1))),
           elapsed: const Duration(seconds: 1),
+          requestDeadline: deadline,
         );
         expect(once?.pausedSinceRequest, isTrue);
         // Ten seconds later, the clock set an hour forward: the second read says it was sent an hour after the first.
         final jumped = once?.observe(
           at(readAt.add(const Duration(hours: 1, seconds: 11))),
           elapsed: const Duration(seconds: 11),
+          requestDeadline: deadline,
         );
         expect(jumped, isNotNull);
         expect(jumped?.pausedSinceRequest, isTrue);
-        // Three real minutes after the first: settled.
+        // Three real minutes and the transport's deadline after the first: settled.
         expect(
           jumped?.observe(
-            at(readAt.add(const Duration(hours: 1, minutes: 3, seconds: 2))),
-            elapsed: const Duration(minutes: 3, seconds: 2),
+            at(readAt.add(const Duration(hours: 1, minutes: 5, seconds: 14))),
+            elapsed: const Duration(minutes: 5, seconds: 14),
+            requestDeadline: deadline,
           ),
           isNull,
         );
-        // The clock set back an hour: the read seems sent before the first, three real minutes later, never settled by it.
+        // The clock set back an hour: the read seems sent before the first, minutes later, never settled by it.
         expect(
           once?.observe(
             at(readAt.subtract(const Duration(hours: 1))),
-            elapsed: const Duration(minutes: 3, seconds: 2),
+            elapsed: const Duration(minutes: 5, seconds: 14),
+            requestDeadline: deadline,
           ),
           isNotNull,
         );
@@ -753,13 +789,87 @@ void main() {
         await run.subscription.cancel();
         expect(again.status, isA<MakerOrderPublic>());
         expect(harness.pause.uncertainty(record, again), isNotNull);
-        // Three real minutes after the first read paused: settled.
-        await harness.elapse(const Duration(minutes: 3));
+        // More than three real minutes and the transport's deadline after the first read paused: settled.
+        await harness.elapse(const Duration(minutes: 5, seconds: 15));
         final later = harness.watchOf(record);
         await harness.settle();
         final settled = later.lastStatus.seen;
         await later.subscription.cancel();
         expect(harness.pause.uncertainty(record, settled), isNull);
+      },
+    );
+
+    test(
+      'the device\'s clock set 140 s forward and the second read answered at the transport\'s deadline: two reads sent 48 real seconds apart do not lift the reserve (security review of #219, R1)',
+      () async {
+        final (harness, record, seen) = await shown();
+        final done = valueOf(await harness.pause.execute(record, seen));
+        final paused = done.seen;
+        final left = DateTime.utc(2026, 11, 19, 12);
+        final once = PauseUncertainty(left).observe(
+          sentAt(paused, left.add(const Duration(seconds: 1))),
+          elapsed: const Duration(seconds: 1),
+          requestDeadline: deadline,
+        );
+        expect(once?.pausedSinceRequest, isTrue);
+        // Sent 48 s later (1 + 48 + 140 s on the clock set forward), answered 132 s after it was sent.
+        final second = once?.observe(
+          sentAt(paused, left.add(const Duration(seconds: 189))),
+          elapsed: const Duration(seconds: 181),
+          requestDeadline: deadline,
+        );
+        expect(second, isNotNull);
+        expect(second?.pausedSinceRequest, isTrue);
+      },
+    );
+
+    test(
+      'an honest clock, a read sent 60 s after the first but taken into account long after (a screen opened again on it): the device\'s clock still holds the reserve (the review\'s mutant M4b)',
+      () async {
+        final (harness, record, seen) = await shown();
+        final done = valueOf(await harness.pause.execute(record, seen));
+        final paused = done.seen;
+        final left = DateTime.utc(2026, 11, 19, 12);
+        final once = PauseUncertainty(left).observe(
+          sentAt(paused, left.add(const Duration(seconds: 1))),
+          elapsed: const Duration(seconds: 1),
+          requestDeadline: deadline,
+        );
+        final second = once?.observe(
+          sentAt(paused, left.add(const Duration(seconds: 61))),
+          elapsed: const Duration(minutes: 7),
+          requestDeadline: deadline,
+        );
+        expect(second, isNotNull);
+        expect(second?.pausedSinceRequest, isTrue);
+      },
+    );
+
+    test(
+      'through the composition (`setUpP2pForTesting`): the device\'s clock an hour forward between two reads paused moments apart, the reserve stays (the review\'s mutant M10: the locator\'s time that only moves forward)',
+      () async {
+        final (harness, record, seen) = await shown();
+        final done = valueOf(await harness.pause.execute(record, seen));
+        final paused = done.seen;
+        var now = DateTime.utc(2026, 11, 19, 12);
+        final locator = GetIt.asNewInstance();
+        addTearDown(locator.reset);
+        setUpP2pForTesting(
+          locator,
+          transport: FakeTransport(network: RobosatsNetwork.testnet),
+          torStates: () => const Stream<P2pTorState>.empty(),
+          clock: () => now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+        );
+        final pauses = locator<PausesInFlight>();
+        pauses.unknown(record, now, null);
+        expect(pauses.uncertainty(record)?.pausedSinceRequest, isFalse);
+        now = now.add(const Duration(seconds: 1));
+        pauses.observe(record, sentAt(paused, now));
+        expect(pauses.uncertainty(record)?.pausedSinceRequest, isTrue);
+        now = now.add(const Duration(hours: 1, seconds: 10));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(pauses.observe(record, sentAt(paused, now)), isNotNull);
       },
     );
 

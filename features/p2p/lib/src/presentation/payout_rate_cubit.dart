@@ -193,11 +193,14 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     if (!_applies || isClosed) return;
     final step = PayoutRateStep.of(seen.status);
     if (step == null || !seen.stored) {
+      // Compared with the step shown before this one, before it is forgotten: a step gone (a read refused while waiting, the order at 10) leaves nothing of its check, so that no line of it stays where the screen shows none (security review of #219, C1; before, `_step` was cleared first and the check stayed).
+      final changed = step != _step;
       if (step == null) {
+        _seen = null;
         _step = null;
         _status = null;
       }
-      if (state is! PayoutRateNone && step != _step) {
+      if (state is! PayoutRateNone && changed) {
         emit(const PayoutRateNone());
       }
       return;

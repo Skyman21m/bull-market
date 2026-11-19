@@ -616,6 +616,7 @@
   "p2pEndCollabCancel": "Annulation collaborative",
   "p2pEndCollabAfterFiat": "Les ordres ne peuvent pas être annulés si le fiat a été envoyé.",
   "p2pEndStepSendingRequest": "Envoi de votre demande à {coordinator}…",
+  "p2pEndNotSentReadRefused": "Rien n’a été envoyé : l’ordre relu à l’instant porte l’alerte affichée ci-dessus.",
   "p2pEndTradeMovedOn": "L’échange a changé : votre demande n’a pas été envoyée.",
   "p2pEndUnknownRequest": "Bull Market ne sait pas encore si votre demande est passée et continue de vérifier.",
   "p2pEndRequestNotRecordedMovedOn": "L’échange a changé : {coordinator} n’a pas enregistré votre demande.",

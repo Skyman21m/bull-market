@@ -3870,6 +3870,12 @@ abstract class P2pLocalizations {
   /// **'Sending your request to {coordinator}…'**
   String p2pEndStepSendingRequest(String coordinator);
 
+  /// Not in the RoboSats texts: the project's own: an action of the chat step (« Confirm … sent », …) pressed while the order read just before it is refused by the state machine (a read of a coordinator that changed the order's terms, a status that does not follow the trade): nothing was sent, and the alert of that read is shown above (security review of #219, C2). Where the order really moved on, p2pEndMovedOn and its siblings.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent: the order read just now carries the alert shown above.'**
+  String get p2pEndNotSentReadRefused;
+
   /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
   ///
   /// In en, this message translates to:

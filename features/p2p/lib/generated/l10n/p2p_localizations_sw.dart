@@ -2405,6 +2405,10 @@ class P2pLocalizationsSw extends P2pLocalizations {
   }
 
   @override
+  String get p2pEndNotSentReadRefused =>
+      'Nothing was sent: the order read just now carries the alert shown above.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'The trade moved on: your request was not sent.';
 
