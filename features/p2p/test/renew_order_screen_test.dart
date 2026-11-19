@@ -274,6 +274,9 @@ final class _Renewal {
   CurrencyLimits? limits;
   bool limitsUnreadable = false;
 
+  /// When set, the limits are answered once it completes: a read of the limits in flight.
+  Completer<void>? limitsHeld;
+
   /// The page's clock, which a test moves.
   DateTime now = DateTime.utc(2026, 11, 17);
 
@@ -299,7 +302,10 @@ final class _Renewal {
     (make) async => const Ok(true),
   );
 
-  MakeOrderCubit cubit() => MakeOrderCubit.renewal(
+  /// The last form's cubit [cubit] made.
+  MakeOrderCubit? form;
+
+  MakeOrderCubit cubit() => form = MakeOrderCubit.renewal(
     _madeRecord(),
     placeholder: usd,
     readRenewal: (_) async => read,
@@ -316,6 +322,7 @@ final class _Renewal {
     },
     fetchLimits: (coordinator, network) async {
       limitsAsked.add(coordinator.shortAlias);
+      if (limitsHeld case final held?) await held.future;
       return limitsUnreadable
           ? const Err(CoordinatorUnreachable())
           : Ok(limits ?? _limits);
@@ -922,6 +929,115 @@ void main() {
             ),
             findsOneWidget,
           );
+        },
+      );
+
+      testWidgets(
+        'while the coordinator\'s limits are being read: no « create a new order », nothing to press; read, the page goes on (functional review of #185, R6, its mutant M15)',
+        (tester) async {
+          final renewal = _Renewal()..limitsHeld = Completer<void>();
+          await _showRenewal(tester, renewal);
+          expect(renewal.limitsAsked, ['temple']);
+          expect(find.textContaining('can no longer be renewed'), findsNothing);
+          expect(_enabled(tester, _create), isFalse);
+          renewal.limitsHeld?.complete();
+          await settle(tester);
+          expect(find.textContaining('can no longer be renewed'), findsNothing);
+          expect(_enabled(tester, _create), isTrue);
+        },
+      );
+
+      for (final (name, refusal) in <(String, MakeRefusal Function())>[
+        (
+          'the price read just before the make changed (`MakePriceCheckChanged`)',
+          () => MakePriceCheckChanged(
+            _limits,
+            MakePriceSeen.of(
+              currency: _kept.currency,
+              coordinatorPrice: 91711.15,
+              check: MakePriceCheck.of(
+                currency: _kept.currency,
+                coordinatorPrice: 91711.15,
+                wallet: P2pWalletRateRead(91711.15),
+              ),
+            ),
+          ),
+        ),
+        (
+          'the coordinator out of reach',
+          () => const MakeCoordinatorUnreadable(CoordinatorUnreachable()),
+        ),
+      ]) {
+        testWidgets(
+          'a passing refusal, $name: no « create a new order », « Create order » still on, and a second press sends (functional review of #185, R6, its mutant M11)',
+          (tester) async {
+            final renewal = _Renewal();
+            renewal.next.add(Err(refusal()));
+            await _showRenewal(tester, renewal);
+            await _tap(tester, _create);
+            await settle(tester);
+            expect(renewal.made, hasLength(1));
+            expect(
+              find.textContaining('can no longer be renewed'),
+              findsNothing,
+            );
+            expect(_enabled(tester, _create), isTrue);
+            renewal.answer = const Err(MakeCoordinatorNotOnNetwork());
+            await _tap(tester, _create);
+            await settle(tester);
+            expect(renewal.made, hasLength(2));
+            expect(renewal.made.last.$1, _kept);
+          },
+        );
+      }
+
+      testWidgets(
+        'an order of a fixed amount kept with a description alone: the advanced options open, the description\'s text shown, locked, and sent as kept (security review of #185, R2, its mutant M15b)',
+        (tester) async {
+          final kept = MakeHarness.request(description: 'Bank transfer only');
+          final renewal = _Renewal(kept)
+            ..answer = const Err(MakeCoordinatorNotOnNetwork());
+          await _showRenewal(tester, renewal);
+          expect(_fieldEnabled(tester, 'Bank transfer only'), isFalse);
+          expect(find.text('Bank transfer only'), findsOneWidget);
+          expect(_enabled(tester, _create), isTrue);
+          await _tap(tester, _create);
+          await settle(tester);
+          expect(renewal.made.single.$1, kept);
+        },
+      );
+
+      testWidgets(
+        'the kept terms read again otherwise once the form was filled (a second start of the form\'s cubit): the screen\'s own guard turns « Create order » off and says why, nothing sent (security review of #185, R2, its mutant M17)',
+        (tester) async {
+          final renewal = _Renewal();
+          await _showRenewal(tester, renewal);
+          expect(_enabled(tester, _create), isTrue);
+          renewal.read = Ok(
+            OrderRenewal(
+              orderId: tradeOrderId,
+              network: RobosatsNetwork.mainnet,
+              coordinator: coordinatorOf('temple'),
+              request: MakeHarness.request(premium: 3),
+            ),
+          );
+          await renewal.form?.start();
+          await settle(tester);
+          // The fields still show the terms filled first: the page sends nothing that is not them.
+          expect(
+            find.text('Buy BTC for 100 EUR at a 2% premium'),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              'The form does not show exactly the terms kept of this order: nothing can be sent.',
+            ),
+            findsOneWidget,
+          );
+          expect(_enabled(tester, _create), isFalse);
+          await tester.tap(_create, warnIfMissed: false);
+          await settle(tester);
+          expect(renewal.made, isEmpty);
         },
       );
 

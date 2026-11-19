@@ -10,7 +10,7 @@ import 'package:test/test.dart';
 
 import 'support/trade_harness.dart';
 
-/// A successful end opened again (#95): the watch reads the order once, as the reference reads it whenever its page opens, to show the coordinator's summary, the payment's lines and the rating; nothing is written, the record is not touched, no other read follows, and a read that gives nothing leaves the end as it was; over the coordinator the tests play (never a real coordinator).
+/// A successful end opened again (#95): the watch reads the order once, as the reference reads it whenever its page opens, to show the coordinator's summary, the payment's lines and the rating; nothing is written, the record is not touched, no other read follows, and a read that gives nothing leaves the end as it was, marked not read again, which the screen says (#216); over the coordinator the tests play (never a real coordinator).
 void main() {
   const read = ScriptedRequest.order;
 
@@ -107,6 +107,7 @@ void main() {
       expect(own?.receivedSats?.value.toInt(), 164126);
       expect(shown.seen.order?.id, record.orderId);
       expect(shown.seen.stored, isFalse);
+      expect(shown.endNotReadAgain, isFalse);
       expect(readsOf(app), 1);
       expect(app.trails.stores, storesBefore);
       expect(shown.record.closedAt, record.closedAt);
@@ -121,40 +122,49 @@ void main() {
   );
 
   test(
-    'the coordinator no longer knows the order: the end stays, no notice',
+    'the coordinator no longer knows the order: the end stays, marked not read again (#216)',
     () async {
       final (app, record) = await finishedThenRestarted();
       app.coordinator.orderForgotten = true;
       final run = app.watchOf(record);
       await app.settle();
-      expect(run.states, hasLength(1));
+      expect(run.states, hasLength(2));
       expect(run.lastStatus.seen.status, isA<StatusUnknown>());
+      expect(run.lastStatus.endNotReadAgain, isTrue);
       expect(run.lastStatus.failedReads, 0);
       expect(readsOf(app), 1);
       expect(run.done, isTrue);
     },
   );
 
-  test('the read fails: the end stays, no notice, no retry', () async {
-    final (app, record) = await finishedThenRestarted();
-    app.coordinator.failNext(read, ScriptedFault.unreachable);
-    final run = app.watchOf(record);
-    await app.settle();
-    await app.elapse(const Duration(minutes: 30));
-    expect(run.states, hasLength(1));
-    expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-    expect(readsOf(app), 1);
-  });
+  test(
+    'the read fails: the end stays, marked not read again (#216), no retry',
+    () async {
+      final (app, record) = await finishedThenRestarted();
+      app.coordinator.failNext(read, ScriptedFault.unreachable);
+      final run = app.watchOf(record);
+      await app.settle();
+      await app.elapse(const Duration(minutes: 30));
+      expect(run.states, hasLength(2));
+      expect(run.lastStatus.seen.status, isA<StatusUnknown>());
+      expect(run.lastStatus.endNotReadAgain, isTrue);
+      expect(readsOf(app), 1);
+    },
+  );
 
-  test('an order read no longer at its successful end is not taken', () async {
-    final (app, record) = await finishedThenRestarted();
-    app.coordinator.moveTo(13);
-    final run = app.watchOf(record);
-    await app.settle();
-    expect(run.states, hasLength(1));
-    expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-    expect(readsOf(app), 1);
-  });
+  test(
+    'an order read no longer at its successful end is not taken: the end stays, marked not read again (#216)',
+    () async {
+      final (app, record) = await finishedThenRestarted();
+      app.coordinator.moveTo(13);
+      final run = app.watchOf(record);
+      await app.settle();
+      expect(run.states, hasLength(2));
+      expect(run.lastStatus.seen.status, isA<StatusUnknown>());
+      expect(run.lastStatus.endNotReadAgain, isTrue);
+      expect(readsOf(app), 1);
+    },
+  );
 
   test('another end than a success is not read', () async {
     final first = await TradeHarness.start();

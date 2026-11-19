@@ -174,7 +174,7 @@ final class MakeOrderUsecase {
           out.add(Err(failure));
         case (Ok(value: final list), Ok(value: final made)):
           final kept = record.origin == TradeOrigin.madeHere
-              ? _keptRequest(made[record.robot])
+              ? _keptRequest(made[record.robot], of: record)
               : null;
           // The records list the trades in the order they were written (`taken_at`, then the robot, whose index a fresh robot takes after): the orders made after this one are the ones listed after it.
           final at = list.indexWhere((trade) => trade.robot == record.robot);
@@ -189,7 +189,7 @@ final class MakeOrderUsecase {
                   if (trade.origin == TradeOrigin.madeHere &&
                       trade.coordinatorAlias == record.coordinatorAlias &&
                       !trade.takenAt.isBefore(record.takenAt) &&
-                      _keptRequest(made[trade.robot]) == kept)
+                      _keptRequest(made[trade.robot], of: trade) == kept)
                     trade,
               ]),
             ),
@@ -242,10 +242,20 @@ final class MakeOrderUsecase {
     };
   }
 
-  /// The request kept in [history], the terms of one make, or `null` when none is stored or it does not restore.
-  static MakeOrderRequest? _keptRequest(StoredMadeHistory? history) {
+  /// The request kept in [history], the terms of the make of [of], or `null` when none is stored, they are of another network, coordinator or side than [of]'s record (as [renewal] refuses them), or they do not restore.
+  static MakeOrderRequest? _keptRequest(
+    StoredMadeHistory? history, {
+    required TradeRecord of,
+  }) {
     final terms = history?.terms;
-    if (history == null || history.unreadable || terms == null) return null;
+    if (history == null ||
+        history.unreadable ||
+        terms == null ||
+        terms.network != of.network.name ||
+        terms.coordinatorAlias != of.coordinatorAlias ||
+        terms.role != of.role.name) {
+      return null;
+    }
     return switch (MakerTerms.restore(terms)) {
       Ok(:final value) => value.request,
       Err() => null,

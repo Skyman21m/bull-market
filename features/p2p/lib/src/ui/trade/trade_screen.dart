@@ -548,8 +548,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
           color: colors.warning,
         ),
       // Where a renewal is offered (#216, #217): the terms kept here, and an order already made since with them.
-      if (watch case TradeWatchStatus(:final record, :final seen)
-          when _renewalOf(record, seen) != null)
+      if (watch case TradeWatchStatus(
+        :final record,
+        :final seen,
+      ) when _renewalOf(record, seen) != null)
         ..._renewalLines(context, record),
       // An end opened again that could not be read again shows the records' end as « This trade is over for this robot. », with no panel of the end: the renewal its records allow is offered here, in the reference's words of that end (#216).
       if ((watch, TradeView.of(watch)) case (

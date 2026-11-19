@@ -1,5 +1,9 @@
 import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/coordinator_lottery.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_host.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/make_price_check.dart';
@@ -15,6 +19,7 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_limits_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/check_make_price_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/list_last_orders_usecase.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/testing.dart'
     show
@@ -27,6 +32,7 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'support/make_harness.dart';
+import 'support/trade_harness.dart' show tradeKey;
 
 /// The renewal of an order made here (#185, design note `docs/design/phase-3-making-an-order.md` § 1.8, § 2.2): « Renew Order » at 5 and « Renew » at 14 make a new order from the terms this device kept, never from what the coordinator reads back, with a fresh robot, on the same coordinator, through the make of a creation and its checks.
 ///
@@ -652,4 +658,232 @@ void main() {
       },
     );
   });
+
+  group(
+    'the records of an ended order: the last ones, the terms kept, the renewals made (#216, #217)',
+    () {
+      /// [stored] with the order's side and role changed: a sell order of a seller, consistent in itself.
+      MakerTermsRecord asSeller(MakerTermsRecord stored) => MakerTermsRecord(
+        version: stored.version,
+        network: stored.network,
+        coordinatorAlias: stored.coordinatorAlias,
+        role: TradeRole.seller.name,
+        type: 1,
+        currencyId: stored.currencyId,
+        amount: stored.amount,
+        minAmount: stored.minAmount,
+        maxAmount: stored.maxAmount,
+        premiumPercent: stored.premiumPercent,
+        paymentMethod: stored.paymentMethod,
+        bondSizePercent: stored.bondSizePercent,
+        publicSeconds: stored.publicSeconds,
+        escrowSeconds: stored.escrowSeconds,
+        description: stored.description,
+        hasPassword: stored.hasPassword,
+        latitude: stored.latitude,
+        longitude: stored.longitude,
+        createdPrice: stored.createdPrice,
+        makerFee: stored.makerFee,
+      );
+
+      test(
+        'terms kept as a sell order of a seller, consistent in themselves but not the record\'s role: refused as unreadable, nothing sent (security review of #185, R2, its mutant M04)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          final before = harness.coordinator.requests.length;
+          harness.trails.readBack = (stored) =>
+              stored == null ? null : asSeller(stored);
+          expect(
+            await harness.make.renewal(record),
+            const Err<OrderRenewal, RenewalRefusal>(RenewalTermsUnreadable()),
+          );
+          expect(harness.coordinator.requests.length, before);
+        },
+      );
+
+      test(
+        'the last finished orders: an order ended, listed from the records once closed, never while it runs; nothing sent',
+        () async {
+          final harness = await MakeHarness.start();
+          final last = ListLastOrdersUsecase(harness.records);
+          final made = valueOf(await harness.makeOrder()) as MakeStarted;
+          expect(valueOf(await last.execute(harness.network).first), isEmpty);
+          harness.coordinator.lockMakerBond(made.record.orderId);
+          await read(harness, made.record);
+          harness.coordinator.expire(made.record.orderId);
+          await read(harness, made.record);
+          final before = harness.coordinator.requests.length;
+          final listed = valueOf(await last.execute(harness.network).first);
+          expect(listed.map((record) => record.orderId), [made.record.orderId]);
+          expect(listed.single.closedAt, isNotNull);
+          expect(listed.single.origin, TradeOrigin.madeHere);
+          expect(harness.coordinator.requests.length, before);
+          // A second order, running: still the ended one alone.
+          valueOf(await harness.makeOrder());
+          expect(
+            valueOf(
+              await last.execute(harness.network).first,
+            ).map((record) => record.orderId),
+            [made.record.orderId],
+          );
+        },
+      );
+
+      test(
+        'the last finished orders, by the rule: the newest end made here and the newest end taken here, the newest first; a take that never happened, a recovered trade and a trade running are none',
+        () {
+          final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
+            Ok(:final value) => value,
+            Err(:final failure) => throw StateError('$failure'),
+          };
+          RobotSlot robot(int index) =>
+              RobotSlot(RobosatsNetwork.testnet, fingerprint, index);
+          TradeRecord at(
+            int index,
+            TradeOrigin origin, {
+            int? endedAtHour,
+            bool confirmed = true,
+          }) => TradeRecord(
+            robot: robot(index),
+            coordinatorAlias: 'temple',
+            coordinatorOnion: 'onion',
+            orderId: 100 + index,
+            role: TradeRole.buyer,
+            origin: origin,
+            takenAt: DateTime.utc(2026, 11, 1, index),
+            confirmedAt: confirmed ? DateTime.utc(2026, 11, 1, index) : null,
+            closedAt: endedAtHour == null
+                ? null
+                : DateTime.utc(2026, 11, 2, endedAtHour),
+          );
+          final records = [
+            at(0, TradeOrigin.madeHere, endedAtHour: 5),
+            at(1, TradeOrigin.madeHere, endedAtHour: 9),
+            at(2, TradeOrigin.takenHere, endedAtHour: 7),
+            at(3, TradeOrigin.takenHere, endedAtHour: 12, confirmed: false),
+            at(4, TradeOrigin.recovered, endedAtHour: 13),
+            at(5, TradeOrigin.madeHere),
+          ];
+          expect(
+            ListLastOrdersUsecase.lastOrdersOf(
+              records,
+            ).map((record) => record.orderId),
+            [101, 102],
+          );
+          expect(
+            ListLastOrdersUsecase.lastOrdersOf([
+              ...records,
+              at(6, TradeOrigin.takenHere, endedAtHour: 20),
+            ]).map((record) => record.orderId),
+            [106, 101],
+          );
+          expect(ListLastOrdersUsecase.lastOrdersOf([records.last]), isEmpty);
+        },
+      );
+
+      test(
+        'the renewals of an ended order: none before; the order renewed after; an order of other terms never; the terms kept given with them; read from the device only',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          final before = valueOf(await harness.make.renewalsOf(record).first);
+          expect(before.kept, MakeHarness.request());
+          expect(before.since, isEmpty);
+          // An order of other terms, made since: not a renewal.
+          final other =
+              valueOf(await harness.makeOrder(MakeHarness.request(premium: 4)))
+                  as MakeStarted;
+          expect(
+            valueOf(await harness.make.renewalsOf(record).first).since,
+            isEmpty,
+          );
+          // The renewal.
+          final renewal = valueOf(await harness.make.renewal(record));
+          final renewed =
+              valueOf(
+                    await harness.make.execute(
+                      renewal.request,
+                      coordinator: renewal.coordinator,
+                      network: renewal.network,
+                      seen: seenNow(harness, renewal.request),
+                    ),
+                  )
+                  as MakeStarted;
+          final requests = harness.coordinator.requests.length;
+          final after = valueOf(await harness.make.renewalsOf(record).first);
+          expect(after.since, [renewed.record]);
+          expect(after.latest, renewed.record);
+          expect(harness.coordinator.requests.length, requests);
+          // The order of other terms has none: the renewal is of another request.
+          expect(
+            valueOf(await harness.make.renewalsOf(other.record).first).since,
+            isEmpty,
+          );
+          // The renewal itself, made after none of the same request, has none either.
+          expect(
+            valueOf(await harness.make.renewalsOf(renewed.record).first).since,
+            isEmpty,
+          );
+        },
+      );
+
+      test(
+        'the renewals when the terms kept of the order do not restore: not known, never « none »',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          harness.trails.madeHistories = (stored) => {
+            for (final MapEntry(:key, :value) in stored.entries)
+              key: key == record.robot
+                  ? StoredMadeHistory(
+                      terms: switch (value.terms) {
+                        final terms? => asSeller(terms),
+                        null => null,
+                      },
+                      trail: value.trail,
+                    )
+                  : value,
+          };
+          expect(
+            await harness.make.renewalsOf(record).first,
+            isA<Err<OrderRenewals, P2pFailure>>(),
+          );
+        },
+      );
+
+      test(
+        'an order a resolution confirmed is the renewal\'s own only with its very request, on its coordinator',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = await expiredOrder(harness);
+          final renewal = valueOf(await harness.make.renewal(record));
+          final same = valueOf(await harness.makeOrder()) as MakeStarted;
+          final other =
+              valueOf(await harness.makeOrder(MakeHarness.request(amount: 250)))
+                  as MakeStarted;
+          expect(
+            await harness.make.madeAsRenewal(same.record, renewal),
+            isTrue,
+          );
+          expect(
+            await harness.make.madeAsRenewal(other.record, renewal),
+            isFalse,
+          );
+          final taken = TradeRecord(
+            robot: same.record.robot,
+            coordinatorAlias: same.record.coordinatorAlias,
+            coordinatorOnion: same.record.coordinatorOnion,
+            orderId: same.record.orderId,
+            role: same.record.role,
+            origin: TradeOrigin.takenHere,
+            takenAt: same.record.takenAt,
+            confirmedAt: same.record.confirmedAt,
+            closedAt: null,
+          );
+          expect(await harness.make.madeAsRenewal(taken, renewal), isFalse);
+        },
+      );
+    },
+  );
 }

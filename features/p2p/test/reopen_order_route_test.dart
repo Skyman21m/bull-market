@@ -86,7 +86,8 @@ final class _App {
   List<CoordinatorRequest> get orderReads => [
     for (final request in coordinator.requests)
       if (request.url.path == '/api/order/' &&
-          request.method == CoordinatorHttpMethod.get) request,
+          request.method == CoordinatorHttpMethod.get)
+        request,
   ];
 
   Future<void> settle([int rounds = 8]) async {
@@ -136,13 +137,12 @@ final class _App {
       );
 
   /// The active trades of the records.
-  Future<List<TradeRecord>> active() async =>
-      switch (await wait(
-        () => locator<TradeRecordRepository>().watchActiveTrades(_net).first,
-      )) {
-        Ok(:final value) => value,
-        Err(:final failure) => throw StateError('$failure'),
-      };
+  Future<List<TradeRecord>> active() async => switch (await wait(
+    () => locator<TradeRecordRepository>().watchActiveTrades(_net).first,
+  )) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  };
 
   /// The system's back, as Android's back gesture.
   Future<void> back() async {
@@ -160,9 +160,8 @@ final class _App {
 
   /// The order numbers of the trade screens in the tree, shown or not.
   List<int> tradePages() => [
-    for (final element in find
-        .byType(TradeScreen, skipOffstage: false)
-        .evaluate())
+    for (final element
+        in find.byType(TradeScreen, skipOffstage: false).evaluate())
       BlocProvider.of<TradeCubit>(element).state.record.orderId,
   ];
 
@@ -382,7 +381,10 @@ void main() {
         await _tap(tester, _renewOrder);
         await app.settle(12);
         expect(find.byType(CreateOrderScreen), findsOneWidget);
-        expect(find.text('Buy BTC for 100 EUR at a 2% premium'), findsOneWidget);
+        expect(
+          find.text('Buy BTC for 100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
         expect(app.makes, hasLength(1));
         await app.close();
       },
@@ -410,71 +412,77 @@ void main() {
     },
   );
 
-  group('a pending make confirmed while the renewal\'s page is open (#217, security review of #185, R3)', () {
-    /// A make of [request] whose answer was lost: made at the coordinator, pending in the records.
-    Future<void> lostMake(_App app, MakeOrderRequest request) async {
-      app.coordinator.failNext(
-        ScriptedMakerRequest.make,
-        ScriptedFault.answerLost,
+  group(
+    'a pending make confirmed while the renewal\'s page is open (#217, security review of #185, R3)',
+    () {
+      /// A make of [request] whose answer was lost: made at the coordinator, pending in the records.
+      Future<void> lostMake(_App app, MakeOrderRequest request) async {
+        app.coordinator.failNext(
+          ScriptedMakerRequest.make,
+          ScriptedFault.answerLost,
+        );
+        final made = await app.make(request);
+        expect(made, isA<Ok<MakeOutcome, MakeRefusal>>());
+        expect(switch (made) {
+          Ok(:final value) => value,
+          Err() => null,
+        }, isA<MakePending>());
+      }
+
+      testWidgets(
+        'one unrelated to the renewal: the page stays open, the order to renew stays behind it',
+        (tester) async {
+          final app = await _App.start(tester);
+          final id = app.first.orderId;
+          await lostMake(app, MakeHarness.request(amount: 250, premium: 4));
+          unawaited(
+            app.router.pushNamed(
+              P2pRouter.tradeName,
+              extra: P2pTradeRouteArgs(app.first),
+            ),
+          );
+          await app.settle(12);
+          await _tap(tester, _renewOrder);
+          await app.settle(20);
+          // The resolution confirmed the other make (its robot read, its order read).
+          expect(await app.active(), hasLength(1));
+          expect(find.byType(CreateOrderScreen), findsOneWidget);
+          expect(app.tradePages(), [id]);
+          expect(app.makes, hasLength(2));
+          // Left, the order renewed is shown again with its button.
+          await app.back();
+          expect(app.tradePages(), [id]);
+          expect(_renewOrder, findsOneWidget);
+          await app.close();
+        },
       );
-      final made = await app.make(request);
-      expect(made, isA<Ok<MakeOutcome, MakeRefusal>>());
-      expect(switch (made) {
-        Ok(:final value) => value,
-        Err() => null,
-      }, isA<MakePending>());
-    }
 
-    testWidgets(
-      'one unrelated to the renewal: the page stays open, the order to renew stays behind it',
-      (tester) async {
-        final app = await _App.start(tester);
-        final id = app.first.orderId;
-        await lostMake(app, MakeHarness.request(amount: 250, premium: 4));
-        unawaited(
-          app.router.pushNamed(
-            P2pRouter.tradeName,
-            extra: P2pTradeRouteArgs(app.first),
-          ),
-        );
-        await app.settle(12);
-        await _tap(tester, _renewOrder);
-        await app.settle(20);
-        // The resolution confirmed the other make (its robot read, its order read).
-        expect(await app.active(), hasLength(1));
-        expect(find.byType(CreateOrderScreen), findsOneWidget);
-        expect(app.tradePages(), [id]);
-        expect(app.makes, hasLength(2));
-        // Left, the order renewed is shown again with its button.
-        await app.back();
-        expect(app.tradePages(), [id]);
-        expect(_renewOrder, findsOneWidget);
-        await app.close();
-      },
-    );
-
-    testWidgets(
-      'an earlier try of this very renewal: the page closes with it, its trade in place of the order renewed',
-      (tester) async {
-        final app = await _App.start(tester);
-        final id = app.first.orderId;
-        await lostMake(app, _kept);
-        unawaited(
-          app.router.pushNamed(
-            P2pRouter.tradeName,
-            extra: P2pTradeRouteArgs(app.first),
-          ),
-        );
-        await app.settle(12);
-        await _tap(tester, _renewOrder);
-        await app.settle(20);
-        expect(find.byType(CreateOrderScreen, skipOffstage: false), findsNothing);
-        final shown = app.tradePages();
-        expect(shown, hasLength(1));
-        expect(shown.single, isNot(id));
-        expect(app.makes, hasLength(2));
-        await app.close();
-      },
-    );
-  });
+      testWidgets(
+        'an earlier try of this very renewal: the page closes with it, its trade in place of the order renewed',
+        (tester) async {
+          final app = await _App.start(tester);
+          final id = app.first.orderId;
+          await lostMake(app, _kept);
+          unawaited(
+            app.router.pushNamed(
+              P2pRouter.tradeName,
+              extra: P2pTradeRouteArgs(app.first),
+            ),
+          );
+          await app.settle(12);
+          await _tap(tester, _renewOrder);
+          await app.settle(20);
+          expect(
+            find.byType(CreateOrderScreen, skipOffstage: false),
+            findsNothing,
+          );
+          final shown = app.tradePages();
+          expect(shown, hasLength(1));
+          expect(shown.single, isNot(id));
+          expect(app.makes, hasLength(2));
+          await app.close();
+        },
+      );
+    },
+  );
 }
