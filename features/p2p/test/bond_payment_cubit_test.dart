@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/trade/bond_payment.dart';
+import 'package:p2p/src/domain/trade/trade_status.dart' show InvoiceStep;
 import 'package:p2p/src/domain/trade/escrow_contract.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_payment.dart';
