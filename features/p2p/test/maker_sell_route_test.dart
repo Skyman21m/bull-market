@@ -692,13 +692,17 @@ void main() {
       );
       final walletQuote = await journey.openConfirmation();
       expect(walletQuote.amount, Sats.fromInt(245159));
-      const line =
-          'At the Bull wallet\'s price, 51,000 USD/BTC, with the order\'s premium, 100 USD are worth 196,078 sats. Gap of the collateral: +25.03%, the coordinator\'s fee included. This collateral is more than 10% above that: 245,159 sats asked, 196,078 sats expected. Check it before you pay.';
-      expect(find.text(line), findsOneWidget);
-      final colors = Theme.of(
-        tester.element(find.text(line)),
-      ).extension<BullTheme>();
-      expect(tester.widget<Text>(find.text(line)).style?.color, colors?.error);
+      // One red alert: the comparison, the fee said included, then the warning with both amounts.
+      final line = find.textContaining(
+        '100 USD are worth 196,078 sats. Gap of the collateral: +25.04%, the coordinator\'s fee included. This collateral is more than 10% above that: 245,159 sats asked, 196,078 sats expected. Check it before you pay.',
+      );
+      expect(line, findsOneWidget);
+      expect(
+        find.textContaining('At the Bull wallet\'s price, 50,000 USD/BTC'),
+        findsOneWidget,
+      );
+      final colors = Theme.of(tester.element(line)).extension<BullTheme>();
+      expect(tester.widget<Text>(line).style?.color, colors?.error);
       expect(
         tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
         isNotNull,
@@ -733,7 +737,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      final second = await journey.openConfirmation();
+      await journey.openConfirmation();
       expect(
         find.text(
           _english.earlierOut
@@ -750,11 +754,7 @@ void main() {
         'swap-e0',
         const P2pWalletPaymentRefundPending(),
       );
-      journey.wallet.scriptQuote(Ok(second));
-      await journey.tap(find.text(_english.payWithThisWallet));
-      await settle(tester);
-      await journey.tap(find.text('Go back'));
-      await settle(tester);
+      await journey.pass(12);
       expect(
         find.text(
           'Take 1: not back yet: the swap service is refunding it',

@@ -295,7 +295,10 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   Future<void> offerFor(TradeSeen seen) async {
     if (isClosed || identical(seen, _checked)) return;
     _checked = seen;
-    _contractMoved(seen.status.trail.take);
+    if (!_contractMoved(seen.status.trail.take)) {
+      // Each status shown reads the escrows again, as the check below reads them: a payment the wallet's records hold since is followed.
+      _followEscrows();
+    }
     final offer = await _check(record, seen);
     if (isClosed || !identical(seen, _checked)) return;
     emit(
@@ -309,8 +312,10 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   }
 
   /// The contract [take] shown, for a cubit that follows a maker seller's escrows: when it is not the one followed, every escrow is followed again and so is the payment of the new contract, unless a quote, a confirmation or a payment is under way (a confirmation then said stale, the payment's end following the new contract).
-  void _contractMoved(int take) {
-    if (_escrowsFollower == null || take == state.followedTake) return;
+  ///
+  /// Whether it moved.
+  bool _contractMoved(int take) {
+    if (_escrowsFollower == null || take == state.followedTake) return false;
     emit(state._with(followedTake: take));
     _followEscrows();
     switch (state.step) {
@@ -324,6 +329,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         emit(state._with(step: const BondPayLooking()));
         _followAgain(leavesSending: true);
     }
+    return true;
   }
 
   /// Follows every escrow of the trade again (#188): `followEscrows` reads the records once, when it is listened to.
