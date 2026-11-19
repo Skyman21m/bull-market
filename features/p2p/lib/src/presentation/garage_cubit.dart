@@ -33,7 +33,7 @@ typedef GarageReauthenticator = Future<bool> Function();
 /// [conceal], called whenever the app is hidden or paused, ends that for this key: it hides a key shown, and a hide while the vault is still deleting or drawing keeps the key behind the PIN when it arrives; leaving the Garage closes the cubit.
 /// From then on, until the user saw the key and pressed « Continue » or deleted it, [UnacknowledgedGarageKeys] makes each visit show the backup alert, with the key behind the PIN.
 ///
-/// The robot shown follows the orders made here with the key (#227, [FollowMadeOrdersUsecase]): the Garage opens on the robot of the newest one whose bond was seen locked, else on the robot of the « Last order #N » line under it, else on the first usable robot, and moves to the robot of each one whose bond is seen locked while it is shown, never before, until the user moves with the arrows. A tap on « Last order #N » shows the robot of that order ([showOrderRobot]).
+/// The robot shown follows the orders made here with the key (#227, [FollowMadeOrdersUsecase]): the Garage opens on the robot of the newest one in progress whose bond was locked, else on the robot of the « Last order #N » line under it, else on the first usable robot, and moves to the robot of each one whose bond is seen locked while it is shown, never before, until the user moves with the arrows. A tap on « Last order #N » shows the robot of that order ([showOrderRobot]).
 class GarageCubit extends Cubit<GarageState> {
   final ReadGarageKeyUsecase _read;
   final GenerateGarageKeyUsecase _generate;
@@ -238,7 +238,7 @@ class GarageCubit extends Cubit<GarageState> {
     if (following != null) unawaited(following.cancel());
   }
 
-  /// Starts following the orders made here with [key], unless the user moved with the arrows or the feature holds no trades, and gives the robot to open on: that of the newest one whose bond is locked, else of the « Last order #N » line, `null` for none.
+  /// Starts following the orders made here with [key], unless the user moved with the arrows or the feature holds no trades, and gives the robot to open on: that of the newest one in progress whose bond was locked, else of the « Last order #N » line, `null` for none.
   ///
   /// The first answer is awaited before the Garage shows a robot, so that no panel of another robot is built, and reads its coordinator, in between; later answers move the robot shown.
   /// An [Error] of the records is a bug (AGENTS.md, rule 11): it is not caught, and the Garage stays on its wait.

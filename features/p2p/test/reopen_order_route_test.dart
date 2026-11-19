@@ -1229,6 +1229,37 @@ void main() {
     );
 
     testWidgets(
+      'an order made here at 15, its buyer\'s payment failed, and a later one public then expired: the Garage opens on the one in progress (review of #229, C3)',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final failed = await makeOther(app);
+        await lockAndRead(app, failed);
+        app.coordinator.take(failed.orderId, TradeHarness.robotsOf(_net)[5]);
+        app.coordinator.order(failed.orderId).status = 15;
+        unawaited(
+          app.router.pushNamed(
+            P2pRouter.tradeName,
+            extra: P2pTradeRouteArgs(failed),
+          ),
+        );
+        await app.settle(12);
+        await app.back();
+        expect(await stored(app, failed), 'routingFailed');
+        expect(
+          (await app.active()).map((record) => record.orderId),
+          contains(failed.orderId),
+        );
+        final expired = await makeOther(app, amount: 300);
+        await lockAndRead(app, expired);
+        await endAndRead(app, expired, (order) => order.status = 5);
+        await app.openGarage();
+        expect(_lastOrder(expired.orderId), findsOneWidget);
+        expect(shown(tester), failed.robot.accountIndex);
+        await app.close();
+      },
+    );
+
+    testWidgets(
       'the last finished order of another Garage Key: the Garage of the key in use opens on its first robot (review of #229, C1)',
       (tester) async {
         final app = await _App.start(tester, torKnown: true);

@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -13,22 +13,16 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
-/// The made histories of the tests, played by the test: nothing else of the repository is used.
-final class _Trails implements TradeTrailRepository {
-  final StreamController<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
-  made = StreamController();
+/// The device's trades not closed, as `ListActiveTradesUsecase` gives them, played by the test.
+final class _Active {
+  final StreamController<Result<List<ActiveTrade>, P2pFailure>> trades =
+      StreamController();
   final List<RobosatsNetwork> asked = [];
 
-  @override
-  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
-  watchMadeHistories(RobosatsNetwork network) {
+  Stream<Result<List<ActiveTrade>, P2pFailure>> call(RobosatsNetwork network) {
     asked.add(network);
-    return made.stream;
+    return trades.stream;
   }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnsupportedError('${invocation.memberName}');
 }
 
 /// The robot the Garage shows of the orders made here (#227): the newest one whose bond was seen locked when it opens, then each one seen locked while it is shown; never one waiting for its bond, never one of another key or network.
@@ -51,34 +45,41 @@ void main() {
     }, index);
   }
 
-  StoredMadeHistory at(TradePosition? position) => StoredMadeHistory(
-    terms: null,
-    trail: position == null
-        ? null
-        : TradeTrailRecord(
-            version: TradeTrailRecord.currentVersion,
-            network: RobosatsNetwork.testnet.name,
-            coordinatorAlias: 'temple',
-            orderId: 42,
-            role: 'buyer',
-            position: position.name,
-            readAtMicros: 0,
-            bondHash: null,
-            escrowHash: null,
-            deadlineMicros: null,
-            bondStepSeenAtMicros: null,
-            bondStepDeadlineMicros: null,
-            breached: false,
-            historyUnknown: false,
-          ),
+  /// An order made here by [robot], its record not closed.
+  TradeRecord open(
+    RobotSlot robot, {
+    TradeOrigin origin = TradeOrigin.madeHere,
+  }) => TradeRecord(
+    robot: robot,
+    coordinatorAlias: 'temple',
+    coordinatorOnion:
+        Federation.robosats.byAlias('temple')?.testnet.onion ??
+        (throw StateError('temple')),
+    orderId: 100 + robot.accountIndex,
+    role: TradeRole.buyer,
+    origin: origin,
+    takenAt: DateTime.utc(2026, 11, 19, 9),
+    confirmedAt: DateTime.utc(2026, 11, 19, 9),
+    closedAt: null,
   );
 
-  Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure> made(
+  /// The trades not closed: an order made here by each robot at its stored position, `null` for records that cannot be restored.
+  Result<List<ActiveTrade>, P2pFailure> made(
     Map<RobotSlot, TradePosition?> positions,
-  ) => Ok({
+  ) => Ok([
     for (final MapEntry(key: robot, value: position) in positions.entries)
-      robot: at(position),
-  });
+      ActiveTrade(
+        open(robot),
+        position == null
+            ? const ActiveTradeUnrestorable(TradeRecordMalformed())
+            : ActiveTradeAt(
+                position,
+                deadline: null,
+                breached: false,
+                historyUnknown: false,
+              ),
+      ),
+  ]);
 
   /// A finished order of [robot], as a « Last order #N » line shows it.
   TradeRecord lastOrder(RobotSlot robot) => TradeRecord(
@@ -97,21 +98,21 @@ void main() {
 
   /// What the use case gives while [lists] are read one after the other, the « Last order #N » lines being [lines].
   Future<List<RobotSlot?>> follow(
-    List<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>> lists, {
+    List<Result<List<ActiveTrade>, P2pFailure>> lists, {
     Result<List<TradeRecord>, P2pFailure> lines = const Ok([]),
   }) async {
-    final trails = _Trails();
+    final active = _Active();
     final given = <RobotSlot?>[];
     final linesAsked = <RobosatsNetwork>[];
-    final listening = FollowMadeOrdersUsecase(trails, (network) {
+    final listening = FollowMadeOrdersUsecase(active.call, (network) {
       linesAsked.add(network);
       return Stream.value(lines);
     }).execute(key).listen(given.add);
     for (final list in lists) {
-      trails.made.add(list);
+      active.trades.add(list);
     }
     await pumpEventQueue();
-    expect(trails.asked, [RobosatsNetwork.testnet]);
+    expect(active.asked, [RobosatsNetwork.testnet]);
     expect(linesAsked, hasLength(lessThanOrEqualTo(1)));
     await listening.cancel();
     return given;
@@ -159,79 +160,120 @@ void main() {
     });
   });
 
-  group(
-    'when the Garage opens with no order made here locked (review of #229, C1)',
-    () {
-      test(
-        'the robot of the first « Last order #N » line, an order expired or cancelled since',
-        () async {
+  group('when the Garage opens with no order made here locked (review of #229, C1)', () {
+    test(
+      'the robot of the first « Last order #N » line, an order expired or cancelled since',
+      () async {
+        expect(
+          await follow([
+            made({slot(3): TradePosition.expired, slot(1): waiting}),
+          ], lines: Ok([lastOrder(slot(3)), lastOrder(slot(2))])),
+          [slot(3)],
+        );
+      },
+    );
+
+    test(
+      'status by status: an order in progress whose bond was locked counts, 13 and 15 included; one over is closed, and counts only through the line (review of #229, C3)',
+      () async {
+        // The positions where an order made here is not closed and its bond was locked: it wins over the line.
+        for (final inProgress in [
+          TradePosition.public,
+          TradePosition.paused,
+          TradePosition.waitingForBoth,
+          TradePosition.waitingForEscrow,
+          TradePosition.waitingForPayout,
+          TradePosition.chatting,
+          TradePosition.fiatSent,
+          TradePosition.inDispute,
+          TradePosition.sendingSats,
+          TradePosition.routingFailed,
+          TradePosition.waitingDisputeResolution,
+        ]) {
           expect(
             await follow([
-              made({slot(3): TradePosition.expired, slot(1): waiting}),
-            ], lines: Ok([lastOrder(slot(3)), lastOrder(slot(2))])),
-            [slot(3)],
+              made({slot(1): inProgress}),
+            ], lines: Ok([lastOrder(slot(2))])),
+            [slot(1)],
+            reason: inProgress.name,
           );
-        },
-      );
-
-      test(
-        'an order over, its bond given back or its dispute settled, never wins over the line (review of #229, C3)',
-        () async {
-          for (final over in [
-            TradePosition.sendingSats,
-            TradePosition.succeeded,
-            TradePosition.routingFailed,
-            TradePosition.makerLostDispute,
-            TradePosition.takerLostDispute,
-          ]) {
-            expect(
-              await follow([
-                made({slot(1): over, slot(2): TradePosition.expired}),
-              ], lines: Ok([lastOrder(slot(2)), lastOrder(slot(1))])),
-              [slot(2)],
-              reason: over.name,
-            );
-          }
-        },
-      );
-
-      test('an order locked wins over the line', () async {
+        }
+        // Not closed, its bond never locked or not known to have been: the line.
+        for (final notLocked in [
+          null,
+          TradePosition.start,
+          TradePosition.makerBondStep,
+          TradePosition.expired,
+          TradePosition.cancelled,
+        ]) {
+          expect(
+            await follow([
+              made({slot(1): notLocked}),
+            ], lines: Ok([lastOrder(slot(2))])),
+            [slot(2)],
+            reason: '$notLocked',
+          );
+        }
+        // Over (14, 17, 18, 5, 1043): its record closed, it is in no list of trades not closed, only in the line's records: the line, and the line only.
+        expect(await follow([made({})], lines: Ok([lastOrder(slot(1))])), [
+          slot(1),
+        ]);
+        // A taken trade in progress is not an order made here.
         expect(
           await follow([
-            made({slot(1): public, slot(3): TradePosition.cancelled}),
-          ], lines: Ok([lastOrder(slot(3))])),
-          [slot(1)],
+            Ok([
+              ActiveTrade(
+                open(slot(1), origin: TradeOrigin.takenHere),
+                const ActiveTradeAt(
+                  TradePosition.chatting,
+                  deadline: null,
+                  breached: false,
+                  historyUnknown: false,
+                ),
+              ),
+            ]),
+          ], lines: Ok([lastOrder(slot(2))])),
+          [slot(2)],
         );
-      });
+      },
+    );
 
-      test(
-        'none: a line of another key or network, no line, lines that cannot be read',
-        () async {
-          for (final lines in <Result<List<TradeRecord>, P2pFailure>>[
-            Ok([lastOrder(slot(3, of: other))]),
-            Ok([lastOrder(slot(3, network: RobosatsNetwork.mainnet))]),
-            const Ok([]),
-            const Err(P2pStorageFailure()),
-          ]) {
-            expect(await follow([made({})], lines: lines), [
-              null,
-            ], reason: '$lines');
-          }
-        },
+    test('an order locked wins over the line', () async {
+      expect(
+        await follow([
+          made({slot(1): public, slot(3): TradePosition.cancelled}),
+        ], lines: Ok([lastOrder(slot(3))])),
+        [slot(1)],
       );
+    });
 
-      test('only at the opening: later lists never read the lines', () async {
-        expect(
-          await follow([
-            made({}),
-            made({slot(1): waiting}),
-            made({slot(1): public}),
-          ], lines: Ok([lastOrder(slot(4))])),
-          [slot(4), slot(1)],
-        );
-      });
-    },
-  );
+    test(
+      'none: a line of another key or network, no line, lines that cannot be read',
+      () async {
+        for (final lines in <Result<List<TradeRecord>, P2pFailure>>[
+          Ok([lastOrder(slot(3, of: other))]),
+          Ok([lastOrder(slot(3, network: RobosatsNetwork.mainnet))]),
+          const Ok([]),
+          const Err(P2pStorageFailure()),
+        ]) {
+          expect(await follow([made({})], lines: lines), [
+            null,
+          ], reason: '$lines');
+        }
+      },
+    );
+
+    test('only at the opening: later lists never read the lines', () async {
+      expect(
+        await follow([
+          made({}),
+          made({slot(1): waiting}),
+          made({slot(1): public}),
+        ], lines: Ok([lastOrder(slot(4))])),
+        [slot(4), slot(1)],
+      );
+    });
+  });
 
   group('while the Garage is shown', () {
     test('an order whose bond locks gives its robot, once', () async {
@@ -271,19 +313,16 @@ void main() {
     });
 
     test(
-      'an order first seen over gives nothing; one seen locked, then over, is not given again',
+      'an order closed leaves the list, and moves nothing; one at 13 or 15 still counts',
       () async {
         expect(
           await follow([
             made({}),
-            made({slot(1): TradePosition.succeeded}),
-            made({slot(1): TradePosition.succeeded, slot(2): public}),
-            made({
-              slot(1): TradePosition.succeeded,
-              slot(2): TradePosition.succeeded,
-            }),
+            made({slot(1): TradePosition.routingFailed}),
+            made({}),
+            made({slot(2): TradePosition.sendingSats}),
           ]),
-          [null, slot(2)],
+          [null, slot(1), slot(2)],
         );
       },
     );
@@ -324,21 +363,21 @@ void main() {
     );
 
     test('stops reading the records when its listener stops', () async {
-      final trails = _Trails();
+      final active = _Active();
       final listening = FollowMadeOrdersUsecase(
-        trails,
+        active.call,
         (_) => Stream.value(const Ok([])),
       ).execute(key).listen((_) {});
-      trails.made.add(made({}));
+      active.trades.add(made({}));
       await pumpEventQueue();
-      expect(trails.made.hasListener, isTrue);
+      expect(active.trades.hasListener, isTrue);
       await listening.cancel();
-      expect(trails.made.hasListener, isFalse);
+      expect(active.trades.hasListener, isFalse);
     });
   });
 
   test(
-    'a maker bond is locked from the order public on, never while it waits for it, never at an end that may come before it, never once it is given back or the dispute settled',
+    'a maker bond was locked from the order public on, never while it waits for it, never at an end that may come before it',
     () {
       const locked = {
         TradePosition.public,
@@ -349,7 +388,12 @@ void main() {
         TradePosition.chatting,
         TradePosition.fiatSent,
         TradePosition.inDispute,
+        TradePosition.sendingSats,
+        TradePosition.succeeded,
+        TradePosition.routingFailed,
         TradePosition.waitingDisputeResolution,
+        TradePosition.makerLostDispute,
+        TradePosition.takerLostDispute,
       };
       for (final position in TradePosition.values) {
         expect(

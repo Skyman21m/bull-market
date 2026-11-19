@@ -450,10 +450,10 @@ final class P2pLocator {
       (record, _) =>
           RenewalsCubit(record, locator<MakeOrderUsecase>().renewalsOf),
     );
-    // The orders made here whose bond is locked, and the « Last order #N » line, for the robot the Garage shows (#227): read from the device only.
+    // The orders made here in progress whose bond was locked, and the « Last order #N » line, for the robot the Garage shows (#227): read from the device only.
     locator.registerFactory<FollowMadeOrdersUsecase>(
       () => FollowMadeOrdersUsecase(
-        locator(),
+        locator<ListActiveTradesUsecase>().execute,
         locator<ListLastOrdersUsecase>().execute,
       ),
     );
