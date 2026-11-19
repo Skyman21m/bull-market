@@ -238,10 +238,11 @@ class GarageCubit extends Cubit<GarageState> {
     if (following != null) unawaited(following.cancel());
   }
 
-  /// Starts following the orders made here with [key], unless the user moved with the arrows or the feature holds no trades, and gives the robot to open on: that of the newest one whose bond was seen locked, else of the « Last order #N » line, `null` for none.
+  /// Starts following the orders made here with [key], unless the user moved with the arrows or the feature holds no trades, and gives the robot to open on: that of the newest one whose bond is locked, else of the « Last order #N » line, `null` for none.
   ///
   /// The first answer is awaited before the Garage shows a robot, so that no panel of another robot is built, and reads its coordinator, in between; later answers move the robot shown.
   /// An [Error] of the records is a bug (AGENTS.md, rule 11): it is not caught, and the Garage stays on its wait.
+  /// Of two reads of the vault that overlap, the later one cuts the earlier one's following before its first answer, so that the earlier [load] never completes (review of #229, R7): nothing awaits it, the screens call it without waiting.
   Future<NetworkRobot?> _startFollowing(NetworkGarageKey key) async {
     // One following at a time: another read of the vault started meanwhile has its own (review of #229, R3).
     _stopFollowing();

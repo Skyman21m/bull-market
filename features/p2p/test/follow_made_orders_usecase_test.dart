@@ -121,12 +121,12 @@ void main() {
   const waiting = TradePosition.makerBondStep;
 
   group('when the Garage opens', () {
-    test('the newest order whose bond was seen locked, by index', () async {
+    test('the newest order whose bond is locked, by index', () async {
       expect(
         await follow([
           made({
             slot(1): public,
-            slot(4): TradePosition.succeeded,
+            slot(4): TradePosition.chatting,
             slot(2): public,
           }),
         ]),
@@ -171,6 +171,27 @@ void main() {
             ], lines: Ok([lastOrder(slot(3)), lastOrder(slot(2))])),
             [slot(3)],
           );
+        },
+      );
+
+      test(
+        'an order over, its bond given back or its dispute settled, never wins over the line (review of #229, C3)',
+        () async {
+          for (final over in [
+            TradePosition.sendingSats,
+            TradePosition.succeeded,
+            TradePosition.routingFailed,
+            TradePosition.makerLostDispute,
+            TradePosition.takerLostDispute,
+          ]) {
+            expect(
+              await follow([
+                made({slot(1): over, slot(2): TradePosition.expired}),
+              ], lines: Ok([lastOrder(slot(2)), lastOrder(slot(1))])),
+              [slot(2)],
+              reason: over.name,
+            );
+          }
         },
       );
 
@@ -249,6 +270,24 @@ void main() {
       );
     });
 
+    test(
+      'an order first seen over gives nothing; one seen locked, then over, is not given again',
+      () async {
+        expect(
+          await follow([
+            made({}),
+            made({slot(1): TradePosition.succeeded}),
+            made({slot(1): TradePosition.succeeded, slot(2): public}),
+            made({
+              slot(1): TradePosition.succeeded,
+              slot(2): TradePosition.succeeded,
+            }),
+          ]),
+          [null, slot(2)],
+        );
+      },
+    );
+
     test('another key\'s or network\'s order locking gives nothing', () async {
       expect(
         await follow([
@@ -299,7 +338,7 @@ void main() {
   });
 
   test(
-    'a maker bond is locked from the order public on, never while it waits for it, never at an end that may come before it',
+    'a maker bond is locked from the order public on, never while it waits for it, never at an end that may come before it, never once it is given back or the dispute settled',
     () {
       const locked = {
         TradePosition.public,
@@ -310,12 +349,7 @@ void main() {
         TradePosition.chatting,
         TradePosition.fiatSent,
         TradePosition.inDispute,
-        TradePosition.sendingSats,
-        TradePosition.succeeded,
-        TradePosition.routingFailed,
         TradePosition.waitingDisputeResolution,
-        TradePosition.makerLostDispute,
-        TradePosition.takerLostDispute,
       };
       for (final position in TradePosition.values) {
         expect(

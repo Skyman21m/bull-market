@@ -25,7 +25,7 @@ final class FollowMadeOrdersUsecase {
 
   const FollowMadeOrdersUsecase(this._trails, this._lastOrders);
 
-  /// First, once, the robot to open the Garage on: that of the newest order made here with [key] whose bond was seen locked, else that of the first « Last order #N » line when it is of [key], or `null` when there is neither or the records cannot be read. Then the robot of each order made with [key] whose bond is seen locked after the first list read, the newest when several are seen locked at once, never one already seen.
+  /// First, once, the robot to open the Garage on: that of the newest order made here with [key] whose bond is locked (an order over passing only through the line, review of #229, C3), else that of the first « Last order #N » line when it is of [key], or `null` when there is neither or the records cannot be read. Then the robot of each order made with [key] whose bond is seen locked after the first list read (never one first seen over), the newest when several are seen locked at once, never one already seen.
   ///
   /// A plain transform of the records' stream, so that cancelling it cancels their watch at once.
   Stream<RobotSlot?> execute(NetworkGarageKey key) {

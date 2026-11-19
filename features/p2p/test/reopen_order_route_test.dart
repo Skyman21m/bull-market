@@ -1200,6 +1200,35 @@ void main() {
     );
 
     testWidgets(
+      'an order made here succeeded, then a later one public then expired: the Garage opens on the later one\'s robot, the one of the « Last order #N » line (review of #229, C3)',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final succeeded = await makeOther(app);
+        await lockAndRead(app, succeeded);
+        await endAndRead(app, succeeded, (order) {
+          app.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+          order.status = 14;
+        });
+        expect(await stored(app, succeeded), 'succeeded');
+        final expired = await makeOther(app, amount: 300);
+        expect(
+          expired.robot.accountIndex,
+          greaterThan(succeeded.robot.accountIndex),
+        );
+        await lockAndRead(app, expired);
+        await endAndRead(app, expired, (order) => order.status = 5);
+        await app.openGarage();
+        expect(_lastOrder(expired.orderId), findsOneWidget);
+        expect(shown(tester), expired.robot.accountIndex);
+        expect(
+          find.text('Robot #${expired.robot.accountIndex}'),
+          findsOneWidget,
+        );
+        await app.close();
+      },
+    );
+
+    testWidgets(
       'the last finished order of another Garage Key: the Garage of the key in use opens on its first robot (review of #229, C1)',
       (tester) async {
         final app = await _App.start(tester, torKnown: true);
