@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
+import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
@@ -25,6 +26,8 @@ import 'package:robosats/robosats.dart';
 import 'support/fakes.dart' show FakeTransport, coordinator, testNow;
 import 'support/harness.dart';
 import 'support/make_harness.dart';
+import 'support/trade_orders.dart';
+import 'support/trade_screens.dart';
 
 /// The dialog of « Confirm … sent » of an order made here, open at 9 while the order changes (#209; security review of #219, C1, C2, its mutant MD): it says what the screen behind it says, from the status shown now, never from the press: the state machine's alerts first, the owner's rule only for the step shown, nothing reassuring left from before; and « Confirm » pressed while a read is refused sends nothing and the screen says so. Over the real path (`MakeOrderUsecase`, `WatchTradeUsecase`, `TradeReader`, `ChatStepActionUsecase`, a `TradeCubit` built as the locator builds it, a `PayoutRateCubit` over the real rule, the real `TradeScreen`), the coordinator played by `ScriptedMakerCoordinator`, made hostile through `orderChanges`; nothing paid, no network.
 void main() {
@@ -34,6 +37,7 @@ void main() {
       'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact Temple of Sats if something looks wrong.';
   const notSentRefused =
       'Nothing was sent: the order read just now carries the alert shown above.';
+  const notSent = 'Nothing was sent.';
 
   /// An order of 100 EUR made here, its bond locked, taken, the escrow locked: 8, the payout invoice asked (kept for 9).
   Future<(MakeHarness, TradeRecord)> madeAt8(WidgetTester tester) async {
@@ -351,6 +355,100 @@ void main() {
       await settleBoth(tester, harness);
       expect(anyContains(dialogTexts(tester), 'fewer sats than that'), isTrue);
       await close(tester, trade, rate);
+    },
+  );
+
+  testWidgets(
+    'the dialog open, the order cancelled from elsewhere before « Confirm » (error 1043 at the read before sending): nothing sent, and only that, no « alert shown above » beside « This order has been cancelled » (security review of #219, R5)',
+    (tester) async {
+      final (harness, record, trade, rate) = await dialogAt9(tester);
+      harness.coordinator.order(record.orderId).status = 12;
+      await tapDialogConfirm(tester, harness);
+      expect(confirms(harness), 0);
+      expect(find.byType(ConfirmFiatSentDialog), findsNothing);
+      expect(find.text('This order has been cancelled'), findsOneWidget);
+      expect(find.text(notSent), findsOneWidget);
+      expect(find.text(notSentRefused), findsNothing);
+      expect(find.textContaining('alert shown above'), findsNothing);
+      await close(tester, trade, rate);
+    },
+  );
+
+  testWidgets(
+    'a taker\'s « Confirm … sent » open at 9, the next read refused (another role shown): the dialog says the alert the screen shows, without the advice kept for an order made here (security review of #219, its test of a taker)',
+    (tester) async {
+      tester.view
+        ..physicalSize = const Size(390, 2000) * 3
+        ..devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final statuses = await TradeScreenStatuses.make();
+      final chatting = await statuses.chatting();
+      final refused = await statuses.refusedRead(
+        chatting,
+        orderJson(9, role: TradeRole.seller),
+      );
+      final watch = StreamController<TradeWatchState>.broadcast();
+      addTearDown(watch.close);
+      final trade = TradeCubit(
+        TradeScreenStatuses.record,
+        (record, {signals = const Stream.empty(), onScreen = true}) {
+          signals.listen((_) {});
+          return watch.stream;
+        },
+        (record, seen, {bondLoss}) => Completer<Never>().future,
+        confirmFiatSent: (record, seen, {onProgress}) =>
+            Completer<Never>().future,
+      )..start();
+      addTearDown(trade.close);
+      final reads = FakeTransport();
+      final page = TradeOrderPageCubit(
+        coordinator('temple'),
+        RobosatsNetwork.mainnet,
+        FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+        FindPublicOrderUsecase(
+          CoordinatorClient(reads, clock: () => testNow),
+        ).execute,
+      );
+      addTearDown(page.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MultiBlocProvider(
+              providers: [
+                BlocProvider.value(value: trade),
+                BlocProvider.value(value: page),
+              ],
+              child: TradeScreen(
+                now: () => tradeNow,
+                coordinatorDetails: (_) => throw StateError('not opened'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      watch.add(TradeScreenStatuses.watched(chatting));
+      await tester.pump();
+      await tester.pump();
+      final confirm = find.textContaining(RegExp(r'^Confirm .* sent$'));
+      await tester.ensureVisible(confirm.first);
+      await tester.pump();
+      await tester.tap(confirm.first);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+      expect(anyContains(dialogTexts(tester), 'another role'), isFalse);
+      watch.add(TradeScreenStatuses.watched(refused));
+      await tester.pump();
+      await tester.pump();
+      final texts = dialogTexts(tester);
+      expect(anyContains(texts, 'another role'), isTrue);
+      expect(anyContains(texts, advice), isFalse);
+      expect(find.textContaining('another role'), findsWidgets);
+      await tester.pumpWidget(const SizedBox.shrink());
     },
   );
 }

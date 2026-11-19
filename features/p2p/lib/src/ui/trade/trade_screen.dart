@@ -13,6 +13,7 @@ import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
 import '../../domain/trade/maker_terms.dart';
 import '../../domain/trade/trade_chat_step.dart';
+import '../../domain/trade/trade_edges.dart';
 import '../../domain/trade/trade_pause.dart';
 import '../../domain/trade/trade_renewal.dart';
 import '../../domain/trade/trade_status.dart';
@@ -24,6 +25,7 @@ import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_rate_cubit.dart';
 import '../../presentation/public_wait.dart';
+import '../../presentation/renewals_cubit.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/take_order_cubit.dart';
 import '../../presentation/trade_l10n.dart';
@@ -46,6 +48,7 @@ import 'host_rating_section.dart';
 import 'payout_panel.dart';
 import 'payout_rate_line.dart';
 import 'rate_gap_line.dart';
+import 'renew_check_dialog.dart';
 import 'successful_panel.dart';
 import 'trade_order_details.dart';
 import 'wallet_payment_section.dart';
@@ -111,6 +114,12 @@ class TradeScreen extends StatefulWidget {
   /// Opens the renewal's page of the order of the trade (#185), and completes when that page is left with no order made (an order made replaces this page by the new trade's, `P2pRouter.openRenewal`): « Renew Order » at 5 and « Renew » at « Trade finished! » for an order made here, at a status marked stored where the reference offers it ([OrderRenewal.offeredAt]); `null` where the feature cannot make an order, and neither button is shown.
   final Future<void> Function(TradeRecord record)? onRenew;
 
+  /// Whether a [RenewalsCubit] is above the screen (#216, #217: the terms kept of an order made here and the orders made here since with them): read only where the renewal is offered (functional review of #220, R6); `false` with [onRenew], and nothing is said of them.
+  final bool readsRenewals;
+
+  /// Opens the trade of another order of this device: the newest order made since with the terms of this one (#217), in place of this page; `null` with [onRenew].
+  final ValueChanged<TradeRecord>? onOpenTrade;
+
   const TradeScreen({
     super.key,
     required this.now,
@@ -130,6 +139,8 @@ class TradeScreen extends StatefulWidget {
     this.book,
     this.checksPayoutRate = false,
     this.onRenew,
+    this.readsRenewals = false,
+    this.onOpenTrade,
   });
 
   @override
@@ -154,23 +165,91 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
   /// Whether the renewal's page opened by « Renew Order » or « Renew » is open (#185): another tap opens nothing more, so that one tap opens one page.
   bool _renewing = false;
 
-  /// « Renew Order » or « Renew » (#185): the renewal's page of [record], once at a time; the button spins until that page is left.
+  /// What the records said of the order's renewals at the last build (#217), for the tap.
+  RenewalsState? _renewalsSeen;
+
+  /// « Renew Order » or « Renew » (#185): the renewal's page of [record], once at a time; the button spins until that page is left. « Renew this order? » first ([RenewCheckDialog]) when something should be known before one more order and its bond: the end not confirmed by the one read of a trade opened again, or shown otherwise, or still running at the coordinator (security review of #220, C1); an order with the same terms made here since, or one still being created (#217, R2); or records that could not tell, a read of them that did not answer within [_renewalsWait] included (C3, R3). Never a lock: « Renew anyway » goes on (the reference, which keeps the robot, has the coordinator refuse a second order while the first is active, `api/logics.py:75-100`, error 1000; here the robot is fresh, so nothing refuses it). While the records are still being read, their first answer is awaited before deciding, so that no quick tap skips the dialog (functional review of #220, R3).
   Future<void> _renew(TradeRecord record) async {
     final open = widget.onRenew;
     if (open == null || _renewing) return;
     setState(() => _renewing = true);
     try {
+      final l10n = P2pLocalizations.of(context);
+      final trade = context.read<TradeCubit>().state;
+      final coordinator = _coordinatorName(trade);
+      final reasons = <String>[
+        if (trade.watch case TradeWatchStatus(:final endReread?))
+          switch (endReread) {
+            TradeEndShownAlive() => l10n.p2pRenewEndAlive(coordinator),
+            TradeEndShownOtherwise() => l10n.p2pRenewEndOtherwise(coordinator),
+            TradeEndReading() ||
+            TradeEndNotRead() ||
+            TradeEndUnknownToCoordinator() => l10n.p2pRenewEndNotConfirmed(
+              coordinator,
+            ),
+          },
+      ];
+      if (widget.readsRenewals) {
+        final cubit = context.read<RenewalsCubit>();
+        var known = cubit.state;
+        if (known is RenewalsReading) {
+          known = await cubit.stream
+              .firstWhere((state) => state is! RenewalsReading)
+              .timeout(_renewalsWait, onTimeout: () => cubit.state)
+              .catchError((Object _) => cubit.state);
+          if (!mounted) return;
+        }
+        switch (known) {
+          case RenewalsListed(:final renewals):
+            if (renewals.shown case final shown?) {
+              reasons.add(
+                l10n.p2pRenewSameTermsMade(
+                  '${shown.record.orderId}',
+                  _standsText(l10n, shown),
+                ),
+              );
+            }
+            if (renewals.pendingSameTerms) {
+              reasons.add(l10n.p2pSameTermsPending);
+            }
+          // Not known, or not known in time: said, never taken for « none ».
+          case RenewalsUnknown() || RenewalsReading():
+            reasons.add(l10n.p2pRenewSameTermsUnknown);
+        }
+      }
+      if (reasons.isNotEmpty &&
+          (!await RenewCheckDialog.show(context, reasons: reasons) ||
+              !mounted)) {
+        return;
+      }
       await open(record);
     } finally {
       if (mounted) setState(() => _renewing = false);
     }
   }
 
-  /// The renewal offered for the status [seen] of [record] (#185): an order made here, the status marked stored, one where the reference offers its maker a renewal; `null` otherwise.
+  /// Whether [watch] is an end opened again whose one read runs (security review of #220, C1).
+  static bool _readingEnd(TradeWatchState? watch) =>
+      watch is TradeWatchStatus && watch.endReread is TradeEndReading;
+
+  /// How long a tap on « Renew Order » waits for the records' first answer about orders made since with the same terms.
+  static const Duration _renewalsWait = Duration(seconds: 10);
+
+  /// Where this device saw [made] stand, in the user's language.
+  static String _standsText(P2pLocalizations l10n, OrderMadeSince made) =>
+      switch (made.stands) {
+        MadeSinceStands.running => l10n.p2pSameTermsRunning,
+        MadeSinceStands.expired => l10n.p2pSameTermsExpired,
+        MadeSinceStands.cancelled => l10n.p2pSameTermsCancelled,
+        MadeSinceStands.completed => l10n.p2pSameTermsCompleted,
+        MadeSinceStands.ended => l10n.p2pSameTermsEnded,
+      };
+
+  /// The renewal offered for the status [seen] of [record] (#185): an order made here, at a status where the reference offers its maker a renewal, that status the one the read stored or, for a record closed, the end its records hold (#216: a record is closed only once its end is on disk, and a trade opened again shows that end restored, or read again, never stored anew); `null` otherwise. The renewal itself reads the records again and refuses an order they do not show ended (`MakeOrderUsecase.renewal`).
   VoidCallback? _renewalOf(TradeRecord record, TradeSeen seen) {
     if (widget.onRenew == null ||
         record.origin != TradeOrigin.madeHere ||
-        !seen.stored ||
+        !(seen.stored || record.closedAt != null) ||
         !OrderRenewal.offeredAt(seen.status.position, role: record.role)) {
       return null;
     }
@@ -268,6 +347,15 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     final record = state.record;
     final view = TradeView.of(state.watch);
     final coordinator = _coordinatorName(state);
+    // The records of the renewals read only where a renewal is offered (functional review of #220, R6): the cubit, made lazily, is not made for a trade that runs.
+    final offered = switch (state.watch) {
+      TradeWatchStatus(:final record, :final seen) =>
+        _renewalOf(record, seen) != null,
+      _ => false,
+    };
+    _renewalsSeen = widget.readsRenewals && offered
+        ? context.watch<RenewalsCubit>().state
+        : null;
     final lines = _lines(context, state, coordinator);
     // What an action of the chat step gave, said under a wait too: a « Confirm » pressed while a read is refused sends nothing, and the wait says so (security review of #219, C2).
     final waitNotice = switch (state.chatStep) {
@@ -355,8 +443,38 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         notice: waitNotice,
                       ),
                       TradeMessage(:final kind) => _Message(
-                        text: kind.toText(context, coordinator: coordinator),
-                        waits: kind == TradeMessageKind.takePending,
+                        // An end opened again whose read runs, or that the coordinator shows still running, is never said over (security review of #220, C1).
+                        text: switch ((kind, state.watch)) {
+                          (
+                            TradeMessageKind.ended,
+                            TradeWatchStatus(endReread: TradeEndReading()),
+                          ) =>
+                            l10n.p2pTradeEndReading(coordinator),
+                          (
+                            TradeMessageKind.ended,
+                            TradeWatchStatus(
+                              endReread: TradeEndShownAlive() ||
+                                  TradeEndNotRead() ||
+                                  TradeEndUnknownToCoordinator(),
+                              :final record,
+                              :final seen,
+                            ),
+                          ) =>
+                            l10n.p2pTradeEndKeptEnded(
+                              _date(
+                                l10n,
+                                record.closedAt ?? seen.status.seenAt,
+                              ),
+                            ),
+                          _ => kind.toText(context, coordinator: coordinator),
+                        },
+                        below: kind == TradeMessageKind.ended
+                            ? _renewUnderEnd(record, state.watch)
+                            : null,
+                        waits:
+                            kind == TradeMessageKind.takePending ||
+                            (kind == TradeMessageKind.ended &&
+                                _readingEnd(state.watch)),
                         notice: switch (state.chatStep) {
                           ChatStepIdle(:final notice?, :final action) => (
                             notice,
@@ -449,6 +567,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         renewing: _renewing,
                       ),
                     },
+                    // The end read again with other terms, said under its panel (functional review of #220, R10).
+                    ..._endRereadTail(context, state, coordinator),
                   ],
                 ),
               ),
@@ -511,7 +631,179 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
               : l10n.p2pTradeRecordProblem,
           color: colors.warning,
         ),
+      // An end opened again whose one read did not show it as kept (#216, functional review of #220, C1): what that read gave, each in its own words, never as if read again; an answer otherwise, under the state machine's alerts of it in their usual words, and nothing reassuring beside them.
+      if (watch case TradeWatchStatus(
+        :final endReread?,
+        :final record,
+        :final seen,
+      ))
+        ..._endRereadLines(
+          context,
+          endReread,
+          record: record,
+          date: _date(l10n, record.closedAt ?? seen.status.seenAt),
+          coordinator: coordinator,
+        ),
+      // Where a renewal is offered (#216, #217): the terms kept here, and an order made since with them.
+      if (watch case TradeWatchStatus(
+        :final record,
+        :final seen,
+      ) when _renewalOf(record, seen) != null)
+        ..._renewalLines(context, record),
     ];
+  }
+
+  /// « Renew Order » or « Renew » under « This trade is over for this robot. »: an end opened again shown as the records hold it has no panel of its end, so the renewal its records allow is offered under that text, in the reference's words of that end, as under the expiry's reason (#216, functional review of #220, R7); `null` where none is offered.
+  Widget? _renewUnderEnd(TradeRecord record, TradeWatchState? watch) {
+    if (watch is! TradeWatchStatus) return null;
+    final renew = _renewalOf(record, watch.seen);
+    if (renew == null) return null;
+    final l10n = P2pLocalizations.of(context);
+    return TradeButton(
+      key: const ValueKey('trade-renew'),
+      label: watch.seen.status.position == TradePosition.succeeded
+          ? l10n.p2pRenew
+          : l10n.p2pRenewOrder,
+      outlined: true,
+      busy: _renewing,
+      onPressed: renew,
+    );
+  }
+
+  /// The date and time of [at], in the user's language.
+  static String _date(P2pLocalizations l10n, DateTime at) =>
+      DateFormat.yMMMd(l10n.localeName).add_Hm().format(at.toLocal());
+
+  /// What the one read of an end opened again gave, when it did not show that end as kept (#216, functional review of #220, C1): no answer; an order the coordinator does not know; or an answer otherwise, the state machine's alerts of it first, with the advice given an order made here for any alert, then that the coordinator shows the order otherwise.
+  List<Widget> _endRereadLines(
+    BuildContext context,
+    TradeEndReread reread, {
+    required TradeRecord record,
+    required String date,
+    required String coordinator,
+  }) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    return switch (reread) {
+      // Said by the message itself (« Reading this order again… »).
+      TradeEndReading() => const [],
+      TradeEndNotRead() => [
+        _Line(
+          l10n.p2pTradeEndNotRead(coordinator, date),
+          color: colors.warning,
+        ),
+      ],
+      TradeEndUnknownToCoordinator() => [
+        _Line(
+          l10n.p2pTradeEndUnknown(coordinator, date),
+          color: colors.warning,
+        ),
+      ],
+      // The order possibly still under way at the coordinator, its record closed here (security review of #220, C1): an alert, in the colour of one.
+      TradeEndShownAlive() => [
+        _Line(
+          l10n.p2pTradeEndAlive(coordinator),
+          color: colors.error,
+          icon: Icons.warning_amber,
+          live: true,
+        ),
+      ],
+      // That very end with other terms: said under its panel, whose alert comes first (functional review of #220, R10).
+      TradeEndShownOtherwise(asRead: true) => const [],
+      TradeEndShownOtherwise(:final warnings) => [
+        for (final warning in warnings)
+          _warningLine(context, warning, coordinator),
+        if (record.origin == TradeOrigin.madeHere)
+          _Line(
+            l10n.p2pTradeBreachWhatToDo(coordinator),
+            color: colors.warning,
+            icon: Icons.info_outline,
+          ),
+        _Line(
+          l10n.p2pTradeEndOtherwise(coordinator, date),
+          color: colors.warning,
+        ),
+      ],
+    };
+  }
+
+  /// Under the panel of an end read again with other terms (functional review of #220, R10): the advice given an order made here, then that the coordinator shows the order otherwise; nothing for any other status.
+  List<Widget> _endRereadTail(
+    BuildContext context,
+    TradeScreenState state,
+    String coordinator,
+  ) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    if (state.watch case TradeWatchStatus(
+      endReread: TradeEndShownOtherwise(asRead: true),
+      :final record,
+      :final seen,
+    )) {
+      return [
+        if (record.origin == TradeOrigin.madeHere) ...[
+          const Gap(BullSpacing.sm),
+          _Line(
+            l10n.p2pTradeBreachWhatToDo(coordinator),
+            color: colors.warning,
+            icon: Icons.info_outline,
+          ),
+        ],
+        const Gap(BullSpacing.sm),
+        _Line(
+          l10n.p2pTradeEndOtherwise(
+            coordinator,
+            _date(l10n, record.closedAt ?? seen.status.seenAt),
+          ),
+          color: colors.warning,
+        ),
+      ];
+    }
+    return const [];
+  }
+
+  /// What the records say of the order of [record], where its renewal is offered (#216, #217): the terms kept here, with the day it was made; an order made here after it with the same terms, where this device saw it stand (only what is established, functional review of #220, R1), with a button that opens it; or that the records cannot tell, never « none ».
+  List<Widget> _renewalLines(BuildContext context, TradeRecord record) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    return switch (_renewalsSeen) {
+      null || RenewalsReading() => const [],
+      RenewalsUnknown() => [
+        _Line(l10n.p2pSameTermsUnknown, color: colors.warning),
+      ],
+      RenewalsListed(:final renewals) => [
+        _Line(
+          l10n.p2pTradeKeptTerms(
+            _date(l10n, record.takenAt),
+            renewals.kept.summary(context),
+          ),
+          color: colors.textMuted,
+        ),
+        if (renewals.shown case final shown?) ...[
+          _Line(
+            l10n.p2pSameTermsMade(
+              '${shown.record.orderId}',
+              _standsText(l10n, shown),
+            ),
+            color: colors.warning,
+            icon: Icons.info_outline,
+          ),
+          if (widget.onOpenTrade case final open?)
+            TradeButton(
+              key: const ValueKey('trade-same-terms-open'),
+              label: l10n.p2pSameTermsOpen('${shown.record.orderId}'),
+              outlined: true,
+              onPressed: () => open(shown.record),
+            ),
+        ],
+        if (renewals.pendingSameTerms)
+          _Line(
+            l10n.p2pSameTermsPending,
+            color: colors.warning,
+            icon: Icons.info_outline,
+          ),
+      ],
+    };
   }
 }
 
@@ -524,11 +816,15 @@ class _Message extends StatelessWidget {
   final (ChatStepNotice, ChatStepAction)? notice;
   final String coordinator;
 
+  /// What comes under the text: the renewal of an end shown as the records hold it (#216); `null` for none.
+  final Widget? below;
+
   const _Message({
     required this.text,
     required this.waits,
     this.notice,
     required this.coordinator,
+    this.below,
   });
 
   @override
@@ -554,6 +850,7 @@ class _Message extends StatelessWidget {
             const Gap(BullSpacing.md),
             LinearProgressIndicator(color: colors.primary),
           ],
+          if (below case final below?) ...[const Gap(BullSpacing.md), below],
           if (notice case (final notice, final action)) ...[
             const Gap(BullSpacing.md),
             ChatStepNoticeLine(

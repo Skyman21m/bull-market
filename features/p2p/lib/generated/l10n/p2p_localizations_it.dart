@@ -2409,6 +2409,9 @@ class P2pLocalizationsIt extends P2pLocalizations {
       'Nothing was sent: the order read just now carries the alert shown above.';
 
   @override
+  String get p2pEndNotSent => 'Nothing was sent.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'The trade moved on: your request was not sent.';
 
@@ -3635,6 +3638,112 @@ class P2pLocalizationsIt extends P2pLocalizations {
   @override
   String get p2pRenewNoLongerAsKept =>
       'This order can no longer be renewed as it was: create a new order.';
+
+  @override
+  String p2pTradeKeptTerms(String date, String summary) {
+    return 'Made here on $date, with the terms kept on this device: $summary.';
+  }
+
+  @override
+  String p2pSameTermsMade(String orderId, String stands) {
+    return 'An order with the same terms was made here after this one: order $orderId, $stands.';
+  }
+
+  @override
+  String get p2pSameTermsRunning => 'still running here';
+
+  @override
+  String get p2pSameTermsExpired => 'expired';
+
+  @override
+  String get p2pSameTermsCancelled => 'cancelled';
+
+  @override
+  String get p2pSameTermsCompleted => 'completed';
+
+  @override
+  String get p2pSameTermsEnded => 'ended';
+
+  @override
+  String p2pSameTermsOpen(String orderId) {
+    return 'Open order $orderId';
+  }
+
+  @override
+  String get p2pSameTermsUnknown =>
+      'Bull Market could not read its records to tell whether an order with the same terms was made here since this one.';
+
+  @override
+  String get p2pRenewSameTermsTitle => 'Renew this order?';
+
+  @override
+  String get p2pRenewSameTermsGo => 'Renew anyway';
+
+  @override
+  String p2pTradeEndNotRead(String coordinator, String date) {
+    return 'This order could not be read again from $coordinator: what is shown is what this device kept when it ended, on $date.';
+  }
+
+  @override
+  String p2pTradeEndUnknown(String coordinator, String date) {
+    return '$coordinator answered that it does not know this order: what is shown is what this device kept when it ended, on $date.';
+  }
+
+  @override
+  String p2pTradeEndOtherwise(String coordinator, String date) {
+    return '$coordinator now shows this order otherwise than this device kept it when it ended, on $date.';
+  }
+
+  @override
+  String p2pRenewEndNotConfirmed(String coordinator) {
+    return 'The end of this order was not confirmed by $coordinator.';
+  }
+
+  @override
+  String p2pRenewEndAlive(String coordinator) {
+    return '$coordinator shows this order still running: it may still be taken or need an action from you, and sats may still be locked in it.';
+  }
+
+  @override
+  String p2pRenewEndOtherwise(String coordinator) {
+    return '$coordinator shows this order otherwise than this device kept it.';
+  }
+
+  @override
+  String p2pRenewSameTermsMade(String orderId, String stands) {
+    return 'An order with the same terms was already made here after this one: order $orderId, $stands.';
+  }
+
+  @override
+  String get p2pRenewSameTermsUnknown =>
+      'Bull Market could not check whether an order with the same terms was already made here.';
+
+  @override
+  String get p2pRenewOneMore =>
+      'Renewing makes one more order, under a new robot, with a new bond to pay.';
+
+  @override
+  String get p2pSameTermsPending =>
+      'An order with the same terms is still being created here.';
+
+  @override
+  String p2pTradeEndReading(String coordinator) {
+    return 'Reading this order again from $coordinator…';
+  }
+
+  @override
+  String p2pTradeEndAlive(String coordinator) {
+    return '$coordinator now shows this order as still running: it may still be taken or need an action from you, and sats may still be locked in it. Check it in the official RoboSats app with your Garage Key before you create another.';
+  }
+
+  @override
+  String p2pTradeEndKeptEnded(String date) {
+    return 'This device kept this order as ended on $date.';
+  }
+
+  @override
+  String get p2pRenewUnverified =>
+      'Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».';
 
   @override
   String get p2pMakeSubmit => 'Submit';

@@ -39,11 +39,15 @@ class RobotCoordinatorPanel extends StatefulWidget {
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
 
+  /// The orders the Garage's « Last order #N » lines open (`LastOrderLines`, #216), as (coordinator's short alias, order number): the coordinator's last order of the robot shown is said here only when none of them is it, so that it is said once (functional review of #220, R4, and its verification).
+  final Set<(String, int)> lastOrdersShown;
+
   const RobotCoordinatorPanel({
     super.key,
     required this.nickname,
     required this.network,
     required this.coordinatorDetails,
+    this.lastOrdersShown = const {},
   });
 
   @override
@@ -132,7 +136,11 @@ class _RobotCoordinatorPanelState extends State<RobotCoordinatorPanel> {
                 onSelectHost: _selectHost,
               ),
               RobotOnCoordinator(:final coordinator, :final activity) =>
-                _OnCoordinator(coordinator: coordinator, activity: activity),
+                _OnCoordinator(
+                  coordinator: coordinator,
+                  activity: activity,
+                  lastOrdersShown: widget.lastOrdersShown,
+                ),
               RobotOnOtherNetwork(:final network) => _Line(
                 l10n.p2pRobotOnOtherNetwork(network.name),
               ),
@@ -269,8 +277,13 @@ class _WithoutCoordinator extends StatelessWidget {
 class _OnCoordinator extends StatelessWidget {
   final Coordinator coordinator;
   final RobotActivity activity;
+  final Set<(String, int)> lastOrdersShown;
 
-  const _OnCoordinator({required this.coordinator, required this.activity});
+  const _OnCoordinator({
+    required this.coordinator,
+    required this.activity,
+    required this.lastOrdersShown,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -316,7 +329,19 @@ class _OnCoordinator extends StatelessWidget {
               ),
             ],
           ],
-          RobotKnown(:final face) => [_Known(face: face, name: name)],
+          RobotKnown(:final face) => [
+            _Known(
+              face: face,
+              name: name,
+              lastShownAbove: switch (face.lastOrderId) {
+                final last? => lastOrdersShown.contains((
+                  coordinator.shortAlias,
+                  last,
+                )),
+                null => false,
+              },
+            ),
+          ],
           RobotFailed(:final problem, :final kind) => [
             _Failure(
               message: switch ((problem, kind)) {
@@ -344,7 +369,14 @@ class _Known extends StatelessWidget {
   final RobotOnCoordinatorFace face;
   final String name;
 
-  const _Known({required this.face, required this.name});
+  /// Whether the robot's last order is one a « Last order #N » line above opens: not said again here.
+  final bool lastShownAbove;
+
+  const _Known({
+    required this.face,
+    required this.name,
+    required this.lastShownAbove,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -357,14 +389,16 @@ class _Known extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Line(switch ((active, last)) {
-          (final active?, _) => l10n.p2pRobotActiveOrder('$active'),
-          (null, final last?) => l10n.p2pRobotLastOrder('$last'),
-          (null, null) => l10n.p2pRobotNoOrders,
-        }, live: true),
+        // « Last order #N » said once (functional review of #220, R4, and its verification): not here when a line under the robot navigator opens it (`LastOrderLines`, #216); here, as the coordinator says it, for any other last order, such as a robot of a pasted key whose trade this device does not hold.
+        if (active != null)
+          _Line(l10n.p2pRobotActiveOrder('$active'), live: true)
+        else if (last == null)
+          _Line(l10n.p2pRobotNoOrders, live: true)
+        else if (!lastShownAbove)
+          _Line(l10n.p2pRobotLastOrder('$last'), live: true),
         // As the official client, which counts a last order of unknown status as used: Troc does not read the order yet.
         if (active == null && last != null) ...[
-          const Gap(BullSpacing.sm),
+          if (!lastShownAbove) const Gap(BullSpacing.sm),
           BullInfoBar(
             message: l10n.p2pRobotUsedInTrade,
             icon: Icons.info_outline,

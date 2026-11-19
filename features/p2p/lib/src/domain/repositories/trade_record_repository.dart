@@ -115,4 +115,11 @@ abstract interface class TradeRecordRepository {
   Stream<Result<List<TradeRecord>, P2pFailure>> watchActiveTrades(
     RobosatsNetwork network,
   );
+
+  /// Every trade of [network] that has an order id, active or closed, oldest first: a new list after each write of the records, never a pending make (#216, #217). It reads only: the screens find there the last finished orders and the orders made since one was renewed.
+  ///
+  /// A database that cannot be read, or a row this code never writes, gives a [P2pStorageFailure] in place of the list.
+  Stream<Result<List<TradeRecord>, P2pFailure>> watchTrades(
+    RobosatsNetwork network,
+  );
 }

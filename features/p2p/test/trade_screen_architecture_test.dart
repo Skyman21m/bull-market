@@ -8,7 +8,7 @@ import 'package:test/test.dart';
 /// Who may name what around the trade screens (#88), read from the syntax tree of every Dart file of `features/p2p/lib` (names in code only: comments, doc comments and strings are not code).
 ///
 /// - Only the cancel's confirmation dialog builds the acknowledgement that a cancel loses the bond: `BondLossAcknowledged.fromConfirmationDialog` is named in `lib/src/ui/trade/confirm_cancel_dialog.dart` and in the file that declares it, nowhere else.
-/// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`, the payout and the key's hold by `PayoutCubit` (#91), the chat's read and send by `ChatCubit` (#93); no other file names them but the domain and the locator.
+/// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`, the last finished orders by `LastOrdersCubit` (#216), the payout and the key's hold by `PayoutCubit` (#91), the chat's read and send by `ChatCubit` (#93); no other file names them but the domain and the locator.
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
 /// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message), the chat's actions (« Export », and « Don't trust, verify »: its fields and its « Keys » and « Messages », the token and the encrypted private key among them, as the reference's mobile client) and the end's panel (the transaction id, the payout's address, the trade summary) use the clipboard.
@@ -50,6 +50,11 @@ void main() {
         (
           'ListActiveTradesUsecase',
           'lib/src/presentation/active_trades_cubit.dart',
+        ),
+        // « Last order #N » of the Garage (#216), read by its own cubit.
+        (
+          'ListLastOrdersUsecase',
+          'lib/src/presentation/last_orders_cubit.dart',
         ),
         (
           'FindPublicOrderUsecase',
@@ -449,6 +454,7 @@ const _notForScreens = {
   'WatchTradeUsecase',
   'CancelTradeUsecase',
   'ListActiveTradesUsecase',
+  'ListLastOrdersUsecase',
   'CoordinatorClient',
   'TradeRecordRepository',
   'TradeTrailRepository',

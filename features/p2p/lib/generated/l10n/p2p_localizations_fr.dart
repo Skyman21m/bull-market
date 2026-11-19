@@ -2439,6 +2439,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Rien n’a été envoyé : l’ordre relu à l’instant porte l’alerte affichée ci-dessus.';
 
   @override
+  String get p2pEndNotSent => 'Rien n’a été envoyé.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'L’échange a changé : votre demande n’a pas été envoyée.';
 
@@ -3686,6 +3689,112 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pRenewNoLongerAsKept =>
       'Cet ordre ne peut plus être renouvelé tel quel : créez un nouvel ordre.';
+
+  @override
+  String p2pTradeKeptTerms(String date, String summary) {
+    return 'Créé ici le $date, avec les termes gardés sur cet appareil : $summary.';
+  }
+
+  @override
+  String p2pSameTermsMade(String orderId, String stands) {
+    return 'Un ordre aux mêmes termes a été créé ici après celui-ci : l’ordre $orderId, $stands.';
+  }
+
+  @override
+  String get p2pSameTermsRunning => 'toujours en cours ici';
+
+  @override
+  String get p2pSameTermsExpired => 'expiré';
+
+  @override
+  String get p2pSameTermsCancelled => 'annulé';
+
+  @override
+  String get p2pSameTermsCompleted => 'mené à terme';
+
+  @override
+  String get p2pSameTermsEnded => 'terminé';
+
+  @override
+  String p2pSameTermsOpen(String orderId) {
+    return 'Ouvrir l’ordre $orderId';
+  }
+
+  @override
+  String get p2pSameTermsUnknown =>
+      'Bull Market n’a pas pu lire ses enregistrements pour savoir si un ordre aux mêmes termes a été créé ici depuis celui-ci.';
+
+  @override
+  String get p2pRenewSameTermsTitle => 'Renouveler cet ordre ?';
+
+  @override
+  String get p2pRenewSameTermsGo => 'Renouveler quand même';
+
+  @override
+  String p2pTradeEndNotRead(String coordinator, String date) {
+    return 'Cet ordre n’a pas pu être relu chez $coordinator : ce qui est affiché est ce que cet appareil a gardé à sa fin, le $date.';
+  }
+
+  @override
+  String p2pTradeEndUnknown(String coordinator, String date) {
+    return '$coordinator a répondu qu’il ne connaît pas cet ordre : ce qui est affiché est ce que cet appareil a gardé à sa fin, le $date.';
+  }
+
+  @override
+  String p2pTradeEndOtherwise(String coordinator, String date) {
+    return '$coordinator montre maintenant cet ordre autrement que cet appareil l’a gardé à sa fin, le $date.';
+  }
+
+  @override
+  String p2pRenewEndNotConfirmed(String coordinator) {
+    return 'La fin de cet ordre n’a pas été confirmée par $coordinator.';
+  }
+
+  @override
+  String p2pRenewEndAlive(String coordinator) {
+    return '$coordinator montre cet ordre encore en cours : il peut encore être pris ou demander une action de votre part, et des sats y sont peut-être encore bloqués.';
+  }
+
+  @override
+  String p2pRenewEndOtherwise(String coordinator) {
+    return '$coordinator montre cet ordre autrement que cet appareil l’a gardé.';
+  }
+
+  @override
+  String p2pRenewSameTermsMade(String orderId, String stands) {
+    return 'Un ordre aux mêmes termes a déjà été créé ici après celui-ci : l’ordre $orderId, $stands.';
+  }
+
+  @override
+  String get p2pRenewSameTermsUnknown =>
+      'Bull Market n’a pas pu vérifier si un ordre aux mêmes termes a déjà été créé ici.';
+
+  @override
+  String get p2pRenewOneMore =>
+      'Renouveler crée un ordre de plus, sous un nouveau robot, avec une nouvelle caution à payer.';
+
+  @override
+  String get p2pSameTermsPending =>
+      'Un ordre aux mêmes termes est encore en cours de création ici.';
+
+  @override
+  String p2pTradeEndReading(String coordinator) {
+    return 'Relecture de cet ordre chez $coordinator…';
+  }
+
+  @override
+  String p2pTradeEndAlive(String coordinator) {
+    return '$coordinator montre maintenant cet ordre comme toujours en cours : il peut encore être pris ou demander une action de votre part, et des sats y sont peut-être encore bloqués. Vérifiez-le dans l’application officielle RoboSats avec votre clé de garage avant d’en créer un autre.';
+  }
+
+  @override
+  String p2pTradeEndKeptEnded(String date) {
+    return 'Cet appareil a gardé cet ordre comme terminé le $date.';
+  }
+
+  @override
+  String get p2pRenewUnverified =>
+      'Bull Market n’a pas pu vérifier si ce renouvellement a créé un ordre : plus rien ne peut être envoyé depuis cette page. Revenez en arrière, puis rouvrez l’ordre depuis le Garage ou « Ordre ».';
 
   @override
   String get p2pMakeSubmit => 'Soumettre';

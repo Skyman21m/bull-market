@@ -154,6 +154,194 @@ final class MakeOrderUsecase {
     );
   }
 
+  /// The request this device kept of the order of [record], the orders made here after it with that very request, on its coordinator and network, and whether such a make is still pending (#216, #217): its renewals, or an order made again by hand with the same terms, which this device cannot tell apart and which say the same to the user (an order with these terms already exists). Oldest first: a new list after each write of the records or of the terms, read from the device only, nothing sent.
+  ///
+  /// The reference, which renews with the same robot, has a second renewal refused while the first order is active (`api/logics.py:75-100`, error 1000); here each renewal has a fresh robot, so nothing refuses it, and the trade screen says it instead (never a lock: renewing again stays the user's choice). [Err] when the records cannot be read, or the terms kept of [record] do not restore: whether it was renewed is then not known, never « not renewed ». An order whose own terms do not restore is never counted as one of them.
+  Stream<Result<OrderRenewals, P2pFailure>> renewalsOf(TradeRecord record) {
+    final network = record.network;
+    Result<List<TradeRecord>, P2pFailure>? recorded;
+    Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>? histories;
+    Result<List<PendingMake>, P2pFailure>? pending;
+    final subscriptions = <StreamSubscription<Object?>>[];
+    late final StreamController<Result<OrderRenewals, P2pFailure>> out;
+
+    // Made after [record]: never by the device's clock when both are of the same Garage Key, which may have been set forward or back (security review of #220, C2, N2): a fresh robot of the same key always takes a higher index than every robot used before (`TradeRobots.robotForNewTrade`: the first index neither bound nor recorded, and neither binding nor record is ever deleted); another key's robot, by the time written alone.
+    bool after(RobotSlot robot, DateTime writtenAt) =>
+        robot != record.robot &&
+        (robot.keyFingerprint == record.robot.keyFingerprint
+            ? robot.accountIndex > record.robot.accountIndex
+            : writtenAt.isAfter(record.takenAt));
+
+    void emit() {
+      final (t, h, p) = (recorded, histories, pending);
+      if (t == null || h == null || p == null) return;
+      switch ((t, h, p)) {
+        case (Err(:final failure), _, _) ||
+            (_, Err(:final failure), _) ||
+            (_, _, Err(:final failure)):
+          out.add(Err(failure));
+        case (
+          Ok(value: final list),
+          Ok(value: final made),
+          Ok(value: final makes),
+        ):
+          final kept = record.origin == TradeOrigin.madeHere
+              ? _keptRequest(
+                  made[record.robot],
+                  network: record.network,
+                  alias: record.coordinatorAlias,
+                  role: record.role,
+                )
+              : null;
+          if (kept == null) {
+            out.add(const Err(P2pStorageFailure()));
+            return;
+          }
+          final since = <OrderMadeSince>[];
+          for (final trade in list) {
+            if (trade.origin != TradeOrigin.madeHere ||
+                trade.coordinatorAlias != record.coordinatorAlias ||
+                !after(trade.robot, trade.takenAt)) {
+              continue;
+            }
+            final terms = _keptRequest(
+              made[trade.robot],
+              network: trade.network,
+              alias: trade.coordinatorAlias,
+              role: trade.role,
+            );
+            // Terms of an order made after this one that cannot be read: whether it has the same is not known, never « none » (security review of #220, C3).
+            if (terms == null) {
+              out.add(const Err(P2pStorageFailure()));
+              return;
+            }
+            if (terms != kept) continue;
+            since.add(
+              OrderMadeSince(
+                trade,
+                OrderMadeSince.standsOf(
+                  trade,
+                  TradePosition.values
+                      .where(
+                        (position) =>
+                            position.name == made[trade.robot]?.trail?.position,
+                      )
+                      .firstOrNull,
+                ),
+              ),
+            );
+          }
+          // A make of the same terms whose answer was lost, still pending (security review of #220, R2); one whose terms were never written never left, and is none.
+          var pendingSameTerms = false;
+          for (final make in makes) {
+            if (!make.isActive ||
+                make.coordinatorAlias != record.coordinatorAlias ||
+                !after(make.robot, make.writtenAt) ||
+                made[make.robot] == null) {
+              continue;
+            }
+            final terms = _keptRequest(
+              made[make.robot],
+              network: make.network,
+              alias: make.coordinatorAlias,
+              role: make.role,
+            );
+            if (terms == null) {
+              out.add(const Err(P2pStorageFailure()));
+              return;
+            }
+            if (terms == kept) pendingSameTerms = true;
+          }
+          out.add(
+            Ok(OrderRenewals(kept, since, pendingSameTerms: pendingSameTerms)),
+          );
+      }
+    }
+
+    void failed(Object error, StackTrace stackTrace) {
+      if (error is Exception) {
+        out.add(const Err(P2pStorageFailure()));
+      } else {
+        out.addError(error, stackTrace);
+      }
+    }
+
+    out = StreamController(
+      onListen: () {
+        subscriptions
+          ..add(
+            _records.watchTrades(network).listen((value) {
+              recorded = value;
+              emit();
+            }, onError: failed),
+          )
+          ..add(
+            _trails.watchMadeHistories(network).listen((value) {
+              histories = value;
+              emit();
+            }, onError: failed),
+          )
+          ..add(
+            _records.watchPendingMakes(network).listen((value) {
+              pending = value;
+              emit();
+            }, onError: failed),
+          );
+      },
+      onCancel: () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      },
+    );
+    return out.stream;
+  }
+
+  /// Whether [made], an order a resolution of a pending make confirmed while the page of [renewal] is open, is made with the very request of [renewal], on its coordinator and network (#217, security review of #185, R3): only such an order closes the renewal's page, a make unrelated to it leaving the page as it is. Read from the records only: [Err] when they cannot be read or the order's terms do not restore, so that the page never takes « cannot tell » for « unrelated » (security review of #220, R1, N1).
+  Future<Result<bool, P2pFailure>> madeAsRenewal(
+    TradeRecord made,
+    OrderRenewal renewal,
+  ) async {
+    if (made.origin != TradeOrigin.madeHere ||
+        made.network != renewal.network ||
+        made.coordinatorAlias != renewal.coordinator.shortAlias) {
+      return const Ok(false);
+    }
+    return switch (await _trails.makerTermsOf(made.robot)) {
+      Ok(value: final terms?) => switch (MakerTerms.restore(terms)) {
+        Ok(:final value) => Ok(
+          value.request == renewal.request &&
+              value.coordinator == renewal.coordinator,
+        ),
+        Err() => const Err(P2pStorageFailure()),
+      },
+      Ok() => const Err(P2pStorageFailure()),
+      Err(:final failure) => Err(failure),
+    };
+  }
+
+  /// The request kept in [history], the terms of one make, or `null` when none is stored, they are of another [network], coordinator ([alias]) or side ([role]) than its record's (as [renewal] refuses them), or they do not restore.
+  static MakeOrderRequest? _keptRequest(
+    StoredMadeHistory? history, {
+    required RobosatsNetwork network,
+    required String alias,
+    required TradeRole role,
+  }) {
+    final terms = history?.terms;
+    if (history == null ||
+        history.unreadable ||
+        terms == null ||
+        terms.network != network.name ||
+        terms.coordinatorAlias != alias ||
+        terms.role != role.name) {
+      return null;
+    }
+    return switch (MakerTerms.restore(terms)) {
+      Ok(:final value) => value.request,
+      Err() => null,
+    };
+  }
+
   /// Sets the pending make [make] aside, on the user's request (#182, reviews of #179): a make that does not resolve (its coordinator left the list or moved, its robot unknown to it, an order it names that is not the robot's, an outcome unknown again and again) is closed in the records, so that nothing reads it again; it is never made again in its place.
   ///
   /// Under the lock of the makes, so that it never closes a make a resolution is confirming. [Ok] `true` when it was closed, `false` when the records no longer hold it pending (confirmed or closed since it was listed), nothing written; [Err] when the records could not be read or written. Nothing is sent: an order the make may have made waits at 0 for a bond this app never shows, and the coordinator expires it on its own (300 s by default, `api/logics.py:329-338`).

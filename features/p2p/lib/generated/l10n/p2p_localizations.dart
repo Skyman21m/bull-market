@@ -1703,7 +1703,7 @@ abstract class P2pLocalizations {
   /// **'Active order #{orderId}'**
   String p2pRobotActiveOrder(String orderId);
 
-  /// The last order of the robot, when it has none in progress, as its coordinator says; plain text. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`). {orderId} is the number of the order.
+  /// RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx:226`): « Last order #N » under the robot navigator of the Garage, the last finished order made here or trade taken here, from the records, which a tap opens (#216); the robot panel no longer says it as plain text (functional review of #220, R4). {orderId} is the number of the order.
   ///
   /// In en, this message translates to:
   /// **'Last order #{orderId}'**
@@ -3876,6 +3876,12 @@ abstract class P2pLocalizations {
   /// **'Nothing was sent: the order read just now carries the alert shown above.'**
   String get p2pEndNotSentReadRefused;
 
+  /// Not in the RoboSats texts: the project's own: an action of the chat step pressed while the order read just before it shows no order and carries no alert to point at (an order the coordinator says cancelled, error 1043): only that nothing was sent (security review of #219, R5). With an alert, p2pEndNotSentReadRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent.'**
+  String get p2pEndNotSent;
+
   /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
   ///
   /// In en, this message translates to:
@@ -5737,6 +5743,156 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This order can no longer be renewed as it was: create a new order.'**
   String get p2pRenewNoLongerAsKept;
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered (#216): the day it was made and the terms this device kept of it, what a renewal sends. {summary} is the create form's summary of those terms (p2pMakeBuyBtcFor, the amount, the currency, p2pMakeAtMarketPrice or its siblings).
+  ///
+  /// In en, this message translates to:
+  /// **'Made here on {date}, with the terms kept on this device: {summary}.'**
+  String p2pTradeKeptTerms(String date, String summary);
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, when the records hold an order made here after it with the very terms kept of it, on its coordinator (#217): a renewal, or an order made again by hand, which may since have been cancelled or have expired; only what is established is said (functional review of #220, R1). {orderId} is the newest such order still running here, else the newest; {stands} is p2pSameTermsRunning or one of its siblings.
+  ///
+  /// In en, this message translates to:
+  /// **'An order with the same terms was made here after this one: order {orderId}, {stands}.'**
+  String p2pSameTermsMade(String orderId, String stands);
+
+  /// Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: the record of that order is open on this device.
+  ///
+  /// In en, this message translates to:
+  /// **'still running here'**
+  String get p2pSameTermsRunning;
+
+  /// Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order expire.
+  ///
+  /// In en, this message translates to:
+  /// **'expired'**
+  String get p2pSameTermsExpired;
+
+  /// Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order cancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'cancelled'**
+  String get p2pSameTermsCancelled;
+
+  /// Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order's trade end with success.
+  ///
+  /// In en, this message translates to:
+  /// **'completed'**
+  String get p2pSameTermsCompleted;
+
+  /// Not in the RoboSats texts: the project's own: {stands} of p2pSameTermsMade and p2pRenewSameTermsText: this device saw that order end otherwise.
+  ///
+  /// In en, this message translates to:
+  /// **'ended'**
+  String get p2pSameTermsEnded;
+
+  /// Not in the RoboSats texts: the project's own: the button under p2pSameTermsMade that opens the trade of that order in place of the page (#217).
+  ///
+  /// In en, this message translates to:
+  /// **'Open order {orderId}'**
+  String p2pSameTermsOpen(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, when the records or the terms kept of the order cannot be read (#217): never shown as « none ».
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not read its records to tell whether an order with the same terms was made here since this one.'**
+  String get p2pSameTermsUnknown;
+
+  /// Not in the RoboSats texts: the project's own: the title of the dialog « Renew Order » or « Renew » opens when an order with the same terms was made here after this one (#217); the reference, which renews with the same robot, has the coordinator refuse a second active order (`api/logics.py:75-100`, error 1000).
+  ///
+  /// In en, this message translates to:
+  /// **'Renew this order?'**
+  String get p2pRenewSameTermsTitle;
+
+  /// Not in the RoboSats texts: the project's own: the button of « Renew this order? » that opens the renewal's page (#217); « Go back » opens nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Renew anyway'**
+  String get p2pRenewSameTermsGo;
+
+  /// Not in the RoboSats texts: the project's own: a trade opened again at its end (an expired order, a successful end), whose one read got no answer to tell from: out of reach, a timeout, a transport error, an answer that does not parse (#216, functional review of #220, C1). The status shown is the one the records hold.
+  ///
+  /// In en, this message translates to:
+  /// **'This order could not be read again from {coordinator}: what is shown is what this device kept when it ended, on {date}.'**
+  String p2pTradeEndNotRead(String coordinator, String date);
+
+  /// Not in the RoboSats texts: the project's own: a trade opened again at its end whose one read was answered that the coordinator does not know the order (error 1042, or a 404) (#216, functional review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} answered that it does not know this order: what is shown is what this device kept when it ended, on {date}.'**
+  String p2pTradeEndUnknown(String coordinator, String date);
+
+  /// Not in the RoboSats texts: the project's own: a trade opened again at its end whose one read was answered otherwise than the end kept (another status, cancelled, not available, another order, other terms): said under the state machine's alerts of that answer (#216, functional review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} now shows this order otherwise than this device kept it when it ended, on {date}.'**
+  String p2pTradeEndOtherwise(String coordinator, String date);
+
+  /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again runs, got no answer, or was answered that the order is unknown (security review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'The end of this order was not confirmed by {coordinator}.'**
+  String p2pRenewEndNotConfirmed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again shows the order at a status that is no end (security review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} shows this order still running: it may still be taken or need an action from you, and sats may still be locked in it.'**
+  String p2pRenewEndAlive(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the one read of the end opened again shows another end, or other terms (security review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} shows this order otherwise than this device kept it.'**
+  String p2pRenewEndOtherwise(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? » (#217), as p2pSameTermsMade.
+  ///
+  /// In en, this message translates to:
+  /// **'An order with the same terms was already made here after this one: order {orderId}, {stands}.'**
+  String p2pRenewSameTermsMade(String orderId, String stands);
+
+  /// Not in the RoboSats texts: the project's own: a reason in « Renew this order? »: the records could not tell, or did not answer within 10 seconds (security review of #220, C3, R3).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not check whether an order with the same terms was already made here.'**
+  String get p2pRenewSameTermsUnknown;
+
+  /// Not in the RoboSats texts: the project's own: the last sentence of « Renew this order? », after its reasons (#217).
+  ///
+  /// In en, this message translates to:
+  /// **'Renewing makes one more order, under a new robot, with a new bond to pay.'**
+  String get p2pRenewOneMore;
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, and in « Renew this order? »: a make of the same terms on the same coordinator, made after this order, whose answer was lost, still pending (security review of #220, R2).
+  ///
+  /// In en, this message translates to:
+  /// **'An order with the same terms is still being created here.'**
+  String get p2pSameTermsPending;
+
+  /// Not in the RoboSats texts: the project's own: a trade opened again at its end while its one read runs: the end the records hold is not confirmed yet, so it is not said over (security review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading this order again from {coordinator}…'**
+  String p2pTradeEndReading(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the alert of a trade opened again at its end whose one read shows the order at a status that is no end (0, 1, 2, 3, 6 to 11, 13, 15, 16), while this device's record of it is closed and nothing follows it any more (security review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} now shows this order as still running: it may still be taken or need an action from you, and sats may still be locked in it. Check it in the official RoboSats app with your Garage Key before you create another.'**
+  String p2pTradeEndAlive(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: in place of « This trade is over for this robot. » when the coordinator shows the order still running (p2pTradeEndAlive): where the end shown comes from (security review of #220, C1).
+  ///
+  /// In en, this message translates to:
+  /// **'This device kept this order as ended on {date}.'**
+  String p2pTradeEndKeptEnded(String date);
+
+  /// Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when whether the renewal made an order cannot be told: an order of the network confirmed while the page was open whose terms could not be read, or the page's own make no longer pending (confirmed or closed since) (security review of #220, R1, N1): the page sends nothing more, and says how to go on; « Order » is the tab's entry (p2pNavOrder).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».'**
+  String get p2pRenewUnverified;
 
   /// The official client's label (`basic/MakerPage/index.tsx:145`, `submitButtonLabel`, its key `Submit` in `frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): the button of the create form while orders of the book match the one being made and are not shown (#186); it only shows them.
   ///
