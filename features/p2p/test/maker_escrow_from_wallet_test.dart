@@ -1306,6 +1306,50 @@ void main() {
       );
 
       test(
+        'a wallet id repaired for a contract beyond the first, and a recorded id the wallet replaced by a later attempt (functional verification of #187, N5, N6)',
+        () async {
+          late _KilledAfterWallet killed;
+          final seller = await _Seller.start(
+            payments: (stored) =>
+                killed = _KilledAfterWallet(stored, armed: false),
+          );
+          final first = await seller.pay('swap-e0');
+          await seller.takenAgain();
+          final quote1 = await seller.quoted();
+          final contract1 = await seller.contractOf(quote1);
+          final payment1 = P2pWalletPayment(
+            id: 'swap-e1',
+            paymentHash: quote1.invoice.paymentHash,
+          );
+          seller.fake.scriptPayment(Ok(payment1));
+          killed.armed = true;
+          await expectLater(
+            seller.escrow.payBond(
+              seller.record,
+              accepted: quote1,
+              contract: contract1,
+            ),
+            throwsA(isA<AppKilled>()),
+          );
+          seller.found(payment1, const P2pWalletPaymentPending());
+          // Contract 0's recorded id is not the wallet's latest attempt of its invoice any more.
+          seller.found(
+            P2pWalletPayment(id: 'swap-e0b', paymentHash: first),
+            const P2pWalletPaymentRefundPending(),
+          );
+          await seller.takenAgain(taker: 3);
+          await seller.contractOf(await seller.quoted());
+          expect(
+            [
+              for (final row in await seller.rows())
+                (row.take, row.walletPaymentId),
+            ],
+            [(0, 'swap-e0b'), (1, 'swap-e1')],
+          );
+        },
+      );
+
+      test(
         'a payment hash the trade already holds is refused before the wallet is asked, whatever its contract or step',
         () async {
           final rows = <TradePaymentRecord>[];
