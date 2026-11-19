@@ -24,9 +24,9 @@ void main() {
   });
 
   test(
-    'the bond\'s cubit is given the comparison with the wallet\'s price, the escrow\'s none (#180)',
+    'the bond\'s cubit is given the comparison with the wallet\'s price (#180), the escrow\'s the comparison, its contract and the follow of every escrow (#188)',
     () {
-      // Without it, the maker bond's confirmation would show no comparison and no warning, and no screen test would see it, since they give the cubit their own.
+      // Without them, the maker bond's or a maker seller's escrow's confirmation would show no comparison, no contract and no warning, and no screen test over its own fakes would see it.
       final bond = RegExp(
         r'registerFactoryParam<BondPaymentCubit, TradeRecord, void>\(([\s\S]*?)\}\);',
       ).firstMatch(locator);
@@ -35,7 +35,20 @@ void main() {
       ).firstMatch(locator);
       expect(bond?.group(1), contains('rate: payments.rateOfBond,'));
       expect(escrow?.group(1), isNotNull);
-      expect(escrow?.group(1), isNot(contains('rate:')));
+      expect(escrow?.group(1), contains('rate: payments.rateOfBond,'));
+      expect(
+        escrow?.group(1),
+        contains('contract: payments.escrowContractOf,'),
+      );
+      expect(
+        escrow?.group(1),
+        contains('escrowsFollower: payments.followEscrows,'),
+      );
+      // The escrow's instance of the use case, never the bond's.
+      expect(
+        escrow?.group(1),
+        contains('instanceName: InvoiceStep.escrow.name'),
+      );
     },
   );
 
