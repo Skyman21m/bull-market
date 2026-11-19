@@ -4522,6 +4522,73 @@
   "@p2pMakeWhyRangeInvalid": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 524), with its French (`fr.json`, line 524). Why « Create order » is disabled (`MakerForm.tsx:543-545`, #183)."
   },
+  "p2pMakeRangeMaxBelowMin": "The maximum must be above the minimum.",
+  "@p2pMakeRangeMaxBelowMin": {
+    "description": "Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is below « From »."
+  },
+  "p2pMakeRangeMinAtLeast": "The minimum must be at least {amount} with {coordinator}.",
+  "@p2pMakeRangeMinAtLeast": {
+    "description": "Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « From » is below the smallest amount the form takes for this coordinator, currency and premium; {amount} is that amount with its currency code, {coordinator} the coordinator's name.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRangeMaxAtMost": "The maximum cannot exceed {amount} with {coordinator}.",
+  "@p2pMakeRangeMaxAtMost": {
+    "description": "Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is above the largest amount the form takes for this coordinator, currency and premium (its largest order, or the size limit of a young coordinator); {amount} is that amount with its currency code, {coordinator} the coordinator's name.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRangeMaxAtLeastFor": "For a minimum of {min}, the maximum must be at least {amount}.",
+  "@p2pMakeRangeMaxAtLeastFor": {
+    "description": "Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is less than 1.5 times « From »; {min} is the minimum typed and {amount} the smallest maximum taken beside it, each with the currency code.",
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRangeMaxAtMostFor": "For a minimum of {min}, the maximum cannot exceed {amount}.",
+  "@p2pMakeRangeMaxAtMostFor": {
+    "description": "Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is more than about 15 times « From »; {min} is the minimum typed and {amount} the largest maximum taken beside it, each with the currency code.",
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRangeAdjusted": "Range adjusted to {min}–{max}. {why}",
+  "@p2pMakeRangeAdjusted": {
+    "description": "Not in the RoboSats texts: the project's own (#225). In the range's box, in the colour of a warning, when the form set the range by itself in place of one it refused (a bound typed and its field left, the premium or the coordinator changed): {min} is the new minimum, {max} the new maximum with the currency code, {why} the sentence of the rule the refused range broke (`p2pMakeRangeMinAtLeast` and the others). Shown until the range is changed again.",
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "why": {
+        "type": "String"
+      }
+    }
+  },
   "p2pMakeWhyDescriptionInvalid": "The description is not valid.",
   "@p2pMakeWhyDescriptionInvalid": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 526), with its French (`fr.json`, line 526). Why « Create order » is disabled (`MakerForm.tsx:561-563`, #183)."

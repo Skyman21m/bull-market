@@ -103,6 +103,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   /// « Enable advanced options » and « Amount Range » (`maker.advancedOptions`, `amountRangeEnabled`, `MakerForm.tsx:90`), and the values of the options, the reference's defaults (`models/Maker.model.ts:29-56`).
   bool _advanced = false;
   bool _rangeEnabled = true;
+
+  /// The range the form adjusted by itself and why, shown in the range's box until the range is changed again (#225).
+  _RangeAdjusted? _rangeAdjusted;
+
+  /// Whether « From » or « to » is being typed: nothing adjusts the range meanwhile.
+  bool _rangeFocused = false;
   Duration _publicDuration = MakerFormCheck.publicDurationDefault;
   Duration _escrowDuration = MakerFormCheck.escrowDurationDefault;
   double _bondSize = MakerFormCheck.bondSizeDefault;
@@ -185,28 +191,31 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.dispose();
   }
 
-  MakerFormInput _input(MakeOrderState state) => MakerFormInput(
-    type: _type,
-    currency: state.currency,
-    amount: _amount.text,
-    paymentMethods: _methods,
-    premium: _premium.text,
-    advanced: _advanced,
-    rangeEnabled: _rangeEnabled,
-    minAmount: _minAmount.text,
-    maxAmount: _maxAmount.text,
-    description: _description.text,
-    publicDuration: _publicDuration,
-    escrowDuration: _escrowDuration,
-    bondSizePercent: _bondSize,
-  );
+  MakerFormInput _input(MakeOrderState state, {RobosatsCurrency? currency}) =>
+      MakerFormInput(
+        type: _type,
+        currency: currency ?? state.currency,
+        amount: _amount.text,
+        paymentMethods: _methods,
+        premium: _premium.text,
+        advanced: _advanced,
+        rangeEnabled: _rangeEnabled,
+        minAmount: _minAmount.text,
+        maxAmount: _maxAmount.text,
+        description: _description.text,
+        publicDuration: _publicDuration,
+        escrowDuration: _escrowDuration,
+        bondSizePercent: _bondSize,
+      );
 
-  MakerFormCheck _check(MakeOrderState state) => MakerFormCheck.of(
-    _input(state),
-    coordinatorsLoaded: state.coordinatorsLoaded,
-    market: state.formLimits,
-    sizeLimitSats: state.sizeLimitSats,
-  );
+  /// The form as typed, judged in [currency] when given, else in the currency shown.
+  MakerFormCheck _check(MakeOrderState state, {RobosatsCurrency? currency}) =>
+      MakerFormCheck.of(
+        _input(state, currency: currency),
+        coordinatorsLoaded: state.coordinatorsLoaded,
+        market: state.formLimits,
+        sizeLimitSats: state.sizeLimitSats,
+      );
 
   /// « Existing orders match yours! » (#186): the orders of the book that resemble the form ([MatchingOrders]), never one this device holds a trade of; none for a renewal, without a book, or while the device's trades are not listed (an order of this device could not be told apart).
   List<PublicOrder> _matchesOf(MakeOrderState state, MakerFormCheck check) {
@@ -335,9 +344,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _maxAmount.text = _plain(range.max);
   }
 
-  /// « Enable advanced options » (`handleClickAdvanced`, `MakerForm.tsx:381-387`): closed, the range no longer applies and the other options keep their values, as the reference keeps and sends them; opened, the range set as the reference's `resetRange` sets it (`:394-411`).
+  /// « Enable advanced options » (`handleClickAdvanced`, `MakerForm.tsx:381-387`): closed, the range no longer applies and the other options keep their values, as the reference keeps and sends them; opened, the range set as the reference's `resetRange` sets it (`:394-411`), within the form's own limits so that it is never refused at once (#225).
   void _toggleAdvanced(MakeOrderState state) {
     setState(() {
+      _rangeAdjusted = null;
       if (_advanced) {
         _advanced = false;
         return;
@@ -349,22 +359,69 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           maxDecimals: MakerFormCheck.amountDecimals,
         ).value,
         limit: _limitOf(state, state.currency),
+        limits: _check(state).limits,
       );
       if (range != null) _setRange(range);
     });
     _amountChanged();
   }
 
-  /// « Amount Range » / « Exact Amount » (`handleClickAmountRangeEnabled`, `MakerForm.tsx:413-418`).
-  void _toggleRange(bool range) {
-    setState(() => _rangeEnabled = range);
+  /// A range the form refuses, set to the nearest range it takes, with what was refused and why kept for the notice (#225): the user is never left with a range that blocks « Create order ». [kept] is the bound kept as it is when it can be (the one just typed), the other following; a bound outside the form's limits is held at them ([MakerRange.slid]).
+  ///
+  /// Called when a bound's field is left, when the premium's field is left, when the coordinator's limits change, and when « Amount Range » is turned on: never while a bound is being typed, never for a renewal, whose terms are the order's. Nothing when neither bound is typed, or when the limits leave room for no range (the reason stays shown).
+  void _fitRange(MakeOrderState state, RangeThumb kept) {
+    if (!_advanced ||
+        !_rangeEnabled ||
+        _rangeFocused ||
+        state.locked ||
+        state.renewing) {
+      return;
+    }
+    final check = _check(state);
+    final limits = check.limits;
+    final problem = check.rangeProblem;
+    if (limits == null || problem == null) return;
+    if (check.rangeMin == 0 && check.rangeMax == 0) return;
+    final fitted = MakerRange.slid(
+      moved: kept,
+      next: MakerRange(check.rangeMin, check.rangeMax),
+      limits: limits,
+    );
+    if (MakerRangeProblem.of(fitted.min, fitted.max, limits) != null) return;
+    setState(() {
+      _setRange(fitted);
+      _rangeAdjusted = _RangeAdjusted(fitted, problem);
+    });
     _amountChanged();
+  }
+
+  /// « From » or « to » typed: the notice of an earlier adjustment no longer describes the range.
+  void _rangeTyped() {
+    _rangeAdjusted = null;
+    _amountChanged();
+  }
+
+  /// « From » or « to » entered or left: left, a range the form refuses is adjusted, the bound just typed kept (#225).
+  void _rangeFocus(RangeThumb thumb, bool focused) {
+    _rangeFocused = focused;
+    if (!focused) _fitRange(context.read<MakeOrderCubit>().state, thumb);
+  }
+
+  /// « Amount Range » / « Exact Amount » (`handleClickAmountRangeEnabled`, `MakerForm.tsx:413-418`); a range kept from before that the form no longer takes is adjusted (#225).
+  void _toggleRange(bool range) {
+    setState(() {
+      _rangeEnabled = range;
+      _rangeAdjusted = null;
+    });
+    _amountChanged();
+    if (range) _fitRange(context.read<MakeOrderCubit>().state, RangeThumb.max);
   }
 
   /// A thumb of the range's slider moved (`handleRangeAmountChange`, `AmountRange.tsx:79-117`).
   ///
   /// [previous] is what the slider showed (the bounds typed, held within the form's limits), so that the thumb moved is told from the one that stayed ([MakerRange.movedThumb]).
   void _slide(MakerRange previous, MakerRange next, MakerAmountLimits limits) {
+    _rangeAdjusted = null;
     setState(
       () => _setRange(
         MakerRange.slid(
@@ -415,15 +472,21 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       label: (currency) => currency.code,
     );
     if (currency == null || !mounted) return;
-    // A range out of the new currency's orders set again, as the reference does (`handleCurrencyChange`, `MakerForm.tsx:184-199`).
+    // A range out of the new currency's orders set again, as the reference does (`handleCurrencyChange`, `MakerForm.tsx:184-199`), and never left as one the form refuses in the new currency (#225).
     if (_advanced && _rangeEnabled) {
       final check = _check(state);
       final range = MakerRange.afterCurrency(
         min: check.rangeMin,
         max: check.rangeMax,
         limit: _limitOf(state, currency),
+        limits: _check(state, currency: currency).limits,
       );
-      if (range != null) setState(() => _setRange(range));
+      if (range != null) {
+        setState(() {
+          _setRange(range);
+          _rangeAdjusted = null;
+        });
+      }
     }
     unawaited(context.read<MakeOrderCubit>().showCurrency(currency));
     _amountChanged();
@@ -531,6 +594,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               (current.makes?.isEmpty ?? false),
           listener: (context, _) =>
               context.read<MakeOrderCubit>().pendingCleared(),
+        ),
+        // The coordinator's limits changed (another coordinator, another read): a range the form no longer takes is adjusted (#225).
+        BlocListener<MakeOrderCubit, MakeOrderState>(
+          listenWhen: (previous, current) =>
+              !identical(previous.limits, current.limits) ||
+              previous.sizeLimitSats != current.sizeLimitSats,
+          listener: (_, current) => _fitRange(current, RangeThumb.max),
         ),
         // A renewal's kept terms read: written in the fields (#185).
         BlocListener<MakeOrderCubit, MakeOrderState>(
@@ -681,9 +751,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                               min: _minAmount,
                               max: _maxAmount,
                               check: check,
+                              coordinator: coordinatorName,
+                              adjusted: _rangeAdjusted,
                               currency: state.currency,
                               enabled: !fieldsLocked,
-                              onChanged: _amountChanged,
+                              onChanged: _rangeTyped,
+                              onFocus: _rangeFocus,
                               onCurrency: () =>
                                   unawaited(_chooseCurrency(state)),
                               onSlide: _slide,
@@ -711,11 +784,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           const Gap(BullSpacing.md),
                           const _Location(),
                           const Gap(BullSpacing.md),
-                          _PremiumField(
-                            controller: _premium,
-                            problem: check.premiumProblem,
-                            enabled: !fieldsLocked,
-                            onChanged: () => setState(() {}),
+                          // The premium moves the form's limits: once its field is left, a range the form no longer takes is adjusted (#225).
+                          Focus(
+                            canRequestFocus: false,
+                            skipTraversal: true,
+                            onFocusChange: (focused) {
+                              if (!focused) _fitRange(state, RangeThumb.max);
+                            },
+                            child: _PremiumField(
+                              controller: _premium,
+                              problem: check.premiumProblem,
+                              enabled: !fieldsLocked,
+                              onChanged: () => setState(() {}),
+                            ),
                           ),
                           const Gap(BullSpacing.md),
                           if (_advanced) ...[
@@ -1534,9 +1615,20 @@ class _CreateButton extends StatelessWidget {
       busy: asking || progress is MakeSending,
       onPressed: ready ? onPressed : null,
     );
+    final formats = P2pFormats.of(context);
+    // A range refused says why, as its box does (#225); every other reason in the reference's words.
+    final why = switch ((block, check.rangeProblem)) {
+      (MakerFormBlock.amountRangeInvalid, final problem?) => problem.toText(
+        context,
+        coordinator: coordinator,
+        amountOf: (amount) =>
+            '${formats.typedNumber(amount)} ${state.currency.code}',
+      ),
+      (final block?, _) => block.toText(context),
+      (null, _) => null,
+    };
     final lines = <Widget>[
-      if (block != null && progress is MakeIdle)
-        _Line(block.toText(context), live: true),
+      if (why != null && progress is MakeIdle) _Line(why, live: true),
       if (block == null && renewalMismatch && progress is MakeIdle)
         _Line(l10n.p2pRenewNotAsKept, color: colors.warning, live: true),
       // A renewal the form or the make refuses for its kept terms, which cannot be changed here: what to do (functional review of #185, R3).
@@ -1592,10 +1684,10 @@ class _CreateButton extends StatelessWidget {
           live: true,
         ),
     ];
-    final shown = block == null
+    final shown = why == null
         ? button
         : Tooltip(
-            message: block.toText(context),
+            message: why,
             triggerMode: TooltipTriggerMode.tap,
             child: button,
           );
@@ -1935,10 +2027,28 @@ class _RangeSwitch extends StatelessWidget {
 }
 
 /// The range (`AmountRange.tsx`): « From » … « to » and the currency, then the reference's slider over the form's limits (continuous here), its two ends marked with them (3 significant digits), each thumb's value shown as it moves (2 significant digits below 100, 3 from 100).
+/// A range the form set by itself in place of one it refused (#225): the range written, and the rule the refused one broke.
+@immutable
+class _RangeAdjusted {
+  final MakerRange range;
+  final MakerRangeProblem why;
+
+  const _RangeAdjusted(this.range, this.why);
+}
+
 class _AmountRange extends StatelessWidget {
   final TextEditingController min;
   final TextEditingController max;
   final MakerFormCheck check;
+
+  /// The coordinator's name, for the reason of a range refused (#225).
+  final String coordinator;
+
+  /// The range the form adjusted by itself, and why (#225).
+  final _RangeAdjusted? adjusted;
+
+  /// « From » ([RangeThumb.min]) or « to » entered or left.
+  final void Function(RangeThumb thumb, bool focused) onFocus;
   final RobosatsCurrency currency;
   final bool enabled;
   final VoidCallback onChanged;
@@ -1954,6 +2064,9 @@ class _AmountRange extends StatelessWidget {
     required this.min,
     required this.max,
     required this.check,
+    required this.coordinator,
+    required this.adjusted,
+    required this.onFocus,
     required this.currency,
     required this.enabled,
     required this.onChanged,
@@ -1972,6 +2085,26 @@ class _AmountRange extends StatelessWidget {
     String bound(double value, int digits) =>
         '${formats.typedNumber(significant(value, digits))} $code';
     final label = text.labelLarge?.copyWith(color: colors.textMuted);
+    // Why the range typed is refused, with the bound the form takes, where the fields are (#225): the reference only draws the field at fault in red.
+    String amountOf(double amount) => '${formats.typedNumber(amount)} $code';
+    final problem = check.rangeProblem?.toText(
+      context,
+      coordinator: coordinator,
+      amountOf: amountOf,
+    );
+    // The range the form set by itself, and the rule the one before it broke: said until the range is changed again.
+    final notice = switch (adjusted) {
+      final adjusted? when problem == null => l10n.p2pMakeRangeAdjusted(
+        formats.typedNumber(adjusted.range.min),
+        amountOf(adjusted.range.max),
+        adjusted.why.toText(
+          context,
+          coordinator: coordinator,
+          amountOf: amountOf,
+        ),
+      ),
+      _ => null,
+    };
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
@@ -1988,24 +2121,36 @@ class _AmountRange extends StatelessWidget {
                 ExcludeSemantics(child: Text(l10n.p2pMakeFrom, style: label)),
                 const Gap(BullSpacing.xs),
                 Expanded(
-                  child: _RangeField(
-                    label: l10n.p2pMakeFrom,
-                    controller: min,
-                    error: check.rangeMinError,
-                    enabled: enabled,
-                    onChanged: onChanged,
+                  child: Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onFocusChange: (focused) =>
+                        onFocus(RangeThumb.min, focused),
+                    child: _RangeField(
+                      label: l10n.p2pMakeFrom,
+                      controller: min,
+                      error: check.rangeMinError,
+                      enabled: enabled,
+                      onChanged: onChanged,
+                    ),
                   ),
                 ),
                 const Gap(BullSpacing.xs),
                 ExcludeSemantics(child: Text(l10n.p2pMakeTo, style: label)),
                 const Gap(BullSpacing.xs),
                 Expanded(
-                  child: _RangeField(
-                    label: l10n.p2pMakeTo,
-                    controller: max,
-                    error: check.rangeMaxError,
-                    enabled: enabled,
-                    onChanged: onChanged,
+                  child: Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onFocusChange: (focused) =>
+                        onFocus(RangeThumb.max, focused),
+                    child: _RangeField(
+                      label: l10n.p2pMakeTo,
+                      controller: max,
+                      error: check.rangeMaxError,
+                      enabled: enabled,
+                      onChanged: onChanged,
+                    ),
                   ),
                 ),
                 const Gap(BullSpacing.xs),
@@ -2016,6 +2161,14 @@ class _AmountRange extends StatelessWidget {
                 ),
               ],
             ),
+            if (problem != null) ...[
+              const Gap(BullSpacing.xs),
+              _Alert(problem, colors.error),
+            ],
+            if (notice != null) ...[
+              const Gap(BullSpacing.xs),
+              _Alert(notice, colors.warning),
+            ],
             if (limits != null && limits.max > limits.min) ...[
               const Gap(BullSpacing.xs),
               Builder(

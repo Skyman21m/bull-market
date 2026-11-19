@@ -3182,6 +3182,35 @@ class P2pLocalizationsCs extends P2pLocalizations {
   String get p2pMakeWhyRangeInvalid => 'The amount range is not valid.';
 
   @override
+  String get p2pMakeRangeMaxBelowMin =>
+      'The maximum must be above the minimum.';
+
+  @override
+  String p2pMakeRangeMinAtLeast(String amount, String coordinator) {
+    return 'The minimum must be at least $amount with $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMost(String amount, String coordinator) {
+    return 'The maximum cannot exceed $amount with $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtLeastFor(String min, String amount) {
+    return 'For a minimum of $min, the maximum must be at least $amount.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMostFor(String min, String amount) {
+    return 'For a minimum of $min, the maximum cannot exceed $amount.';
+  }
+
+  @override
+  String p2pMakeRangeAdjusted(String min, String max, String why) {
+    return 'Range adjusted to $min–$max. $why';
+  }
+
+  @override
   String get p2pMakeWhyDescriptionInvalid => 'The description is not valid.';
 
   @override

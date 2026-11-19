@@ -3229,6 +3229,35 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pMakeWhyRangeInvalid => 'La plage de montant n’est pas valide.';
 
   @override
+  String get p2pMakeRangeMaxBelowMin =>
+      'Le maximum doit être supérieur au minimum.';
+
+  @override
+  String p2pMakeRangeMinAtLeast(String amount, String coordinator) {
+    return 'Le minimum doit être d’au moins $amount chez $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMost(String amount, String coordinator) {
+    return 'Le maximum ne peut pas dépasser $amount chez $coordinator.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtLeastFor(String min, String amount) {
+    return 'Pour un minimum de $min, le maximum doit être d’au moins $amount.';
+  }
+
+  @override
+  String p2pMakeRangeMaxAtMostFor(String min, String amount) {
+    return 'Pour un minimum de $min, le maximum ne peut pas dépasser $amount.';
+  }
+
+  @override
+  String p2pMakeRangeAdjusted(String min, String max, String why) {
+    return 'Plage ajustée à $min–$max. $why';
+  }
+
+  @override
   String get p2pMakeWhyDescriptionInvalid => 'La description n’est pas valide.';
 
   @override

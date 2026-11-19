@@ -1636,18 +1636,228 @@ void main() {
       },
     );
 
+    /// The texts on screen that start with [start].
+    Finder startingWith(String start) => find.byWidgetPredicate(
+      (widget) => widget is Text && (widget.data ?? '').startsWith(start),
+    );
+
+    /// The field being typed is left, as with the keyboard's « Done ».
+    Future<void> leaveField(WidgetTester tester) async {
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settle(tester);
+    }
+
+    String textOf(WidgetTester tester, Finder field) =>
+        tester.widget<TextField>(field).controller?.text ?? '';
+
     testWidgets(
-      'a range out of the form\'s rules: the fields in error and the reference\'s reason',
+      'a bound typed out of the form\'s rules: nothing moves while it is typed, the fields in error and why with the bound the form takes, in the range\'s box and under the button (#225)',
+      (tester) async {
+        await _show(tester, _Form());
+        await _fill(tester);
+        await _open(tester);
+        // 50 to 100 filled in. A minimum of 90: the maximum is less than 1.5 times it.
+        await tester.enterText(_minField, '90');
+        await settle(tester);
+        expect(
+          find.text(
+            'For a minimum of 90 EUR, the maximum must be at least 135 EUR.',
+          ),
+          findsNWidgets(2),
+        );
+        // Never the reference's one sentence for every error of a range.
+        expect(find.text('The amount range is not valid.'), findsNothing);
+        expect(textOf(tester, _minField), '90');
+        expect(textOf(tester, _maxField), '100');
+        expect(_createEnabled(tester), isFalse);
+        // Typed on to a minimum the form takes beside 100: no reason left, nothing adjusted.
+        await tester.enterText(_minField, '62.5');
+        await settle(tester);
+        expect(_createEnabled(tester), isTrue);
+        expect(startingWith('For a minimum of '), findsNothing);
+        expect(startingWith('Range adjusted'), findsNothing);
+        await leaveField(tester);
+        expect(textOf(tester, _minField), '62.5');
+        expect(textOf(tester, _maxField), '100');
+        expect(startingWith('Range adjusted'), findsNothing);
+        // « to » below « From », then more than about 15 times it: each said while typed.
+        await tester.enterText(_maxField, '60');
+        await settle(tester);
+        expect(
+          find.text('The maximum must be above the minimum.'),
+          findsNWidgets(2),
+        );
+        await tester.enterText(_maxField, '940');
+        await settle(tester);
+        expect(
+          find.text(
+            'For a minimum of 62.5 EUR, the maximum cannot exceed 934 EUR.',
+          ),
+          findsNWidgets(2),
+        );
+        expect(_createEnabled(tester), isFalse);
+      },
+    );
+
+    testWidgets(
+      'a bound typed out of the form\'s rules, its field left: the range adjusts itself to the nearest one the form takes, the bound typed kept, with a notice of what was refused; the order can be created (#225)',
       (tester) async {
         await _show(tester, _Form());
         await _fill(tester);
         await _open(tester);
         await tester.enterText(_minField, '90');
         await settle(tester);
-        expect(find.text('The amount range is not valid.'), findsWidgets);
         expect(_createEnabled(tester), isFalse);
-        await tester.enterText(_minField, '62.5');
+        await leaveField(tester);
+        // The minimum typed is kept, the maximum follows at 1.6 times it.
+        expect(textOf(tester, _minField), '90');
+        expect(textOf(tester, _maxField), '144');
+        expect(
+          find.text(
+            'Range adjusted to 90–144 EUR. For a minimum of 90 EUR, the maximum must be at least 135 EUR.',
+          ),
+          findsOneWidget,
+        );
+        // The reason alone is gone, in the box and under the button: nothing blocks.
+        expect(startingWith('For a minimum of '), findsNothing);
+        expect(_createEnabled(tester), isTrue);
+        expect(
+          find.text('Buy BTC for 90-144 EUR at a 2% premium'),
+          findsOneWidget,
+        );
+        // A maximum above the coordinator's largest order: said while typed, with whose limit it is, then held at the largest the form takes.
+        await tester.enterText(_maxField, '1000000');
         await settle(tester);
+        final tooBig = find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              (widget.data ?? '').startsWith('The maximum cannot exceed ') &&
+              (widget.data ?? '').endsWith(' EUR with Temple of Sats.'),
+        );
+        expect(tooBig, findsNWidgets(2));
+        // Typing a bound again takes the earlier notice away.
+        expect(startingWith('Range adjusted'), findsNothing);
+        await leaveField(tester);
+        expect(tooBig, findsNothing);
+        expect(startingWith('Range adjusted to '), findsOneWidget);
+        expect(double.parse(textOf(tester, _maxField)), lessThan(5000));
+        expect(double.parse(textOf(tester, _maxField)), greaterThan(4000));
+        expect(_createEnabled(tester), isTrue);
+        // The slider moved: the notice no longer describes the range.
+        await tester.ensureVisible(find.byType(RangeSlider));
+        await tester.pump();
+        final slider = tester.getRect(find.byType(RangeSlider));
+        await tester.dragFrom(
+          Offset(slider.right - 24, slider.center.dy),
+          const Offset(-80, 0),
+        );
+        await settle(tester);
+        expect(startingWith('Range adjusted'), findsNothing);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'the premium changed so that the form no longer takes the range: said while the premium is typed, adjusted with a notice once its field is left (#225)',
+      (tester) async {
+        // 150 to 4,000 EUR: 1,000 to 3,000 filled in at 2 %; at -30 % the form's largest amount is 4,000 × 0.7 × 0.98 = 2,744.
+        final form = _Form()
+          ..limits = await tester.runAsync(
+            () => limitsOf({2: (91711.15, 150, 4000)}),
+          );
+        await _show(tester, form);
+        await tester.tap(find.text('Buy'));
+        await _addMethod(tester, 'Revolut');
+        await tester.enterText(_premiumField, '2');
+        await settle(tester);
+        await _open(tester);
+        expect(textOf(tester, _minField), '1000');
+        expect(textOf(tester, _maxField), '3000');
+        expect(_createEnabled(tester), isTrue);
+        // The premium is the third field once the range is shown.
+        final premium = find.byType(TextField).at(2);
+        await tester.enterText(premium, '-30');
+        await settle(tester);
+        expect(textOf(tester, _maxField), '3000');
+        expect(startingWith('The maximum cannot exceed '), findsNWidgets(2));
+        expect(_createEnabled(tester), isFalse);
+        await leaveField(tester);
+        expect(textOf(tester, _minField), '1000');
+        expect(textOf(tester, _maxField), '2740');
+        expect(
+          startingWith('Range adjusted to 1,000–2,740 EUR. '),
+          findsOneWidget,
+        );
+        expect(startingWith('The maximum cannot exceed '), findsNothing);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'the coordinator\'s limits changed so that the form no longer takes the range: adjusted at once with a notice, nothing being typed (#225)',
+      (tester) async {
+        final form = _Form()
+          ..limits = await tester.runAsync(
+            () => limitsOf({2: (91711.15, 150, 4000)}),
+          );
+        await _show(tester, form);
+        await tester.tap(find.text('Buy'));
+        await _addMethod(tester, 'Revolut');
+        await tester.enterText(_premiumField, '2');
+        await settle(tester);
+        await _open(tester);
+        expect(textOf(tester, _maxField), '3000');
+        // The coordinator chosen again answers a largest order of 2,000 EUR: at 2 % the form's largest amount is 2,000 × 1.02 × 0.98 = 1,999.2.
+        form.limits = await tester.runAsync(
+          () => limitsOf({2: (91711.15, 150, 2000)}),
+        );
+        await tester.ensureVisible(find.text('Temple of Sats'));
+        await tester.pump();
+        await tester.tap(find.text('Temple of Sats'));
+        await settle(tester);
+        await tester.tap(find.text('Temple of Sats').last);
+        await settle(tester);
+        expect(textOf(tester, _minField), '1000');
+        expect(textOf(tester, _maxField), '2000');
+        expect(
+          startingWith('Range adjusted to 1,000–2,000 EUR. '),
+          findsOneWidget,
+        );
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'opened with a discount that puts the reference\'s range above the form\'s largest amount: the range filled in is one the form takes, the order can be created at once (#225)',
+      (tester) async {
+        // 150 to 4,000 EUR: the reference fills in 1,000 to 3,000, and at -30 % the form's largest amount is 4,000 × 0.7 × 0.98 = 2,744.
+        final form = _Form()
+          ..limits = await tester.runAsync(
+            () => limitsOf({2: (91711.15, 150, 4000)}),
+          );
+        await _show(tester, form);
+        await tester.tap(find.text('Buy'));
+        await _addMethod(tester, 'Revolut');
+        await tester.enterText(_premiumField, '-30');
+        await settle(tester);
+        await _open(tester);
+        // A quarter and three quarters of 2,744, each to 2 significant digits.
+        expect(tester.widget<TextField>(_minField).controller?.text, '690');
+        expect(tester.widget<TextField>(_maxField).controller?.text, '2100');
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                (widget.data ?? '').startsWith('The maximum cannot exceed '),
+          ),
+          findsNothing,
+        );
+        expect(_createEnabled(tester), isTrue);
+        // Closed and opened again: the same range, still taken.
+        await _open(tester);
+        await _open(tester);
+        expect(tester.widget<TextField>(_minField).controller?.text, '690');
+        expect(tester.widget<TextField>(_maxField).controller?.text, '2100');
         expect(_createEnabled(tester), isTrue);
       },
     );
@@ -1671,10 +1881,11 @@ void main() {
         await _show(tester, form);
         await _fill(tester);
         await _open(tester);
-        await tester.enterText(_minField, '15');
+        // 19.5 EUR is above the form's smallest amount in EUR, and below the smallest order in USD: left as typed when its field is left, set again by the change of currency.
+        await tester.enterText(_minField, '19.5');
         await settle(tester);
         final expected = MakerRange.afterCurrency(
-          min: 15,
+          min: 19.5,
           max: 100,
           limit: _limits[usd],
         );

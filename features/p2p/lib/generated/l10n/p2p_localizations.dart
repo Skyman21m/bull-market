@@ -5106,6 +5106,42 @@ abstract class P2pLocalizations {
   /// **'The amount range is not valid.'**
   String get p2pMakeWhyRangeInvalid;
 
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is below « From ».
+  ///
+  /// In en, this message translates to:
+  /// **'The maximum must be above the minimum.'**
+  String get p2pMakeRangeMaxBelowMin;
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « From » is below the smallest amount the form takes for this coordinator, currency and premium; {amount} is that amount with its currency code, {coordinator} the coordinator's name.
+  ///
+  /// In en, this message translates to:
+  /// **'The minimum must be at least {amount} with {coordinator}.'**
+  String p2pMakeRangeMinAtLeast(String amount, String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is above the largest amount the form takes for this coordinator, currency and premium (its largest order, or the size limit of a young coordinator); {amount} is that amount with its currency code, {coordinator} the coordinator's name.
+  ///
+  /// In en, this message translates to:
+  /// **'The maximum cannot exceed {amount} with {coordinator}.'**
+  String p2pMakeRangeMaxAtMost(String amount, String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is less than 1.5 times « From »; {min} is the minimum typed and {amount} the smallest maximum taken beside it, each with the currency code.
+  ///
+  /// In en, this message translates to:
+  /// **'For a minimum of {min}, the maximum must be at least {amount}.'**
+  String p2pMakeRangeMaxAtLeastFor(String min, String amount);
+
+  /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « to » is more than about 15 times « From »; {min} is the minimum typed and {amount} the largest maximum taken beside it, each with the currency code.
+  ///
+  /// In en, this message translates to:
+  /// **'For a minimum of {min}, the maximum cannot exceed {amount}.'**
+  String p2pMakeRangeMaxAtMostFor(String min, String amount);
+
+  /// Not in the RoboSats texts: the project's own (#225). In the range's box, in the colour of a warning, when the form set the range by itself in place of one it refused (a bound typed and its field left, the premium or the coordinator changed): {min} is the new minimum, {max} the new maximum with the currency code, {why} the sentence of the rule the refused range broke (`p2pMakeRangeMinAtLeast` and the others). Shown until the range is changed again.
+  ///
+  /// In en, this message translates to:
+  /// **'Range adjusted to {min}–{max}. {why}'**
+  String p2pMakeRangeAdjusted(String min, String max, String why);
+
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 526), with its French (`fr.json`, line 526). Why « Create order » is disabled (`MakerForm.tsx:561-563`, #183).
   ///
   /// In en, this message translates to:

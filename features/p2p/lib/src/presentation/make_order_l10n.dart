@@ -10,6 +10,32 @@ import '../domain/trade/trade_renewal.dart';
 import 'make_order_cubit.dart';
 import 'p2p_failure_l10n.dart';
 
+/// Why the form refuses the range typed, with the bound it takes (#225): the app's own words, [amountOf] writing an amount with its currency.
+extension MakerRangeProblemL10n on MakerRangeProblem {
+  String toText(
+    BuildContext context, {
+    required String coordinator,
+    required String Function(double amount) amountOf,
+  }) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      MakerRangeMaxBelowMin() => l10n.p2pMakeRangeMaxBelowMin,
+      MakerRangeMinTooSmall(:final atLeast) => l10n.p2pMakeRangeMinAtLeast(
+        amountOf(atLeast),
+        coordinator,
+      ),
+      MakerRangeMaxTooBig(:final atMost) => l10n.p2pMakeRangeMaxAtMost(
+        amountOf(atMost),
+        coordinator,
+      ),
+      MakerRangeTooNarrow(:final min, :final atLeast) =>
+        l10n.p2pMakeRangeMaxAtLeastFor(amountOf(min), amountOf(atLeast)),
+      MakerRangeTooWide(:final min, :final atMost) =>
+        l10n.p2pMakeRangeMaxAtMostFor(amountOf(min), amountOf(atMost)),
+    };
+  }
+}
+
 /// Why « Create order » is disabled, in the reference's words (`MakerForm.tsx:517-565`), or the app's for « Sell ».
 extension MakerFormBlockL10n on MakerFormBlock {
   String toText(BuildContext context) {
