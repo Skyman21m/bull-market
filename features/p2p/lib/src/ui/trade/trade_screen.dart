@@ -1145,7 +1145,7 @@ class _Contract extends StatelessWidget {
     _ => null,
   };
 
-  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer; the gap and the amount computed from the order the screen shows now ([_shownNow]), so that the dialog never keeps a gap line the screen no longer shows (#209).
+  /// The lines « Confirm … sent » says for a maker buyer (#182): the rule's, and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer; the gap computed from the order the screen shows now ([_shownNow]), so that the dialog never keeps a gap line the screen no longer shows (#209). The rule's lines name the contract's amount of the order shown now too, the one the rule compares (a next contract's for a range), or the press's while the order shown names none (an amount moved, the rule then about to compare nothing).
   List<TradeDialogLine> _dialogLines(
     BuildContext context,
     PayoutRateState? now,
@@ -1153,13 +1153,19 @@ class _Contract extends StatelessWidget {
     final state = _ruleOf(now);
     final shown = _shownNow;
     final gap = shown == null ? null : _gapOf(context, shown);
+    final amount = switch (shown) {
+      final seen? => PayoutRateLines.amountOf(context, seen),
+      null => '',
+    };
     return [
       if (state != null)
         ...PayoutRateLines.dialogLinesOf(
           context,
           state,
           coordinator: coordinator,
-          amount: PayoutRateLines.amountOf(context, shown ?? contract.seen),
+          amount: amount.isEmpty
+              ? PayoutRateLines.amountOf(context, contract.seen)
+              : amount,
         ),
       if (gap != null && !PayoutRateLines.hidesGap(state))
         (
