@@ -8,6 +8,7 @@ import 'package:screen_privacy/screen_privacy.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/network_garage_key.dart';
 import '../../domain/p2p_failure.dart';
+import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
@@ -41,6 +42,9 @@ class GarageView extends StatefulWidget {
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
 
+  /// Opens the trade of « Last order #N » on the profile (#216), with a `LastOrdersCubit` above the Garage; `null` where the feature holds no trades, and the profile shows no such line.
+  final ValueChanged<TradeRecord>? onOpenTrade;
+
   const GarageView({
     super.key,
     required this.clipboard,
@@ -48,6 +52,7 @@ class GarageView extends StatefulWidget {
     required this.onBrowseOffers,
     required this.robotCoordinator,
     required this.coordinatorDetails,
+    this.onOpenTrade,
   });
 
   @override
@@ -119,6 +124,7 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
         reauthenticate: widget.reauthenticate,
         robotCoordinator: widget.robotCoordinator,
         coordinatorDetails: widget.coordinatorDetails,
+        onOpenTrade: widget.onOpenTrade,
       ),
       GarageWithoutKey() ||
       GarageWorking() when step != null => _wizard(state, step),

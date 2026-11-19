@@ -105,6 +105,9 @@ final class TradeWatchStatus extends TradeWatchState {
   /// Whether the trade is a take whose answer was lost, and no read has shown yet whether it happened: the reads go on until one shows this robot as the taker, or brings the take to an end ([TradeWatchTakeNotMade]).
   final bool takePending;
 
+  /// Whether the one read of an end that the screen asks when it opens a trade ended at 5 or 14 (#95, #216) gave nothing to show: no answer, an order the coordinator no longer knows, or one no longer at that end. [seen] is then the end the records hold, and the screen says that the order could not be read again, never as if it had been (#216).
+  final bool endNotReadAgain;
+
   const TradeWatchStatus(
     this.record,
     this.seen, {
@@ -112,6 +115,7 @@ final class TradeWatchStatus extends TradeWatchState {
     this.lastReadFailure,
     this.recordProblem,
     required this.takePending,
+    this.endNotReadAgain = false,
   });
 
   /// Whether [seen]'s status is the one this read stored ([TradeSeen.stored]): show an invoice, or offer a payment, only when it is.
@@ -119,7 +123,7 @@ final class TradeWatchStatus extends TradeWatchState {
 
   @override
   String toString() =>
-      'TradeWatchStatus($record, ${seen.status}, stored: $stored, failed: $failedReads, problem: ${recordProblem?.runtimeType}, pending: $takePending)';
+      'TradeWatchStatus($record, ${seen.status}, stored: $stored, failed: $failedReads, problem: ${recordProblem?.runtimeType}, pending: $takePending, endNotReadAgain: $endNotReadAgain)';
 }
 
 /// The trade's stored records cannot be restored: shown read-only with [reason], never resumed, and nothing is sent ([TradeRecordMalformed], [TradeRecordOfAnotherTrade], or [TradeCoordinatorGone] for a coordinator that left the federation list).

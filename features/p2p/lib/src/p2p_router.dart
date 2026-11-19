@@ -20,12 +20,14 @@ import 'presentation/chat_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/host_rating_cubit.dart';
+import 'presentation/last_orders_cubit.dart';
 import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
 import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
+import 'presentation/renewals_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
@@ -205,6 +207,16 @@ final class P2pRouter {
     final checksPayoutRate =
         P2pLocator.paysBondFromWallet(locator) &&
         locator.isRegistered<PayoutRateCubit>();
+    // « Renew Order » and « Renew » (#185), where the feature can make an order; with them, what the records say of the order's renewals (#217), for an order made here.
+    final renews =
+        locator.isRegistered<MakeOrderCubit>(
+          instanceName: MakeOrderCubit.renewalInstance,
+        ) &&
+        locator.isRegistered<PendingMakesCubit>();
+    final readsRenewals =
+        renews &&
+        args.record.origin == TradeOrigin.madeHere &&
+        locator.isRegistered<RenewalsCubit>();
     return MultiBlocProvider(
       providers: [
         // The wallet's payment of the bond (#100), only where the wallet's port was lent: without it the screen is as before, « Pay with another wallet » alone.
@@ -246,6 +258,11 @@ final class P2pRouter {
         if (hostRatings)
           BlocProvider(
             create: (_) => locator<HostRatingCubit>(param1: args.record),
+          ),
+        // The terms kept of an order made here and the orders made since with them (#216, #217), read from the device for the page's life.
+        if (readsRenewals)
+          BlocProvider(
+            create: (_) => locator<RenewalsCubit>(param1: args.record)..start(),
           ),
       ],
       child: Builder(
@@ -311,12 +328,18 @@ final class P2pRouter {
             book: args.book,
             checksPayoutRate: checksPayoutRate,
             // « Renew Order » and « Renew » (#185): the renewal's page above the trade, where the feature can make an order; the Garage, when that page is left for it, through this page.
-            onRenew:
-                locator.isRegistered<MakeOrderCubit>(
-                      instanceName: MakeOrderCubit.renewalInstance,
-                    ) &&
-                    locator.isRegistered<PendingMakesCubit>()
+            onRenew: renews
                 ? (record) => openRenewal(context, record, book: args.book)
+                : null,
+            // An order already made since with the terms of this one (#217): said, and opened in place of this page, as a renewal made opens its new trade.
+            renewals: readsRenewals
+                ? (context) => context.watch<RenewalsCubit>().state
+                : null,
+            onOpenTrade: readsRenewals
+                ? (record) => context.pushReplacementNamed(
+                    tradeName,
+                    extra: P2pTradeRouteArgs(record, book: args.book),
+                  )
                 : null,
           ),
         ),
@@ -645,6 +668,8 @@ class _P2pPageState extends State<_P2pPage> {
     final hasTrades = locator.isRegistered<ActiveTradesCubit>();
     // Registered with the trades: the feature can make an order (#182).
     final makes = hasTrades && locator.isRegistered<PendingMakesCubit>();
+    // Registered with the trades: « Last order #N » in the Garage (#216).
+    final lastOrders = hasTrades && locator.isRegistered<LastOrdersCubit>();
     Widget tab(
       BuildContext context, {
       ActiveTradesState? active,
@@ -663,11 +688,8 @@ class _P2pPageState extends State<_P2pPage> {
       onCreate: onCreate,
       waitingForTrades: _waitingForTrades,
       garage: hasGarage
-          ? (context) => BlocProvider(
-              // A new Garage for each network, which reads the key of that network only when it is shown.
-              key: ValueKey(current),
-              create: (_) => locator<GarageCubit>(param1: current)..load(),
-              child: GarageView(
+          ? (context) {
+              final view = GarageView(
                 clipboard: locator<GarageKeyClipboard>(),
                 reauthenticate: widget.reauthenticate,
                 onBrowseOffers: () => _show(P2pDestination.offers),
@@ -675,8 +697,26 @@ class _P2pPageState extends State<_P2pPage> {
                     locator<RobotCoordinatorCubit>(param1: key, param2: index),
                 coordinatorDetails: (request) =>
                     locator<CoordinatorDetailsCubit>(param1: request),
-              ),
-            )
+                // « Last order #N » (#216): the trade of the last finished orders, opened above the tab as from « Active trades ».
+                onOpenTrade: lastOrders
+                    ? (record) => unawaited(_openTrade(context, record))
+                    : null,
+              );
+              return BlocProvider(
+                // A new Garage for each network, which reads the key of that network only when it is shown.
+                key: ValueKey(current),
+                create: (_) => locator<GarageCubit>(param1: current)..load(),
+                child: lastOrders
+                    ? BlocProvider(
+                        // The last finished orders of the network, read from the device only while the Garage is shown (#216).
+                        key: ValueKey(('last', current)),
+                        create: (_) =>
+                            locator<LastOrdersCubit>(param1: current)..start(),
+                        child: view,
+                      )
+                    : view,
+              );
+            }
           : null,
     );
     // The middle entry: « Order » while the network has an active trade or a pending make, which opens them; else « Create », which opens the form where an order can be made (#182).

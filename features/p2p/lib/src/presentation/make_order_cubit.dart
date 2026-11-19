@@ -54,6 +54,10 @@ typedef CheckMakePrice =
 typedef ReadRenewal =
     Future<Result<OrderRenewal, RenewalRefusal>> Function(TradeRecord record);
 
+/// `MakeOrderUsecase.madeAsRenewal`: whether an order a resolution confirmed is made with the request of a renewal, on its coordinator (#217).
+typedef MadeAsRenewal =
+    Future<bool> Function(TradeRecord made, OrderRenewal renewal);
+
 /// Whether the create form renews an order made here (#185), and where the read of that order's kept terms stands.
 @immutable
 sealed class MakeRenewalState {
@@ -269,6 +273,9 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   final TradeRecord? _renewing;
   final ReadRenewal? _readRenewal;
 
+  /// Whether an order a resolution confirmed is this renewal's own (#217); `null` for a creation.
+  final MadeAsRenewal? _madeAsRenewal;
+
   /// Bumped at each read of limits or of the wallet's price, so that an answer for a coordinator or a currency no longer shown is dropped.
   int _limitsRead = 0;
   int _priceRead = 0;
@@ -304,6 +311,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     this._checkPrice,
   }) : _renewing = null,
        _readRenewal = null,
+       _madeAsRenewal = null,
        super(MakeOrderState(network: network, currency: currency));
 
   /// The form renewing the order of [renewing] (#185): its kept terms read by [readRenewal] when it starts, shown locked, sent to its own coordinator only. [placeholder] is the currency of the state until those terms are read, which the screen shows nowhere (it shows the wait).
@@ -311,6 +319,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     TradeRecord renewing, {
     required RobosatsCurrency placeholder,
     required ReadRenewal this._readRenewal,
+    required MadeAsRenewal this._madeAsRenewal,
     required this._listHosts,
     required this._fetchInfo,
     required this._fetchLimits,
@@ -594,6 +603,21 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     if (isClosed || state.progress is! MakeUncertain) return;
     emit(state._with(progress: const MakeIdle()));
   }
+
+  /// A pending make of the network that a resolution confirmed while the renewal's page is open, the order of [record] (#217, security review of #185, R3): [MakeMade], which the screen opens in place of the order renewed, only when that order is made with this renewal's very request on its coordinator (an earlier try of this renewal whose answer was lost); a make unrelated to it, confirmed meanwhile, neither closes the page nor takes the place of the order renewed, and the page stays as it is. Nothing while a make of this page runs or made an order; nothing for a creation, whose screen opens such a trade at once (#182).
+  Future<void> pendingStarted(TradeRecord record) async {
+    final check = _madeAsRenewal;
+    final renewal = _renewal;
+    if (isClosed || check == null || renewal == null || _busy) return;
+    if (!await check(record, renewal) || isClosed || _busy) return;
+    emit(state._with(progress: MakeMade(record)));
+  }
+
+  /// Whether a make of this page runs or made an order.
+  bool get _busy => switch (state.progress) {
+    MakeSending() || MakeMade() => true,
+    MakeIdle() || MakeUncertain() => false,
+  };
 
   /// Makes [request] on [coordinator], the price check shown being [seen] (all three taken at the press): once at a time, and never after a make that made, or may have made, an order. The screen calls it after « Store your garage key ».
   ///

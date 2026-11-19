@@ -543,12 +543,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             }
           },
         ),
-        // A pending make a resolution confirmed: its trade, as an order made (#182).
+        // A pending make a resolution confirmed: its trade, as an order made (#182); on a renewal's page, only the renewal's own make, which the cubit tells (#217, security review of #185, R3).
         BlocListener<PendingMakesCubit, PendingMakesState>(
           listenWhen: (previous, current) =>
               current.started != null && previous.started != current.started,
-          listener: (_, current) {
-            if (current.started case final record?) widget.onMade(record);
+          listener: (context, current) {
+            if (current.started case final record?) {
+              final cubit = context.read<MakeOrderCubit>();
+              if (cubit.state.renewing) {
+                unawaited(cubit.pendingStarted(record));
+              } else {
+                widget.onMade(record);
+              }
+            }
           },
         ),
       ],

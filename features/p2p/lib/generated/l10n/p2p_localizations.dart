@@ -3876,6 +3876,12 @@ abstract class P2pLocalizations {
   /// **'Nothing was sent: the order read just now carries the alert shown above.'**
   String get p2pEndNotSentReadRefused;
 
+  /// Not in the RoboSats texts: the project's own: an action of the chat step pressed while the order read just before it shows no order and carries no alert to point at (an order the coordinator says cancelled, error 1043): only that nothing was sent (security review of #219, R5). With an alert, p2pEndNotSentReadRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent.'**
+  String get p2pEndNotSent;
+
   /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
   ///
   /// In en, this message translates to:
@@ -5737,6 +5743,54 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This order can no longer be renewed as it was: create a new order.'**
   String get p2pRenewNoLongerAsKept;
+
+  /// Not in the RoboSats texts: the project's own: the title of the dialog « Renew Order » or « Renew » opens when an order was already made here since with the terms kept of this one (#217); the reference, which renews with the same robot, has the coordinator refuse a second order while the first is active (`api/logics.py:75-100`, error 1000).
+  ///
+  /// In en, this message translates to:
+  /// **'Renew this order again?'**
+  String get p2pRenewAgainTitle;
+
+  /// Not in the RoboSats texts: the project's own: the text of « Renew this order again? » (#217). {orderId} is the newest order made here since with the same terms.
+  ///
+  /// In en, this message translates to:
+  /// **'Order {orderId} was already made here, after this one, with the terms kept of it. Renewing again makes one more order, under a new robot, with a new bond to pay.'**
+  String p2pRenewAgainText(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: the button of « Renew this order again? » that opens the renewal's page (#217); « Go back » opens nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Renew again'**
+  String get p2pRenewAgain;
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, when the records hold an order made here after it with the very terms kept of it, on its coordinator (#217): a renewal, or an order made again by hand with the same terms, which the device cannot tell apart. Renewing again stays possible, one tap more.
+  ///
+  /// In en, this message translates to:
+  /// **'Already renewed: order {orderId} was made here after this one, with the same terms.'**
+  String p2pRenewedAlready(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: the button under p2pRenewedAlready that opens the trade of that order (#217).
+  ///
+  /// In en, this message translates to:
+  /// **'Open order {orderId}'**
+  String p2pRenewedOpen(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered, when the records or the terms kept of the order cannot be read (#217): never shown as « not renewed ».
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not read its records to tell whether this order was already renewed.'**
+  String get p2pRenewedUnknown;
+
+  /// Not in the RoboSats texts: the project's own: on the trade screen of an order made here where its renewal is offered (#216): the day it was made and the terms this device kept of it, what a renewal sends. {summary} is the create form's summary of those terms (p2pMakeBuyBtcFor, the amount, the currency, p2pMakeAtMarketPrice or its siblings).
+  ///
+  /// In en, this message translates to:
+  /// **'Made here on {date}, with the terms kept on this device: {summary}.'**
+  String p2pTradeKeptTerms(String date, String summary);
+
+  /// Not in the RoboSats texts: the project's own: a trade opened again at its end (an expired order, a successful end), whose one read gave nothing to show: no answer, an order the coordinator no longer knows, or one no longer at that end (#216). The status shown is the one the records hold.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} could not be asked about this order again: what is shown is what this device kept when it ended, on {date}.'**
+  String p2pTradeEndNotReadAgain(String coordinator, String date);
 
   /// The official client's label (`basic/MakerPage/index.tsx:145`, `submitButtonLabel`, its key `Submit` in `frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): the button of the create form while orders of the book match the one being made and are not shown (#186); it only shows them.
   ///

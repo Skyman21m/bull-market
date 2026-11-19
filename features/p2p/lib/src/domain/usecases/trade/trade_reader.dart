@@ -469,9 +469,9 @@ final class TradeReader {
     );
   }
 
-  /// What a read of an end reached with success shows, written nowhere (#95): the status after [answer] over [trade]'s own end, with the order read, only when [trade] stands at a successful end (14), the read is not superseded ([TradeReadOrder.claim]) and still shows that end with its order; `null` otherwise, and the trade stays as it is.
+  /// What a read of an end shows, written nowhere (#95, #216): the status after [answer] over [trade]'s own end, with the order read, only when [trade] stands at a successful end (14) or an expired order (5) ([readsEndOnce]), the read is not superseded ([TradeReadOrder.claim]) and still shows that end with its order; `null` otherwise, and the trade stays as it is.
   ///
-  /// The reference reads an order again whenever its page opens, and the coordinator sums up a finished trade in every read of it at 13, 14 and 15 (`api/views.py:490-504`); [advance] never leaves an end nor writes it again, so the watch reads an end once through this, for the summary, the payment's lines and the rating. Nothing here stores a trail or touches the record.
+  /// The reference reads an order again whenever its page opens (`basic/OrderPage/index.tsx`), and the coordinator sums up a finished trade in every read of it at 13, 14 and 15 (`api/views.py:490-504`) and gives an expired order's terms and reason to its maker (`:470-498`); [advance] never leaves an end nor writes it again, so the watch reads such an end once through this: for the summary, the payment's lines and the rating at 14, and at 5 for what the coordinator says now of an order made here opened again to renew it (#216), with the state machine's warnings when it differs from the terms. Nothing here stores a trail or touches the record.
   TradeSeen? endShown(
     OpenTrade trade,
     TradeAnswer answer, {
@@ -479,7 +479,7 @@ final class TradeReader {
     required RequestTimes request,
   }) {
     final end = trade.seen.status;
-    if (end.position != TradePosition.succeeded) return null;
+    if (!readsEndOnce(end.position)) return null;
     if (_requestOrder.claim(trade.record.robot, request) != null) return null;
     final seen = _seenAfter(
       end,
@@ -488,9 +488,17 @@ final class TradeReader {
       at,
       requestedAt: request.leftAt,
     );
-    if (seen.status is! Succeeded || seen.order == null) return null;
+    if (seen.status.position != end.position ||
+        seen.status.runtimeType != end.runtimeType ||
+        seen.order == null) {
+      return null;
+    }
     return seen;
   }
+
+  /// Whether a trade opened at the end [position] is read once ([endShown]): a successful end (14, #95) and an expired order (5, #216), the ends where the reference offers its maker a renewal to both sides.
+  static bool readsEndOnce(TradePosition position) =>
+      position == TradePosition.succeeded || position == TradePosition.expired;
 
   /// The order's amount as the maker of [terms] asked it ([TradeSeen.asked]), `null` for a taker.
   static OrderAmount? askedOf(TradeTerms terms) => switch (terms.side) {

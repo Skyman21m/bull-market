@@ -154,6 +154,103 @@ final class MakeOrderUsecase {
     );
   }
 
+  /// The request this device kept of the order of [record], and the orders made here after it with that very request, on its coordinator and network (#216, #217): its renewals, or an order made again by hand with the same terms, which this device cannot tell apart and which say the same to the user (an order with these terms already exists). Oldest first: a new list after each write of the records or of the terms, read from the device only, nothing sent.
+  ///
+  /// The reference, which renews with the same robot, has a second renewal refused while the first order is active (`api/logics.py:75-100`, error 1000); here each renewal has a fresh robot, so nothing refuses it, and the trade screen says it instead (never a lock: renewing again stays the user's choice). [Err] when the records cannot be read, or the terms kept of [record] do not restore: whether it was renewed is then not known, never « not renewed ». An order whose own terms do not restore is never counted as one of them.
+  Stream<Result<OrderRenewals, P2pFailure>> renewalsOf(TradeRecord record) {
+    final network = record.network;
+    Result<List<TradeRecord>, P2pFailure>? recorded;
+    Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>? histories;
+    StreamSubscription<Result<List<TradeRecord>, P2pFailure>>? recordedSub;
+    StreamSubscription<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>?
+    historiesSub;
+    late final StreamController<Result<OrderRenewals, P2pFailure>> out;
+
+    void emit() {
+      final (t, h) = (recorded, histories);
+      if (t == null || h == null) return;
+      switch ((t, h)) {
+        case (Err(:final failure), _) || (_, Err(:final failure)):
+          out.add(Err(failure));
+        case (Ok(value: final list), Ok(value: final made)):
+          final kept = record.origin == TradeOrigin.madeHere
+              ? _keptRequest(made[record.robot])
+              : null;
+          if (kept == null) {
+            out.add(const Err(P2pStorageFailure()));
+            return;
+          }
+          out.add(
+            Ok(
+              OrderRenewals(kept, [
+                for (final trade in list)
+                  if (trade.origin == TradeOrigin.madeHere &&
+                      trade.robot != record.robot &&
+                      trade.coordinatorAlias == record.coordinatorAlias &&
+                      trade.takenAt.isAfter(record.takenAt) &&
+                      _keptRequest(made[trade.robot]) == kept)
+                    trade,
+              ]),
+            ),
+          );
+      }
+    }
+
+    void failed(Object error, StackTrace stackTrace) {
+      if (error is Exception) {
+        out.add(const Err(P2pStorageFailure()));
+      } else {
+        out.addError(error, stackTrace);
+      }
+    }
+
+    out = StreamController(
+      onListen: () {
+        recordedSub = _records.watchTrades(network).listen((value) {
+          recorded = value;
+          emit();
+        }, onError: failed);
+        historiesSub = _trails.watchMadeHistories(network).listen((value) {
+          histories = value;
+          emit();
+        }, onError: failed);
+      },
+      onCancel: () async {
+        await recordedSub?.cancel();
+        await historiesSub?.cancel();
+      },
+    );
+    return out.stream;
+  }
+
+  /// Whether [made], an order a resolution of a pending make confirmed while the page of [renewal] is open, is made with the very request of [renewal], on its coordinator and network (#217, security review of #185, R3): only such an order closes the renewal's page, a make unrelated to it leaving the page as it is. Read from the records only; `false` when they cannot be read or do not restore.
+  Future<bool> madeAsRenewal(TradeRecord made, OrderRenewal renewal) async {
+    if (made.origin != TradeOrigin.madeHere ||
+        made.network != renewal.network ||
+        made.coordinatorAlias != renewal.coordinator.shortAlias) {
+      return false;
+    }
+    return switch (await _trails.makerTermsOf(made.robot)) {
+      Ok(value: final terms?) => switch (MakerTerms.restore(terms)) {
+        Ok(:final value) =>
+          value.request == renewal.request &&
+              value.coordinator == renewal.coordinator,
+        Err() => false,
+      },
+      Ok() || Err() => false,
+    };
+  }
+
+  /// The request kept in [history], the terms of one make, or `null` when none is stored or it does not restore.
+  static MakeOrderRequest? _keptRequest(StoredMadeHistory? history) {
+    final terms = history?.terms;
+    if (history == null || history.unreadable || terms == null) return null;
+    return switch (MakerTerms.restore(terms)) {
+      Ok(:final value) => value.request,
+      Err() => null,
+    };
+  }
+
   /// Sets the pending make [make] aside, on the user's request (#182, reviews of #179): a make that does not resolve (its coordinator left the list or moved, its robot unknown to it, an order it names that is not the robot's, an outcome unknown again and again) is closed in the records, so that nothing reads it again; it is never made again in its place.
   ///
   /// Under the lock of the makes, so that it never closes a make a resolution is confirming. [Ok] `true` when it was closed, `false` when the records no longer hold it pending (confirmed or closed since it was listed), nothing written; [Err] when the records could not be read or written. Nothing is sent: an order the make may have made waits at 0 for a bond this app never shows, and the coordinator expires it on its own (300 s by default, `api/logics.py:329-338`).

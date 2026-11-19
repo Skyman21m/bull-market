@@ -51,6 +51,40 @@ final class OrderRenewal {
   String toString() => 'OrderRenewal($orderId)';
 }
 
+/// What the records say of an order made here once it ended (#216, #217): the request this device kept of it, and the orders made here since with that very request, on its coordinator (`MakeOrderUsecase.renewalsOf`), oldest first.
+///
+/// Those orders are its renewals, or orders made again by hand with the same terms: this device cannot tell them apart, and they say the same to the user, an order with these terms already exists.
+@immutable
+final class OrderRenewals {
+  /// The request this device kept of the order: what a renewal sends.
+  final MakeOrderRequest kept;
+
+  /// The orders made here since with [kept], oldest first; empty when there is none.
+  final List<TradeRecord> since;
+
+  OrderRenewals(this.kept, Iterable<TradeRecord> since)
+    : since = List.unmodifiable(since);
+
+  /// The newest of [since], the one the trade screen opens; `null` when there is none.
+  TradeRecord? get latest => since.lastOrNull;
+
+  @override
+  bool operator ==(Object other) =>
+      other is OrderRenewals &&
+      other.kept == kept &&
+      other.since.length == since.length &&
+      Iterable<int>.generate(
+        since.length,
+      ).every((i) => other.since[i] == since[i]);
+
+  @override
+  int get hashCode => Object.hash(kept, Object.hashAll(since));
+
+  /// Never the request: only how many orders were made since.
+  @override
+  String toString() => 'OrderRenewals(${since.length} since)';
+}
+
 /// Why an order cannot be renewed from this device: nothing is sent, and a screen words each type with a text of its own.
 sealed class RenewalRefusal extends Failure {
   const RenewalRefusal();

@@ -469,6 +469,7 @@ void main() {
         record,
         placeholder: RobosatsCurrency.fromCode('USD') ?? eur,
         readRenewal: harness.make.renewal,
+        madeAsRenewal: harness.make.madeAsRenewal,
         listHosts: (network) => RobotHosts(network, [
           for (final coordinator in Federation.robosats.on(network))
             RobotHost(coordinator, refusesFirstContacts: false),

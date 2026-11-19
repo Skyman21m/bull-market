@@ -2409,6 +2409,9 @@ class P2pLocalizationsAs extends P2pLocalizations {
       'Nothing was sent: the order read just now carries the alert shown above.';
 
   @override
+  String get p2pEndNotSent => 'Nothing was sent.';
+
+  @override
   String get p2pEndTradeMovedOn =>
       'The trade moved on: your request was not sent.';
 
@@ -3635,6 +3638,41 @@ class P2pLocalizationsAs extends P2pLocalizations {
   @override
   String get p2pRenewNoLongerAsKept =>
       'This order can no longer be renewed as it was: create a new order.';
+
+  @override
+  String get p2pRenewAgainTitle => 'Renew this order again?';
+
+  @override
+  String p2pRenewAgainText(String orderId) {
+    return 'Order $orderId was already made here, after this one, with the terms kept of it. Renewing again makes one more order, under a new robot, with a new bond to pay.';
+  }
+
+  @override
+  String get p2pRenewAgain => 'Renew again';
+
+  @override
+  String p2pRenewedAlready(String orderId) {
+    return 'Already renewed: order $orderId was made here after this one, with the same terms.';
+  }
+
+  @override
+  String p2pRenewedOpen(String orderId) {
+    return 'Open order $orderId';
+  }
+
+  @override
+  String get p2pRenewedUnknown =>
+      'Bull Market could not read its records to tell whether this order was already renewed.';
+
+  @override
+  String p2pTradeKeptTerms(String date, String summary) {
+    return 'Made here on $date, with the terms kept on this device: $summary.';
+  }
+
+  @override
+  String p2pTradeEndNotReadAgain(String coordinator, String date) {
+    return '$coordinator could not be asked about this order again: what is shown is what this device kept when it ended, on $date.';
+  }
 
   @override
   String get p2pMakeSubmit => 'Submit';

@@ -249,6 +249,10 @@ final class _Renewal {
   /// What the read of the order's kept terms gives.
   Result<OrderRenewal, RenewalRefusal> read;
 
+  /// Whether an order a resolution confirmed is made with the renewal's request (#217): played by the test, every such order counted as the renewal's own by default, as an earlier try of the same renewal.
+  bool Function(TradeRecord made, OrderRenewal renewal) madeAsRenewal =
+      (_, _) => true;
+
   /// What the Bull wallet's price check reads.
   P2pWalletBitcoinRate rate = P2pWalletRateRead(91711.15);
 
@@ -299,6 +303,7 @@ final class _Renewal {
     _madeRecord(),
     placeholder: usd,
     readRenewal: (_) async => read,
+    madeAsRenewal: (made, renewal) async => madeAsRenewal(made, renewal),
     listHosts: (network) => RobotHosts(network, [
       for (final coordinator in Federation.robosats.on(network))
         RobotHost(coordinator, refusesFirstContacts: false),
@@ -1321,6 +1326,7 @@ final class _App {
                           renewing,
                           placeholder: usd,
                           readRenewal: harness.make.renewal,
+                          madeAsRenewal: harness.make.madeAsRenewal,
                           listHosts: (network) => RobotHosts(network, [
                             RobotHost(
                               harness.host,

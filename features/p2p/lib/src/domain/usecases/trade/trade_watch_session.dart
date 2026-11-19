@@ -112,8 +112,8 @@ final class TradeWatchSession {
               takePending: record.isPendingTake,
             ),
           );
-          // A successful end is read once, as the reference reads an order whenever its page opens: the coordinator sums it up in every read (#95).
-          if (trade.seen.status.position == TradePosition.succeeded) {
+          // A successful end and an expired order are read once, as the reference reads an order whenever its page opens: the coordinator sums up the first in every read (#95), and gives the second's terms and reason, for an order opened again to renew it (#216).
+          if (TradeReader.readsEndOnce(trade.seen.status.position)) {
             await _readEndOnce(trade, record, problem);
           }
           await _finish();
@@ -125,7 +125,7 @@ final class TradeWatchSession {
     }
   }
 
-  /// One read of [trade]'s successful end, through the robot's places as every read of the watch, never sent while an action of the trade runs: what it shows is emitted with [record] when [TradeReader.endShown] takes it (the summary, the payment's lines, the rating); a read that fails, an order the coordinator no longer knows or one no longer at that end leave the end shown as it is, with no notice. Nothing is written, the record is not touched, and no other read follows.
+  /// One read of [trade]'s end (a successful end, or an expired order, [TradeReader.readsEndOnce]), through the robot's places as every read of the watch, never sent while an action of the trade runs: what it shows is emitted with [record] when [TradeReader.endShown] takes it (the summary, the payment's lines, the rating, an expired order's terms and reason, with the state machine's warnings); a read that fails, is held back, an order the coordinator no longer knows or one no longer at that end leave the end shown as the records hold it, marked [TradeWatchStatus.endNotReadAgain], which the screen says (#216). Nothing is written, the record is not touched, and no other read follows.
   Future<void> _readEndOnce(
     OpenTrade trade,
     TradeRecord record,
@@ -144,27 +144,30 @@ final class TradeWatchSession {
         times: times,
         watch: true,
       );
-      if (_stopped || times.heldBack) return;
-      if (read case Ok(value: final result)) {
-        if (TradeAnswer.ofRead(result) case final answer?) {
-          final seen = _reader.endShown(
-            trade,
-            answer,
-            at: _reader.now(),
-            request: times,
-          );
-          if (seen != null && !_stopped) {
-            _emit(
-              TradeWatchStatus(
-                record,
-                seen,
-                recordProblem: problem,
-                takePending: record.isPendingTake,
-              ),
-            );
-          }
-        }
-      }
+      if (_stopped) return;
+      final seen = switch (read) {
+        Ok(value: final result) when !times.heldBack =>
+          switch (TradeAnswer.ofRead(result)) {
+            final answer? => _reader.endShown(
+              trade,
+              answer,
+              at: _reader.now(),
+              request: times,
+            ),
+            null => null,
+          },
+        _ => null,
+      };
+      if (_stopped) return;
+      _emit(
+        TradeWatchStatus(
+          record,
+          seen ?? trade.seen,
+          recordProblem: problem,
+          takePending: record.isPendingTake,
+          endNotReadAgain: seen == null,
+        ),
+      );
     } finally {
       requests.close();
       inFlight.complete();
