@@ -98,6 +98,10 @@ final class _Unwritable implements TradePaymentRepository {
   ) async => const Ok([]);
 
   @override
+  Future<Result<bool, P2pFailure>> holdsPaymentHash(paymentHash) async =>
+      const Ok(false);
+
+  @override
   Future<Result<bool, P2pFailure>> recordStart(
     trade,
     step, {

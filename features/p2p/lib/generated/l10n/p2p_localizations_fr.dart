@@ -2154,12 +2154,51 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Ce portefeuille ne peut pas payer cette caution maintenant.';
 
   @override
-  String get p2pPayEarlierEscrowHeld =>
-      'Une tentative de paiement de la garantie d’une prise précédente de cet ordre a été faite avec ce portefeuille, et il n’est pas établi que cette garantie a été signalée comme libérée. Payez cette garantie avec un autre portefeuille.';
-
-  @override
   String get p2pPayEscrowShownBefore =>
       'Cette facture de garantie a déjà été présentée pour cet ordre. Elle n’est pas payée depuis ce portefeuille.';
+
+  @override
+  String get p2pPayConfirmAgain =>
+      'Les garanties des prises précédentes de cet ordre ont changé depuis votre confirmation. Rien n’a été payé : vérifiez les montants et confirmez de nouveau.';
+
+  @override
+  String p2pEscrowEarlierOut(String sats, String total) {
+    return 'Des garanties précédentes de cet ordre, payées avec ce portefeuille, ne sont pas encore revenues : $sats sats. Avec celle-ci, $total sats seront hors de ce portefeuille.';
+  }
+
+  @override
+  String p2pEscrowEarlierOutUnknown(String sats, String total, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count autres dont cet appareil ne connaît plus les montants',
+      one: 'une autre dont cet appareil ne connaît plus le montant',
+    );
+    return 'Des garanties précédentes de cet ordre, payées avec ce portefeuille, ne sont pas encore revenues : $sats sats, et $_temp0. Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
+  }
+
+  @override
+  String p2pEscrowEarlierOutAllUnknown(String total, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count garanties précédentes de cet ordre, payées avec ce portefeuille, ne sont pas encore revenues ; cet appareil ne connaît plus leurs montants.',
+      one:
+          'Une garantie précédente de cet ordre, payée avec ce portefeuille, n’est pas encore revenue ; cet appareil ne connaît plus son montant.',
+    );
+    return '$_temp0 Avec celle-ci, au moins $total sats seront hors de ce portefeuille.';
+  }
+
+  @override
+  String p2pEscrowEarlierKept(String sats, String coordinator) {
+    return 'La garantie d’une prise précédente ($sats sats) a été encaissée par $coordinator : vérifiez cet ordre dans l’application officielle RoboSats avant d’en payer une autre.';
+  }
+
+  @override
+  String p2pEscrowEarlierKeptUnknown(String coordinator) {
+    return 'La garantie d’une prise précédente a été encaissée par $coordinator : vérifiez cet ordre dans l’application officielle RoboSats avant d’en payer une autre.';
+  }
 
   @override
   String get p2pPayEscrowWalletUnavailable =>

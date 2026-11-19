@@ -46,9 +46,29 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
       'FROM trade_payments WHERE key_fingerprint = ? AND robot_index = ? '
       'ORDER BY take, step';
 
+  /// Whether any payment holds a payment hash.
+  static const String _holdsSql =
+      'SELECT 1 FROM trade_payments WHERE payment_hash = ? LIMIT 1';
+
   final P2pDatabase _database;
 
   const TradePaymentRepositoryImpl(this._database);
+
+  @override
+  Future<Result<bool, P2pFailure>> holdsPaymentHash(String paymentHash) async {
+    try {
+      final rows = await _database
+          .customSelect(
+            _holdsSql,
+            variables: [Variable.withString(paymentHash)],
+            readsFrom: {_database.storedTradePayments},
+          )
+          .get();
+      return Ok(rows.isNotEmpty);
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+  }
 
   @override
   Future<Result<List<TradePaymentRecord>, P2pFailure>> paymentsOfTrade(

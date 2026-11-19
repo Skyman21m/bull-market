@@ -18,6 +18,7 @@ import '../../trade/wallet_payment.dart';
 import '../../trade/wallet_rate_check.dart';
 import '../../trade_record.dart';
 import 'bond_payments_in_flight.dart';
+import 'escrow_amounts.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -25,7 +26,7 @@ import 'trade_take_locks.dart';
 ///
 /// One instance per [step], the same code for both: the bond is paid from a stored `WaitingForTakerBond` within [TradeTerms.bondCeiling], or for an order made here from a stored `WaitingForMakerBond` within the same getter, which is then `MakerTerms.bondCeiling` (#180); the escrow from a stored `WaitingForBoth` or `WaitingForEscrow`, a taker seller's within [TradeTerms.escrowCeiling], a maker seller's (#187) under the owner's payment rule of 2026-11-17 and « one escrow held at a time » (below); the methods keep the bond's names, the step it was written for first.
 ///
-/// A maker seller's escrow (#187, design note `docs/design/phase-3-making-an-order.md` § 3.3, § 4.3, § 6 row 13): no ceiling (the owner's rule replaced it), but the exact agreements the state machine checks (the invoice equal to `escrow_satoshis` and `trade_satoshis`, the implied fee within the announced one), any warning of which forbids the wallet (`walletPaymentFor`); the comparison with the contract's amount at the wallet's own price ([rateOfBond]), information and a warning only; the contract the confirmation states ([escrowContractOf]: a new contract after the order's first take, and the state of each escrow this wallet was asked to pay for its other contracts), which [payBond] takes back and checks against the trail read again under the payment's lock; and only while no escrow of another contract paid from this wallet may still be held ([EscrowContract.earlierHeld], read again under that lock), nor the escrow's payment hash seen before by the trade ([BondPayEscrowSeenBefore]). Each escrow is recorded under its contract (`trade_payments.take`), and followed under it ([followBond] for the current one, [followEscrows] for every one, after the trade's end too).
+/// A maker seller's escrow (#187, design note `docs/design/phase-3-making-an-order.md` § 3.3, § 4.3, § 6 row 13): no ceiling (the owner's rule replaced it), but the exact agreements the state machine checks (the invoice equal to `escrow_satoshis` and `trade_satoshis`, the implied fee within the announced one), any warning of which forbids the wallet (`walletPaymentFor`); the comparison with the contract's amount at the wallet's own price ([rateOfBond]), information and a warning only; the contract the confirmation states ([escrowContractOf]: a new contract after the order's first take, the earlier escrows of the order this wallet was asked to pay with their sats and case, what is not back yet and what will be out with this one, those the coordinator kept: an alert, never a refusal, the owner's decision of 2026-11-19), which [payBond] takes back, checks against the trail read again under the payment's lock, and has confirmed again when more is out by then ([BondPayConfirmAgain]); never an escrow whose payment hash was presented before ([BondPayEscrowSeenBefore]). Each escrow is recorded under its contract (`trade_payments.take`), and followed under it ([followBond] for the current one, [followEscrows] for every one, after the trade's end too).
 ///
 /// - [watchBalance]: what the Instant Payments wallet can spend, as the wallet reads it.
 /// - [quoteBond]: on the user's tap of « Pay with this wallet » only, the swap service's quote for the invoice the status shown offers (`walletPaymentFor`, at most the bond the take's or the make's terms imply, [TradeTerms.bondCeiling]); nothing is created at the service.
@@ -42,10 +43,13 @@ final class PayBondFromWalletUsecase {
   final TradeTakeLocks _locks;
   final BondPaymentsInFlight _inFlight;
 
+  /// The sats of each maker seller's escrow this run asked the wallet to pay (#187), one for the feature in the composition: what the confirmation of a next contract says of the earlier escrows.
+  final EscrowAmounts _amounts;
+
   /// The invoice this instance pays: the taker's bond, or the seller's escrow.
   final InvoiceStep step;
 
-  const PayBondFromWalletUsecase(
+  PayBondFromWalletUsecase(
     this._reader,
     this._limiter,
     this._payments,
@@ -53,7 +57,8 @@ final class PayBondFromWalletUsecase {
     this._locks,
     this._inFlight, {
     this.step = InvoiceStep.bond,
-  });
+    EscrowAmounts? amounts,
+  }) : _amounts = amounts ?? EscrowAmounts();
 
   /// When the payment of [record]'s [step] this process is making now ends, `null` when none runs: a screen opened meanwhile says the payment is being sent.
   Future<void>? bondPaymentRunning(TradeRecord record) =>
@@ -88,12 +93,13 @@ final class PayBondFromWalletUsecase {
       case Err(:final failure):
         return Err(failure);
     }
-    // A maker seller's escrow (#187): offered only while no escrow of another contract paid from this wallet may still be held, and never for a payment hash the trade saw before.
+    // A maker seller's escrow (#187): never for a payment hash the trade, or another trade, saw before; earlier escrows not back are the confirmation's alert, never a refusal (the owner's decision of 2026-11-19).
     if (_isMakerEscrow(terms)) {
       switch (await _contractOf(
         record,
         take: offered.take,
         paymentHash: offered.walletInvoice.paymentHash,
+        escrow: offered.walletInvoice.amount,
         earlierEscrows: seen.status.trail.earlierEscrows,
       )) {
         case Ok():
@@ -171,9 +177,9 @@ final class PayBondFromWalletUsecase {
     }
   }
 
-  /// For a maker seller's escrow (#187), what the confirmation of [quote] says of its contract: the contract the trail stands at (a new contract when above 0) and the state of each escrow this wallet was asked to pay for the order's other contracts, as the wallet's records say now ([EscrowContract]); `null` for the bond's instance and for a taker. [payBond] takes it back, and pays only for that very contract.
+  /// For a maker seller's escrow (#187), what the confirmation of [quote] says of its contract ([EscrowContract]): the contract the trail stands at (a new contract when above 0), each escrow this wallet was asked to pay for the order's other contracts with its case and its sats when this run knows them, the sats of those not back yet and what will be out of the wallet with this one, and those the coordinator kept; `null` for the bond's instance and for a taker. An earlier escrow not back, or kept, is an alert of the confirmation, never a refusal (the owner's decision of 2026-11-19). [payBond] takes it back, pays only for that very contract, and asks a new confirmation when more is out by then.
   ///
-  /// [BondPayEarlierEscrowHeld] (with the contract and the states) while an escrow of another contract paid from this wallet may still be held, [BondPayEscrowSeenBefore] for a payment hash the trade saw before, [BondPayInvoiceChanged] for a quote of another invoice than the escrow the trail pins. It reads the device's records and the wallet's, and asks nothing of the coordinator or the swap service.
+  /// [BondPayEscrowSeenBefore] for a payment hash the trade, or another trade, saw before, [BondPayInvoiceChanged] for a quote of another invoice than the escrow the trail pins. It reads the device's records and the wallet's, and asks nothing of the coordinator or the swap service.
   Future<Result<EscrowContract?, BondPayRefusal>> escrowContractOf(
     TradeRecord record,
     P2pWalletQuote quote,
@@ -196,6 +202,7 @@ final class PayBondFromWalletUsecase {
       record,
       take: trail.take,
       paymentHash: hash,
+      escrow: quote.amount,
       earlierEscrows: trail.earlierEscrows,
     )) {
       Ok(:final value) => Ok(value),
@@ -206,7 +213,7 @@ final class PayBondFromWalletUsecase {
   /// Pays the [step] of [record] within [accepted], the quote the user confirmed.
   ///
   /// The order is read again first, with the trade's robot through its places in [RobotRequestLimiter], and kept as every read is; the payment goes on only when the status now stored is [step]'s and `walletPaymentFor` offers the invoice of [accepted] (same text and payment hash): a status that moved on, an invoice replaced or too little time left refuse it, with nothing paid.
-  /// For a maker seller's escrow (#187), also only for [contract], the one its confirmation stated ([escrowContractOf]): [BondPayContractNotConfirmed] when none was given or the trail, read again from the records under the payment's lock, stands at another contract or pins another escrow; then, still under that lock, every payment recorded for the trade is read again, and the payment is refused while an escrow of another contract paid from this wallet may still be held ([BondPayEarlierEscrowHeld]) or the payment hash was seen before ([BondPayEscrowSeenBefore]). [contract] is not looked at for any other payment.
+  /// For a maker seller's escrow (#187), also only for [contract], the one its confirmation stated ([escrowContractOf]): [BondPayContractNotConfirmed] when none was given or the trail, read again from the records under the payment's lock, stands at another contract or pins another escrow; then, still under that lock, every payment recorded for the trade is read again with the wallet's records of each: the payment is refused for a payment hash seen before ([BondPayEscrowSeenBefore]), and asks a new confirmation ([BondPayConfirmAgain]) when the earlier escrows are more out than the confirmation showed ([EscrowContract.needsNewConfirmation]: more sats not back, or an escrow kept since); as much or less out, it pays. [contract] is not looked at for any other payment.
   /// Then the payment's start is written, under the contract of the status read ([WalletPaymentOffered.take], equal to the trail's for a maker seller's escrow, 0 otherwise); only once it is written is the wallet asked. The wallet's id of the payment is written as soon as the wallet gives one (paid, or a refusal that carries a payment: broadcast unknown, interrupted, or a payment that already exists).
   Future<Result<P2pWalletPayment, BondPayRefusal>> payBond(
     TradeRecord record, {
@@ -322,7 +329,10 @@ final class PayBondFromWalletUsecase {
         take: offered.take,
       )) {
         case Ok(value: true):
-          break;
+          // The sats of a maker seller's escrow, for the confirmation of a next contract (#187).
+          if (_isMakerEscrow(advanced.trade.terms)) {
+            _amounts.keep(invoice.paymentHash, invoice.amount);
+          }
         case Ok(value: false) || Err():
           return const Err(BondPayNotRecorded());
       }
@@ -548,13 +558,14 @@ final class PayBondFromWalletUsecase {
       terms.side is MadeSide &&
       terms.role == TradeRole.seller;
 
-  /// The contract of a maker seller's escrow of [paymentHash] at contract [take], with the escrows of the order's other contracts this wallet was asked to pay (#187, design note § 6 row 13): read from every payment recorded for the trade, whatever its contract, and the wallet's records of each.
+  /// The contract of a maker seller's escrow of [paymentHash], of [escrow] sats, at contract [take], with the escrows of the order's other contracts this wallet was asked to pay (#187, design note § 6 row 13, the owner's decision of 2026-11-19): read from every payment recorded for the trade, whatever its contract, the maker bond's left aside, and the wallet's records of each ([EarlierEscrow.of]), their sats from [EscrowAmounts] when this run paid them.
   ///
-  /// Refused with [BondPayEscrowSeenBefore] when [paymentHash] is one of [earlierEscrows] (the trail's) or the hash of another payment recorded for the trade (another contract's escrow, the bond); with [BondPayEarlierEscrowHeld] when an escrow of another contract may still be held ([EarlierEscrow.held]: only a refund pending or done, a failure or an expiry with nothing sent, or an attempt of which the wallet holds no order and the record no wallet id, counts as released; a recorded wallet id the wallet does not know, or records it cannot read, count as held); with [BondPayRecordsUnreadable] when the records cannot be read.
+  /// Refused only with [BondPayEscrowSeenBefore] when [paymentHash] is one of [earlierEscrows] (the trail's), the hash of another payment recorded for the trade (another contract's escrow, the bond), or of a payment recorded for another trade (which the database would refuse at `recordStart`, `trade_payments_hash_once`); with [BondPayRecordsUnreadable] when the records cannot be read. Earlier escrows not back, or kept, are never a refusal.
   Future<Result<EscrowContract, BondPayRefusal>> _contractOf(
     TradeRecord record, {
     required int take,
     required String paymentHash,
+    required Sats escrow,
     required List<String> earlierEscrows,
   }) async {
     if (earlierEscrows.contains(paymentHash)) {
@@ -568,9 +579,13 @@ final class PayBondFromWalletUsecase {
         return Err(BondPayRecordsUnreadable(failure));
     }
     final earlier = <EarlierEscrow>[];
+    var own = false;
     for (final payment in payments) {
       // The attempts of this very escrow: a new attempt of the same invoice, which the wallet pays again only while every earlier order of it is provably unspent.
-      if (payment.step == InvoiceStep.escrow && payment.take == take) continue;
+      if (payment.step == InvoiceStep.escrow && payment.take == take) {
+        own = own || payment.paymentHash == paymentHash;
+        continue;
+      }
       if (payment.paymentHash == paymentHash) {
         return const Err(BondPayEscrowSeenBefore());
       }
@@ -588,14 +603,29 @@ final class PayBondFromWalletUsecase {
           take: payment.take,
         );
       }
-      earlier.add(EarlierEscrow.of(payment, found));
+      earlier.add(
+        EarlierEscrow.of(
+          payment,
+          found,
+          sats: _amounts.of(payment.paymentHash),
+        ),
+      );
     }
-    final contract = EscrowContract(take: take, earlier: earlier);
-    if (contract.earlierHeld) return Err(BondPayEarlierEscrowHeld(contract));
-    return Ok(contract);
+    // An invoice recorded for another trade (security review of #187, R4): said as one presented before, rather than as records that could not be written.
+    if (!own) {
+      switch (await _payments.holdsPaymentHash(paymentHash)) {
+        case Ok(value: true):
+          return const Err(BondPayEscrowSeenBefore());
+        case Ok(value: false):
+          break;
+        case Err(:final failure):
+          return Err(BondPayRecordsUnreadable(failure));
+      }
+    }
+    return Ok(EscrowContract(take: take, escrow: escrow, earlier: earlier));
   }
 
-  /// Under the payment's lock, after the read just before a maker seller's escrow is paid (#187): the contract [confirmed] by the user is the one of the status read ([offered]) and of the trail read again from the records, which pins this very escrow; then no escrow of another contract paid from this wallet may still be held, nor was the payment hash seen before ([_contractOf], read again now). `recordStart` takes a new attempt of an earlier contract's escrow as an update, which the database's contract rule does not see (#176): this is where a payment's contract is compared with the trail before any attempt.
+  /// Under the payment's lock, after the read just before a maker seller's escrow is paid (#187): the contract [confirmed] by the user is the one of the status read ([offered]) and of the trail read again from the records, which pins this very escrow; the payment hash was not seen before; and the earlier escrows, read again now ([_contractOf]), are not more out than [confirmed] showed, else [BondPayConfirmAgain] with what they are now (the owner's decision of 2026-11-19: a confirmation to make again, not a lock). `recordStart` takes a new attempt of an earlier contract's escrow as an update, which the database's contract rule does not see (#176): this is where a payment's contract is compared with the trail before any attempt.
   Future<Result<EscrowContract, BondPayRefusal>> _stillThisContract(
     TradeRecord record,
     WalletPaymentOffered offered,
@@ -617,11 +647,22 @@ final class PayBondFromWalletUsecase {
     if (trail.take != offered.take || trail.escrowHash != hash) {
       return const Err(BondPayContractNotConfirmed());
     }
-    return _contractOf(
+    final EscrowContract now;
+    switch (await _contractOf(
       record,
       take: offered.take,
       paymentHash: hash,
+      escrow: offered.walletInvoice.amount,
       earlierEscrows: trail.earlierEscrows,
-    );
+    )) {
+      case Ok(:final value):
+        now = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
+    if (confirmed.needsNewConfirmation(now)) {
+      return Err(BondPayConfirmAgain(now));
+    }
+    return Ok(now);
   }
 }

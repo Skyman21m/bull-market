@@ -67,17 +67,17 @@ final class BondPayNotRecorded extends BondPayRefusal {
   const BondPayNotRecorded();
 }
 
-/// A maker seller's escrow (#187): an escrow this wallet was asked to pay for another contract of the order may still be held ([EscrowContract.earlierHeld]: its swap's state is not one of those `escrowNoLongerHeld` counts as released, or cannot be told), so this wallet pays no escrow of [contract] (« one escrow held at a time », design note `docs/design/phase-3-making-an-order.md` § 4.3, § 6 row 13); only « Pay with another wallet » stays, and nothing was asked of the swap service.
-final class BondPayEarlierEscrowHeld extends BondPayRefusal {
+/// A maker seller's escrow (#187): the earlier escrows of the order, read again under the payment's lock, are more out than the confirmation showed (more sats not back yet, or an escrow the coordinator kept since): nothing was paid, and the confirmation is to be made again with [contract], what they are now (the owner's decision of 2026-11-19: a new confirmation, not a lock; the next one pays).
+final class BondPayConfirmAgain extends BondPayRefusal {
   final EscrowContract contract;
 
-  const BondPayEarlierEscrowHeld(this.contract);
+  const BondPayConfirmAgain(this.contract);
 
   @override
-  String toString() => 'BondPayEarlierEscrowHeld(${contract.take})';
+  String toString() => 'BondPayConfirmAgain(${contract.take})';
 }
 
-/// A maker seller's escrow (#187) whose payment hash this trade already saw: an escrow of an earlier contract (the trail's `earlier_escrows`), or another payment recorded for the trade (another contract's escrow, or its bond). Never paid from this wallet; the state machine refuses the first as a breach too (`EscrowNotOfThisContract`), and the database refuses a payment hash recorded twice (`trade_payments_hash_once`).
+/// A maker seller's escrow (#187) whose payment hash was already presented: an escrow of an earlier contract (the trail's `earlier_escrows`), another payment recorded for the trade (another contract's escrow, or its bond), or a payment recorded for another trade, whether or not it was ever paid. Never paid from this wallet; the state machine refuses the first as a breach too (`EscrowNotOfThisContract`), and the database refuses a payment hash recorded twice (`trade_payments_hash_once`).
 final class BondPayEscrowSeenBefore extends BondPayRefusal {
   const BondPayEscrowSeenBefore();
 }

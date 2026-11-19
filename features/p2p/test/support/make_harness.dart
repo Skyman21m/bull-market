@@ -549,6 +549,9 @@ final class MakeTrails implements TradeTrailRepository {
   )?
   madeHistories;
 
+  /// When set, what [historyOf] gives in place of the history stored: a database that reads back otherwise than it wrote (#187, a trail no trigger lets be written).
+  StoredTradeHistory Function(StoredTradeHistory stored)? historyBack;
+
   /// How many trails were asked to be stored.
   int stores = 0;
 
@@ -596,8 +599,17 @@ final class MakeTrails implements TradeTrailRepository {
   }
 
   @override
-  Future<Result<StoredTradeHistory, P2pFailure>> historyOf(TradeRecord trade) =>
-      _inner.historyOf(trade);
+  Future<Result<StoredTradeHistory, P2pFailure>> historyOf(
+    TradeRecord trade,
+  ) async {
+    final stored = await _inner.historyOf(trade);
+    final change = historyBack;
+    if (change == null) return stored;
+    return switch (stored) {
+      Ok(:final value) => Ok(change(value)),
+      Err() => stored,
+    };
+  }
 
   @override
   Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(

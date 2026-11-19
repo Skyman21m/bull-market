@@ -219,10 +219,6 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
 }
 
-/// The minimal refusal of #187, until the panel's words of #188.
-const _earlierHeld =
-    'An attempt to pay the collateral of an earlier take of this order was made with this wallet, and it is not established that that collateral was released. Pay this collateral with another wallet.';
-
 void main() {
   testWidgets(
     'contract 0: « Pay with this wallet » offered for a maker seller\'s escrow, and the panel without the confirmation of its contract (#188) pays nothing',
@@ -290,7 +286,7 @@ void main() {
   );
 
   testWidgets(
-    'a new contract while the escrow of contract 0, paid from this wallet, is held: the panel says it and offers no « Pay with this wallet »; once its refund is pending, offered again',
+    'a new contract while the escrow of contract 0, paid from this wallet, is held: « Pay with this wallet » is offered, no lock',
     (tester) async {
       final app = await _App.start(tester);
       // Contract 0's escrow paid from this wallet through the composition's own use case, with the confirmation of its contract (#188's panel will give it), from the status the trade screen stored.
@@ -360,25 +356,14 @@ void main() {
       app.coordinator.take(app.record.orderId, TradeHarness.robotsOf(_net)[4]);
       await app.openTrade();
       expect(find.textContaining('as collateral'), findsWidgets);
-      await tester.ensureVisible(find.text(_earlierHeld));
-      expect(find.text(_earlierHeld), findsOneWidget);
-      expect(find.text('Pay with this wallet'), findsNothing);
+      // No lock (the owner's decision of 2026-11-19): contract 1 is offered; the alert with contract 0's sats is its confirmation's, #188's (`escrow_contract_lines_test.dart`).
+      expect(find.text('Pay with this wallet'), findsOneWidget);
+      expect(
+        find.textContaining('Pay this collateral with another wallet'),
+        findsNothing,
+      );
       expect(app.wallet.quoted, hasLength(1));
       expect(app.wallet.paid, hasLength(1));
-      await app.back();
-      // The swap service reports the first escrow's refund pending: opened again, the panel offers this wallet for contract 1.
-      app.wallet
-        ..setFound(
-          payment.paymentHash,
-          P2pWalletPaymentFound(
-            payment: payment,
-            progress: const P2pWalletPaymentRefundPending(),
-          ),
-        )
-        ..setProgress(payment, const Ok(P2pWalletPaymentRefundPending()));
-      await app.openTrade();
-      expect(find.text(_earlierHeld), findsNothing);
-      expect(find.text('Pay with this wallet'), findsOneWidget);
       await app.close();
     },
   );

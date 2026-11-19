@@ -41,6 +41,10 @@ final class _KilledAfterPayment implements TradePaymentRepository {
   ) => inner.paymentsOfTrade(trade);
 
   @override
+  Future<Result<bool, P2pFailure>> holdsPaymentHash(String paymentHash) =>
+      inner.holdsPaymentHash(paymentHash);
+
+  @override
   Future<Result<bool, P2pFailure>> recordStart(
     TradeRecord trade,
     InvoiceStep step, {

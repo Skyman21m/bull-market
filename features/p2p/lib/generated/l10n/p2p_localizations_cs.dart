@@ -2126,12 +2126,51 @@ class P2pLocalizationsCs extends P2pLocalizations {
   String get p2pPayWalletUnavailable => 'This wallet cannot pay this bond now.';
 
   @override
-  String get p2pPayEarlierEscrowHeld =>
-      'An attempt to pay the collateral of an earlier take of this order was made with this wallet, and it is not established that that collateral was released. Pay this collateral with another wallet.';
-
-  @override
   String get p2pPayEscrowShownBefore =>
       'This collateral invoice was already presented for this order. It is not paid from this wallet.';
+
+  @override
+  String get p2pPayConfirmAgain =>
+      'The collaterals of earlier takes of this order changed since you confirmed. Nothing was paid: check the figures and confirm again.';
+
+  @override
+  String p2pEscrowEarlierOut(String sats, String total) {
+    return 'Earlier collaterals of this order, paid with this wallet, have not come back yet: $sats sats. With this one, $total sats will be out of this wallet.';
+  }
+
+  @override
+  String p2pEscrowEarlierOutUnknown(String sats, String total, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more whose amounts this device no longer knows',
+      one: '1 more whose amount this device no longer knows',
+    );
+    return 'Earlier collaterals of this order, paid with this wallet, have not come back yet: $sats sats, and $_temp0. With this one, at least $total sats will be out of this wallet.';
+  }
+
+  @override
+  String p2pEscrowEarlierOutAllUnknown(String total, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count earlier collaterals of this order, paid with this wallet, have not come back yet; this device no longer knows their amounts.',
+      one:
+          'An earlier collateral of this order, paid with this wallet, has not come back yet; this device no longer knows its amount.',
+    );
+    return '$_temp0 With this one, at least $total sats will be out of this wallet.';
+  }
+
+  @override
+  String p2pEscrowEarlierKept(String sats, String coordinator) {
+    return 'The collateral of an earlier take ($sats sats) was kept by $coordinator: check this order in the official RoboSats app before paying another one.';
+  }
+
+  @override
+  String p2pEscrowEarlierKeptUnknown(String coordinator) {
+    return 'The collateral of an earlier take was kept by $coordinator: check this order in the official RoboSats app before paying another one.';
+  }
 
   @override
   String get p2pPayEscrowWalletUnavailable =>
