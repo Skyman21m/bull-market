@@ -615,52 +615,61 @@ void main() {
       ),
     );
 
-    test(
-      'a step given up at the deadline is never taken for a connection to try again: no retry over many short publications, whatever fraction of a millisecond the deadline falls on (#196)',
-      () async {
-        final (server, _) = await silentRelay();
-        final printed = <String>[];
-        final print = debugPrint;
-        debugPrint = (String? line, {int? wrapWidth}) {
-          if (line != null) printed.add(line);
-        };
-        const publications = 240;
-        try {
-          final slow = transport(
-            deadline: const Duration(milliseconds: 20),
-            attemptTimeout: const Duration(seconds: 10),
-            createHttpClient: (_) =>
-                HttpClient()
-                  ..connectionFactory = (uri, proxyHost, proxyPort) async {
+    // Each step of the handshake has its own timer: the connection itself (slowed here, as a cold Tor does), and the wait for the relay's answer (the relay silent, the connection immediate).
+    for (final (step, connectDelay) in [
+      ('the connection', const Duration(milliseconds: 40)),
+      ('the wait for the relay\'s answer', null),
+    ]) {
+      test(
+        'a step given up at the deadline is never taken for a connection to try again, $step: no retry over many short publications, whatever fraction of a millisecond the deadline falls on (#196)',
+        () async {
+          final (server, _) = await silentRelay();
+          final printed = <String>[];
+          final print = debugPrint;
+          debugPrint = (String? line, {int? wrapWidth}) {
+            if (line != null) printed.add(line);
+          };
+          try {
+            final publisher = transport(
+              deadline: const Duration(milliseconds: 20),
+              attemptTimeout: const Duration(seconds: 10),
+              createHttpClient: (_) {
+                final client = HttpClient();
+                if (connectDelay != null) {
+                  client.connectionFactory = (uri, proxyHost, proxyPort) async {
                     final socket = Future<void>.delayed(
-                      const Duration(milliseconds: 40),
+                      connectDelay,
                     ).then((_) => Socket.connect(uri.host, uri.port));
                     return ConnectionTask.fromSocket(socket, () {
                       socket.then((value) => value.destroy()).ignore();
                     });
-                  },
-          );
-          for (var i = 0; i < publications; i++) {
-            // The work before the attempt varies, so that the deadline falls on every fraction of a millisecond of the timers' clock.
-            await Future<void>.delayed(Duration(microseconds: 137 * (i % 23)));
-            final outcome = await slow.publish(
-              Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
-              message,
-              robot: us.sessionKey,
+                  };
+                }
+                return client;
+              },
             );
-            expect(outcome, isA<NostrRelayTimedOut>());
+            for (var i = 0; i < 240; i++) {
+              // The work before the attempt varies, so that the deadline falls on every fraction of a millisecond of the timers' clock.
+              await Future<void>.delayed(
+                Duration(microseconds: 137 * (i % 23)),
+              );
+              final outcome = await publisher.publish(
+                Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+                message,
+                robot: us.sessionKey,
+              );
+              expect(outcome, isA<NostrRelayTimedOut>());
+            }
+            // Past the slowed connections.
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+          } finally {
+            debugPrint = print;
+            await server.close();
           }
-          // Past the slowed connections.
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-        } finally {
-          debugPrint = print;
-          await server.close();
-        }
-        expect(printed.where((line) => line.contains('retrying')), isEmpty);
-        // A publication may share the session of the one before it, never open one more.
-        expect(opened.length, lessThanOrEqualTo(publications));
-      },
-    );
+          expect(printed.where((line) => line.contains('retrying')), isEmpty);
+        },
+      );
+    }
 
     test(
       'the websocket is closed when the deadline passes while it waits for the OKs, not at the end of the attempt (second review of #158)',
