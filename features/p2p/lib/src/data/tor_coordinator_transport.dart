@@ -427,6 +427,11 @@ final class TorCoordinatorTransport
       }
       if (closed()) return const NostrRelayFailed();
       if (deadline.passed) return const NostrRelayTimedOut();
+      // Given up since this publication picked it: the callback of a timer that retires the session can run between the pick above and this line (no microtask runs between two timers of one turn of the event loop), and its client is then closed, which `openUrl` answers with an [Error]. It is never used: another session is asked for, and this turn of the loop is no attempt (independent review of #222, B1).
+      if (route.isGivenUp) {
+        attempt--;
+        continue;
+      }
 
       route.acquire();
       final _RelayAttempt outcome;
@@ -1267,6 +1272,9 @@ final class _Route {
   bool get isUnused => _users == 0;
 
   bool get isClosing => _closing != null;
+
+  /// Whether this session was retired or is closing: no request takes it any more.
+  bool get isGivenUp => _retired || _closing != null;
 
   void acquire() => _users++;
 
