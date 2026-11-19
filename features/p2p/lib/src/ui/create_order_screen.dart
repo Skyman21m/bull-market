@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/matching_orders.dart';
 import '../domain/option_search.dart';
 import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
@@ -15,6 +16,7 @@ import '../domain/trade/trade_make.dart';
 import '../domain/trade/trade_renewal.dart';
 import '../domain/trade/trade_tolerances.dart';
 import '../domain/trade_record.dart';
+import '../presentation/active_trades_cubit.dart';
 import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/make_order_cubit.dart';
@@ -28,6 +30,7 @@ import 'widgets/coordinator_avatar.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/filter_sheet.dart';
 import 'widgets/no_robot_dialog.dart';
+import 'widgets/offer_row.dart';
 import 'widgets/order_detail_row.dart';
 import 'widgets/store_token_dialog.dart';
 import 'widgets/testnet_banner.dart';
@@ -38,6 +41,8 @@ import 'widgets/trade_button.dart';
 /// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy », and « Sell » disabled with « Selling as maker is coming in a later version. »; with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location », disabled with « Coming in a later version. » (#189); « Premium over Market (%) * »; with the advanced options, « Description », « Password » (disabled until #189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
 ///
 /// What is typed stays here; it is judged by [MakerFormCheck] at each build, and the request « Create order » sends is the one the summary shows, taken at the press. From the press the fields are locked: « You do not have a Garage Key » without a key, else « Store your garage key », whose « Done » sends the make once ([MakeOrderCubit.make]), its « Go back » sending nothing. A made order opens its trade ([onMade]); a make refused or not made says why; a make whose outcome is unknown locks the form.
+///
+/// « Existing orders match yours! » (#186, `basic/MakerPage/index.tsx`): while orders of the [book] on the other side resemble the one being made ([MatchingOrders]), the button reads « Submit » and only shows them, above the form, the form's fields folded away as the reference collapses them; the button then reads « Create order », and « Edit order » (a pencil) unfolds the fields. A tap on one of those orders opens it ([onOpenOrder]). Nothing is asked of anyone for this: the search runs on the book the tab received.
 ///
 /// A renewal (#185, [MakeOrderState.renewing]) is the same page titled « Renew Order », its fields filled with the terms this device kept of the order renewed and locked, on that order's coordinator: the same summary, « Estimated Bond », rate and Bull wallet's comparison, the same press and the same make; « Create order » sends only when the form judges its fields into exactly the kept request, and with no « Store your garage key », as the reference's renewal sends at once (`TradeBox/index.tsx:146-200`). Going back sends nothing.
 class CreateOrderScreen extends StatefulWidget {
@@ -57,6 +62,18 @@ class CreateOrderScreen extends StatefulWidget {
   /// Opens the trade of the order made.
   final ValueChanged<TradeRecord> onMade;
 
+  /// The orders the book of the tab received, searched for « Existing orders match yours! » (#186); `null` for none, and for a renewal, which the reference makes without its create page.
+  final List<PublicOrder>? book;
+
+  /// The device's trades of the network, so that an order this device holds is never offered (#186); the search waits for them to be listed.
+  final ActiveTradesState? activeTrades;
+
+  /// Opens an order of « Existing orders match yours! », to take it instead (`MakerPage/index.tsx:61-79`).
+  final ValueChanged<PublicOrder>? onOpenOrder;
+
+  /// The time of the orders' expiry rings.
+  final DateTime Function() now;
+
   const CreateOrderScreen({
     super.key,
     required this.coordinatorDetails,
@@ -64,6 +81,10 @@ class CreateOrderScreen extends StatefulWidget {
     this.initialType,
     this.offline = const {},
     this.onOpenGarage,
+    this.book,
+    this.activeTrades,
+    this.onOpenOrder,
+    this.now = DateTime.now,
   });
 
   @override
@@ -104,6 +125,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   /// The renewal whose kept terms fill the fields (#185), once filled.
   OrderRenewal? _filled;
+
+  /// Whether « Submit » showed « Existing orders match yours! » (`showMatches`, `MakerPage/index.tsx:27`): the fields are folded away until « Edit order » (#186).
+  bool _showMatches = false;
+
+  /// The page's list, brought back to its top when « Submit » shows the orders above the form.
+  final _scroll = ScrollController();
 
   @override
   void initState() {
@@ -153,30 +180,54 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _minAmount.dispose();
     _maxAmount.dispose();
     _description.dispose();
+    _scroll.dispose();
     if (!_gone.isCompleted) _gone.complete();
     super.dispose();
   }
 
+  MakerFormInput _input(MakeOrderState state) => MakerFormInput(
+    type: _type,
+    currency: state.currency,
+    amount: _amount.text,
+    paymentMethods: _methods,
+    premium: _premium.text,
+    advanced: _advanced,
+    rangeEnabled: _rangeEnabled,
+    minAmount: _minAmount.text,
+    maxAmount: _maxAmount.text,
+    description: _description.text,
+    publicDuration: _publicDuration,
+    escrowDuration: _escrowDuration,
+    bondSizePercent: _bondSize,
+  );
+
   MakerFormCheck _check(MakeOrderState state) => MakerFormCheck.of(
-    MakerFormInput(
-      type: _type,
-      currency: state.currency,
-      amount: _amount.text,
-      paymentMethods: _methods,
-      premium: _premium.text,
-      advanced: _advanced,
-      rangeEnabled: _rangeEnabled,
-      minAmount: _minAmount.text,
-      maxAmount: _maxAmount.text,
-      description: _description.text,
-      publicDuration: _publicDuration,
-      escrowDuration: _escrowDuration,
-      bondSizePercent: _bondSize,
-    ),
+    _input(state),
     coordinatorsLoaded: state.coordinatorsLoaded,
     market: state.formLimits,
     sizeLimitSats: state.sizeLimitSats,
   );
+
+  /// « Existing orders match yours! » (#186): the orders of the book that resemble the form ([MatchingOrders]), never one this device holds a trade of; none for a renewal, without a book, or while the device's trades are not listed (an order of this device could not be told apart).
+  List<PublicOrder> _matchesOf(MakeOrderState state, MakerFormCheck check) {
+    final book = widget.book;
+    final active = widget.activeTrades;
+    if (book == null || state.renewing || active is! ActiveTradesListed) {
+      return const [];
+    }
+    return MatchingOrders.of(
+      _input(state),
+      check,
+    ).apply(book, isOwn: (order) => active.holds(order, state.network));
+  }
+
+  /// « Submit » (`onSubmit`, `MakerPage/index.tsx:139-141`): the orders that match shown above the form, its fields folded away; nothing is sent and nothing is read.
+  void _submit() {
+    setState(() => _showMatches = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
+    });
+  }
 
   /// « Create order »: the request of the form as shown, then « You do not have a Garage Key » or « Store your garage key », whose « Done » sends it with the coordinator and the price check shown at the press.
   ///
@@ -446,6 +497,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final state = context.watch<MakeOrderCubit>().state;
     final pending = context.watch<PendingMakesCubit>().state;
     final check = _check(state);
+    final matches = _matchesOf(state, check);
+    // The button reads « Submit » and only shows the orders that match while there are some and they are not shown (`MakerPage/index.tsx:137`, `:145`).
+    final submits = matches.isNotEmpty && !_showMatches;
     final locked = state.locked || _asking;
     // A renewal's fields, currency and coordinator are its order's, never changed (#185).
     final renewing = state.renewing;
@@ -525,6 +579,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 Expanded(
                   child: ListView(
+                    controller: _scroll,
                     padding: const EdgeInsets.all(BullSpacing.md),
                     children: switch (state.renewal) {
                       // A renewal whose kept terms are being read, or cannot be (#185): nothing else is shown, nothing can be sent.
@@ -545,6 +600,18 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           _Line(l10n.p2pRenewIntro(renewal.orderId.toString())),
                           const Gap(BullSpacing.md),
                         ],
+                        // Above the form, as the reference's (`MakerPage/index.tsx:105-125`), while « Submit » showed them and some match.
+                        if (_showMatches && matches.isNotEmpty) ...[
+                          _Matches(
+                            orders: matches,
+                            now: widget.now(),
+                            onOpen: switch (widget.onOpenOrder) {
+                              final open? when !locked => open,
+                              _ => null,
+                            },
+                          ),
+                          const Gap(BullSpacing.md),
+                        ],
                         // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
                         if (pending.unreadable ||
                             (pending.makes?.isNotEmpty ?? false)) ...[
@@ -559,119 +626,124 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           const PendingMakeLines(),
                           const Gap(BullSpacing.md),
                         ],
-                        _AdvancedOptions(
-                          onClear: fieldsLocked ? null : _clear,
-                          advanced: _advanced,
-                          loading:
-                              !state.coordinatorsLoaded ||
-                              state.limits is MakerFormLimitsLoading,
-                          // Opened only once the coordinator's limits are read, as the reference's switch (`MakerForm.tsx:710`); closed at any time.
-                          onToggle:
-                              fieldsLocked ||
-                                  (!_advanced &&
-                                      (!state.coordinatorsLoaded ||
-                                          state.limits is! MakerFormLimitsRead))
-                              ? null
-                              : () => _toggleAdvanced(state),
-                        ),
-                        const Gap(BullSpacing.md),
-                        _Side(
-                          type: _type,
-                          enabled: !fieldsLocked,
-                          // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
-                          onBuy: () => setState(() => _type = OrderType.buy),
-                        ),
-                        const Gap(BullSpacing.md),
-                        if (_advanced) ...[
-                          _RangeSwitch(
-                            range: _rangeEnabled,
-                            onChanged: fieldsLocked ? null : _toggleRange,
+                        // The fields folded away while the orders that match are shown (`collapseAll`, `MakerForm.tsx:674-723`, `:725-1261`); the coordinator, the summary, the button and the rate stay, as in the reference.
+                        if (!_showMatches) ...[
+                          _AdvancedOptions(
+                            onClear: fieldsLocked ? null : _clear,
+                            advanced: _advanced,
+                            loading:
+                                !state.coordinatorsLoaded ||
+                                state.limits is MakerFormLimitsLoading,
+                            // Opened only once the coordinator's limits are read, as the reference's switch (`MakerForm.tsx:710`); closed at any time.
+                            onToggle:
+                                fieldsLocked ||
+                                    (!_advanced &&
+                                        (!state.coordinatorsLoaded ||
+                                            state.limits
+                                                is! MakerFormLimitsRead))
+                                ? null
+                                : () => _toggleAdvanced(state),
                           ),
-                          const Gap(BullSpacing.xs),
-                        ],
-                        if (check.hasRange)
-                          _AmountRange(
-                            min: _minAmount,
-                            max: _maxAmount,
-                            check: check,
-                            currency: state.currency,
+                          const Gap(BullSpacing.md),
+                          _Side(
+                            type: _type,
                             enabled: !fieldsLocked,
-                            onChanged: _amountChanged,
-                            onCurrency: () => unawaited(_chooseCurrency(state)),
-                            onSlide: _slide,
-                          )
-                        else
-                          _Amount(
-                            controller: _amount,
-                            currency: state.currency,
-                            problem: check.amountProblem,
-                            enabled: !fieldsLocked,
-                            onChanged: _amountChanged,
-                            onCurrency: () => unawaited(_chooseCurrency(state)),
+                            // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
+                            onBuy: () => setState(() => _type = OrderType.buy),
                           ),
-                        const Gap(BullSpacing.md),
-                        _Methods(
-                          methods: _methods,
-                          tooLong: check.badPaymentMethod,
-                          enabled: !fieldsLocked,
-                          onChoose: () => unawaited(_chooseMethods()),
-                          onAdd: () => unawaited(_addMethod()),
-                          onRemove: (method) =>
-                              setState(() => _methods.remove(method)),
-                        ),
-                        const Gap(BullSpacing.md),
-                        const _Location(),
-                        const Gap(BullSpacing.md),
-                        _PremiumField(
-                          controller: _premium,
-                          problem: check.premiumProblem,
-                          enabled: !fieldsLocked,
-                          onChanged: () => setState(() {}),
-                        ),
-                        const Gap(BullSpacing.md),
-                        if (_advanced) ...[
-                          _Description(
-                            controller: _description,
-                            check: check,
+                          const Gap(BullSpacing.md),
+                          if (_advanced) ...[
+                            _RangeSwitch(
+                              range: _rangeEnabled,
+                              onChanged: fieldsLocked ? null : _toggleRange,
+                            ),
+                            const Gap(BullSpacing.xs),
+                          ],
+                          if (check.hasRange)
+                            _AmountRange(
+                              min: _minAmount,
+                              max: _maxAmount,
+                              check: check,
+                              currency: state.currency,
+                              enabled: !fieldsLocked,
+                              onChanged: _amountChanged,
+                              onCurrency: () =>
+                                  unawaited(_chooseCurrency(state)),
+                              onSlide: _slide,
+                            )
+                          else
+                            _Amount(
+                              controller: _amount,
+                              currency: state.currency,
+                              problem: check.amountProblem,
+                              enabled: !fieldsLocked,
+                              onChanged: _amountChanged,
+                              onCurrency: () =>
+                                  unawaited(_chooseCurrency(state)),
+                            ),
+                          const Gap(BullSpacing.md),
+                          _Methods(
+                            methods: _methods,
+                            tooLong: check.badPaymentMethod,
+                            enabled: !fieldsLocked,
+                            onChoose: () => unawaited(_chooseMethods()),
+                            onAdd: () => unawaited(_addMethod()),
+                            onRemove: (method) =>
+                                setState(() => _methods.remove(method)),
+                          ),
+                          const Gap(BullSpacing.md),
+                          const _Location(),
+                          const Gap(BullSpacing.md),
+                          _PremiumField(
+                            controller: _premium,
+                            problem: check.premiumProblem,
                             enabled: !fieldsLocked,
                             onChanged: () => setState(() {}),
                           ),
                           const Gap(BullSpacing.md),
-                          const _Password(),
-                          const Gap(BullSpacing.md),
-                          _DurationField(
-                            label: l10n.p2pMakePublicDuration,
-                            title: l10n.p2pMakePublicDurationTitle,
-                            value: _publicDuration,
-                            enabled: !fieldsLocked,
-                            onPicked: (picked) => setState(
-                              () => _publicDuration =
-                                  MakerFormCheck.publicDurationOf(picked),
+                          if (_advanced) ...[
+                            _Description(
+                              controller: _description,
+                              check: check,
+                              enabled: !fieldsLocked,
+                              onChanged: () => setState(() {}),
                             ),
-                          ),
-                          const Gap(BullSpacing.md),
-                          _DurationField(
-                            label: l10n.p2pMakeEscrowDuration,
-                            title: l10n.p2pMakeEscrowDurationTitle,
-                            value: _escrowDuration,
-                            enabled: !fieldsLocked,
-                            onPicked: (picked) => setState(
-                              () => _escrowDuration =
-                                  MakerFormCheck.escrowDurationOf(picked),
+                            const Gap(BullSpacing.md),
+                            const _Password(),
+                            const Gap(BullSpacing.md),
+                            _DurationField(
+                              label: l10n.p2pMakePublicDuration,
+                              title: l10n.p2pMakePublicDurationTitle,
+                              value: _publicDuration,
+                              enabled: !fieldsLocked,
+                              onPicked: (picked) => setState(
+                                () => _publicDuration =
+                                    MakerFormCheck.publicDurationOf(picked),
+                              ),
                             ),
-                          ),
-                          const Gap(BullSpacing.md),
-                          _BondSizeSlider(
-                            value: _bondSize,
-                            onChanged: fieldsLocked
-                                ? null
-                                : (value) => setState(
-                                    () => _bondSize = MakerFormCheck.bondSizeOf(
-                                      value,
+                            const Gap(BullSpacing.md),
+                            _DurationField(
+                              label: l10n.p2pMakeEscrowDuration,
+                              title: l10n.p2pMakeEscrowDurationTitle,
+                              value: _escrowDuration,
+                              enabled: !fieldsLocked,
+                              onPicked: (picked) => setState(
+                                () => _escrowDuration =
+                                    MakerFormCheck.escrowDurationOf(picked),
+                              ),
+                            ),
+                            const Gap(BullSpacing.md),
+                            _BondSizeSlider(
+                              value: _bondSize,
+                              onChanged: fieldsLocked
+                                  ? null
+                                  : (value) => setState(
+                                      () => _bondSize =
+                                          MakerFormCheck.bondSizeOf(value),
                                     ),
-                                  ),
-                          ),
-                          const Gap(BullSpacing.md),
+                            ),
+                            const Gap(BullSpacing.md),
+                          ],
                         ],
                         _Coordinator(
                           state: state,
@@ -705,7 +777,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           ),
                           renewing: renewing,
                           coordinator: coordinatorName,
-                          onPressed: () => unawaited(_press()),
+                          submits: submits,
+                          onPressed: submits
+                              ? _submit
+                              : () => unawaited(_press()),
+                          onEdit: _showMatches
+                              ? () => setState(() => _showMatches = false)
+                              : null,
                         ),
                         const Gap(BullSpacing.md),
                         _Rate(
@@ -1374,6 +1452,8 @@ enum _PressStopped {
 }
 
 /// « Create order », disabled with the reference's reason (a tooltip opened by a tap, as the reference opens it on touch, and the same line under it), then what the make is doing or why it did not happen.
+///
+/// « Submit » in its place while orders match and are not shown (#186, `MakerPage/index.tsx:145`), with the same reason when disabled; « Edit order », a pencil beside it, while they are shown (`MakerForm.tsx:1314-1330`).
 class _CreateButton extends StatelessWidget {
   final MakerFormCheck check;
   final MakeOrderState state;
@@ -1397,7 +1477,13 @@ class _CreateButton extends StatelessWidget {
   /// Whether the form renews an order (#185): its fields cannot be changed, so a refusal the user could correct in a creation says what to do instead (functional review of #185, R3).
   final bool renewing;
   final String coordinator;
+
+  /// Whether the button reads « Submit », which only shows the orders that match (#186).
+  final bool submits;
   final VoidCallback onPressed;
+
+  /// « Edit order », while the orders that match are shown; `null` otherwise.
+  final VoidCallback? onEdit;
 
   const _CreateButton({
     required this.check,
@@ -1410,7 +1496,9 @@ class _CreateButton extends StatelessWidget {
     required this.renewalMismatch,
     required this.renewing,
     required this.coordinator,
+    required this.submits,
     required this.onPressed,
+    required this.onEdit,
   });
 
   @override
@@ -1425,7 +1513,7 @@ class _CreateButton extends StatelessWidget {
         !pendingFirst &&
         !renewalMismatch;
     final button = TradeButton(
-      label: l10n.p2pMakeCreateOrder,
+      label: submits ? l10n.p2pMakeSubmit : l10n.p2pMakeCreateOrder,
       busy: asking || progress is MakeSending,
       onPressed: ready ? onPressed : null,
     );
@@ -1484,17 +1572,31 @@ class _CreateButton extends StatelessWidget {
           live: true,
         ),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (block == null)
-          button
-        else
-          Tooltip(
+    final shown = block == null
+        ? button
+        : Tooltip(
             message: block.toText(context),
             triggerMode: TooltipTriggerMode.tap,
             child: button,
+          );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        switch (onEdit) {
+          final edit? => Row(
+            children: [
+              Expanded(child: shown),
+              const Gap(BullSpacing.xs),
+              IconButton(
+                tooltip: l10n.p2pMakeEditOrder,
+                onPressed: edit,
+                color: colors.textMuted,
+                icon: const Icon(Icons.edit),
+              ),
+            ],
           ),
+          null => shown,
+        },
         for (final line in lines) ...[const Gap(BullSpacing.xs), line],
       ],
     );
@@ -1524,6 +1626,66 @@ bool _renewalStuck(
       true,
     _ => false,
   };
+}
+
+/// « Existing orders match yours! » and the orders that match (#186, `MakerPage/index.tsx:105-125`): the reference's title, then every order that matches, as the book shows its offers ([OfferRow]), in the reference's order; a tap opens the order, to take it instead.
+///
+/// The rows scroll in a box at most [heightShare] of the screen high, as the reference's table scrolls in a box at most 68 % of its window (`MakerPage/index.tsx:82`, its `Paper` with `overflow: 'auto'`, `BookTable/index.tsx:991-1013`), so that however many match, the page goes on below it with the coordinator, the summary, « Create order » and « Edit order ». The reference's table shows as many rows as it counts in its height and lets the others be reached by sorting a column (its header is kept); here every row that matches is listed, the list bounded by the book's own read bounds (`read_bounds.dart`, 1,000 orders per coordinator).
+class _Matches extends StatelessWidget {
+  /// The highest share of the screen the rows take (`windowSize.height * 0.68`, `MakerPage/index.tsx:82`).
+  static const double heightShare = 0.68;
+
+  final List<PublicOrder> orders;
+  final DateTime now;
+
+  /// Opens an order; `null` while the form is locked, a make running or run.
+  final ValueChanged<PublicOrder>? onOpen;
+
+  const _Matches({required this.orders, required this.now, this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final open = onOpen;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          liveRegion: true,
+          child: Text(
+            l10n.p2pMakeMatchesFound,
+            textAlign: TextAlign.center,
+            style: text.headlineSmall?.copyWith(color: colors.text),
+          ),
+        ),
+        const Gap(BullSpacing.xs),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * heightShare,
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: orders.length,
+            itemBuilder: (context, index) {
+              final order = orders[index];
+              return OfferRow(
+                key: ValueKey((order.coordinator.shortAlias, order.id)),
+                order: order,
+                now: now,
+                onTap: open == null ? null : () => open(order),
+              );
+            },
+            separatorBuilder: (_, _) =>
+                Divider(height: 1, color: colors.outlineVariant),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// « Order current rate: … {{currencyCode}}/BTC » with its tooltip (`MakerForm.tsx:1340-1363`), then the Bull wallet's indicative price for comparison and, beyond the owner's threshold either way, a red warning; for a currency the Bull wallet does not price, or a price it could not read, a line in the warning colour (with « Retry » for the latter). None of it stops « Create order ».

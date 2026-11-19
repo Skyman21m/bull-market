@@ -3619,6 +3619,15 @@ class P2pLocalizationsHi extends P2pLocalizations {
   @override
   String get p2pRenewNoLongerAsKept =>
       'This order can no longer be renewed as it was: create a new order.';
+
+  @override
+  String get p2pMakeSubmit => 'Submit';
+
+  @override
+  String get p2pMakeEditOrder => 'Edit order';
+
+  @override
+  String get p2pMakeMatchesFound => 'Existing orders match yours!';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

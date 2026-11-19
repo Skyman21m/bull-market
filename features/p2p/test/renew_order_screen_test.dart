@@ -8,6 +8,7 @@ import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/coordinator_lottery.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/matching_orders.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_host.dart';
@@ -25,6 +26,7 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_limits_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/check_make_price_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -38,7 +40,8 @@ import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
-import 'support/fakes.dart' show FakeTransport, coordinator, testNow;
+import 'support/fakes.dart'
+    show FakeTransport, bookOrder, coordinator, parseOrders, testNow;
 import 'support/harness.dart';
 import 'support/make_form.dart';
 import 'support/make_harness.dart';
@@ -1041,6 +1044,45 @@ void main() {
       );
 
       testWidgets(
+        'a renewal searches no order of the book: « Create order » at once, never « Submit », one press sends the make (#186: the reference renews from the order\'s page, without its create page, `TradeBox/index.tsx:146-200`)',
+        (tester) async {
+          final book = await tester.runAsync(
+            () => parseOrders([
+              bookOrder(
+                id: 7,
+                premium: 1.5,
+                paymentMethod: 'Revolut Instant SEPA',
+              ),
+            ]),
+          );
+          if (book == null) fail('no book');
+          // A creation of the kept terms (« Buy », 100 EUR, 2 %, « Revolut Instant SEPA ») would be shown that order.
+          expect(
+            MatchingOrders(
+              type: OrderType.sell,
+              currency: eur,
+              premium: 2,
+              paymentMethods: const ['Revolut Instant SEPA'],
+              amount: 100,
+            ).apply(book, isOwn: (_) => false),
+            hasLength(1),
+          );
+          final app = await _App.start(tester, book: book);
+          await _tap(tester, _renewOrder);
+          await app.settle();
+          await app.settle();
+          expect(find.byType(CreateOrderScreen), findsOneWidget);
+          expect(find.text('Submit'), findsNothing);
+          expect(find.text('Existing orders match yours!'), findsNothing);
+          await _tap(tester, _create);
+          await app.settle();
+          await app.settle();
+          expect(app.makes(), 2);
+          await app.close();
+        },
+      );
+
+      testWidgets(
         'going back from the renewal\'s page with nothing sent: the renewed order\'s page again, its button usable, a new page sends one make',
         (tester) async {
           final app = await _App.start(tester);
@@ -1175,6 +1217,7 @@ final class _App {
     WidgetTester tester, {
     MakeOrderRequest? request,
     void Function(MakeHarness harness, TradeRecord record)? beforeExpiredRead,
+    List<PublicOrder>? book,
   }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 2400 * 3)
@@ -1312,6 +1355,9 @@ final class _App {
                   child: CreateOrderScreen(
                     coordinatorDetails: (_) => throw StateError('not opened'),
                     onMade: (made) => P2pRouter.openMade(context, args, made),
+                    // A book to search, which a renewal never searches (#186).
+                    book: book,
+                    activeTrades: const ActiveTradesListed([]),
                   ),
                 );
               },

@@ -47,6 +47,15 @@ final class ActiveTradesListed extends ActiveTradesState {
     }
     return null;
   }
+
+  /// Whether [order] of the book of [network] is one this device holds a trade of, whatever its origin (made here, taken here, or recovered from a pasted key): its network, coordinator and number those of an open record. « Existing orders match yours! » never offers it to be taken (#186, design note § 3.7).
+  bool holds(PublicOrder order, RobosatsNetwork network) => active.any(
+    (trade) =>
+        trade.record.isActive &&
+        trade.record.network == network &&
+        trade.record.coordinatorAlias == order.coordinator.shortAlias &&
+        trade.record.orderId == order.id,
+  );
 }
 
 /// The records cannot be read: never shown as « no trade », since a trade may be running (`ListActiveTradesUsecase`).

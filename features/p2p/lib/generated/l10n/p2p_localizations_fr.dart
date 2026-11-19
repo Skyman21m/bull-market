@@ -3670,4 +3670,14 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pRenewNoLongerAsKept =>
       'Cet ordre ne peut plus être renouvelé tel quel : créez un nouvel ordre.';
+
+  @override
+  String get p2pMakeSubmit => 'Soumettre';
+
+  @override
+  String get p2pMakeEditOrder => 'Modifier l’ordre';
+
+  @override
+  String get p2pMakeMatchesFound =>
+      'Des ordres existants correspondent au vôtre !';
 }

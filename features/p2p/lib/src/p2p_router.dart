@@ -356,18 +356,59 @@ final class P2pRouter {
       ),
     ],
     child: Builder(
-      builder: (context) => CreateOrderScreen(
-        initialType: args.initialType,
-        offline: args.offline,
-        coordinatorDetails: (request) =>
-            locator<CoordinatorDetailsCubit>(param1: request),
-        onOpenGarage: locator.isRegistered<GarageCubit>()
-            ? () => context.pop(P2pOrderExit.garage)
-            : null,
-        onMade: (record) => openMade(context, args, record),
-      ),
+      builder: (context) {
+        Widget screen(ActiveTradesState? active) => CreateOrderScreen(
+          initialType: args.initialType,
+          offline: args.offline,
+          coordinatorDetails: (request) =>
+              locator<CoordinatorDetailsCubit>(param1: request),
+          onOpenGarage: locator.isRegistered<GarageCubit>()
+              ? () => context.pop(P2pOrderExit.garage)
+              : null,
+          onMade: (record) => openMade(context, args, record),
+          // « Existing orders match yours! » (#186): the book the tab received, searched on the device, and the device's trades, so that none of its orders is offered.
+          book: active == null ? null : args.book,
+          activeTrades: active,
+          onOpenOrder: (order) => unawaited(openMatch(context, args, order)),
+          now: locator<P2pClock>().now,
+        );
+        return _searchesBook(locator, args)
+            ? BlocProvider(
+                // The device's trades of the network, read from the device only, for the page's life.
+                create: (_) =>
+                    locator<ActiveTradesCubit>(param1: args.network)..start(),
+                child: BlocBuilder<ActiveTradesCubit, ActiveTradesState>(
+                  builder: (_, active) => screen(active),
+                ),
+              )
+            : screen(null);
+      },
     ),
   );
+
+  /// Whether the create page of [args] looks for « Existing orders match yours! » (#186): a creation (the reference renews an order without its create page, `TradeBox/index.tsx:146-200`) from a book the tab received, where the feature lists the device's trades.
+  static bool _searchesBook(GetIt locator, P2pCreateRouteArgs args) =>
+      args.renewing == null &&
+      args.book != null &&
+      locator.isRegistered<ActiveTradesCubit>();
+
+  /// An order of « Existing orders match yours! » (#186): its page above the create page, as the reference navigates to it (`MakerPage/index.tsx:61-79`), « Take Order » offered as from the book (the order is none of this device's trades, which the search leaves out); left for the Garage, the create page is left for it too.
+  ///
+  /// Used by [createPage], and by the tests that play the app's navigation.
+  @visibleForTesting
+  static Future<void> openMatch(
+    BuildContext context,
+    P2pCreateRouteArgs args,
+    PublicOrder order,
+  ) async {
+    final exit = await context.pushNamed<P2pOrderExit>(
+      orderName,
+      extra: P2pOrderRouteArgs(order, args.network),
+    );
+    if (exit == P2pOrderExit.garage && context.mounted) {
+      context.pop(P2pOrderExit.garage);
+    }
+  }
 
   /// « Renew Order » and « Renew » of the page of the trade of [record] (#185, functional review C1): the renewal's page above it; when that page made the new order, it closes with the new trade's record and the page of the renewed order is replaced by the new trade's, as the reference navigates to the new order (`TradeBox/index.tsx:186-188`), so that no page of the renewed order stays behind with its button; when it is left for the Garage, this page is left for it too; left otherwise (going back, nothing sent, a refusal, a make whose outcome is unknown, now a pending make), the future completes and the page of the renewed order is shown again.
   ///
