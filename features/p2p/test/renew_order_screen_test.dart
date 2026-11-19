@@ -19,6 +19,7 @@ import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_renewal.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
@@ -151,6 +152,7 @@ Future<void> _showTrade(
   required TradeRecord record,
   _Pages? pages,
   RenewalsCubit? renewals,
+  TradeEndReread? endReread,
   Locale locale = const Locale('en'),
 }) async {
   tester.view
@@ -208,7 +210,16 @@ Future<void> _showTrade(
     ),
   );
   await tester.pump();
-  watch.add(TradeScreenStatuses.watched(seen, of: record));
+  watch.add(
+    endReread == null
+        ? TradeScreenStatuses.watched(seen, of: record)
+        : TradeWatchStatus(
+            record,
+            seen,
+            takePending: false,
+            endReread: endReread,
+          ),
+  );
   await tester.pump();
   await tester.pump();
 }
@@ -532,6 +543,50 @@ void main() {
         },
       );
     }
+
+    testWidgets(
+      'an expired order opened again whose one read was answered otherwise: the state machine\'s alerts in their usual words, the advice of an order made here, then that the coordinator shows it otherwise; « Renew Order » still offered (functional review of #220, C1)',
+      (tester) async {
+        final closed = _madeRecord();
+        final record = TradeRecord(
+          robot: closed.robot,
+          coordinatorAlias: closed.coordinatorAlias,
+          coordinatorOnion: closed.coordinatorOnion,
+          orderId: closed.orderId,
+          role: closed.role,
+          origin: closed.origin,
+          takenAt: closed.takenAt,
+          confirmedAt: closed.confirmedAt,
+          closedAt: madeAt.add(const Duration(days: 1)),
+        );
+        await _showTrade(
+          tester,
+          await tester.runAsync(() => _expired(stored: false)) ??
+              (throw StateError('none')),
+          record: record,
+          pages: _Pages(),
+          endReread: TradeEndShownOtherwise(const [TradeStatusRegressed()]),
+        );
+        final regressed = find.text(
+          'Temple of Sats sent a status that does not follow this trade. It was ignored.',
+        );
+        final advice = find.text(
+          'To follow this order safely, open it in the official RoboSats app with your Garage Key, and contact Temple of Sats if something looks wrong.',
+        );
+        final otherwise = find.textContaining(
+          'Temple of Sats now shows this order otherwise than this device kept it when it ended, on ',
+        );
+        expect(regressed, findsOneWidget);
+        expect(advice, findsOneWidget);
+        expect(otherwise, findsOneWidget);
+        expect(
+          tester.getTopLeft(regressed).dy,
+          lessThan(tester.getTopLeft(otherwise).dy),
+        );
+        expect(find.textContaining('could not be read again'), findsNothing);
+        expect(_renewOrder, findsOneWidget);
+      },
+    );
 
     testWidgets(
       '5 not marked stored, or a screen that cannot make an order: no « Renew Order »',
