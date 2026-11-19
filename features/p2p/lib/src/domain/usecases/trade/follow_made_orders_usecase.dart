@@ -64,8 +64,8 @@ final class FollowMadeOrdersUsecase {
           if (started) return const <RobotSlot?>[];
           started = true;
           return const <RobotSlot?>[null];
-        case Ok(value: final trades):
-          final locked = lockedOf(trades, key);
+        case Ok(value: final inProgress):
+          final locked = lockedOf(inProgress, key);
           final known = seen;
           if (known == null) {
             seen = locked.toSet();
@@ -84,13 +84,13 @@ final class FollowMadeOrdersUsecase {
     });
   }
 
-  /// The robots of the orders of [trades], all of them not closed, made here with [key], whose stored trail shows their bond locked once ([TradePosition.makerBondLocked]), the oldest first (by index).
+  /// The robots of the orders of [inProgress], all of them not closed, made here with [key], whose stored trail shows their bond locked once ([TradePosition.makerBondLocked]), the oldest first (by index).
   static List<RobotSlot> lockedOf(
-    List<ActiveTrade> trades,
+    List<ActiveTrade> inProgress,
     NetworkGarageKey key,
   ) {
     final locked = [
-      for (final ActiveTrade(:record, :standing) in trades)
+      for (final ActiveTrade(:record, :standing) in inProgress)
         if (record.origin == TradeOrigin.madeHere &&
             record.closedAt == null &&
             standing is ActiveTradeAt &&
