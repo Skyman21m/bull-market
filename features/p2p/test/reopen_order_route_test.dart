@@ -1133,6 +1133,105 @@ void main() {
       },
     );
 
+    /// The coordinator ends [made] by [end], then its page is opened as from the records, reads that end and closes its record, and is left: the order is now the device's last finished order.
+    Future<void> endAndRead(
+      _App app,
+      TradeRecord made,
+      void Function(ScriptedMadeOrder order) end,
+    ) async {
+      end(app.coordinator.order(made.orderId));
+      unawaited(
+        app.router.pushNamed(
+          P2pRouter.tradeName,
+          extra: P2pTradeRouteArgs(made),
+        ),
+      );
+      await app.settle(12);
+      await app.back();
+      expect(
+        (await app.active()).map((record) => record.orderId),
+        isNot(contains(made.orderId)),
+      );
+    }
+
+    for (final (name, end, position)
+        in <(String, void Function(ScriptedMadeOrder order), String)>[
+          ('expired', (order) => order.status = 5, 'expired'),
+          ('cancelled', (order) => order.status = 4, 'cancelled'),
+        ]) {
+      testWidgets(
+        'an order public, then $name: the Garage opens on its robot, the one of the « Last order #N » line under it (review of #229, C1)',
+        (tester) async {
+          final app = await _App.start(tester, torKnown: true);
+          final made = await makeOther(app);
+          final robot = made.robot.accountIndex;
+          expect(robot, isNot(app.first.robot.accountIndex));
+          await lockAndRead(app, made);
+          await endAndRead(app, made, end);
+          expect(await stored(app, made), position);
+          await app.openGarage();
+          expect(shown(tester), robot);
+          expect(find.text('Robot #$robot'), findsOneWidget);
+          // The line under the robot is that very order's.
+          expect(_lastOrder(made.orderId), findsOneWidget);
+          await app.close();
+        },
+      );
+    }
+
+    testWidgets(
+      'an order locked and still public, and a later one public then expired: the Garage opens on the public one\'s robot (review of #229, C1)',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final active = await makeOther(app);
+        await lockAndRead(app, active);
+        final ended = await makeOther(app, amount: 300);
+        expect(
+          ended.robot.accountIndex,
+          greaterThan(active.robot.accountIndex),
+        );
+        await lockAndRead(app, ended);
+        await endAndRead(app, ended, (order) => order.status = 5);
+        await app.openGarage();
+        expect(shown(tester), active.robot.accountIndex);
+        expect(_lastOrder(ended.orderId), findsOneWidget);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'the last finished order of another Garage Key: the Garage of the key in use opens on its first robot (review of #229, C1)',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final made = await makeOther(app);
+        expect(made.robot.accountIndex, greaterThan(0));
+        await lockAndRead(app, made);
+        await endAndRead(app, made, (order) => order.status = 5);
+        final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final changed = await app.wait(
+          () async => (
+            await app.locator<GarageKeyRepository>().delete(_net),
+            await app.locator<GarageKeyRepository>().import(
+              _net,
+              otherTradeKey,
+            ),
+            await app.locator<RobotBindingRepository>().recordGeneratedKey(
+              _net,
+              other,
+            ),
+          ),
+        );
+        expect(changed.$2, isA<Ok<void, Failure>>());
+        await app.openGarage();
+        expect(_lastOrder(made.orderId), findsOneWidget);
+        expect(shown(tester), 0);
+        await app.close();
+      },
+    );
+
     testWidgets(
       'an order of another Garage Key, its bond locked: the Garage of the key in use opens on its first robot',
       (tester) async {

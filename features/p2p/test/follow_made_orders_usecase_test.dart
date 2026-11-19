@@ -7,6 +7,7 @@ import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/follow_made_orders_usecase.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -79,20 +80,39 @@ void main() {
       robot: at(position),
   });
 
-  /// What the use case gives while [lists] are read one after the other.
+  /// A finished order of [robot], as a « Last order #N » line shows it.
+  TradeRecord lastOrder(RobotSlot robot) => TradeRecord(
+    robot: robot,
+    coordinatorAlias: 'temple',
+    coordinatorOnion:
+        Federation.robosats.byAlias('temple')?.testnet.onion ??
+        (throw StateError('temple')),
+    orderId: 43,
+    role: TradeRole.buyer,
+    origin: TradeOrigin.madeHere,
+    takenAt: DateTime.utc(2026, 11, 19, 9),
+    confirmedAt: DateTime.utc(2026, 11, 19, 9),
+    closedAt: DateTime.utc(2026, 11, 19, 10),
+  );
+
+  /// What the use case gives while [lists] are read one after the other, the « Last order #N » lines being [lines].
   Future<List<RobotSlot?>> follow(
-    List<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>> lists,
-  ) async {
+    List<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>> lists, {
+    Result<List<TradeRecord>, P2pFailure> lines = const Ok([]),
+  }) async {
     final trails = _Trails();
     final given = <RobotSlot?>[];
-    final listening = FollowMadeOrdersUsecase(
-      trails,
-    ).execute(key).listen(given.add);
+    final linesAsked = <RobosatsNetwork>[];
+    final listening = FollowMadeOrdersUsecase(trails, (network) {
+      linesAsked.add(network);
+      return Stream.value(lines);
+    }).execute(key).listen(given.add);
     for (final list in lists) {
       trails.made.add(list);
     }
     await pumpEventQueue();
     expect(trails.asked, [RobosatsNetwork.testnet]);
+    expect(linesAsked, hasLength(lessThanOrEqualTo(1)));
     await listening.cancel();
     return given;
   }
@@ -138,6 +158,59 @@ void main() {
       expect(await follow([const Err(P2pStorageFailure())]), [null]);
     });
   });
+
+  group(
+    'when the Garage opens with no order made here locked (review of #229, C1)',
+    () {
+      test(
+        'the robot of the first « Last order #N » line, an order expired or cancelled since',
+        () async {
+          expect(
+            await follow([
+              made({slot(3): TradePosition.expired, slot(1): waiting}),
+            ], lines: Ok([lastOrder(slot(3)), lastOrder(slot(2))])),
+            [slot(3)],
+          );
+        },
+      );
+
+      test('an order locked wins over the line', () async {
+        expect(
+          await follow([
+            made({slot(1): public, slot(3): TradePosition.cancelled}),
+          ], lines: Ok([lastOrder(slot(3))])),
+          [slot(1)],
+        );
+      });
+
+      test(
+        'none: a line of another key or network, no line, lines that cannot be read',
+        () async {
+          for (final lines in <Result<List<TradeRecord>, P2pFailure>>[
+            Ok([lastOrder(slot(3, of: other))]),
+            Ok([lastOrder(slot(3, network: RobosatsNetwork.mainnet))]),
+            const Ok([]),
+            const Err(P2pStorageFailure()),
+          ]) {
+            expect(await follow([made({})], lines: lines), [
+              null,
+            ], reason: '$lines');
+          }
+        },
+      );
+
+      test('only at the opening: later lists never read the lines', () async {
+        expect(
+          await follow([
+            made({}),
+            made({slot(1): waiting}),
+            made({slot(1): public}),
+          ], lines: Ok([lastOrder(slot(4))])),
+          [slot(4), slot(1)],
+        );
+      });
+    },
+  );
 
   group('while the Garage is shown', () {
     test('an order whose bond locks gives its robot, once', () async {
@@ -215,6 +288,7 @@ void main() {
       final trails = _Trails();
       final listening = FollowMadeOrdersUsecase(
         trails,
+        (_) => const Stream.empty(),
       ).execute(key).listen((_) {});
       trails.made.add(made({}));
       await pumpEventQueue();

@@ -1568,6 +1568,61 @@ void main() {
     );
 
     test(
+      'one following at a time: two reads of the vault at once leave none after the Garage is left (review of #229, R3)',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        unawaited(cubit.load());
+        await cubit.load();
+        await pumpEventQueue();
+        expect(shown(cubit), 3);
+        await cubit.close();
+        expect(orders.made.hasListener, isFalse);
+        await orders.made.close();
+      },
+    );
+
+    test(
+      'the key deleted: its orders followed no more (review of #229, R4)',
+      () async {
+        final orders = madeStarting(slot(3));
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          madeRobots: orders.follow,
+        );
+        await cubit.load();
+        expect(orders.made.hasListener, isTrue);
+        await cubit.delete(reauthenticate: neverAsked);
+        expect(cubit.state, isA<GarageWithoutKey>());
+        expect(orders.made.hasListener, isFalse);
+        await cubit.close();
+        await orders.made.close();
+      },
+      timeout: slow,
+    );
+
+    test(
+      'the vault read again while following, the key gone from it: nothing followed any more (review of #229, R6)',
+      () async {
+        final orders = madeStarting(slot(3));
+        final storage = holding([testnetEntry]);
+        final cubit = cubitOver(storage, madeRobots: orders.follow);
+        await cubit.load();
+        expect(orders.made.hasListener, isTrue);
+        storage.entries.remove(testnetEntry);
+        await cubit.load();
+        expect(cubit.state, isA<GarageWithoutKey>());
+        expect(orders.made.hasListener, isFalse);
+        await cubit.close();
+        await orders.made.close();
+      },
+      timeout: slow,
+    );
+
+    test(
       'a tap on « Last order #N » shows that order\'s robot, which what the Garage opened on does not replace; an order seen locked after it does',
       () async {
         final orders = madeStarting(slot(3));
