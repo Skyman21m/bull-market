@@ -252,10 +252,6 @@ void main() {
           expect(made.createdRate.isFinite, isTrue, reason: reason);
           expect(made.createdRate, greaterThan(0), reason: reason);
           expect(made.bondCeiling.value, greaterThanOrEqualTo(BigInt.one));
-          expect(
-            _some(made.escrowCeilingFor(null)).value,
-            greaterThanOrEqualTo(BigInt.one),
-          );
           for (final last in lasts) {
             final gap = _some(
               made.rateGap(rangeAmount: null, tradeSatoshis: last),
@@ -650,130 +646,44 @@ void main() {
     );
   });
 
-  group('the escrow ceiling of a maker seller', () {
-    test('F is 2, a proposal', () {
-      expect(TradeTolerances.makerEscrowFactor, 2);
-    });
-
+  group('the contract\'s amount of a maker seller\'s escrow (#187)', () {
     test(
-      'the contract\'s sats at the creation\'s rate, times F, with the maker fee of them and 1 sat, rounded down',
+      'a range: the amount of the contract, never the maximum nor the minimum; outside the range, or none, no amount',
       () {
-        // 100 USD at 50,000: 200,000 sats; × 2 × 1.00025 = 400,100; + 1.
-        final made = terms(type: OrderType.sell);
-        expect(made.escrowCeilingFor(null), sats(400101));
-        // The reference's escrow for a trade of exactly twice the sats: round(400,000 + 100).
-        expect(_referenceEscrow(400000, 0.00025), 400100);
-        // No fee: 400,001; the highest fee: 404,001.
-        expect(
-          terms(type: OrderType.sell, makerFee: 0).escrowCeilingFor(null),
-          sats(400001),
-        );
-        expect(
-          terms(type: OrderType.sell, makerFee: 0.01).escrowCeilingFor(null),
-          sats(404001),
-        );
-        // Premium and discount move the rate of the creation, so the sats.
-        expect(
-          terms(type: OrderType.sell, premium: 25).escrowCeilingFor(null),
-          sats(320081),
-        );
-        expect(
-          terms(type: OrderType.sell, premium: -50).escrowCeilingFor(null),
-          sats(800201),
-        );
-      },
-    );
-
-    test(
-      'computed exactly: 60 USD at 50,000 is 120,000 sats, where doubles give 119,999.99…',
-      () {
-        final made = terms(
-          type: OrderType.sell,
-          amount: FixedOrderAmount(fiat(60)),
-          makerFee: 0,
-        );
-        expect(made.escrowCeilingFor(null), sats(240001));
-        expect((60 / 50000 * 1e8 * 2 + 1).floor(), 240000);
-      },
-    );
-
-    test(
-      'a range: the amount of the contract, never the maximum nor the minimum',
-      () {
-        final made = terms(
-          type: OrderType.sell,
-          amount: range(100, 600),
-          makerFee: 0,
-        );
-        expect(made.escrowCeilingFor(fiat(300)), sats(1200001));
-        expect(made.escrowCeilingFor(fiat(100)), sats(400001));
-        expect(made.escrowCeilingFor(fiat(600)), sats(2400001));
-        // Outside the range, or no amount: nothing paid from this wallet.
-        expect(made.escrowCeilingFor(fiat(99.99)), isNull);
-        expect(made.escrowCeilingFor(fiat(600.01)), isNull);
-        expect(made.escrowCeilingFor(null), isNull);
+        final made = terms(type: OrderType.sell, amount: range(100, 600));
+        expect(made.contractAmount(fiat(300)), fiat(300));
+        expect(made.contractAmount(fiat(100)), fiat(100));
+        expect(made.contractAmount(fiat(600)), fiat(600));
+        expect(made.contractAmount(fiat(99.99)), isNull);
+        expect(made.contractAmount(fiat(600.01)), isNull);
+        expect(made.contractAmount(null), isNull);
       },
     );
 
     test('a fixed order: no amount of a range', () {
       final made = terms(type: OrderType.sell);
-      expect(made.escrowCeilingFor(fiat(100)), isNull);
       expect(made.contractAmount(null), fiat(100));
       expect(made.contractAmount(fiat(100)), isNull);
     });
 
-    test('a maker buyer locks no escrow: no ceiling', () {
-      expect(terms().escrowCeilingFor(null), isNull);
-      expect(
-        terms(amount: range(100, 600)).escrowCeilingFor(fiat(300)),
-        isNull,
-      );
-    });
-
     test(
-      'the reference\'s escrow of any trade up to F times the sats is within it, and three sats above F times never',
+      'the escrow\'s sats expected at a price are the contract\'s amount with the premium, exactly, whatever the price of the creation',
       () {
-        final random = Random(17701);
-        for (var i = 0; i < 3000; i++) {
-          final amount = _decimals(random, 10, 20000, 2);
-          final fee = [
-            0.0,
-            0.0001995,
-            0.00025,
-            0.000375,
-            0.01,
-            _decimals(random, 0, 0.01, 7),
-          ][random.nextInt(6)];
-          final made = terms(
-            type: OrderType.sell,
-            amount: FixedOrderAmount(fiat(amount)),
-            premium: _decimals(random, -50, 100, 2),
-            createdPrice: _decimals(random, 100, 500000, 4),
-            makerFee: fee,
-          );
-          final ceiling = _some(made.escrowCeilingFor(null)).value.toInt();
-          final mostLegit =
-              (made.createdSatoshis(fiat(amount)) * ExactRatio.integer(2))
-                  .floor()
-                  .toInt();
-          for (final last in [
-            mostLegit,
-            mostLegit - 1,
-            1 + random.nextInt(min(mostLegit, 1 << 31)),
-          ]) {
-            expect(
-              _referenceEscrow(last, fee),
-              lessThanOrEqualTo(ceiling),
-              reason: '$i $last',
-            );
-          }
-          // Three sats above F times the sats, the escrow is above the ceiling whatever the rounding (two may round to its very sat).
-          expect(
-            _referenceEscrow(mostLegit + 3, fee),
-            greaterThan(ceiling),
-            reason: '$i',
-          );
-        }
+        // 100 USD at 50,000 with no premium: 200,000 sats, the creation's price not used (#187 replaced its ceiling).
+        final made = terms(type: OrderType.sell, createdPrice: 5000);
+        expect(
+          _some(made.satsAtPrice(50000, fiat(100))),
+          ExactRatio.integer(200000),
+        );
+        expect(
+          _some(
+            terms(
+              type: OrderType.sell,
+              premium: 25,
+            ).satsAtPrice(50000, fiat(100)),
+          ),
+          ExactRatio.integer(160000),
+        );
       },
     );
   });

@@ -93,9 +93,9 @@ final class TradeRateGap {
 /// Not in it yet: a password and a meeting point, which `MakeOrderRequest` does not send before issue #189; its record writes `has_password` false and no coordinates, and a record with either is refused.
 ///
 /// Its money rules are computed exactly ([ExactRatio]): each figure the coordinator gives is a whole number of sats, each rule a bound on it rounded down once, at its end, so that a sat is let through only when the rule's exact bound reaches it.
-/// Its ceilings are [Sats], a `BigInt`, and nothing in the feature turns one into an `int`: `BigInt.toInt` stops at 2^63 − 1 on the Dart VM, so a screen that showed a ceiling through it could show a false figure; the wallet compares `BigInt`s (`walletPaymentFor`). Within the bounds of [create], every figure for display ([expectedBond], [createdRate], [rateGap]) is finite.
+/// Its ceiling is [Sats], a `BigInt`, and nothing in the feature turns one into an `int`: `BigInt.toInt` stops at 2^63 − 1 on the Dart VM, so a screen that showed a ceiling through it could show a false figure; the wallet compares `BigInt`s (`walletPaymentFor`). Within the bounds of [create], every figure for display ([expectedBond], [createdRate], [rateGap]) is finite.
 ///
-/// Every protection here rests on [createdPrice], which the coordinator gives: a price k times too low makes the expected bond, both ceilings and the expected sats k times too large, and the gap of a contract whose sats agree with that price reads 0 % (100 USD at 3 %, a price of 5,000 announced for 50,000: a bond ceiling of 61,201 sats instead of 6,121, an escrow ceiling of 4,001,001 instead of 400,101). As the taker trusts the book's price and the reference its own `/api/limits/`; design note `docs/design/phase-3-making-an-order.md` § 3.3 and § 4.1.
+/// Every protection here rests on [createdPrice], which the coordinator gives: a price k times too low makes the expected bond, its ceiling and the expected sats k times too large, and the gap of a contract whose sats agree with that price reads 0 % (100 USD at 3 %, a price of 5,000 announced for 50,000: a bond ceiling of 61,201 sats instead of 6,121). As the taker trusts the book's price and the reference its own `/api/limits/`; design note `docs/design/phase-3-making-an-order.md` § 3.3 and § 4.1. What this wallet pays for an order made here is also compared with the wallet's own price at the moment of paying (`WalletRateCheck`, the owner's rule of 2026-11-17), which such a lie does not move; the escrow's ceiling at a factor of the creation's price (`escrowCeilingFor`) was removed by #187, that rule replacing it.
 @immutable
 final class MakerTerms {
   /// The highest [createdPrice]: the bound `maker_terms` keeps (`CHECK (created_price < 1000000000000000)`, schema 8), far above any price the coordinator can store (`exchange_rate`, 18 digits with 4 decimals, `api/models/currency.py:17-23`).
@@ -374,22 +374,6 @@ final class MakerTerms {
           taken,
         _ => null,
       };
-
-  /// The most « Pay with this wallet » pays for this maker seller's escrow in the contract of [rangeAmount] ([contractAmount]): the sats of the contract's amount at the rate of the creation, times [TradeTolerances.makerEscrowFactor], with the maker fee of that product and [TradeTolerances.feeSats], rounded down (design note § 3.3): `floor(S × F × (1 + maker fee) + 1)`.
-  ///
-  /// `null`, so nothing is paid from this wallet, for a buyer (who locks no escrow) and when the contract's amount is not one of these terms ([contractAmount]).
-  /// The coordinator asks `round(last_satoshis × (1 + maker_fee))` (`Logics.escrow_amount`, `api/logics.py:733-749`), so with `last_satoshis` up to F times the sats at the creation's rate the escrow is at most that bound's exact value plus half a sat, which [TradeTolerances.feeSats] covers: no escrow of a trade within the factor is refused, and the bound is rounded down, never letting one sat more through. That sat lets through an escrow whose trade is up to about 1.5 sats above F times the sats, inherent in covering the coordinator's `round`.
-  /// It bounds what this wallet pays, not the coordinator, which fixes `last_satoshis` at its own price at the take (`api/logics.py:1332-1335`): above it, « Pay with another wallet » stays, and it is no warning.
-  Sats? escrowCeilingFor(FiatAmount? rangeAmount) {
-    final amount = contractAmount(rangeAmount);
-    if (role != TradeRole.seller || amount == null) return null;
-    final bound =
-        createdSatoshis(amount) *
-            _exact(TradeTolerances.makerEscrowFactor) *
-            (ExactRatio.integer(1) + _exact(makerFee)) +
-        ExactRatio.integer(TradeTolerances.feeSats);
-    return Sats(bound.floor());
-  }
 
   /// Whether the fee a contract implies agrees with the announced [makerFee]: between 0 and [tradeSatoshis] × [makerFee] plus [TradeTolerances.feeSats], the fee being what a seller locks above the trade's sats ([paid], its escrow) or what a buyer receives below them ([paid], its payout), [tradeSatoshis] being the trade's sats fixed at the take (`last_satoshis`).
   ///

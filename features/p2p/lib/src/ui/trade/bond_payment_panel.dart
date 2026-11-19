@@ -764,7 +764,12 @@ String bondPayRefusalText(
   final formats = P2pFormats.of(context);
   String sats(Sats amount) => formats.sats(amount.value.toInt());
   return switch (refusal) {
-    BondPayNotAtBondStep() || BondPayInvoiceChanged() => l10n.p2pPayOrderMoved,
+    BondPayNotAtBondStep() ||
+    BondPayInvoiceChanged() ||
+    BondPayContractNotConfirmed() => l10n.p2pPayOrderMoved,
+    // A maker seller's escrow (#187): the minimal words of the refusals of its own rules, the panel's texts being #188's.
+    BondPayEarlierEscrowHeld() => l10n.p2pPayEarlierEscrowHeld,
+    BondPayEscrowSeenBefore() => l10n.p2pPayAlreadyPaid,
     BondPayNotOffered(reason: WalletPaymentRefusal.tooLate) =>
       l10n.p2pPayTooLate,
     BondPayTradeUnavailable() => l10n.p2pPayCoordinatorUnreachable(coordinator),

@@ -2126,6 +2126,10 @@ class P2pLocalizationsEn extends P2pLocalizations {
   String get p2pPayWalletUnavailable => 'This wallet cannot pay this bond now.';
 
   @override
+  String get p2pPayEarlierEscrowHeld =>
+      'This wallet paid the collateral of an earlier take of this order, and the swap service has not reported it released yet. Pay this collateral with another wallet.';
+
+  @override
   String get p2pPayEscrowWalletUnavailable =>
       'This wallet cannot pay this collateral now.';
 

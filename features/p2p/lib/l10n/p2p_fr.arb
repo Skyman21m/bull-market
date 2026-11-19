@@ -550,6 +550,7 @@
   "p2pPayOrderMoved": "L’ordre a changé avant le paiement. Rien n’a été payé.",
   "p2pPayNotRecorded": "Bull Market n’a pas pu écrire ses enregistrements sur cet appareil. Rien n’a été payé.",
   "p2pPayWalletUnavailable": "Ce portefeuille ne peut pas payer cette caution maintenant.",
+  "p2pPayEarlierEscrowHeld": "Ce portefeuille a payé la garantie d’une prise précédente de cet ordre, et le service de swap ne l’a pas encore signalée libérée. Payez cette garantie avec un autre portefeuille.",
   "p2pPayEscrowWalletUnavailable": "Ce portefeuille ne peut pas payer cette garantie maintenant.",
   "p2pPayServiceCouldNotPay": "Swap échoué. Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.",
   "p2pPayWithSwapService": "Votre swap est en cours.",

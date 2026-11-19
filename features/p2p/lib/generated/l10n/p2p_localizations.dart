@@ -3464,6 +3464,12 @@ abstract class P2pLocalizations {
   /// **'This wallet cannot pay this bond now.'**
   String get p2pPayWalletUnavailable;
 
+  /// The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the order was taken again, and an escrow this wallet paid for an earlier take may still be held (its swap neither refunded, nor its refund pending, nor failed or expired with nothing sent), so this wallet pays no second one (one escrow held at a time, design note § 4.3); « collateral » as the reference's title of the escrow, « garantie » in French as the project's (#96).
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet paid the collateral of an earlier take of this order, and the swap service has not reported it released yet. Pay this collateral with another wallet.'**
+  String get p2pPayEarlierEscrowHeld;
+
   /// The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): as the bond's `p2pPayWalletUnavailable`; « collateral » as the reference's title of the escrow (« Lock {{amountSats}} Sats as collateral »), « garantie » in French as the project's (#96).
   ///
   /// In en, this message translates to:

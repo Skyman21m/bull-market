@@ -40,9 +40,71 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
       'SELECT payment_hash, started_at, wallet_payment_id FROM trade_payments '
       'WHERE key_fingerprint = ? AND robot_index = ? AND step = ? AND take = ?';
 
+  /// Every payment of a trade, by contract then step.
+  static const String _paymentsSql =
+      'SELECT step, take, payment_hash, started_at, wallet_payment_id '
+      'FROM trade_payments WHERE key_fingerprint = ? AND robot_index = ? '
+      'ORDER BY take, step';
+
   final P2pDatabase _database;
 
   const TradePaymentRepositoryImpl(this._database);
+
+  @override
+  Future<Result<List<TradePaymentRecord>, P2pFailure>> paymentsOfTrade(
+    TradeRecord trade,
+  ) async {
+    final List<QueryRow> rows;
+    try {
+      rows = await _database
+          .customSelect(
+            _paymentsSql,
+            variables: _robotVariables(trade.robot),
+            readsFrom: {_database.storedTradePayments},
+          )
+          .get();
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    final payments = <TradePaymentRecord>[];
+    for (final row in rows) {
+      final data = row.data;
+      final step = InvoiceStep.values
+          .where((value) => value.name == data['step'])
+          .firstOrNull;
+      switch ((
+        step,
+        data['take'],
+        data['payment_hash'],
+        data['started_at'],
+        data['wallet_payment_id'],
+      )) {
+        case (
+          final step?,
+          final int take,
+          final String hash,
+          final int startedAt,
+          final String? id,
+        ):
+          payments.add(
+            TradePaymentRecord(
+              step: step,
+              paymentHash: hash,
+              startedAt: DateTime.fromMicrosecondsSinceEpoch(
+                startedAt,
+                isUtc: true,
+              ),
+              walletPaymentId: id,
+              take: take,
+            ),
+          );
+        // A row this code never writes.
+        case _:
+          return const Err(P2pStorageFailure());
+      }
+    }
+    return Ok(List.unmodifiable(payments));
+  }
 
   @override
   Future<Result<TradePaymentRecord?, P2pFailure>> paymentOf(

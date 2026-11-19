@@ -2154,6 +2154,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Ce portefeuille ne peut pas payer cette caution maintenant.';
 
   @override
+  String get p2pPayEarlierEscrowHeld =>
+      'Ce portefeuille a payé la garantie d’une prise précédente de cet ordre, et le service de swap ne l’a pas encore signalée libérée. Payez cette garantie avec un autre portefeuille.';
+
+  @override
   String get p2pPayEscrowWalletUnavailable =>
       'Ce portefeuille ne peut pas payer cette garantie maintenant.';
 

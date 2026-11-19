@@ -54,6 +54,34 @@ sealed class WalletRateCheck {
     }
   }
 
+  /// The check of a maker seller's escrow of [asked] sats (the quote's invoice, the amount the wallet pays) for [amount] of the contract of the order of [terms] (the fixed amount, or a range's amount kept with the contract), at the wallet's price [wallet] with the order's premium (`MakerTerms.satsAtPrice`): the warning when [asked] is more than the sats expected by more than [TradeTolerances.walletRateGap] (#187, the owner's rule of 2026-11-17: « the escrow's sats expected are the contract's amount at the Bull wallet's rate at the moment of paying with the order's premium, one threshold of 10 % above them »); nothing compared for a currency the wallet does not price or a price that could not be read, as [ofMakerBond].
+  ///
+  /// The maker fee the coordinator adds to the escrow (`Logics.escrow_amount`, `api/logics.py:733-749`, at most 1 % by `MakerTerms`) is not added to the sats expected: the rule compares with the contract's amount alone, so the fee shows in the gap (+0.025 % with the reference's default), well inside the threshold.
+  static WalletRateCheck ofMakerEscrow(
+    MakerTerms terms, {
+    required FiatAmount amount,
+    required Sats asked,
+    required P2pWalletBitcoinRate wallet,
+  }) {
+    final currency = terms.currency;
+    switch (wallet) {
+      case P2pWalletRateRead(:final price):
+        return switch (terms.satsAtPrice(price, amount)) {
+          final expected? => WalletRateAtWallet._of(
+            asked,
+            expected,
+            price,
+            currency,
+          ),
+          null => WalletRateUnverified._(asked, currency),
+        };
+      case P2pWalletRateNotPriced():
+        return WalletRateNotPriced._(asked, currency);
+      case P2pWalletRateUnavailable():
+        return WalletRateUnverified._(asked, currency);
+    }
+  }
+
   /// The check of the sats a maker buyer is to receive, [received] (the payout's `trade_satoshis`), for [amount] of the contract of the order of [terms], at the wallet's price [wallet] with the order's premium (`MakerTerms.satsAtPrice`): the warning when [received] is less than the sats expected by more than [TradeTolerances.walletRateGap] (fewer sats is the side that costs a buyer); nothing compared for a currency the wallet does not price or a price that could not be read, as [ofMakerBond]. The maker fee (at most 1 %, `MakerTerms`) comes off the payout and is not added back: the threshold is the rule's, on what the buyer receives.
   static WalletRateCheck ofMakerPayout(
     MakerTerms terms, {

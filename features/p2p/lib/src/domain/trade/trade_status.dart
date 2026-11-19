@@ -1339,7 +1339,7 @@ sealed class TradeStatus {
 
   /// The checks of a maker's [order] against what the maker asked and the trade's history (design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.3).
   ///
-  /// No check compares the trade's sats with a price: the coordinator fixes them at the take, at its price then, up to a day after the make (`api/logics.py:1332-1335`), and a warning on them would fire after any move of the market (§ 3.3); the gap from the rate of the creation is information ([MakerTerms.rateGap]), and the wallet's ceiling bounds what it pays ([MakerTerms.escrowCeilingFor]).
+  /// No check compares the trade's sats with a price: the coordinator fixes them at the take, at its price then, up to a day after the make (`api/logics.py:1332-1335`), and a warning on them would fire after any move of the market (§ 3.3); the gap from the rate of the creation is information ([MakerTerms.rateGap]), and what this wallet pays is compared with the wallet's own price when it pays (`WalletRateCheck`, the owner's rule of 2026-11-17, #187), a warning that never stops it.
   static List<TradeWarning> _madeOrderWarnings(
     CoordinatorOrder order,
     MakerTerms maker,
