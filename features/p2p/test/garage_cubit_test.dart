@@ -1588,12 +1588,15 @@ void main() {
       },
     );
 
-    test('without the trades, shows the order\'s robot and follows nothing', () async {
-      final cubit = cubitOver(holding([testnetEntry]));
-      await cubit.load();
-      cubit.showOrderRobot(recordOf(slot(2)));
-      expect(shown(cubit), 2);
-      await cubit.close();
-    });
+    test(
+      'without the trades, shows the order\'s robot and follows nothing',
+      () async {
+        final cubit = cubitOver(holding([testnetEntry]));
+        await cubit.load();
+        cubit.showOrderRobot(recordOf(slot(2)));
+        expect(shown(cubit), 2);
+        await cubit.close();
+      },
+    );
   });
 }

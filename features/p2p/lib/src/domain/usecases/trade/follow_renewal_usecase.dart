@@ -20,10 +20,12 @@ final class FollowRenewalUsecase {
   const FollowRenewalUsecase(this._renewalsOf);
 
   /// The robot of each order made here since [record] with its terms whose bond this device sees locked after the first list it read, the newest when several are seen locked at once; nothing while the records or the terms cannot be read, and nothing at all for an order not made here (no terms kept of it).
-  Stream<RobotSlot> execute(TradeRecord record) async* {
+  ///
+  /// A plain transform of the records' stream, so that cancelling it cancels their watch at once (an `async*` body would keep it until its next `yield`).
+  Stream<RobotSlot> execute(TradeRecord record) {
     // The robots of the orders whose bond was seen locked: from the first list read, which only sets them, then from each later one.
     Set<RobotSlot>? seen;
-    await for (final result in _renewalsOf(record)) {
+    return _renewalsOf(record).expand((result) {
       if (result case Ok(value: final renewals)) {
         final locked = [
           for (final made in renewals.since)
@@ -32,7 +34,7 @@ final class FollowRenewalUsecase {
         final known = seen;
         if (known == null) {
           seen = locked.toSet();
-          continue;
+          return const <RobotSlot>[];
         }
         final fresh = [
           for (final robot in locked)
@@ -40,8 +42,9 @@ final class FollowRenewalUsecase {
         ];
         known.addAll(fresh);
         // Oldest first: the last is the newest.
-        if (fresh.lastOrNull case final robot?) yield robot;
+        if (fresh.lastOrNull case final robot?) return [robot];
       }
-    }
+      return const <RobotSlot>[];
+    });
   }
 }

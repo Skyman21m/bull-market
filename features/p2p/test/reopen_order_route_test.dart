@@ -190,7 +190,12 @@ final class _App {
   ];
 
   /// The order made, its bond locked and its time run out at the coordinator, its trade screen opened as « Active trades » opens it, which reads it expired and closes its record, then left: the tab is shown again.
-  static Future<_App> start(WidgetTester tester) async {
+  ///
+  /// With [torKnown], each new listener of Tor hears at once that it is ready, as the embedded Tor tells its current state (`WatchP2pTorStateUsecase`), so that a robot panel shown later reads its coordinator; otherwise only the listeners there when Tor became ready hear it.
+  static Future<_App> start(
+    WidgetTester tester, {
+    bool torKnown = false,
+  }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 2600 * 3)
       ..devicePixelRatio = 3;
@@ -216,7 +221,12 @@ final class _App {
     setUpP2pForTesting(
       locator,
       transport: transport,
-      torStates: () => tor.stream,
+      torStates: torKnown
+          ? () => Stream.multi((listener) {
+              listener.add(P2pTorState.ready);
+              listener.addStream(tor.stream).ignore();
+            })
+          : () => tor.stream,
       clock: () => clock,
       garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
       wallet: FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
@@ -811,18 +821,34 @@ void main() {
     testWidgets(
       'two robots, the Garage on the second: a tap on the first one\'s « Last order #N » shows that robot, then opens the order; back, the Garage shows it; nothing sent for the switch that the arrows would not send',
       (tester) async {
-        final app = await _App.start(tester);
+        // What a tap sends without a switch, the Garage already on the order's robot, on a first app.
+        final before = await _App.start(tester, torKnown: true);
+        final robot = before.first.robot.accountIndex;
+        await before.openGarage();
+        expect(shown(tester), robot);
+        var from = before.transport.sent.length;
+        await _tap(tester, _lastOrder(before.first.orderId));
+        await before.settle(12);
+        expect(before.tradePages(), [before.first.orderId]);
+        final withoutSwitch = sentSince(before, from);
+        expect(withoutSwitch, contains('get /api/order/ $robot'));
+        await before.close();
+
+        // The same app again, the Garage on the second robot.
+        final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
-        final robot = app.first.robot.accountIndex;
+        expect(app.first.robot.accountIndex, robot);
         await app.openGarage();
         expect(shown(tester), robot);
         await next(app);
         expect(shown(tester), robot + 1);
         // What showing the order's robot with the arrows sends: its panel's reads.
-        var from = app.transport.sent.length;
+        from = app.transport.sent.length;
         await previous(app);
         expect(shown(tester), robot);
         final byArrows = sentSince(app, from);
+        // The panel of a robot on its coordinator reads it there.
+        expect(byArrows, contains('get /api/robot/ $robot'));
         await next(app);
         expect(find.text('Robot #${robot + 1}'), findsOneWidget);
         from = app.transport.sent.length;
@@ -833,10 +859,11 @@ void main() {
         expect(app.tradePages(), [id]);
         expect(app.orderReads.length - readsBefore, 1);
         expect(shown(tester), robot);
-        // The switch sent what the arrows send, and the order's screen its one read.
+        // The tap sent what it sends without a switch, and what the arrows send for that robot.
         expect(
           sentSince(app, from),
-          ([...byArrows, 'get /api/order/ $robot']..sort()),
+          ([...withoutSwitch, ...byArrows]..sort()),
+          reason: 'arrows: $byArrows',
         );
         await app.back();
         expect(find.byType(TradeScreen, skipOffstage: false), findsNothing);
@@ -849,7 +876,7 @@ void main() {
     testWidgets(
       'an order of another Garage Key: it opens as before, the Garage does not move',
       (tester) async {
-        final app = await _App.start(tester);
+        final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
         // The key changed since the order: deleted, another one in its place, drawn here.
         final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
@@ -894,7 +921,7 @@ void main() {
     testWidgets(
       'renewed: the Garage stays on the robot it showed while the new order waits for its bond, and shows the new order\'s robot once its bond is locked',
       (tester) async {
-        final app = await _App.start(tester);
+        final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
         final robot = app.first.robot.accountIndex;
         await app.openGarage();
@@ -924,6 +951,8 @@ void main() {
         expect(find.text('Robot #$robot'), findsOneWidget);
         // The new order opened again from « Order », its bond locked: once its screen read it public, the Garage shows its robot.
         await tester.tap(find.text('Order'));
+        await app.settle();
+        await _tap(tester, find.text('Active order #$renewed'));
         await app.settle(12);
         expect(app.tradePages(), [renewed]);
         app.coordinator.lockMakerBond(renewed);
@@ -939,32 +968,31 @@ void main() {
       },
     );
 
-    testWidgets(
-      'two quick taps: one screen, one switch of robot',
-      (tester) async {
-        final app = await _App.start(tester);
-        final id = app.first.orderId;
-        await app.openGarage();
-        await next(app);
-        final states = <GarageState>[];
-        final listening = garageOf(tester).stream.listen(states.add);
-        addTearDown(listening.cancel);
-        final before = app.orderReads.length;
-        await tester.tap(_lastOrder(id));
-        await tester.tap(_lastOrder(id), warnIfMissed: false);
-        await app.settle(12);
-        expect(app.tradePages(), [id]);
-        expect(app.orderReads.length - before, 1);
-        expect(states, hasLength(1));
-        expect(shown(tester), app.first.robot.accountIndex);
-        await app.close();
-      },
-    );
+    testWidgets('two quick taps: one screen, one switch of robot', (
+      tester,
+    ) async {
+      final app = await _App.start(tester, torKnown: true);
+      final id = app.first.orderId;
+      await app.openGarage();
+      await next(app);
+      final states = <GarageState>[];
+      final listening = garageOf(tester).stream.listen(states.add);
+      addTearDown(listening.cancel);
+      final before = app.orderReads.length;
+      await tester.tap(_lastOrder(id));
+      await tester.tap(_lastOrder(id), warnIfMissed: false);
+      await app.settle(12);
+      expect(app.tradePages(), [id]);
+      expect(app.orderReads.length - before, 1);
+      expect(states, hasLength(1));
+      expect(shown(tester), app.first.robot.accountIndex);
+      await app.close();
+    });
 
     testWidgets(
       'a plain creation, even with the Garage following an order, leaves it on the robot it shows once the new order\'s bond is locked (what #227 does not change)',
       (tester) async {
-        final app = await _App.start(tester);
+        final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
         final robot = app.first.robot.accountIndex;
         await app.openGarage();

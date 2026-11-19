@@ -65,9 +65,8 @@ class GarageCubit extends Cubit<GarageState> {
     this._delete,
     this._needsPin,
     this._unacknowledged, {
-    Stream<RobotSlot> Function(TradeRecord record)? renewedRobots,
-  }) : _renewedRobots = renewedRobots,
-       super(GarageWorking(network));
+    this._renewedRobots,
+  }) : super(GarageWorking(network));
 
   RobosatsNetwork get _network => state.network;
 

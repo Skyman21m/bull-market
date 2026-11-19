@@ -48,12 +48,11 @@ final class NetworkGarageKey {
       _tagged(lastUsableRobotAmong(atOrBefore, key.deriveIdentity));
 
   /// The robot of [slot] when it is one of this key's: the same network, the same key (its fingerprint) and an index this key gives back as it is; `null` otherwise, for a robot of another Garage Key or of the other network.
-  NetworkRobot? robotOf(RobotSlot slot) => switch (firstUsableRobot(
-    slot.accountIndex,
-  )) {
-    Ok(value: final robot) when robot.slot == slot => robot,
-    _ => null,
-  };
+  NetworkRobot? robotOf(RobotSlot slot) =>
+      switch (firstUsableRobot(slot.accountIndex)) {
+        Ok(value: final robot) when robot.slot == slot => robot,
+        _ => null,
+      };
 
   /// [lastUsableRobot] over the identities [identityOf] gives for each index.
   ///
