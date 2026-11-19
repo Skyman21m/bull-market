@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:bull_ui/bull_ui.dart' show BullTheme;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,8 @@ import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_payment_repository.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/trade/escrow_amounts.dart';
+import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -390,6 +393,41 @@ final class _Journey {
     await waitFor(find.textContaining('PUBL'), seconds: 20);
   }
 
+  /// The order made by [makeSellOrder], its maker bond locked from another wallet, taken by robot 5 at the coordinator's price now: at 6, the collateral asked, « Pay with this wallet » offered.
+  Future<void> toFirstTake() async {
+    await makeSellOrder();
+    coordinator.lockMakerBond(order.id);
+    await waitFor(find.textContaining(words.public), seconds: 20);
+    coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+    await waitFor(find.text(words.payWithThisWallet), seconds: 60);
+  }
+
+  /// « Pay with this wallet » for the collateral shown, quoted as [quoteOf] quotes it: the confirmation open.
+  Future<P2pWalletQuote> openConfirmation() async {
+    final escrow = order.escrow ?? fail('no escrow invoice');
+    final walletQuote = quoteOf(escrow);
+    wallet.scriptQuote(Ok(walletQuote));
+    await tap(find.text(words.payWithThisWallet));
+    await settle(tester);
+    return walletQuote;
+  }
+
+  /// The confirmation's « Pay {total} sats » for [walletQuote].
+  Finder payOf(P2pWalletQuote walletQuote) => find.widgetWithText(
+    TradeButton,
+    words.payTotal.replaceAll(
+      '{n}',
+      words.sats(walletQuote.total.value.toInt()),
+    ),
+  );
+
+  /// The order back in the book (the buyer gave no payout) and taken again a minute later by robot 4.
+  void takenAgain() {
+    coordinator.backToBook(order.id);
+    advance(const Duration(minutes: 1));
+    coordinator.take(order.id, TradeHarness.robotsOf(_net)[4]);
+  }
+
   /// The trade shown, as its screen's cubit holds it.
   TradeRecord get record => BlocProvider.of<TradeCubit>(
     find.byType(TradeScreen).evaluate().single,
@@ -571,4 +609,275 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'a confirmation left open while the order is taken again: said stale, its « Pay » off, nothing paid; « Go back » offers the new take\'s collateral',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      final walletQuote = await journey.openConfirmation();
+      expect(
+        tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
+        isNotNull,
+      );
+      journey.takenAgain();
+      const stale =
+          'This order was taken again since this confirmation opened: it was for the earlier take, and its « Pay » pays nothing. Go back, then pay the new take\'s collateral.';
+      await journey.waitFor(find.text(stale), seconds: 30);
+      expect(
+        tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
+        isNull,
+      );
+      await tester.tap(journey.payOf(walletQuote), warnIfMissed: false);
+      await settle(tester);
+      expect(journey.wallet.paid, isEmpty);
+      await journey.tap(find.text('Go back'));
+      await settle(tester);
+      expect(find.text(stale), findsNothing);
+      expect(find.text(_english.payWithThisWallet), findsOneWidget);
+      expect(await journey.rows(journey.record), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets('two quick taps on the confirmation\'s « Pay »: one payment', (
+    tester,
+  ) async {
+    final journey = await _Journey.start(tester, _english);
+    await journey.toFirstTake();
+    final walletQuote = await journey.openConfirmation();
+    final escrow = journey.order.escrow ?? fail('no escrow invoice');
+    journey.wallet
+      ..scriptPayment(
+        Ok(
+          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow.facts.paymentHash),
+        ),
+      )
+      ..scriptPayment(
+        Ok(
+          P2pWalletPayment(id: 'swap-e0b', paymentHash: escrow.facts.paymentHash),
+        ),
+      );
+    final pay = journey.payOf(walletQuote);
+    await tester.ensureVisible(pay);
+    await tester.tap(pay);
+    await tester.tap(pay, warnIfMissed: false);
+    await settle(tester);
+    await settle(tester);
+    expect(journey.wallet.paid, hasLength(1));
+    expect(await journey.rows(journey.record), [(InvoiceStep.escrow, 0)]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await settle(tester);
+    await tester.pump(const Duration(seconds: 61));
+  });
+
+  testWidgets(
+    'a collateral more than 10 % above the contract\'s amount at the Bull wallet\'s price: the comparison and its warning in red, the fee said included, « Pay » still offered',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.makeSellOrder();
+      journey.coordinator.lockMakerBond(journey.order.id);
+      await journey.waitFor(find.textContaining(_english.public), seconds: 20);
+      // The coordinator fixes the trade at 40,000 USD/BTC at the take, the Bull wallet's price 50,000.
+      journey.coordinator.prices[1] = 40000;
+      journey.coordinator.take(
+        journey.order.id,
+        TradeHarness.robotsOf(_net)[5],
+      );
+      await journey.waitFor(
+        find.text(_english.payWithThisWallet),
+        seconds: 60,
+      );
+      final walletQuote = await journey.openConfirmation();
+      expect(walletQuote.amount, Sats.fromInt(245159));
+      const line =
+          'At the Bull wallet\'s price, 51,000 USD/BTC, with the order\'s premium, 100 USD are worth 196,078 sats. Gap of the collateral: +25.03%, the coordinator\'s fee included. This collateral is more than 10% above that: 245,159 sats asked, 196,078 sats expected. Check it before you pay.';
+      expect(find.text(line), findsOneWidget);
+      final colors = Theme.of(
+        tester.element(find.text(line)),
+      ).extension<BullTheme>();
+      expect(tester.widget<Text>(find.text(line)).style?.color, colors?.error);
+      expect(
+        tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
+        isNotNull,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
+    'the earlier take\'s collateral: a refund pending held again is an alert; a payment the wallet does not know is « state unknown » and counted not back',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      final walletQuote = await journey.openConfirmation();
+      final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
+      // Paid, its wallet id recorded, but the wallet's records hold no payment of it.
+      journey.wallet.scriptPayment(
+        Ok(
+          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow0.facts.paymentHash),
+        ),
+      );
+      await journey.tap(journey.payOf(walletQuote));
+      await settle(tester);
+      expect(journey.wallet.paid, hasLength(1));
+      journey.takenAgain();
+      await journey.waitFor(find.text(_english.earlierTitle), seconds: 60);
+      expect(
+        find.text(
+          'Take 1: state unknown: this device cannot tell where it stands',
+        ),
+        findsOneWidget,
+      );
+      final second = await journey.openConfirmation();
+      expect(
+        find.text(
+          _english.earlierOut
+              .replaceAll('{a}', _english.sats(196654))
+              .replaceAll('{b}', _english.sats(393308)),
+        ),
+        findsOneWidget,
+      );
+      await journey.tap(find.text('Go back'));
+      await settle(tester);
+      // The wallet finds it now, its refund pending, then the coordinator holding it again.
+      final payment0 = journey.paidAt(
+        escrow0,
+        'swap-e0',
+        const P2pWalletPaymentRefundPending(),
+      );
+      journey.wallet.scriptQuote(Ok(second));
+      await journey.tap(find.text(_english.payWithThisWallet));
+      await settle(tester);
+      await journey.tap(find.text('Go back'));
+      await settle(tester);
+      expect(
+        find.text(
+          'Take 1: not back yet: the swap service is refunding it',
+        ),
+        findsOneWidget,
+      );
+      journey.wallet.setProgress(payment0, const Ok(P2pWalletPaymentPending()));
+      await settle(tester);
+      expect(
+        find.text(
+          'The collateral of take 1 was being refunded, and is now held by ${journey.coordinatorName} again: check this order in the official RoboSats app.',
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
+    'the app started again between two takes: the earlier collateral\'s sats are no longer known, « at least »',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      final walletQuote = await journey.openConfirmation();
+      final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
+      journey.wallet.scriptPayment(
+        Ok(
+          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow0.facts.paymentHash),
+        ),
+      );
+      journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());
+      await journey.tap(journey.payOf(walletQuote));
+      await settle(tester);
+      // Left, and the sats kept in memory gone, as after a restart (`trade_payments` keeps no amount, schema 8).
+      final record = journey.record;
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      journey.locator
+        ..unregister<EscrowAmounts>()
+        ..registerLazySingleton<EscrowAmounts>(EscrowAmounts.new);
+      journey.takenAgain();
+      unawaited(
+        journey.router.pushNamed(
+          P2pRouter.tradeName,
+          extra: P2pTradeRouteArgs(record),
+        ),
+      );
+      await journey.waitFor(find.text(_english.payWithThisWallet), seconds: 30);
+      await journey.openConfirmation();
+      expect(
+        find.text(
+          'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount. With this one, at least 196,654 sats will be out of this wallet for the collaterals of this order, bond not included.',
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
+    'the form\'s price check for a seller: a coordinator\'s price too low warns in a seller\'s words; too high warns a buyer, never a seller',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      // The coordinator's 50,000 against the Bull wallet's 60,000: 16.67 % below.
+      journey.wallet.rate = P2pWalletRateRead(60000);
+      Finder inForm(Finder finder) =>
+          find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
+      await journey.tap(find.text(_english.create));
+      await settle(tester);
+      await journey.tap(inForm(find.text(_english.sell)));
+      await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
+      await settle(tester);
+      await settle(tester);
+      expect(
+        find.textContaining(
+          'your bond would be larger than it should be, and you would lock more sats for your amount when the order is taken',
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'the form\'s price check: a coordinator\'s price too high is no warning for a seller, a warning for a buyer',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      // The coordinator's 50,000 against the Bull wallet's 40,000: 25 % above.
+      journey.wallet.rate = P2pWalletRateRead(40000);
+      Finder inForm(Finder finder) =>
+          find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
+      await journey.tap(find.text(_english.create));
+      await settle(tester);
+      await journey.tap(inForm(find.text(_english.sell)));
+      await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
+      await settle(tester);
+      await settle(tester);
+      const compare =
+          'For comparison, the Bull wallet\'s indicative price: 40,000 USD/BTC';
+      expect(find.textContaining(compare), findsOneWidget);
+      expect(find.textContaining('above the Bull wallet\'s'), findsNothing);
+      final colors = Theme.of(
+        tester.element(find.textContaining(compare)),
+      ).extension<BullTheme>();
+      expect(
+        tester.widget<Text>(find.textContaining(compare)).style?.color,
+        isNot(colors?.error),
+      );
+      await journey.tap(inForm(find.text('Buy')));
+      await settle(tester);
+      expect(
+        find.textContaining(
+          'above the Bull wallet\'s: you would receive fewer sats when the order is taken',
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+    },
+  );
 }
