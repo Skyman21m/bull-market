@@ -117,45 +117,13 @@ enum MadeSinceStands {
   ended,
 }
 
-/// An order made here after another with the very same terms (#217): its record, where this device saw it stand, and whether it saw its bond locked (#227).
+/// An order made here after another with the very same terms (#217): its record, and where this device saw it stand.
 @immutable
 final class OrderMadeSince {
   final TradeRecord record;
   final MadeSinceStands stands;
 
-  /// Whether the trail this device stored of it shows its maker bond locked ([bondLockedAt]): what the Garage waits for before it shows the robot of a renewal (#227).
-  final bool bondLocked;
-
-  const OrderMadeSince(this.record, this.stands, {this.bondLocked = false});
-
-  /// Whether a maker's order stored at [position] has its bond locked: public, paused, or taken and further on, the reference publishing an order only once its maker bond locked (`follow_invoices.py:233-240`).
-  ///
-  /// Never while it waits for its bond, never with no trail this device can read, and never at 5 or after error 1043, which may come before the bond as after it (the device cannot tell); never at a position a maker's trade does not take.
-  static bool bondLockedAt(TradePosition? position) => switch (position) {
-    TradePosition.public ||
-    TradePosition.paused ||
-    TradePosition.waitingForBoth ||
-    TradePosition.waitingForEscrow ||
-    TradePosition.waitingForPayout ||
-    TradePosition.chatting ||
-    TradePosition.fiatSent ||
-    TradePosition.inDispute ||
-    TradePosition.sendingSats ||
-    TradePosition.succeeded ||
-    TradePosition.routingFailed ||
-    TradePosition.waitingDisputeResolution ||
-    TradePosition.makerLostDispute ||
-    TradePosition.takerLostDispute => true,
-    null ||
-    TradePosition.start ||
-    TradePosition.makerBondStep ||
-    TradePosition.expired ||
-    TradePosition.cancelled ||
-    TradePosition.bondStep ||
-    TradePosition.preTakeUnavailable ||
-    TradePosition.publicAgain ||
-    TradePosition.notAvailable => false,
-  };
+  const OrderMadeSince(this.record, this.stands);
 
   /// Where a record stands, closed at the stored [position] (`null`: none readable).
   static MadeSinceStands standsOf(
@@ -174,15 +142,13 @@ final class OrderMadeSince {
   bool operator ==(Object other) =>
       other is OrderMadeSince &&
       other.record == record &&
-      other.stands == stands &&
-      other.bondLocked == bondLocked;
+      other.stands == stands;
 
   @override
-  int get hashCode => Object.hash(record, stands, bondLocked);
+  int get hashCode => Object.hash(record, stands);
 
   @override
-  String toString() =>
-      'OrderMadeSince(${record.orderId}, ${stands.name}, bondLocked: $bondLocked)';
+  String toString() => 'OrderMadeSince(${record.orderId}, ${stands.name})';
 }
 
 /// Why an order cannot be renewed from this device: nothing is sent, and a screen words each type with a text of its own.

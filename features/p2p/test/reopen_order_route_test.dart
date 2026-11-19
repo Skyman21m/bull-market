@@ -924,8 +924,8 @@ void main() {
         final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
         final robot = app.first.robot.accountIndex;
+        // Not moved by hand: the arrows would stop the following (another test).
         await app.openGarage();
-        await next(app);
         await _tap(tester, _lastOrder(id));
         await app.settle(12);
         expect(shown(tester), robot);
@@ -989,41 +989,180 @@ void main() {
       await app.close();
     });
 
-    testWidgets(
-      'a plain creation, even with the Garage following an order, leaves it on the robot it shows once the new order\'s bond is locked (what #227 does not change)',
-      (tester) async {
-        final app = await _App.start(tester, torKnown: true);
-        final id = app.first.orderId;
-        final robot = app.first.robot.accountIndex;
-        await app.openGarage();
-        await _tap(tester, _lastOrder(id));
-        await app.settle(12);
-        await app.back();
-        expect(shown(tester), robot);
-        // An order of other terms made as « Create order » makes it, its trade opened as the create page opens it, its bond locked.
-        final made = switch (await app.make(
-          MakeHarness.request(amount: 250, premium: 4),
+    /// The page of the trade of [made] opened as the create page opens it, its bond locked at the coordinator, kept open until its screen stored it public, then left.
+    Future<void> lockAndRead(_App app, TradeRecord made) async {
+      unawaited(
+        app.router.pushNamed(
+          P2pRouter.tradeName,
+          extra: P2pTradeRouteArgs(made),
+        ),
+      );
+      await app.settle(12);
+      app.coordinator.lockMakerBond(made.orderId);
+      for (var i = 0; i < 12 && await stored(app, made) != 'public'; i++) {
+        await app.tester.pump(const Duration(seconds: 5));
+        await app.settle(2);
+      }
+      expect(await stored(app, made), 'public');
+      await app.back();
+    }
+
+    /// An order of other terms (than the first one's), made as « Create order » makes it.
+    Future<TradeRecord> makeOther(_App app, {double amount = 250}) async =>
+        switch (await app.make(
+          MakeHarness.request(amount: amount, premium: 4),
         )) {
           Ok(value: MakeStarted(:final record)) => record,
           final other => throw StateError('$other'),
         };
-        expect(made.robot.accountIndex, isNot(robot));
-        unawaited(
-          app.router.pushNamed(
-            P2pRouter.tradeName,
-            extra: P2pTradeRouteArgs(made),
-          ),
-        );
-        await app.settle(12);
-        app.coordinator.lockMakerBond(made.orderId);
-        for (var i = 0; i < 12; i++) {
+
+    /// « Offers », then « Garage »: the Garage built again, as each time it is shown.
+    Future<void> reopenGarage(_App app) async {
+      await app.tester.tap(find.text('Offers'));
+      await app.settle();
+      await app.openGarage();
+    }
+
+    Finder inForm(Finder finder) =>
+        find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
+
+    testWidgets(
+      'a plain creation from « Create »: while its bond waits, the Garage shown or opened again does not move; once its bond is locked, the Garage shown moves to its robot, and opens on it, reading no other robot',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final robot = app.first.robot.accountIndex;
+        final usd = RobosatsCurrency.fromCode('USD');
+        app.coordinator.prices[usd?.id ?? 1] = 91711.15;
+        await app.openGarage();
+        expect(shown(tester), robot);
+        // « Create », the form filled as the user does, « Create order », « Done ».
+        await tester.tap(find.text('Create'));
+        await app.settle();
+        expect(find.byType(CreateOrderScreen), findsOneWidget);
+        await tester.tap(inForm(find.text('Buy')));
+        await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
+        await app.settle();
+        await tester.tap(inForm(find.byTooltip('Add custom payment method')));
+        await app.settle();
+        await tester.enterText(find.byType(TextField).last, 'Revolut');
+        await tester.pump();
+        await tester.tap(find.text('Add payment method'));
+        await app.settle();
+        await tester.enterText(inForm(find.byType(TextField)).at(1), '2');
+        await app.settle();
+        await _tap(tester, inForm(find.text('Create order')));
+        await app.settle();
+        await tester.tap(find.text('Done'));
+        await app.settle(16);
+        expect(app.makes, hasLength(2));
+        final made = (await app.active()).single;
+        expect(app.tradePages(), [made.orderId]);
+        final madeRobot = made.robot.accountIndex;
+        expect(madeRobot, isNot(robot));
+        // Its bond not locked: read at 0 again and again, the Garage under the page where it was.
+        for (var i = 0; i < 6; i++) {
           await tester.pump(const Duration(seconds: 5));
-          await app.settle(2);
         }
-        expect(await stored(app, made), 'public');
+        await app.settle();
+        expect(await stored(app, made), 'makerBondStep');
         expect(shown(tester), robot);
         await app.back();
         expect(find.text('Robot #$robot'), findsOneWidget);
+        await reopenGarage(app);
+        expect(find.text('Robot #$robot'), findsOneWidget);
+        // Opened again from « Order », its bond locked: once its screen stored it public, the Garage shown under it moves to its robot.
+        await tester.tap(find.text('Order'));
+        await app.settle();
+        await _tap(tester, find.text('Active order #${made.orderId}'));
+        await app.settle(12);
+        app.coordinator.lockMakerBond(made.orderId);
+        for (var i = 0; i < 12 && shown(tester) != madeRobot; i++) {
+          await tester.pump(const Duration(seconds: 5));
+          await app.settle(2);
+        }
+        expect(shown(tester), madeRobot);
+        expect(await stored(app, made), 'public');
+        await app.back();
+        expect(find.text('Robot #$madeRobot'), findsOneWidget);
+        // Opened again: on its robot at once, the panel of no other robot read.
+        final from = app.transport.sent.length;
+        await reopenGarage(app);
+        expect(find.text('Robot #$madeRobot'), findsOneWidget);
+        expect(
+          sentSince(app, from).where((sent) => sent.contains('/api/robot/')),
+          everyElement(endsWith(' $madeRobot')),
+        );
+        await app.close();
+      },
+    );
+
+    testWidgets('the arrows stop the following until the Garage is left', (
+      tester,
+    ) async {
+      final app = await _App.start(tester, torKnown: true);
+      await app.openGarage();
+      final made = await makeOther(app);
+      // Moved by hand past the new order's robot.
+      await next(app);
+      await next(app);
+      final byHand = shown(tester);
+      expect(byHand, isNot(made.robot.accountIndex));
+      await lockAndRead(app, made);
+      expect(shown(tester), byHand);
+      expect(find.text('Robot #$byHand'), findsOneWidget);
+      // Left and opened again: the robot of the order whose bond is locked.
+      await reopenGarage(app);
+      expect(find.text('Robot #${made.robot.accountIndex}'), findsOneWidget);
+      await app.close();
+    });
+
+    testWidgets(
+      'two orders made, their bonds locked: the Garage opens on the newest one\'s robot',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final older = await makeOther(app);
+        final newer = await makeOther(app, amount: 300);
+        expect(newer.robot.accountIndex, greaterThan(older.robot.accountIndex));
+        // The newer one locked first, so that the order of the locks says nothing.
+        await lockAndRead(app, newer);
+        await lockAndRead(app, older);
+        await app.openGarage();
+        expect(shown(tester), newer.robot.accountIndex);
+        expect(find.text('Robot #${newer.robot.accountIndex}'), findsOneWidget);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'an order of another Garage Key, its bond locked: the Garage of the key in use opens on its first robot',
+      (tester) async {
+        final app = await _App.start(tester, torKnown: true);
+        final made = await makeOther(app);
+        expect(made.robot.accountIndex, greaterThan(0));
+        await lockAndRead(app, made);
+        final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final changed = await app.wait(
+          () async => (
+            await app.locator<GarageKeyRepository>().delete(_net),
+            await app.locator<GarageKeyRepository>().import(
+              _net,
+              otherTradeKey,
+            ),
+            await app.locator<RobotBindingRepository>().recordGeneratedKey(
+              _net,
+              other,
+            ),
+          ),
+        );
+        expect(changed.$1, isA<Ok<void, Failure>>());
+        expect(changed.$2, isA<Ok<void, Failure>>());
+        expect(changed.$3, isA<Ok<void, Failure>>());
+        await app.openGarage();
+        expect(shown(tester), 0);
+        expect(find.text('Robot #0'), findsOneWidget);
         await app.close();
       },
     );

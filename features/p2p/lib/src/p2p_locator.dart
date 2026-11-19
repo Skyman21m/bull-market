@@ -66,7 +66,7 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
-import 'domain/usecases/trade/follow_renewal_usecase.dart';
+import 'domain/usecases/trade/follow_made_orders_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/list_last_orders_usecase.dart';
@@ -265,9 +265,9 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
-        // The robot of a renewal of the order of « Last order #N » once its bond is locked (#227), where the feature holds trades.
-        renewedRobots: locator.isRegistered<FollowRenewalUsecase>()
-            ? locator<FollowRenewalUsecase>().execute
+        // The robot of the newest order made here whose bond is locked, then of each one seen locked (#227), where the feature holds trades.
+        madeRobots: locator.isRegistered<FollowMadeOrdersUsecase>()
+            ? locator<FollowMadeOrdersUsecase>().execute
             : null,
       ),
     );
@@ -449,9 +449,9 @@ final class P2pLocator {
       (record, _) =>
           RenewalsCubit(record, locator<MakeOrderUsecase>().renewalsOf),
     );
-    // The renewals of the order of a « Last order #N » the Garage follows (#227): read from the device, for the robot it shows.
-    locator.registerFactory<FollowRenewalUsecase>(
-      () => FollowRenewalUsecase(locator<MakeOrderUsecase>().renewalsOf),
+    // The orders made here whose bond is locked, for the robot the Garage shows (#227): read from the device only.
+    locator.registerFactory<FollowMadeOrdersUsecase>(
+      () => FollowMadeOrdersUsecase(locator()),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(

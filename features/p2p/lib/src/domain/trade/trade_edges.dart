@@ -81,6 +81,34 @@ enum TradePosition {
     notAvailable => true,
     _ => false,
   };
+
+  /// Whether a maker's order stored at this position has its bond locked: public, paused, or taken and further on, the reference publishing an order only once its maker bond locked (`follow_invoices.py:233-240`); what the Garage waits for before it shows the robot of an order made here (#227).
+  ///
+  /// Never while it waits for its bond, and never at 5 or after error 1043, which may come before the bond as after it (the stored position cannot tell); never at a position a maker's trade does not take.
+  bool get makerBondLocked => switch (this) {
+    public ||
+    paused ||
+    waitingForBoth ||
+    waitingForEscrow ||
+    waitingForPayout ||
+    chatting ||
+    fiatSent ||
+    inDispute ||
+    sendingSats ||
+    succeeded ||
+    routingFailed ||
+    waitingDisputeResolution ||
+    makerLostDispute ||
+    takerLostDispute => true,
+    start ||
+    makerBondStep ||
+    expired ||
+    cancelled ||
+    bondStep ||
+    preTakeUnavailable ||
+    publicAgain ||
+    notAvailable => false,
+  };
 }
 
 /// The edges a trade may take between two reads, from the reference backend at commit ff1998c: a taker's (design note § 1.1-1.5, § 3.2, as corrected by #86), and a maker's (`docs/design/phase-3-making-an-order.md` § 3.2, #178).
