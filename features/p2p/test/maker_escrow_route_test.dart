@@ -22,7 +22,6 @@ import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/testing.dart';
-import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
