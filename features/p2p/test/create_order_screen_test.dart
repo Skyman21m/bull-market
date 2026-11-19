@@ -1661,7 +1661,7 @@ void main() {
         );
         expect(
           find.text(
-            'The maximum must be more than 1.5 times and less than 15 times the minimum.',
+            'The maximum must be more than 1.5 times the minimum and at most 14.95 times it.',
           ),
           findsOneWidget,
         );
@@ -1700,7 +1700,9 @@ void main() {
           findsOneWidget,
         );
         expect(
-          startingWith('The maximum must be more than 1.5 times and less'),
+          startingWith(
+            'The maximum must be more than 1.5 times the minimum and at most',
+          ),
           findsOneWidget,
         );
         // The currency shown chosen again is no change: the bounds stay as typed (independent review of #226, C2).

@@ -270,17 +270,25 @@ sealed class MakerRangeProblem {
       if (!(floor * MakerFormCheck.typedMinRangeRatio <= ceiling)) {
         return const MakerRangeNoRoom();
       }
-      // The minimum first, since the maximum is judged beside it. The bounds named are the ones the slider shows under itself, to 3 significant digits: within the margins the check gives a typed bound (1 %), so each is taken when typed as shown.
+      // The largest minimum that leaves room for a maximum.
+      final top = ceiling / MakerFormCheck.typedMinRangeRatio;
+      // The minimum first, since the maximum is judged beside it. The bounds named are the ones the slider shows under itself, to 3 significant digits: within the margins the check gives a typed bound (1 %), so each is taken when typed as shown; when the limits leave so little room that such a bound would break another rule of the minimum, it is named with as many digits as it takes ([_named]).
       if (low < floor) {
-        return MakerRangeMinTooSmall(significant(limits.min, 3));
+        final shown = significant(limits.min, 3);
+        return MakerRangeMinTooSmall(
+          shown >= floor && shown <= top
+              ? shown
+              : _named(floor, up: true, from: floor, to: top),
+        );
       }
       // 1.5 times the minimum would be above the largest amount: the minimum comes down, to the largest minimum that leaves the largest amount shown as its maximum.
       if (low * MakerFormCheck.typedMinRangeRatio > ceiling) {
+        final beside =
+            significant(limits.max, 3) / MakerFormCheck.typedMinRangeRatio;
         return MakerRangeMinTooBig(
-          MakerRange._toward(
-            significant(limits.max, 3) / MakerFormCheck.typedMinRangeRatio,
-            up: false,
-          ),
+          beside >= floor
+              ? _named(beside, up: false, from: floor, to: top)
+              : _named(top, up: false, from: floor, to: top),
         );
       }
       if (high < low) return const MakerRangeMaxBelowMin();
@@ -292,16 +300,40 @@ sealed class MakerRangeProblem {
       if (!(low > 0) || !(high > 0)) return const MakerRangeNotPositive();
       if (high < low) return const MakerRangeMaxBelowMin();
     }
-    if (low * MakerFormCheck.typedMinRangeRatio > high) {
+    final least = low * MakerFormCheck.typedMinRangeRatio;
+    final most = low * MakerFormCheck.typedMaxRangeRatio;
+    if (least > high) {
+      // Never above the largest amount: a maximum named there would be refused in its turn (verification of the review of #226, C1).
       return MakerRangeTooNarrow(
         low,
-        MakerRange._toward(low * MakerFormCheck.typedMinRangeRatio, up: true),
+        _named(
+          least,
+          up: true,
+          from: least,
+          to: limits == null
+              ? most
+              : limits.max * MakerAmountLimits.rangeMaxMargin,
+        ),
       );
     }
     return MakerRangeTooWide(
       low,
-      MakerRange._toward(low * MakerFormCheck.typedMaxRangeRatio, up: false),
+      _named(most, up: false, from: least, to: most),
     );
+  }
+
+  /// [value] rounded up or down to the slider's precision, or to as many more digits as it takes to lie within [from] and [to]; [value] itself when no rounding does (it lies within them).
+  static double _named(
+    double value, {
+    required bool up,
+    required double from,
+    required double to,
+  }) {
+    for (var digits = MakerRange._digitsOf(value); digits <= 15; digits++) {
+      final rounded = MakerRange._toward(value, up: up, digits: digits);
+      if (rounded >= from && rounded <= to) return rounded;
+    }
+    return value;
   }
 }
 

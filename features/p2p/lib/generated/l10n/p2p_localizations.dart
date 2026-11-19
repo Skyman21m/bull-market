@@ -5145,7 +5145,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The ratio the form's check of the bounds takes (`AmountRange.tsx:57-77`): from 1.5 times, where a maximum of exactly 1.5 times a minimum with decimals can be refused by a rounding of the multiplication (the reference's own), to 14.95 times.
   ///
   /// In en, this message translates to:
-  /// **'The maximum must be more than 1.5 times and less than 15 times the minimum.'**
+  /// **'The maximum must be more than 1.5 times the minimum and at most 14.95 times it.'**
   String get p2pMakeRangeRatio;
 
   /// Not in the RoboSats texts: the project's own (#225). Where the official client only says « The amount range is not valid. » (`MakerForm.tsx:543-545`) and draws the field at fault in red, the form says which rule the range typed breaks, with the bound it takes, in the range's box and under « Create order ». « From » is so high that 1.5 times it is above the largest amount the form takes; {amount} is the largest minimum that leaves room for a maximum, with its currency code, {coordinator} the coordinator's name.

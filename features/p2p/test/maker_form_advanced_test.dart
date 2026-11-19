@@ -472,31 +472,35 @@ void main() {
     );
 
     test(
-      'the reasons followed one after the other lead to a range the form takes, never round in a circle (independent review of #226, C1)',
+      'the reasons followed one after the other lead to a range the form takes, never round in a circle (independent review of #226, C1, and its verification)',
       () {
-        final limits = checkOf().limits;
-        const bounds = <double>[
+        // The form's limits of 103 to 980, and limits that leave almost no room: 103 to 152.1 (the largest about 1.48 times the smallest), under a size limit of 310,400 sats.
+        final wideRoom = checkOf().limits;
+        final tightRoom = MakerAmountLimits.of(
+          narrow[eur] ?? (throw StateError('EUR')),
+          premium: Premium.tryCreate(0) ?? (throw StateError('a premium')),
+          sizeLimitSats: 310400,
+        );
+        expect(tightRoom.max / tightRoom.min, closeTo(1.477, 0.002));
+        // A grid dense where the rules meet: around the smallest and the largest amount, and around the minimum whose 1.5 times is the largest amount (659.3 to 659.9 for 980).
+        final bounds = <double>[
           0,
           1,
           20,
           56,
-          101,
-          103,
-          150,
-          300,
           500,
-          653,
-          654,
-          700,
           826,
-          980,
-          990,
           1400,
           5000,
+          for (var value = 100.0; value < 106; value += 0.37) value,
+          for (var value = 148.0; value < 156; value += 0.37) value,
+          for (var value = 650.0; value < 662; value += 0.13) value,
+          for (var value = 975.0; value < 993; value += 0.37) value,
         ];
-        for (final start in bounds) {
-          for (final end in bounds) {
-            for (final under in [limits, null]) {
+        var followed = 0;
+        for (final under in [wideRoom, tightRoom, null]) {
+          for (final start in bounds) {
+            for (final end in bounds) {
               var low = start;
               var high = end;
               var steps = 0;
@@ -504,14 +508,15 @@ void main() {
                 final problem = MakerRangeProblem.of(low, high, under);
                 if (problem == null) break;
                 steps++;
-                if (steps > 5) {
+                followed++;
+                if (steps > 6) {
                   fail(
-                    'still refused after 5 reasons from $start to $end ($low to $high, $problem), limits $under',
+                    'still refused after 6 reasons from $start to $end ($low to $high, $problem), limits $under',
                   );
                 }
                 switch (problem) {
                   case MakerRangeNoRoom():
-                    fail('no room said for limits that leave room');
+                    fail('no room said for limits that leave room: $under');
                   case MakerRangeNotPositive():
                     low = 1;
                     high = 2;
@@ -533,6 +538,7 @@ void main() {
             }
           }
         }
+        expect(followed, greaterThan(50000));
       },
     );
 

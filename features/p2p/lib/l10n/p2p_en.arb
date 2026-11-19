@@ -4589,7 +4589,7 @@
       }
     }
   },
-  "p2pMakeRangeRatio": "The maximum must be more than 1.5 times and less than 15 times the minimum.",
+  "p2pMakeRangeRatio": "The maximum must be more than 1.5 times the minimum and at most 14.95 times it.",
   "@p2pMakeRangeRatio": {
     "description": "Not in the RoboSats texts: the project's own (#225). In the range's box of the create form, under the slider, always shown: what a range must keep, which the official client leaves to be guessed. The ratio the form's check of the bounds takes (`AmountRange.tsx:57-77`): from 1.5 times, where a maximum of exactly 1.5 times a minimum with decimals can be refused by a rounding of the multiplication (the reference's own), to 14.95 times."
   },

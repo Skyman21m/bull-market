@@ -3212,7 +3212,7 @@ class P2pLocalizationsBn extends P2pLocalizations {
 
   @override
   String get p2pMakeRangeRatio =>
-      'The maximum must be more than 1.5 times and less than 15 times the minimum.';
+      'The maximum must be more than 1.5 times the minimum and at most 14.95 times it.';
 
   @override
   String p2pMakeRangeMinAtMost(String amount, String coordinator) {
