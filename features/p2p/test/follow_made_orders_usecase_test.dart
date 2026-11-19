@@ -288,7 +288,7 @@ void main() {
       final trails = _Trails();
       final listening = FollowMadeOrdersUsecase(
         trails,
-        (_) => const Stream.empty(),
+        (_) => Stream.value(const Ok([])),
       ).execute(key).listen((_) {});
       trails.made.add(made({}));
       await pumpEventQueue();
