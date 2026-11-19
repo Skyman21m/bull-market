@@ -5407,9 +5407,9 @@
       }
     }
   },
-  "p2pRenewUnverified": "An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».",
+  "p2pRenewUnverified": "Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».",
   "@p2pRenewUnverified": {
-    "description": "Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when an order of the network was confirmed while the page was open and whether it is this renewal's could not be read (security review of #220, R1, N1): the page sends nothing more, and says how to go on."
+    "description": "Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when whether the renewal made an order cannot be told: an order of the network confirmed while the page was open whose terms could not be read, or the page's own make no longer pending (confirmed or closed since) (security review of #220, R1, N1): the page sends nothing more, and says how to go on; « Order » is the tab's entry (p2pNavOrder)."
   },
   "p2pMakeSubmit": "Submit",
   "@p2pMakeSubmit": {

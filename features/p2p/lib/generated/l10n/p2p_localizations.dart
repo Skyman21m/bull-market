@@ -5888,10 +5888,10 @@ abstract class P2pLocalizations {
   /// **'This device kept this order as ended on {date}.'**
   String p2pTradeEndKeptEnded(String date);
 
-  /// Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when an order of the network was confirmed while the page was open and whether it is this renewal's could not be read (security review of #220, R1, N1): the page sends nothing more, and says how to go on.
+  /// Not in the RoboSats texts: the project's own: under « Create order » of a renewal's page when whether the renewal made an order cannot be told: an order of the network confirmed while the page was open whose terms could not be read, or the page's own make no longer pending (confirmed or closed since) (security review of #220, R1, N1): the page sends nothing more, and says how to go on; « Order » is the tab's entry (p2pNavOrder).
   ///
   /// In en, this message translates to:
-  /// **'An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».'**
+  /// **'Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».'**
   String get p2pRenewUnverified;
 
   /// The official client's label (`basic/MakerPage/index.tsx:145`, `submitButtonLabel`, its key `Submit` in `frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): the button of the create form while orders of the book match the one being made and are not shown (#186); it only shows them.

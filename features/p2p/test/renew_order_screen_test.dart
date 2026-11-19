@@ -1382,7 +1382,7 @@ void main() {
           expect(opened, isEmpty);
           expect(
             find.text(
-              'An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».',
+              'Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».',
             ),
             findsOneWidget,
           );
@@ -1391,6 +1391,46 @@ void main() {
           await tester.tap(_create, warnIfMissed: false);
           await settle(tester);
           expect(renewal.made, isEmpty);
+        },
+      );
+
+      testWidgets(
+        'its own make answered as no longer pending (confirmed or closed since): the page says only that it could not check, in English and French, and sends nothing more (security review of #220, N1)',
+        (tester) async {
+          for (final (locale, line) in [
+            (
+              const Locale('en'),
+              'Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».',
+            ),
+            (
+              const Locale('fr'),
+              'Bull Market n’a pas pu vérifier si ce renouvellement a créé un ordre : plus rien ne peut être envoyé depuis cette page. Revenez en arrière, puis rouvrez l’ordre depuis le Garage ou « Ordre ».',
+            ),
+          ]) {
+            final renewal = _Renewal()
+              ..answer = Ok(
+                MakeNoLongerPending(
+                  PendingMake(
+                    robot: RobotSlot(RobosatsNetwork.mainnet, _fingerprint, 1),
+                    coordinatorAlias: 'temple',
+                    coordinatorOnion: _madeRecord().coordinatorOnion,
+                    role: TradeRole.buyer,
+                    writtenAt: madeAt,
+                    closedAt: null,
+                  ),
+                ),
+              );
+            await _showRenewal(tester, renewal, locale: locale);
+            await _tap(tester, _createIn(locale));
+            await settle(tester);
+            expect(renewal.made, hasLength(1));
+            expect(find.text(line), findsOneWidget);
+            expect(find.textContaining('confirmed'), findsNothing);
+            expect(_enabled(tester, _createIn(locale)), isFalse);
+            await tester.tap(_createIn(locale), warnIfMissed: false);
+            await settle(tester);
+            expect(renewal.made, hasLength(1));
+          }
         },
       );
 

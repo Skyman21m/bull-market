@@ -120,7 +120,7 @@ final class MakeMade extends MakeProgress {
 
 /// Whether the make made an order is not known: it stays pending in the records, resolved from its line of « Active trades » (#182). The form makes nothing more, so that no second order is made beside one that may exist.
 final class MakeUncertain extends MakeProgress {
-  /// Whether an order of the network was confirmed while a renewal's page was open, and whether it is this renewal's could not be read (security review of #220, R1, N1): the page sends nothing more, and says to go back.
+  /// Whether, on a renewal's page, whether the renewal made an order cannot be told: an order of the network confirmed meanwhile whose terms could not be read, or the page's own make no longer pending, confirmed or closed since (security review of #220, R1, N1): the page sends nothing more, and says to go back.
   final bool unverified;
 
   const MakeUncertain({this.unverified = false});

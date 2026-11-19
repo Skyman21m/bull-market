@@ -3794,7 +3794,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pRenewUnverified =>
-      'Un de vos ordres a été confirmé, et Bull Market n’a pas pu vérifier s’il s’agit de ce renouvellement : plus rien ne peut être envoyé depuis cette page. Revenez en arrière, puis rouvrez l’ordre depuis le Garage ou « Order ».';
+      'Bull Market n’a pas pu vérifier si ce renouvellement a créé un ordre : plus rien ne peut être envoyé depuis cette page. Revenez en arrière, puis rouvrez l’ordre depuis le Garage ou « Ordre ».';
 
   @override
   String get p2pMakeSubmit => 'Soumettre';

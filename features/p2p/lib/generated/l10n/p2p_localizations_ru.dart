@@ -3743,7 +3743,7 @@ class P2pLocalizationsRu extends P2pLocalizations {
 
   @override
   String get p2pRenewUnverified =>
-      'An order of yours was confirmed, and Bull Market could not check whether it is this renewal: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».';
+      'Bull Market could not check whether this renewal made an order: nothing more can be sent from this page. Go back, then open the order again from the Garage or « Order ».';
 
   @override
   String get p2pMakeSubmit => 'Submit';
