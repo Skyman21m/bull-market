@@ -297,7 +297,9 @@ void main() {
         // A coordinator of version 0.8.8: no alert.
         expect(find.textContaining('0.8.7'), findsNothing);
         expect(
-          find.textContaining(l10n.p2pMakeOptionSentPassword),
+          find.text(
+            l10n.p2pMakeOptionsSentOpen(l10n.p2pMakeOptionSentPassword),
+          ),
           findsOneWidget,
         );
         await journey.create();
