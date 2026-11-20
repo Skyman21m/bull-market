@@ -8,12 +8,12 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys).
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys).
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
-/// From schema 8 on, a file is not opened by a version of the app older than its schema: drift refuses a file newer than the code it runs.
+/// From schema 8 on, a file is not opened by a version of the app older than its schema: drift refuses a file newer than the code it runs. Schema 8 is in APKs given out, with real trades: its snapshot and its steps never change.
 @DriftDatabase(
   tables: [
     GarageKeyHistories,
@@ -25,6 +25,7 @@ part 'p2p_database.g.dart';
     StoredTradeChatPins,
     StoredTradeChatNostrPins,
     StoredMakerTerms,
+    StoredTradePayouts,
   ],
   include: {
     'trades.drift',
@@ -32,10 +33,11 @@ part 'p2p_database.g.dart';
     'trade_payments.drift',
     'trade_chat_pins.drift',
     'maker_terms.drift',
+    'trade_payouts.drift',
   },
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 8;
+  static const int schema = 9;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///
@@ -126,6 +128,25 @@ final class P2pDatabase extends _$P2pDatabase {
       'DROP TRIGGER IF EXISTS trade_payments_hash_once';
   static const String _dropTermsOfTheirTrade =
       'DROP TRIGGER IF EXISTS trade_terms_of_their_trade';
+
+  /// The table, the triggers and the statement of the step to schema 9 (#204, #231, #233; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis), pinned as written by `robot_bindings_architecture_test.dart`: none names a binding, and none changes or deletes a row of a table older than schema 9.
+  ///
+  /// The triggers of the new table of the payouts are dropped before its marks are written and made again after, in the order a new file has them, so that a step run again over a file it left writes them as the first run did.
+  static const String _dropTradePayoutsNeverDeleted =
+      'DROP TRIGGER IF EXISTS trade_payouts_never_deleted';
+  static const String _dropTradePayoutsForward =
+      'DROP TRIGGER IF EXISTS trade_payouts_forward';
+  static const String _dropTradePayoutsOfTheirTrade =
+      'DROP TRIGGER IF EXISTS trade_payouts_of_their_trade';
+  static const String _dropTradePayoutsInsertedOnce =
+      'DROP TRIGGER IF EXISTS trade_payouts_inserted_once';
+
+  /// The marks of the contracts under way when the step to schema 9 runs: for every trail of a buyer at a position where the payout of its current contract may already have been given, a row `unrecorded` of that contract, unless one is there already. Schema 8 recorded no payout, so such a payout is unknown, never « given elsewhere ».
+  static const String _markPayoutsUnrecorded =
+      'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, payment_hash, submitted_at) '
+      "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL, NULL FROM trade_trails AS trail "
+      "WHERE role = 'buyer' AND position NOT IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'publicAgain', 'notAvailable') "
+      'AND NOT EXISTS (SELECT 1 FROM trade_payouts WHERE trade_payouts.key_fingerprint = trail.key_fingerprint AND trade_payouts.robot_index = trail.robot_index AND trade_payouts.take = trail.take)';
 
   /// Whether the connection enforces foreign keys, which the step to schema 8 needs off to drop `trades` (and turns off when they are on: `beforeOpen` turns them on again after every step), and the rows that break a foreign key anywhere in the file, which it needs none of before it drops its copies.
   static const String _foreignKeys = 'PRAGMA foreign_keys';
@@ -346,6 +367,43 @@ final class P2pDatabase extends _$P2pDatabase {
         await customStatement(_dropTradesCopy);
         await customStatement(_dropTrailsCopy);
         await customStatement(_dropPaymentsOfSchema7);
+      },
+      from8To9: (m, schema) async {
+        // What each payment took out of the wallet (#233), where the payout of each contract came from (#204), and a trace of terms shown otherwise (#231): design note `docs/design/phase-3-making-an-order.md` § 3.5 bis. Schema 8 is frozen: no table is rebuilt, no trigger of it replaced, no row of it copied, changed or deleted; three columns are added in place, each with its constraints as its own, one table and five triggers are new.
+        // No transaction (the feature opens none): each part is one statement, done only when the file needs it, so that a step that stopped after any of them runs again over the file it left. No table is dropped, so the foreign keys stay as they are.
+        if (!await _hasColumn(_payments, 'confirmed_sats')) {
+          await m.addColumn(
+            schema.tradePayments,
+            schema.tradePayments.confirmedSats,
+          );
+        }
+        if (!await _hasColumn(_trails, 'terms_changed_at')) {
+          await m.addColumn(
+            schema.tradeTrails,
+            schema.tradeTrails.termsChangedAt,
+          );
+        }
+        if (!await _hasColumn(_trails, 'terms_changed_premium')) {
+          await m.addColumn(
+            schema.tradeTrails,
+            schema.tradeTrails.termsChangedPremium,
+          );
+        }
+        await m.createTable(schema.tradePayouts);
+        // The marks of the contracts under way, each written once, while no trigger of the payouts exists: those of a run before are dropped first, then all made again, in the order a new file has them.
+        await customStatement(_dropTradePayoutsNeverDeleted);
+        await customStatement(_dropTradePayoutsForward);
+        await customStatement(_dropTradePayoutsOfTheirTrade);
+        await customStatement(_dropTradePayoutsInsertedOnce);
+        await customStatement(_markPayoutsUnrecorded);
+        await m.createTrigger(schema.tradePayoutsNeverDeleted);
+        await m.createTrigger(schema.tradePayoutsForward);
+        await m.createTrigger(schema.tradePayoutsOfTheirTrade);
+        await m.createTrigger(schema.tradePayoutsInsertedOnce);
+        // The new triggers of two tables the step does not rebuild, each the newest of its table, as in a new file; made only when missing.
+        await m.createTrigger(schema.tradeTrailsTermsTrace);
+        await m.createTrigger(schema.tradePaymentsSatsKnown);
+        await m.createTrigger(schema.tradePaymentsSatsForward);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.

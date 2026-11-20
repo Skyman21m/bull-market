@@ -41,3 +41,18 @@ WHEN EXISTS (SELECT 1 FROM trade_payments WHERE payment_hash = NEW.payment_hash 
 BEGIN
   SELECT RAISE(ABORT, 'an invoice is paid once');
 END;
+
+-- A payment is recorded with what it takes out of the wallet (schema 9, #233): the total the user confirmed, written by the statement that records its start, before the wallet is asked; a payment without it is refused, so nothing is paid whose amount was not written first.
+CREATE TRIGGER IF NOT EXISTS trade_payments_sats_known BEFORE INSERT ON trade_payments
+WHEN NEW.confirmed_sats IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'a payment is recorded with its amount');
+END;
+
+-- What a payment takes out of the wallet never goes down nor is cleared (a new attempt of the same invoice keeps the larger), and the amount of a payment recorded before schema 9, unknown, stays unknown (schema 9, #233).
+CREATE TRIGGER IF NOT EXISTS trade_payments_sats_forward BEFORE UPDATE ON trade_payments
+WHEN (OLD.confirmed_sats IS NULL AND NEW.confirmed_sats IS NOT NULL)
+  OR (OLD.confirmed_sats IS NOT NULL AND (NEW.confirmed_sats IS NULL OR NEW.confirmed_sats < OLD.confirmed_sats))
+BEGIN
+  SELECT RAISE(ABORT, 'the amount of a payment never goes down');
+END;

@@ -105,3 +105,11 @@ WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint
 BEGIN
   SELECT RAISE(ABORT, 'a trail only moves forward');
 END;
+
+-- The trace of terms shown otherwise (schema 9, #231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): set once, in the write of the read that first showed this trade with other terms than its own (its time that read's), with the premium that read showed when it was one of them; then never changed nor cleared, to the trade's end, whatever the coordinator shows later.
+CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails
+WHEN (OLD.terms_changed_at IS NOT NULL AND (NEW.terms_changed_at IS NOT OLD.terms_changed_at OR NEW.terms_changed_premium IS NOT OLD.terms_changed_premium))
+  OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)
+BEGIN
+  SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept');
+END;
