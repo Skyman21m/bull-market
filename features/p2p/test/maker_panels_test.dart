@@ -15,6 +15,7 @@ import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
+import 'package:p2p/src/domain/trade/payout_trace.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_tolerances.dart';
@@ -836,20 +837,30 @@ void main() {
           makerOrderJson(9, taker: third),
         ]);
         expect(seen.status.has<ContractSeenLate>(), isTrue);
-        await _show(tester, seen);
-        expect(
-          find.text(
-            'Your order was taken again and this trade moved on without Bull Market seeing its steps, as when your Garage Key is used in another app. Check the trade in that app before acting here.',
-          ),
-          findsOneWidget,
-        );
+        // As the reader gives it: no payout of this contract from this device (schema 9, #204).
+        await _show(tester, seen.withPayout(const PayoutNotGivenHere()));
+        const lateLine =
+            'Your order was taken again and this trade moved on without Bull Market seeing its steps, as when your Garage Key is used in another app. Check the trade in that app before acting here.';
+        expect(find.text(lateLine), findsOneWidget);
         expect(
           find.text('Unexpected change on the coordinator\'s side.'),
           findsNothing,
         );
-        // Information, in the text colour with the info icon, not an alert.
-        expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
-        expect(find.byIcon(Icons.info_outline), findsWidgets);
+        // Information, in the text colour with the info icon, not an alert; the one alert is where the payout came from (#204).
+        expect(
+          find.descendant(
+            of: find.ancestor(of: find.text(lateLine), matching: find.byType(Row)).first,
+            matching: find.byIcon(Icons.info_outline),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+        expect(
+          find.text(
+            'This contract\'s payout invoice or address was not given from Bull Market: check where the sats will arrive.',
+          ),
+          findsOneWidget,
+        );
         // Nothing to pay from this wallet at 9 and after, so nothing offered that the warning would refuse.
         expect(find.text('Pay with this wallet'), findsNothing);
       },
