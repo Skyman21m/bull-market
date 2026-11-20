@@ -50,6 +50,12 @@ class MapChartView extends StatefulWidget {
   static Future<WorldMap?> worldOf(AssetBundle bundle) =>
       (_worlds[bundle] ??= _WorldLoad(bundle)).future;
 
+  /// The outline of the world map of [bundle] at zoom 0 ([MapChartPainter.outline]), built once for every map that shows it: `null` when the asset is not what `tools/troc_world_map.py` writes.
+  static Future<Path?> outlineOf(AssetBundle bundle) {
+    final load = _worlds[bundle] ??= _WorldLoad(bundle);
+    return load.future.then((_) => load.outline);
+  }
+
   static final _worlds = Expando<_WorldLoad>();
 
   @override
@@ -399,7 +405,7 @@ class _MapChartViewState extends State<MapChartView> {
             Positioned(
               left: BullSpacing.xs,
               top: BullSpacing.xs,
-              child: _ZoomButtons(
+              child: MapZoomButtons(
                 camera: _camera,
                 onZoom: (zoom) => _move(
                   _camera.zoomedTo(
@@ -428,12 +434,12 @@ class _MapChartViewState extends State<MapChartView> {
   }
 }
 
-/// The zoom control of Leaflet, in the top left corner of the map: « + » and « − », each disabled at its end of the zooms.
-class _ZoomButtons extends StatelessWidget {
+/// The zoom control of Leaflet, in the top left corner of the map: « + » and « − », each disabled at its end of the zooms; also on the map where the meeting point of an order is chosen (#189).
+class MapZoomButtons extends StatelessWidget {
   final MapCamera camera;
   final ValueChanged<double> onZoom;
 
-  const _ZoomButtons({required this.camera, required this.onZoom});
+  const MapZoomButtons({super.key, required this.camera, required this.onZoom});
 
   @override
   Widget build(BuildContext context) {
@@ -882,34 +888,16 @@ final class MapChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (world case final world?) {
-      final camera = layout.camera;
-      final scale = camera.worldSize / WebMercator.tileSize;
-      final transform = Float64List(16)
-        ..[0] = scale
-        ..[5] = scale
-        ..[10] = 1
-        ..[12] = size.width / 2 - camera.x * camera.worldSize
-        ..[13] = size.height / 2 - camera.y * camera.worldSize
-        ..[15] = 1;
-      final drawn = world.transform(transform);
-      canvas
-        ..drawPath(drawn, Paint()..color = colors.land)
-        ..drawPath(
-          drawn,
-          Paint()
-            ..color = colors.border
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = borderWidth
-            ..strokeJoin = StrokeJoin.round,
-        );
+      paintWorld(canvas, size, layout.camera, world, colors);
     }
     for (final (mark, at) in layout.drawn) {
       switch (mark) {
         case MapPin(:final order):
-          _pin(
+          paintPin(
             canvas,
             at,
             order.type == OrderType.sell ? colors.sell : colors.buy,
+            colors,
           );
         case MapGroup(:final count):
           _group(canvas, at, count);
@@ -917,10 +905,42 @@ final class MapChartPainter extends CustomPainter {
     }
   }
 
-  /// A pin, tip at [at]: a drop with a robot's visor, two eyes and a smile, as the official client's `MapPin`.
+  /// The countries of [world] (the outline at zoom 0, [outline]) in a view of [size] seen by [camera]: filled, then outlined.
+  ///
+  /// Also the map where the meeting point of an order is chosen (#189).
+  static void paintWorld(
+    Canvas canvas,
+    Size size,
+    MapCamera camera,
+    Path world,
+    MapColors colors,
+  ) {
+    final scale = camera.worldSize / WebMercator.tileSize;
+    final transform = Float64List(16)
+      ..[0] = scale
+      ..[5] = scale
+      ..[10] = 1
+      ..[12] = size.width / 2 - camera.x * camera.worldSize
+      ..[13] = size.height / 2 - camera.y * camera.worldSize
+      ..[15] = 1;
+    final drawn = world.transform(transform);
+    canvas
+      ..drawPath(drawn, Paint()..color = colors.land)
+      ..drawPath(
+        drawn,
+        Paint()
+          ..color = colors.border
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = borderWidth
+          ..strokeJoin = StrokeJoin.round,
+      );
+  }
+
+  /// A pin, tip at [at]: a drop with a robot's visor, two eyes and a smile, as the official client's `MapPin`, filled with [fill].
   ///
   /// The outline of the drop and the smile are the app's own drawing; the proportions of the visor and of the eyes are taken from RoboSats' `MapPin` (`components/Map/index.tsx`, AGPL-3.0), its rectangles scaled from its 18.66-unit width to the 24 points of the pin.
-  void _pin(Canvas canvas, Offset at, Color fill) {
+  /// Also the pin of the meeting point being chosen (#189).
+  static void paintPin(Canvas canvas, Offset at, Color fill, MapColors colors) {
     final head = at.translate(0, -pinHeadAbove);
     const radius = 11.0;
     // The tail leaves the head where the lines from the tip touch it.

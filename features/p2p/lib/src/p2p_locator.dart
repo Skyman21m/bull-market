@@ -21,6 +21,7 @@ import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
+import 'domain/meeting_point.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/p2p_waits.dart';
@@ -143,6 +144,8 @@ final class P2pLocator {
       waits: P2pWaits(start: Timer.new, random: Random().nextDouble),
       // The draws of the reference's lottery of the create form's default coordinator (#181), `Math.random()`'s: nothing secret depends on them.
       lotteryDraws: Random().nextDouble,
+      // The draws that move a meeting point pinned (#189): they hide the place pinned, so the secure source.
+      locationDraws: Random.secure().nextDouble,
     );
     if (garageKeys != null && databaseDirectory != null) {
       registerGarageKeys(
@@ -754,9 +757,13 @@ final class P2pLocator {
     required DateTime Function() clock,
     required P2pWaits waits,
     required double Function() lotteryDraws,
+    required double Function() locationDraws,
     P2pShuffle shuffle = P2pShuffle.random,
   }) {
     locator.registerSingleton<P2pClock>(P2pClock(clock));
+    locator.registerSingleton<MeetingPointDraws>(
+      MeetingPointDraws(locationDraws),
+    );
     locator.registerSingleton<CoordinatorLottery>(
       CoordinatorLottery(lotteryDraws),
     );

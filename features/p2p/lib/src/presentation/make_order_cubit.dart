@@ -675,7 +675,9 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   }) async {
     if (state.progress is! MakeIdle ||
         state.coordinator != coordinator ||
-        _checkingStarted > 0) {
+        _checkingStarted > 0 ||
+        // A protected order is sent with its password's hash, never without (#189).
+        !request.isSendable) {
       return;
     }
     // A renewal sends its order's kept request to its order's coordinator, nothing else (#185).

@@ -1393,7 +1393,7 @@ sealed class TradeStatus {
     return warnings;
   }
 
-  /// Whether a maker's [order] read at [to] is not the order it asked: its type, currency, premium (an order made here is never priced in sats), bond size, escrow duration, payment method text as sent, password (none before issue #189), public duration where the read gives it (5, 13 to 15, `api/views.py:490-498`), fixed amount or range's bounds; and for a range, an amount taken before any take (0 to 2), outside the range, or other than the one the trail keeps for the same contract (another amount at a next contract being that contract's own).
+  /// Whether a maker's [order] read at [to] is not the order it asked: its type, currency, premium (an order made here is never priced in sats), bond size, escrow duration, payment method text as sent, whether it has a password, its meeting point (#189), public duration where the read gives it (5, 13 to 15, `api/views.py:490-498`), fixed amount or range's bounds; and for a range, an amount taken before any take (0 to 2), outside the range, or other than the one the trail keeps for the same contract (another amount at a next contract being that contract's own).
   static bool _madeTermsChanged(
     CoordinatorOrder order,
     MakerTerms maker,
@@ -1415,7 +1415,9 @@ sealed class TradeStatus {
       return true;
     }
     if (order.paymentMethods.text != maker.request.paymentMethod) return true;
-    if (order.hasPassword) return true;
+    // Whether the order has a password, given at every read (`api/views.py:256`), and its meeting point, given to a participant at every read as stored (`:320-321`, 6 decimals, `api/models/order.py:148-167`), so the very number sent (#189): an order protected or placed otherwise than asked is not the order asked.
+    if (order.hasPassword != maker.request.hasPassword) return true;
+    if (order.location != maker.request.location) return true;
     // What the make's answer does not carry (`ListOrderSerializer`, `api/serializers.py:83-107`), compared at every read that gives it (#179, after the functional review of #178): the description, given to the maker at every read (`api/views.py:280`), as sent (`MakeOrderRequest` refuses a text the coordinator would store otherwise), so that no bond is shown without the warning for an order whose description is not the one asked.
     if (order.description != maker.request.description) return true;
     if (order.publicDuration case final shown?

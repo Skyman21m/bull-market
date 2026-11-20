@@ -262,12 +262,17 @@ final class CoordinatorClient {
   /// A refusal is the coordinator's word too: one that lies after making the order leaves it at 0, with no bond invoice made, until it expires; if the make use case (#179) later finds that order by reading the robot, it shows a bond only after it has compared the order read with the terms it asked.
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  ///
+  /// A request that cannot be sent ([MakeOrderRequest.isSendable]: one a device kept of an order with a password, without the password's hash) is refused before anything is sent, with [OrderRequestRefused] without a code: the body would send a protected order without its password.
   Future<Result<MadeOrder, OrderActionFailure>> makeOrder(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
     required MakeOrderRequest request,
   }) async {
+    if (!request.isSendable) {
+      return const Err(OrderActionRefused(OrderRequestRefused(null)));
+    }
     final response = await _postAsRobot(
       coordinator,
       network,

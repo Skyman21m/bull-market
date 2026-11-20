@@ -4448,10 +4448,6 @@
   "@p2pMakeEnableAdvanced": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 486), with its French (`fr.json`, line 486). The switch of the create form's advanced options (`MakerForm.tsx:700-722`), shown disabled in this version (#181)."
   },
-  "p2pMakeComingLater": "Coming in a later version.",
-  "@p2pMakeComingLater": {
-    "description": "Not in the RoboSats texts: the project's own: under « Password » and « Face to Face Location », shown disabled until #189 (design note § 2.2; under « Enable advanced options » in #181, which #183 enabled)."
-  },
   "p2pMakeBuyOrSell": "Buy or Sell Bitcoin?",
   "@p2pMakeBuyOrSell": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 482), with its French (`fr.json`, line 482). The label over « Buy » and « Sell » in the create form (`MakerForm.tsx:752`), followed by « * » as the reference writes it; the French adds the space before « ? » of French typography."
@@ -4720,7 +4716,7 @@
   },
   "p2pMakePassword": "Password",
   "@p2pMakePassword": {
-    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 507), with its French (`fr.json`, line 507). The label of the order's password in the advanced options (`MakerForm.tsx:1096`), shown disabled with « Coming in a later version. » until #189."
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 507), with its French (`fr.json`, line 507). The label of the order's password in the advanced options (`MakerForm.tsx:1096`), and of the renewal's (`Prompts/Expired.tsx:53`), #189."
   },
   "p2pMakePasswordHint": "You can optionally set a password so that only the robots you share it with can take this order.",
   "@p2pMakePasswordHint": {
@@ -4761,7 +4757,7 @@
   },
   "p2pMakeLocation": "Face to Face Location",
   "@p2pMakeLocation": {
-    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 492), with its French (`fr.json`, line 492). The button of a face-to-face trade's location (`MakerForm.tsx:1022`), shown disabled with « Coming in a later version. » until #189."
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 492), with its French (`fr.json`, line 492). The button of a face-to-face trade's location (`MakerForm.tsx:1022`), which opens the map (#189)."
   },
   "p2pMakeLocationHint": "Add geolocation for a face to face trade",
   "@p2pMakeLocationHint": {
@@ -5783,5 +5779,116 @@
   "p2pMakeMatchesFound": "Existing orders match yours!",
   "@p2pMakeMatchesFound": {
     "description": "The official client's title (`basic/MakerPage/index.tsx:109`, `en.json` at commit ff1998c) above the orders of the book that resemble the one being made, once « Submit » is pressed (#186); its French is `fr.json`'s in the vocabulary of the P2P catalogue (« ordre », where the reference writes « Commandes existantes correspondent aux vôtres ! »)."
+  },
+  "p2pMakeSeeDetails": "See details",
+  "@p2pMakeSeeDetails": {
+    "description": "Not in the RoboSats texts: the project's own: the line that unfolds, under a field of the create form, the explanation shown only on demand (the owner's rule of 2026-11-20: screens kept bare, explanations on demand), #189."
+  },
+  "p2pMakeHideDetails": "Hide details",
+  "@p2pMakeHideDetails": {
+    "description": "Not in the RoboSats texts: the project's own: the same line once the explanation is unfolded, which folds it again (#189)."
+  },
+  "p2pMakePasswordLine": "Kept out of the book; to be taken with the official RoboSats app.",
+  "@p2pMakePasswordLine": {
+    "description": "Not in the RoboSats texts: the project's own: the short line under « Password » once one is typed (#189): the coordinator leaves a protected order out of its book (`api/views.py:788-795`), and this app cannot take one (`take_order_usecase.dart`)."
+  },
+  "p2pMakePasswordShare": "Share the order's link (« Copy URL » on its page once it is made) and the password with the robots you choose.",
+  "@p2pMakePasswordShare": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), how a protected order is shared, with the reference's « Copy URL » (`TradeBox/CancelButton.tsx:58`)."
+  },
+  "p2pMakePasswordOfficialApp": "Bull Market cannot take a protected order yet: whoever takes it uses the official RoboSats app, with the link and the password.",
+  "@p2pMakePasswordOfficialApp": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; design note § 7, proposal 3)."
+  },
+  "p2pMakePasswordReadable": "Whoever asks the coordinator for the order by its number can still read its side, currency, amount, premium, payment method, bond, timers and your robot's name; not its description nor its location.",
+  "@p2pMakePasswordReadable": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`ListOrderSerializer`, `api/serializers.py:83-107`, and `api/views.py:248-299`: type, currency, amount, premium, payment method, bond size, escrow duration, expiry, maker's nickname; location and description removed)."
+  },
+  "p2pMakePasswordHashOnly": "Only the password's SHA-256 leaves this device, and it is not kept: renewing the order asks for the password again.",
+  "@p2pMakePasswordHashOnly": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189)."
+  },
+  "p2pMakePasswordOldCoordinator": "{coordinator} ({version}) shows protected orders to anyone.",
+  "@p2pMakePasswordOldCoordinator": {
+    "description": "Not in the RoboSats texts: the project's own: the alert in one short line, in the warning colour, under « Password » once a password is typed, or near the summary while the field is not in the form, on a coordinator whose `/api/info/` gives a version older than 0.8.7 (#189; advisory GHSA-r6f6-x59j-8q69 as the design note § 2.4 reports it). Never a lock.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakePasswordUnknownVersion": "Version of {coordinator} unknown: a protected order may be visible to anyone.",
+  "@p2pMakePasswordUnknownVersion": {
+    "description": "Not in the RoboSats texts: the project's own: the alert in one short line, in the warning colour, under « Password » once a password is typed, or near the summary while the field is not in the form, on a coordinator whose `/api/info/` could not be read (#189). Never a lock.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakePasswordOldDetail": "Before version 0.8.7 (advisory GHSA-r6f6-x59j-8q69), a coordinator gives a protected order's amount, premium, payment method, your robot's name and its location to whoever asks for it, without the password. The order can still be made; choose another coordinator to keep it private.",
+  "@p2pMakePasswordOldDetail": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of the alert of a coordinator older than 0.8.7 or of unknown version (#189; design note § 2.4)."
+  },
+  "p2pMakeOptionSentPassword": "a password",
+  "@p2pMakeOptionSentPassword": {
+    "description": "Not in the RoboSats texts: the project's own: in the list of the options sent, that a password protects the order (its text is never repeated there), #189."
+  },
+  "p2pRenewPasswordAgain": "Enter a password again",
+  "@p2pRenewPasswordAgain": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 756); its `fr.json` keeps it in English, the French is the project's. The tooltip of the renewal's « Password » (`Prompts/Expired.tsx:49`); here, as its field's error and why « Create order » is disabled while it is empty, the reference drawing the field in red (`:58`, `:84-89`), #189."
+  },
+  "p2pRenewPasswordSame": "This device does not keep the password: type the same one as before, the one you shared, or the order will not open with it.",
+  "@p2pRenewPasswordSame": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of the renewal's « Password » (#189)."
+  },
+  "p2pMakeLocationSent": "Point sent: {point}",
+  "@p2pMakeLocationSent": {
+    "description": "Not in the RoboSats texts: the project's own: under « Face to Face Location » once a point is saved, the point the order sends, already moved as the reference moves it (#189). {point} is the latitude and the longitude, as « 48.8571, 2.3498 ».",
+    "placeholders": {
+      "point": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeLocationRemove": "Remove the location",
+  "@p2pMakeLocationRemove": {
+    "description": "Not in the RoboSats texts: the project's own: the tooltip of the button that removes the meeting point saved (#189; the reference removes it only with the last face-to-face method)."
+  },
+  "p2pMakeLocationRandomized": "To protect your privacy, the exact location you pin will be slightly randomized.",
+  "@p2pMakeLocationRandomized": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 530), with its French (`fr.json`, line 530). Under the map where the location is chosen (`MakerForm.tsx:656-658`), and in the detail of « Face to Face Location » (#189)."
+  },
+  "p2pMakeLocationPublished": "Sent to the coordinator; published with the order unless it has a password.",
+  "@p2pMakeLocationPublished": {
+    "description": "Not in the RoboSats texts: the project's own: under the map where the location is chosen, beside the reference's line (#189; `api/nostr.py:28-30`, `:151-153`: an order with a password is not published on Nostr)."
+  },
+  "p2pMakeLocationDetail": "The point shown is the one sent: the place you pinned, moved by up to 0.05° each way (a few kilometres). The coordinator shows it with the order, and publishes it on Nostr with an order without a password. Bull Market reads nothing of your phone's position, only the point you pin.",
+  "@p2pMakeLocationDetail": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Face to Face Location » (#189; `F2fMap.tsx` `onSave`, `api/views.py:291-298`, `api/nostr.py:29`, `:151-153`)."
+  },
+  "p2pMapChooseLocation": "Choose a location",
+  "@p2pMapChooseLocation": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 374), with its French (`fr.json`, line 374). The title of the map where the meeting point is chosen (`F2fMap.tsx`), #189."
+  },
+  "p2pMapSave": "Save",
+  "@p2pMapSave": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 375), with its French (`fr.json`, line 375). The button of the map that keeps the place pinned, moved as the reference moves it (`F2fMap.tsx`), #189."
+  },
+  "p2pMapPinHint": "World map: tap a place to pin it.",
+  "@p2pMapPinHint": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the map where the meeting point is chosen (#189)."
+  },
+  "p2pMapPinned": "Place pinned: {point}",
+  "@p2pMapPinned": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the pin of the map where the meeting point is chosen (#189). {point} is the latitude and the longitude.",
+    "placeholders": {
+      "point": {
+        "type": "String"
+      }
+    }
   }
 }

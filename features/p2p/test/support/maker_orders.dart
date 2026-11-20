@@ -39,6 +39,8 @@ TradeTerms<MadeSide> madeTerms({
   double price = makerPrice,
   double fee = makerFee,
   int orderId = tradeOrderId,
+  OrderLocation? location,
+  bool password = false,
 }) {
   FiatAmount fiat(double value) => _some(FiatAmount.tryCreate(value));
   final request = _some(
@@ -53,6 +55,9 @@ TradeTerms<MadeSide> madeTerms({
       publicDuration: const Duration(seconds: 86340),
       escrowDuration: const Duration(seconds: 10800),
       bondSize: _some(BondSize.tryCreate(3)),
+      location: location,
+      // A password of the tests, never anyone's (#189).
+      password: password ? OrderPasswordHash.of('test password') : null,
     ),
   );
   final maker = switch (MakerTerms.create(

@@ -694,6 +694,99 @@ void main() {
     });
   });
 
+  group('the password and the meeting point (#189)', () {
+    TradeStatus first(TradeTerms<MadeSide> terms, TradeAnswer answer) =>
+        TradeStatus.afterMake(
+          answer,
+          terms: terms,
+          now: tradeNow,
+          reader: reader,
+        );
+
+    test(
+      'an order asked protected and read without a password, or the reverse, is not the order asked',
+      () async {
+        final protected = madeTerms(password: true);
+        expect(
+          first(
+            protected,
+            await made(0, changes: {'has_password': true}),
+          ).warnings,
+          isEmpty,
+        );
+        expect(
+          first(protected, await made(0)).has<TradeTermsChanged>(),
+          isTrue,
+        );
+        expect(
+          first(
+            madeTerms(),
+            await made(0, changes: {'has_password': true}),
+          ).has<TradeTermsChanged>(),
+          isTrue,
+        );
+        // At every read: public, then taken.
+        final public = TradeStatus.from(
+          previous: first(
+            protected,
+            await made(0, changes: {'has_password': true}),
+          ),
+          answer: await made(1, changes: {'has_password': true}),
+          terms: protected,
+          now: tradeNow,
+          reader: reader,
+        );
+        expect(public.warnings, isEmpty);
+        final unprotected = TradeStatus.from(
+          previous: public,
+          answer: await made(6),
+          terms: protected,
+          now: tradeNow,
+          reader: reader,
+        );
+        expect(unprotected.has<TradeTermsChanged>(), isTrue);
+      },
+    );
+
+    test(
+      'the meeting point read as sent, the coordinator\'s number of the 6 decimals stored; any other is not the order asked',
+      () async {
+        final placed = madeTerms(
+          location: OrderLocation.tryCreate(48.8566, 2.35221),
+        );
+        // `data["latitude"] = order.latitude` to a participant: the stored `Decimal` as a JSON number (`api/views.py:320-321`).
+        expect(
+          first(
+            placed,
+            await made(0, changes: {'latitude': 48.8566, 'longitude': 2.35221}),
+          ).warnings,
+          isEmpty,
+        );
+        for (final changes in [
+          <String, Object?>{'latitude': 48.8567, 'longitude': 2.35221},
+          <String, Object?>{'latitude': 48.8566, 'longitude': 2.3522},
+          <String, Object?>{},
+        ]) {
+          expect(
+            first(
+              placed,
+              await made(0, changes: changes),
+            ).has<TradeTermsChanged>(),
+            isTrue,
+            reason: '$changes',
+          );
+        }
+        expect(
+          first(
+            madeTerms(),
+            await made(0, changes: {'latitude': 48.8566, 'longitude': 2.35221}),
+          ).has<TradeTermsChanged>(),
+          isTrue,
+        );
+      },
+    );
+  });
+
   group('an escrow of an earlier contract', () {
     test(
       'served again at the next contract: refused, never shown, never pinned',

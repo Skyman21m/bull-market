@@ -90,7 +90,7 @@ final class TradeRateGap {
 ///
 /// It is the request itself ([request], a `MakeOrderRequest` checked by its own `tryCreate`, so that the terms and what is sent have the very same bounds), the network and coordinator it is sent to, the coordinator's price of a bitcoin in the order's currency read from `/api/limits/` just before the make ([createdPrice]), and the maker fee of `/api/info/` ([makerFee]).
 /// It names no order, which does not exist when it is written; `TradeTerms.made` joins it to the order once a read of it shows this robot as its maker.
-/// Not in it yet: a password and a meeting point, which `MakeOrderRequest` does not send before issue #189; its record writes `has_password` false and no coordinates, and a record with either is refused.
+/// Since #189 the request may carry a meeting point, kept and stored as it is, and a password, of which only whether there is one is kept and stored ([MakeOrderRequest.kept]): never the password nor its hash, which the make sends once and forgets, so that a renewal asks for the password again.
 ///
 /// Its money rules are computed exactly ([ExactRatio]): each figure the coordinator gives is a whole number of sats, each rule a bound on it rounded down once, at its end, so that a sat is let through only when the rule's exact bound reaches it.
 /// Its ceiling is [Sats], a `BigInt`, and nothing in the feature turns one into an `int`: `BigInt.toInt` stops at 2^63 − 1 on the Dart VM, so a screen that showed a ceiling through it could show a false figure; the wallet compares `BigInt`s (`walletPaymentFor`). Within the bounds of [create], every figure for display ([expectedBond], [createdRate], [rateGap]) is finite.
@@ -111,7 +111,7 @@ final class MakerTerms {
   /// The coordinator of the federation list the make is sent to.
   final Coordinator coordinator;
 
-  /// What is sent: the order's type, currency, amount or range, payment methods, premium, durations, bond size and description.
+  /// What is asked: the order's type, currency, amount or range, payment methods, premium, durations, bond size, description, meeting point, and whether it has a password; never the password's hash ([MakeOrderRequest.kept]), so never a request to send as it is when the order has a password: the make sends the request it was given, equal to this one.
   final MakeOrderRequest request;
 
   /// The coordinator's price of a bitcoin in the order's currency, from `/api/limits/` just before the make: the `exchange_rate` the coordinator computes the order's sats with (`LimitView`, `api/views.py:1177-1197`; `Logics.calc_sats`, `api/logics.py:256-259`).
@@ -129,6 +129,8 @@ final class MakerTerms {
   });
 
   /// The terms of making [request] on [coordinator] and [network], at the [createdPrice] of `/api/limits/` and with the [makerFee] of `/api/info/`, both read just before the make.
+  ///
+  /// The terms keep [request] without its password's hash ([MakeOrderRequest.kept]).
   ///
   /// Refused with [MakerFeeTooHigh] above [TradeTolerances.makerFeeCeiling], and with [MakerTermsUnusable] for a fee that is not finite or is negative, a price that is not finite, below [minCreatedPrice] or not below [maxCreatedPrice], or a coordinator that is not on [network]. A fee of minus zero is kept as zero.
   static Result<MakerTerms, MakerTermsRefusal> create({
@@ -154,14 +156,16 @@ final class MakerTerms {
       MakerTerms._(
         network: network,
         coordinator: coordinator,
-        request: request,
+        request: request.kept,
         createdPrice: createdPrice,
         makerFee: makerFee == 0 ? 0.0 : makerFee,
       ),
     );
   }
 
-  /// The terms [record] holds, or why not: [TradeCoordinatorGone] when its coordinator is no longer in the federation list on its network, [TradeRecordMalformed] when it is not one [record] wrote (an unknown version or network, a role that does not follow from the order's type, any value `MakeOrderRequest.tryCreate` or [create] refuses, a password or a meeting point, which this version never sends).
+  /// The terms [record] holds, or why not: [TradeCoordinatorGone] when its coordinator is no longer in the federation list on its network, [TradeRecordMalformed] when it is not one [record] wrote (an unknown version or network, a role that does not follow from the order's type, any value `MakeOrderRequest.tryCreate` or [create] refuses, a latitude without its longitude or the reverse).
+  ///
+  /// The request restored says whether the order has a password (`has_password`), never with the password's hash, which was never stored: it is not sent as it is (`MakeOrderRequest.isSendable`), a renewal giving the password again.
   ///
   /// The terms are set once, before the make: their record is never written again.
   static Result<MakerTerms, TradeRecordRefusal> restore(
@@ -202,6 +206,20 @@ final class MakerTerms {
       },
       _ => null,
     };
+    final (OrderLocation?, bool) location = switch ((
+      record.latitude,
+      record.longitude,
+    )) {
+      (null, null) => (null, true),
+      (final latitude?, final longitude?) => switch (OrderLocation.tryCreate(
+        latitude,
+        longitude,
+      )) {
+        final value? => (value, true),
+        null => (null, false),
+      },
+      _ => (null, false),
+    };
     if (type == null ||
         role == null ||
         role != tradeRoleMaking(type) ||
@@ -209,9 +227,7 @@ final class MakerTerms {
         premium == null ||
         bondSize == null ||
         amount == null ||
-        record.hasPassword ||
-        record.latitude != null ||
-        record.longitude != null) {
+        !location.$2) {
       return refused;
     }
     final request = MakeOrderRequest.tryCreate(
@@ -224,6 +240,8 @@ final class MakerTerms {
       escrowDuration: Duration(seconds: record.escrowSeconds),
       bondSize: bondSize,
       description: record.description,
+      location: location.$1,
+      keptWithPassword: record.hasPassword,
     );
     if (request == null) return refused;
     return switch (create(
@@ -258,9 +276,9 @@ final class MakerTerms {
       publicSeconds: request.publicDuration.inSeconds,
       escrowSeconds: request.escrowDuration.inSeconds,
       description: request.description,
-      hasPassword: false,
-      latitude: null,
-      longitude: null,
+      hasPassword: request.hasPassword,
+      latitude: request.location?.latitude,
+      longitude: request.location?.longitude,
       createdPrice: createdPrice,
       makerFee: makerFee,
     );

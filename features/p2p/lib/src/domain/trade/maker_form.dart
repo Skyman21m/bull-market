@@ -442,6 +442,12 @@ final class MakerFormInput {
   final Duration escrowDuration;
   final double bondSizePercent;
 
+  /// « Password », as typed (#189): sent as its SHA-256 when it is not empty (`MakerForm.tsx:273`), kept and sent while the options are closed, as the reference does.
+  final String password;
+
+  /// « Face to Face Location »: the meeting point saved, already moved and rounded as the reference does (`MeetingPoint.randomized`), or `null` (#189).
+  final OrderLocation? location;
+
   MakerFormInput({
     required this.type,
     required this.currency,
@@ -456,6 +462,8 @@ final class MakerFormInput {
     this.publicDuration = MakerFormCheck.publicDurationDefault,
     this.escrowDuration = MakerFormCheck.escrowDurationDefault,
     this.bondSizePercent = MakerFormCheck.bondSizeDefault,
+    this.password = '',
+    this.location,
   }) : paymentMethods = List.unmodifiable(paymentMethods);
 
   /// Whether the order is a range (`makerHasAmountRange`, `MakerForm.tsx:202-204`): the advanced options open and « Amount Range » chosen.
@@ -700,6 +708,9 @@ double significant(double value, int digits) =>
 final class MakerOptionsSent {
   final bool description;
 
+  /// Whether a password is sent (#189): that there is one, never its text.
+  final bool password;
+
   /// Each `null` when at its default.
   final Duration? publicDuration;
   final Duration? escrowDuration;
@@ -707,6 +718,7 @@ final class MakerOptionsSent {
 
   const MakerOptionsSent({
     required this.description,
+    this.password = false,
     required this.publicDuration,
     required this.escrowDuration,
     required this.bondSizePercent,
@@ -715,6 +727,7 @@ final class MakerOptionsSent {
   /// Whether any is sent: no line when all are at their defaults.
   bool get any =>
       description ||
+      password ||
       publicDuration != null ||
       escrowDuration != null ||
       bondSizePercent != null;
@@ -805,9 +818,16 @@ final class MakerFormCheck {
   final Duration escrowDuration;
   final double bondSizePercent;
 
+  /// Whether a password is sent (#189): « Password » not empty.
+  final bool hasPassword;
+
+  /// The meeting point sent, or `null` (#189).
+  final OrderLocation? location;
+
   /// The advanced options sent that differ from the defaults ([MakerOptionsSent]).
   MakerOptionsSent get optionsSent => MakerOptionsSent(
     description: description != null,
+    password: hasPassword,
     publicDuration: publicDuration == publicDurationDefault
         ? null
         : publicDuration,
@@ -860,6 +880,8 @@ final class MakerFormCheck {
     required this.publicDuration,
     required this.escrowDuration,
     required this.bondSizePercent,
+    required this.hasPassword,
+    required this.location,
     required this.price,
     required this.limits,
     required this.rate,
@@ -1050,6 +1072,8 @@ final class MakerFormCheck {
           publicDuration: input.publicDuration,
           escrowDuration: input.escrowDuration,
           bondSizePercent: bondSizePercent,
+          hasPassword: input.password.isNotEmpty,
+          location: input.location,
           price: price,
           limits: limits,
           rate: rate,
@@ -1128,6 +1152,9 @@ final class MakerFormCheck {
             escrowDuration: input.escrowDuration,
             bondSize: bondSize,
             description: description,
+            location: input.location,
+            // Only the password's SHA-256 leaves, as the reference sends it (`MakerForm.tsx:273`); an empty one is no password (#189).
+            password: OrderPasswordHash.of(input.password),
           );
     // The use case refuses an amount outside these very limits before any robot; the form never offers one.
     if (request == null || !limits.allows(request.amount)) {
@@ -1144,4 +1171,42 @@ final class MakerFormCheck {
     if (!bond.isFinite || bond < 0 || bond >= 9e15) return null;
     return bond.floor();
   }
+}
+
+/// What the form says of an order's password by the version of its coordinator (#189, design note `docs/design/phase-3-making-an-order.md` § 2.4): a coordinator older than [patched] shows a protected order to anyone who asks for it (advisory `GHSA-r6f6-x59j-8q69`, published on 2026-08-20, patched in `0.8.7-alpha`): its book filtered by type or currency, and `GET /api/order/` by the order's number, gave the order's amount, premium, payment method, maker's nickname and meeting point without the password.
+///
+/// An alert, never a lock: the password is still sent, the order still made (the owner's rule, no lock beyond what the reference refuses). The version is read from the coordinator's `/api/info/`, which the form already reads anonymously for every coordinator; it is the coordinator's word.
+sealed class PasswordExposure {
+  /// The first version that keeps a protected order out of anyone's sight.
+  static const patched = CoordinatorVersion(0, 8, 7);
+
+  const PasswordExposure();
+
+  /// What [info], the coordinator's `/api/info/` (`null` when it could not be read), says: `null` for a version of [patched] or later.
+  static PasswordExposure? of(CoordinatorInfo? info) {
+    if (info == null) return const PasswordExposureUnknown();
+    final version = info.version;
+    return version.compareTo(patched) < 0
+        ? PasswordExposedByVersion(version)
+        : null;
+  }
+}
+
+/// The coordinator runs [version], older than [PasswordExposure.patched].
+final class PasswordExposedByVersion extends PasswordExposure {
+  final CoordinatorVersion version;
+
+  const PasswordExposedByVersion(this.version);
+
+  @override
+  bool operator ==(Object other) =>
+      other is PasswordExposedByVersion && other.version == version;
+
+  @override
+  int get hashCode => version.hashCode;
+}
+
+/// The coordinator's version could not be read.
+final class PasswordExposureUnknown extends PasswordExposure {
+  const PasswordExposureUnknown();
 }

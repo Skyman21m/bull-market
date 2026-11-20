@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:convert/convert.dart' show hex;
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
@@ -13,7 +17,9 @@ import 'package:robosats/src/robosats_failure.dart';
 /// Every field is bounded as the coordinator bounds it (`MakeOrderSerializer`, `api/serializers.py:587-627`, with the validators of the order model, `api/models/order.py:77-184`, commit ff1998c), so that a request this package sends is not refused by the form check, whose empty `400` says nothing of why; where the reference client is stricter, its own bound is the caller's to apply.
 /// Nothing is rounded or cleaned: a value the coordinator would store differently from what was sent (a number with more decimals than its field keeps, a text with spaces at its ends, which its serializer trims) is refused, so that the answer can be compared with the request field by field.
 ///
-/// What this package does not send yet: a price in sats (`is_explicit`, `satoshis`, which the reference client no longer offers), an order in bitcoin (currency 1000, the reference's « Swap? »), a meeting point and a password, which the design note leaves to issue #189; the body then carries `null` for each, as the reference client writes it when they are not set.
+/// What this package does not send: a price in sats (`is_explicit`, `satoshis`, which the reference client no longer offers) and an order in bitcoin (currency 1000, the reference's « Swap? »); the body carries `null` for each, as the reference client writes it when they are not set.
+///
+/// Since #189 it sends a meeting point ([location]) and a password, as the reference client does (`MakerForm.tsx:270-273`): the password only as its SHA-256 ([OrderPasswordHash]), never the text. Two requests are equal when they ask the same order: whether there is a password is compared, never its hash, which a device does not keep ([kept]).
 @immutable
 final class MakeOrderRequest {
   /// The bounds of a public duration: from 10 minutes, the reference client's shortest (`MakerForm.tsx:1115-1148`, the coordinator taking 597.6 s, `robosats/settings.py:300`, `api/models/order.py:109-122`), to 24 hours, the coordinator's longest.
@@ -29,6 +35,9 @@ final class MakeOrderRequest {
 
   /// The most code points of a description (`max_length=240`, `api/models/order.py:178-184`).
   static const maxDescriptionCodePoints = 240;
+
+  /// The decimals of a meeting point's latitude and longitude at the coordinator (`decimal_places=6`, `api/models/order.py:148-167`): more is refused there with an empty `400`.
+  static const locationDecimals = 6;
 
   /// The coordinator's nominal ratios of a range's maximum to its minimum: at least [minRangeRatio] (error 1006) and at most [maxRangeRatio] times (error 1009, `api/logics.py:164-175`).
   ///
@@ -71,6 +80,15 @@ final class MakeOrderRequest {
   /// The maker's free text, which the coordinator shows to every robot that reads the order and publishes on Nostr with it, or `null`.
   final String? description;
 
+  /// The meeting point of a face-to-face trade, which the coordinator shows with the order and publishes on Nostr as a geohash (`api/nostr.py:151-153`), or `null`.
+  final OrderLocation? location;
+
+  /// Whether the order is protected by a password: the coordinator then leaves it out of its book (`api/views.py:788-795`) and a take must send the same password's hash (`:554-560`).
+  final bool hasPassword;
+
+  /// The SHA-256 of the password, what the body sends; `null` without a password, and for a request a device kept of an order that had one ([kept]), which is never sent ([isSendable]).
+  final OrderPasswordHash? passwordHash;
+
   const MakeOrderRequest._({
     required this.type,
     required this.currency,
@@ -81,6 +99,9 @@ final class MakeOrderRequest {
     required this.escrowDuration,
     required this.bondSize,
     required this.description,
+    required this.location,
+    required this.hasPassword,
+    required this.passwordHash,
   });
 
   /// The request, or `null` when a field is outside what the coordinator stores as sent.
@@ -92,6 +113,9 @@ final class MakeOrderRequest {
   /// - [publicDuration] and [escrowDuration]: whole seconds within their bounds.
   /// - [bondSize]: at most [bondSizeDecimals] decimals.
   /// - [description]: `null`, or 1 to [maxDescriptionCodePoints] code points of clean text.
+  /// - [location]: `null`, or a latitude and a longitude with at most [locationDecimals] decimals each.
+  /// - [password]: `null`, or the hash of the password sent with the order.
+  /// - [keptWithPassword]: the request of an order a device made with a password, read back from its records, which keep that there was one and never the password nor its hash: such a request says it has a password and is never sent ([isSendable]); give [password] again for a request to send.
   ///
   /// A clean text is what `displayText` leaves as it is, with no space at either end: no control character, no line break, no bidirectional control, no unpaired surrogate; and, since #181, a text every character of which is seen as it is written ([isShownAsWritten]): never one that shows as empty, nor one with an invisible character, a space other than U+0020, a private use character or a joiner, a variation selector or a combining mark out of its place, which the coordinator would store and show to every robot that reads the order.
   static MakeOrderRequest? tryCreate({
@@ -104,6 +128,9 @@ final class MakeOrderRequest {
     required Duration escrowDuration,
     required BondSize bondSize,
     String? description,
+    OrderLocation? location,
+    OrderPasswordHash? password,
+    bool keptWithPassword = false,
   }) {
     final amountValid = switch (amount) {
       FixedOrderAmount(:final amount) => _isAmount(amount),
@@ -133,7 +160,10 @@ final class MakeOrderRequest {
         ) &&
         _decimalsOf(bondSize.percent) <= bondSizeDecimals &&
         (description == null ||
-            _isCleanText(description, maxDescriptionCodePoints));
+            _isCleanText(description, maxDescriptionCodePoints)) &&
+        (location == null ||
+            (_decimalsOf(location.latitude) <= locationDecimals &&
+                _decimalsOf(location.longitude) <= locationDecimals));
     if (!valid) return null;
     return MakeOrderRequest._(
       type: type,
@@ -145,8 +175,32 @@ final class MakeOrderRequest {
       escrowDuration: escrowDuration,
       bondSize: bondSize,
       description: description,
+      location: location,
+      hasPassword: password != null || keptWithPassword,
+      passwordHash: password,
     );
   }
+
+  /// What a device keeps of this request: the same order, whether it has a password included, never the password's hash, so never sent when it has a password; this very request when it holds no hash.
+  MakeOrderRequest get kept => passwordHash == null
+      ? this
+      : MakeOrderRequest._(
+          type: type,
+          currency: currency,
+          amount: amount,
+          paymentMethod: paymentMethod,
+          premium: premium,
+          publicDuration: publicDuration,
+          escrowDuration: escrowDuration,
+          bondSize: bondSize,
+          description: description,
+          location: location,
+          hasPassword: hasPassword,
+          passwordHash: null,
+        );
+
+  /// Whether this request can be sent: with its password's hash when it has a password. A request a device kept ([kept]) of a protected order cannot: `CoordinatorClient.makeOrder` refuses it before sending.
+  bool get isSendable => !hasPassword || passwordHash != null;
 
   static bool _isAmount(FiatAmount amount) =>
       amount.value < amountLimit && _decimalsOf(amount.value) <= amountDecimals;
@@ -201,9 +255,15 @@ final class MakeOrderRequest {
       'public_duration': publicDuration.inSeconds,
       'escrow_duration': escrowDuration.inSeconds,
       'bond_size': jsonNumber(bondSize.percent),
-      'latitude': null,
-      'longitude': null,
-      'password': null,
+      'latitude': switch (location) {
+        final location? => jsonNumber(location.latitude),
+        null => null,
+      },
+      'longitude': switch (location) {
+        final location? => jsonNumber(location.longitude),
+        null => null,
+      },
+      'password': passwordHash?.hex,
       'description': description,
     };
   }
@@ -219,7 +279,9 @@ final class MakeOrderRequest {
       other.publicDuration == publicDuration &&
       other.escrowDuration == escrowDuration &&
       other.bondSize == bondSize &&
-      other.description == description;
+      other.description == description &&
+      other.location == location &&
+      other.hasPassword == hasPassword;
 
   @override
   int get hashCode => Object.hash(
@@ -232,17 +294,50 @@ final class MakeOrderRequest {
     escrowDuration,
     bondSize,
     description,
+    location,
+    hasPassword,
   );
 
-  /// Names the side and the currency only: the amounts, the premium, the payment methods and the description are never printed.
+  /// Names the side and the currency only: the amounts, the premium, the payment methods, the description, the meeting point and the password's hash are never printed.
   @override
   String toString() => 'MakeOrderRequest(${type.name}, ${currency.code})';
 }
 
+/// The SHA-256 of an order's password, what a make sends in place of the password (`password: maker.password ? sha256(maker.password) : null`, `MakerForm.tsx:273`, commit ff1998c): the hash of the password's UTF-8 bytes in lowercase hexadecimal, as `js-sha256` writes it and as a taker of the official client sends it for the same password (`OrderDetails/TakeButton.tsx:333`), so that the order can be taken with it (`api/views.py:554-560` compares the two texts as they are).
+///
+/// The password is any text but the empty one, which the reference sends as no password: neither trimmed nor bounded, as the reference's field takes it (the coordinator bounds what it stores, the hash, to 2,000 characters, `api/models/order.py:169-175`). The text is never kept here; the hash is never printed.
+@immutable
+final class OrderPasswordHash {
+  /// 64 lowercase hexadecimal characters.
+  final String hex;
+
+  const OrderPasswordHash._(this.hex);
+
+  /// The hash of [password], or `null` for an empty text, which the reference sends as no password.
+  static OrderPasswordHash? of(String password) => password.isEmpty
+      ? null
+      : OrderPasswordHash._(
+          _hexOf(sha256.convert(utf8.encode(password)).bytes),
+        );
+
+  @override
+  bool operator ==(Object other) =>
+      other is OrderPasswordHash && other.hex == hex;
+
+  @override
+  int get hashCode => hex.hashCode;
+
+  @override
+  String toString() => 'OrderPasswordHash(<redacted>)';
+}
+
+/// [bytes] in lowercase hexadecimal.
+String _hexOf(List<int> bytes) => hex.encode(bytes);
+
 /// What a coordinator answered to a make: an order numbered [id], at status 0, waiting for its maker bond.
 ///
 /// It is the coordinator's word, checked for consistency with [request] on the fields the answer carries, and nothing more.
-/// Compared with [request] and found equal: the type, the currency, the fixed amount or the range (`amount`, `has_range`, `min_amount`, `max_amount`), the payment method, the premium, the escrow duration and the bond size; and found as this package sends them: `is_explicit` false, `satoshis`, `latitude` and `longitude` `null`.
+/// Compared with [request] and found equal: the type, the currency, the fixed amount or the range (`amount`, `has_range`, `min_amount`, `max_amount`), the payment method, the premium, the escrow duration, the bond size and the meeting point (`latitude`, `longitude`, the serializer's texts of 6 decimals, `null` without one); and found as this package sends them: `is_explicit` false, `satoshis` `null`.
 /// Not in the answer (`ListOrderSerializer`, `api/serializers.py:83-107`), so not checked here: the public duration, the description and the password; fields the answer adds beyond the serializer's are ignored.
 /// The first read of the order by the robot (`CoordinatorClient.fetchOrder`) gives them: `expires_at` at status 1 is the creation plus the public duration, with `description` and `has_password`; the make use case (#179) compares them with what it asked.
 /// The answer names no robot either (its `maker` and `taker` are the coordinator's internal user ids, read as nothing), so it does not prove that this robot is the order's maker: that first read, which checks `is_maker` against the robot's hash id, does; the bond invoice comes with it too (`api/views.py:373-379`), never with this answer.
@@ -299,7 +394,7 @@ const _answerKeys = [
 
 /// Reads the decoded body of a `201` answer of [coordinator] on [network] to a make of [request]: the order as `ListOrderSerializer` writes it (`MakerView.post`, `api/views.py:216`, commit ff1998c).
 ///
-/// The answer is malformed ([CoordinatorResponseMalformed], with the field) unless it has every field of the serializer but `maker` and `taker`, an `id` from 1 to 2^53, `status` 0, `expires_at` after `created_at`, and each term equal to [request]'s: the serializer's decimals are strings, compared as the numbers they write; `is_explicit` false, `satoshis`, `latitude` and `longitude` `null`; and for a fixed amount no range, for a range no amount.
+/// The answer is malformed ([CoordinatorResponseMalformed], with the field) unless it has every field of the serializer but `maker` and `taker`, an `id` from 1 to 2^53, `status` 0, `expires_at` after `created_at`, and each term equal to [request]'s: the serializer's decimals are strings, compared as the numbers they write; `is_explicit` false, `satoshis` `null`; `latitude` and `longitude` the meeting point sent, both `null` without one (the coordinator stores what it is sent with 6 decimals, `api/models/order.py:148-167`, so the text it writes back reads as the very number sent); and for a fixed amount no range, for a range no amount.
 @internal
 Result<MadeOrder, CoordinatorFailure> parseMakeAnswer(
   Object? body,
@@ -336,6 +431,8 @@ Result<MadeOrder, CoordinatorFailure> parseMakeAnswer(
     max: 1 << 31,
   );
   final bondSize = fields.optionalDecimal('bond_size', min: 0, max: 100);
+  final latitude = fields.optionalDecimal('latitude', min: -90, max: 90);
+  final longitude = fields.optionalDecimal('longitude', min: -180, max: 180);
   if (fields.rejected case final field?) {
     return Err(CoordinatorResponseMalformed(field));
   }
@@ -368,8 +465,8 @@ Result<MadeOrder, CoordinatorFailure> parseMakeAnswer(
     return reject('escrow_duration');
   }
   if (bondSize != request.bondSize.percent) return reject('bond_size');
-  if (body['latitude'] != null) return reject('latitude');
-  if (body['longitude'] != null) return reject('longitude');
+  if (latitude != request.location?.latitude) return reject('latitude');
+  if (longitude != request.location?.longitude) return reject('longitude');
   return Ok(
     MadeOrder._(
       coordinator: coordinator,

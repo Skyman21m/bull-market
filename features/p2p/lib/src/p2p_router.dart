@@ -11,6 +11,7 @@ import 'domain/book_filter.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/trade/trade_watch.dart';
 import 'domain/trade_record.dart';
+import 'domain/meeting_point.dart';
 import 'p2p_locator.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
@@ -397,6 +398,8 @@ final class P2pRouter {
           activeTrades: active,
           onOpenOrder: (order) => unawaited(openMatch(context, args, order)),
           now: locator<P2pClock>().now,
+          // The draws that move a meeting point pinned (#189).
+          locationDraws: locator<MeetingPointDraws>().next,
         );
         return _searchesBook(locator, args)
             ? BlocProvider(

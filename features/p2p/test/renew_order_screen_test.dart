@@ -413,6 +413,7 @@ Future<List<TradeRecord>> _showRenewal(
               child: CreateOrderScreen(
                 coordinatorDetails: (_) => throw StateError('not opened'),
                 onMade: opened.add,
+                locationDraws: () => 0.5,
               ),
             ),
           ),
@@ -1870,6 +1871,7 @@ final class _App {
                   child: CreateOrderScreen(
                     coordinatorDetails: (_) => throw StateError('not opened'),
                     onMade: (made) => P2pRouter.openMade(context, args, made),
+                    locationDraws: () => 0.5,
                     // A book to search, which a renewal never searches (#186).
                     book: book,
                     activeTrades: const ActiveTradesListed([]),

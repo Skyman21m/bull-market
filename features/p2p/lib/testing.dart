@@ -92,6 +92,7 @@ export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 /// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
 /// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
 /// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
+/// A meeting point pinned in the create form is moved by [locationDraws] (#189), each from 0 included to 1 excluded; by default 0.5, which leaves it where it was pinned.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 @visibleForTesting
 void setUpP2pForTesting(
@@ -107,6 +108,7 @@ void setUpP2pForTesting(
   P2pWalletPort? wallet,
   RobotKeyComputePort? robotKeys,
   NostrRelayTransport? relays,
+  double Function() locationDraws = _middle,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -130,6 +132,8 @@ void setUpP2pForTesting(
     waits: const P2pWaits(start: Timer.new, random: _middle),
     // The lottery of the create form's default coordinator with every draw at the middle: the order of the chances, the same at each run.
     lotteryDraws: _middle,
+    // The draws that move a meeting point pinned (#189): the test's, the middle by default, which leaves the place where it was pinned.
+    locationDraws: locationDraws,
     shuffle: shuffle,
   );
   if (garageKeys != null) {
