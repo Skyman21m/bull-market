@@ -1506,7 +1506,8 @@ class _Contract extends StatelessWidget {
     };
     if (shown == null) return const [];
     final state = _ruleOf(now, shown.status);
-    final gap = _gapOf(context, shown);
+    // As on the screen: only where the rule does not run (#234).
+    final gap = rateCubit == null ? _gapOf(context, shown) : null;
     return [
       if (state != null)
         ...PayoutRateLines.linesOf(
@@ -1540,15 +1541,16 @@ class _Contract extends StatelessWidget {
     );
   }
 
-  /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only where the owner's rule does not run (no wallet's port, [PayoutRateLines.hidesGap]): never beside a comparison, nor beside « rate not checked » or a currency the Bull wallet does not price (#234); `null` for a taker, whose statuses carry no gap.
+  /// The line of the gap of a maker buyer's contract at 6, 8 and 9 ([RateGapLine]), only where the owner's rule does not run (no wallet's port lent): never beside a comparison, nor beside « rate not checked » or a currency the Bull wallet does not price, nor before the rule's first answer (#234, [PayoutRateLines.hidesGap]); `null` for a taker, whose statuses carry no gap, and for a maker seller ([_gapOf]).
   Widget? _gapLine(BuildContext context) {
-    if (PayoutRateLines.hidesGap(_ruleShown)) return null;
+    // The rule runs on this page (a wallet's port lent): no gap from the creation's rate, whatever it says or before it says anything (functional review of #234, R4).
+    if (rateCubit != null || PayoutRateLines.hidesGap(_ruleShown)) return null;
     final gap = _gapOf(context, contract.seen);
     if (gap == null) return null;
     return RateGapLine(gap: gap.gap, role: gap.role, text: gap.text);
   }
 
-  /// The gap of a maker's contract at 6, 8 and 9, its role and its words, from [seen]'s status's own figure and the order it was read from.
+  /// The gap of a maker buyer's contract at 6, 8 and 9, its role and its words, from [seen]'s status's own figure and the order it was read from. Never a seller's: the owner's rule runs for a buyer only (`PayoutRateStep.of`), a maker seller's escrow is compared at its confirmation (#188), and at 9 a seller has nothing to compare: no figure of the creation's price is said to a seller (functional review of #234, C1).
   ({TradeRateGap gap, TradeRole role, String text})? _gapOf(
     BuildContext context,
     TradeSeen seen,
@@ -1558,18 +1560,19 @@ class _Contract extends StatelessWidget {
     // A contract shown with another amount than the one asked here: the state machine's alert alone, no gap beside it (C5 and C4 of #183).
     if (seen.contractAmountMoved) return null;
     final (gap, role, amount) = switch (status) {
-      WaitingForBoth(:final rateGap, :final role) ||
-      WaitingForPayout(:final rateGap, :final role) => (
+      WaitingForBoth(:final rateGap, role: TradeRole.buyer) ||
+      WaitingForPayout(:final rateGap, role: TradeRole.buyer) => (
         rateGap,
-        role,
+        TradeRole.buyer,
         // The contract's amount the gap is computed with, as asked here (#183), never the read's alone.
         seen.contractAmountShown,
       ),
-      Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
-        rateGap,
-        role,
-        amount,
-      ),
+      Chatting(
+        :final rateGap,
+        role: TradeRole.buyer,
+        fiatSent: false,
+        :final amount,
+      ) => (rateGap, TradeRole.buyer, amount),
       _ => (null, record.role, null),
     };
     final sats = order?.satoshisNow;

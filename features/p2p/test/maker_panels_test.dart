@@ -2951,6 +2951,28 @@ void main() {
       );
 
       testWidgets(
+        'without the rule (no wallet\'s port): the coordinator\'s figure moves while the dialog is open, the dialog\'s gap is the new one, the screen\'s (#209)',
+        (tester) async {
+          final chain = await chainTo9(later: 120000);
+          final (_, watch) = await _show(tester, chain[4]);
+          await tester.pump();
+          await openDialog(tester);
+          expect(inDialog('fixed 101,000 sats'), findsOneWidget);
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+          expect(find.textContaining('fixed 101,000 sats'), findsNothing);
+          expect(inDialog('fixed 120,000 sats'), findsOneWidget);
+          expect(
+            find.textContaining('fixed 120,000 sats'),
+            findsNWidgets(2),
+            reason: 'the screen behind the dialog says the same',
+          );
+        },
+      );
+
+      testWidgets(
         'a currency the Bull wallet does not price: the coordinator\'s figure moves while the dialog is open, the dialog says the alert alone, before and after, never a gap (#234)',
         (tester) async {
           final chain = await chainTo9(later: 120000);

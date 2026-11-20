@@ -1287,6 +1287,10 @@ void main() {
         await journey.waitFor(sent, seconds: 30);
         await journey.pass(2);
         unchecked();
+        expect(
+          find.text('Retry'),
+          rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
+        );
         // « Confirm … sent » and its dialog: the alert alone; « Confirm » sends.
         for (var i = 0; i < 20 * 4; i++) {
           if (tester.widget<TradeButton>(sent).onPressed != null) break;
@@ -1320,6 +1324,48 @@ void main() {
           seconds: 30,
         );
         expect(journey.order.status, 10);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 61));
+      },
+    );
+  }
+
+  for (final (name, rate) in [
+    (
+      'a currency the Bull wallet does not price',
+      const P2pWalletRateNotPriced() as P2pWalletBitcoinRate,
+    ),
+    (
+      'the Bull wallet\'s price not read',
+      const P2pWalletRateUnavailable() as P2pWalletBitcoinRate,
+    ),
+  ]) {
+    testWidgets(
+      'a maker seller at 9, $name, a coordinator\'s price ten times too low: no gap from the creation\'s rate nor its price in the chat (functional review of #234, C1)',
+      (tester) async {
+        final journey = await _Journey.start(tester, _english);
+        journey.coordinator.prices[1] = 5000;
+        journey.wallet.rate = rate;
+        await journey.toFirstTake();
+        // The collateral locked from another wallet, the buyer's invoice given: 9.
+        journey.coordinator
+          ..lockEscrow(journey.order.id)
+          ..buyerGivesInvoice(journey.order.id);
+        await journey.waitFor(find.textContaining(_english.chat), seconds: 30);
+        await journey.pass(12);
+        expect(find.textContaining(_english.chat), findsWidgets);
+        expect(
+          find.textContaining('from the rate when you made it'),
+          findsNothing,
+        );
+        expect(find.textContaining('5,100'), findsNothing);
+        expect(find.textContaining('fixed 1,960,784 sats'), findsNothing);
+        // « Confirm … received » shown, off at 9 as the reference's.
+        expect(
+          find.widgetWithText(TradeButton, _english.received),
+          findsOneWidget,
+        );
         await tester.pumpWidget(const SizedBox.shrink());
         await settle(tester);
         await tester.pump(const Duration(seconds: 61));
