@@ -849,7 +849,9 @@ void main() {
         // Information, in the text colour with the info icon, not an alert; the one alert is where the payout came from (#204).
         expect(
           find.descendant(
-            of: find.ancestor(of: find.text(lateLine), matching: find.byType(Row)).first,
+            of: find
+                .ancestor(of: find.text(lateLine), matching: find.byType(Row))
+                .first,
             matching: find.byIcon(Icons.info_outline),
           ),
           findsOneWidget,
