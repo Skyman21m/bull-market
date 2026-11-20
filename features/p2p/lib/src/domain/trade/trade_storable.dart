@@ -58,6 +58,9 @@ enum TrailReplacementRefusal {
   /// It moves a maker's contract other than forward (schema 8): `take` back or by more than one, or by one without a later contract deadline from and to the positions a new contract allows; or a contract's deadline, taker or amount taken cleared, changed within the contract, or first written in the write that moves `take`; or gives a trade not made here a contract at all.
   contractMoved,
 
+  /// It changes or clears the trace of terms shown otherwise once set, or sets it with another time than its own read's (schema 9, #231).
+  termsTraceChanged,
+
   /// A value that is not one a trail writes (an unknown position).
   malformed,
 }
@@ -288,6 +291,12 @@ final class TradeTrailRecord {
   /// Whether a maker's current contract was first read from 9 on, its steps gone through while the app did not read (#178): set in the write that opens that contract, and kept while it lasts.
   final bool seenLate;
 
+  /// When a read of the trade first showed it with other terms than its own (`TradeTermsChanged`), in microseconds since the epoch: that read's time, set in its write and kept to the end (schema 9, #231); `null` when no read did since schema 9.
+  final int? termsChangedAtMicros;
+
+  /// The premium that read showed, when the premium was one of the terms it changed; `null` otherwise. Set with [termsChangedAtMicros] and kept as it.
+  final double? termsChangedPremium;
+
   const TradeTrailRecord({
     required this.version,
     required this.network,
@@ -309,6 +318,8 @@ final class TradeTrailRecord {
     this.takenAmount,
     this.earlierEscrows = '',
     this.seenLate = false,
+    this.termsChangedAtMicros,
+    this.termsChangedPremium,
   });
 
   List<Object?> get _fields => [
@@ -332,6 +343,8 @@ final class TradeTrailRecord {
     takenAmount,
     earlierEscrows,
     seenLate,
+    termsChangedAtMicros,
+    termsChangedPremium,
   ];
 
   /// Whether this record may replace [stored] as the trade's trail: see [whyNotReplace].
@@ -347,6 +360,7 @@ final class TradeTrailRecord {
   /// - a pinned payment hash (bond, escrow) stays set and the same, but the escrow's in the write that moves a maker's contract to the next, where it is cleared or replaced by another hash, never kept, as the trigger `trade_trails_forward` says (design note `docs/design/phase-3-making-an-order.md` § 3.5);
   /// - a maker's contract moves only forward, as the same trigger says (schema 8, as amended by #178): `take` stays, or moves by one from `public`, `paused`, `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` (not a maker buyer's, from which the order never goes back to the book) with a contract deadline, either to `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a later one, or to a position from the chat on (a next contract seen late) with the same deadline, a taker, no escrow, and from 6, 7 or 8 another taker; the contract's deadline, taker and amount taken are written from nothing with `take` unchanged, changed only when it moves, never cleared; a trade not made here never has a contract;
   /// - the escrows of earlier contracts only grow, by the escrow hash held when `take` moves, in that very write, and an escrow hash pinned is never one of them; whether the contract was seen late is set in the write that moves `take`, true exactly when it moves to the chat or later, and kept while the contract lasts;
+  /// - the trace of terms shown otherwise (schema 9, #231), once set, is kept as it is, and is set only with this record's own read time, as the trigger `trade_trails_terms_trace` says;
   /// - the pre-take's last read stays set and does not move back, and its deadline stays set (the coordinator may move it either way);
   /// - the position stays, or moves along the edges of the trade ([TradeEdges.allows] for a taker, [TradeEdges.allowsMade] for a maker), or anywhere from the start of a trade whose history is unknown, or anywhere but out of an end when the new record records a breach (an unexpected edge is a breach the trail remembers); an end is never left.
   TrailReplacementRefusal? whyNotReplace(
@@ -382,6 +396,13 @@ final class TradeTrailRecord {
     }
     if ((!madeHere && _hasContract) || _contractMoved(stored)) {
       return TrailReplacementRefusal.contractMoved;
+    }
+    if (stored.termsChangedAtMicros != null
+        ? termsChangedAtMicros != stored.termsChangedAtMicros ||
+              termsChangedPremium != stored.termsChangedPremium
+        : termsChangedAtMicros != null &&
+              termsChangedAtMicros != readAtMicros) {
+      return TrailReplacementRefusal.termsTraceChanged;
     }
     final seen = stored.bondStepSeenAtMicros;
     final nowSeen = bondStepSeenAtMicros;

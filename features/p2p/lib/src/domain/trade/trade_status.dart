@@ -65,6 +65,12 @@ final class TradeTrail {
   /// Whether a maker's current contract was first read from 9 on (`ContractSeenLate`, said at every status while the contract lasts).
   final bool seenLate;
 
+  /// When a read kept for this trade first showed it with other terms than its own (`TradeTermsChanged`: for a taker the currency, the type, the bond size, the escrow duration, the sats of an order priced in sats, the premium or the amount; for a maker also the payment method, the password's presence, the meeting point, the description or the public duration), set in that read's write and kept to the end, whatever the coordinator shows later (schema 9, #231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis); `null` when none did since schema 9. Information, not a warning: a screen says it while the trade lasts.
+  final DateTime? termsChangedAt;
+
+  /// The premium that read showed, in percent, when the premium was one of the terms it changed (an order not priced in sats, within -100 to 999, as `package:robosats` bounds it); `null` otherwise, and without [termsChangedAt].
+  final double? termsChangedPremium;
+
   const TradeTrail._({
     required this.network,
     required this.coordinatorAlias,
@@ -86,6 +92,8 @@ final class TradeTrail {
     required this.takenAmount,
     required this.earlierEscrows,
     required this.seenLate,
+    required this.termsChangedAt,
+    required this.termsChangedPremium,
   });
 
   /// A fresh trail of the trade [terms] at [at]: only [TradeStatus.afterTake], [TradeStatus.afterMake], [forPendingTake] and [recovered] make one.
@@ -114,6 +122,8 @@ final class TradeTrail {
     takenAmount: null,
     earlierEscrows: const [],
     seenLate: false,
+    termsChangedAt: null,
+    termsChangedPremium: null,
   );
 
   /// Whether [terms] are a maker's: every factory of [TradeTerms] instantiates the type of its side, so the side tells.
@@ -191,6 +201,7 @@ final class TradeTrail {
       record.bondStepSeenAtMicros,
       record.bondStepDeadlineMicros,
       record.takeDeadlineMicros,
+      record.termsChangedAtMicros,
     ];
     if (times.any(
       (micros) => micros != null && (micros < 0 || micros > _maxMicros),
@@ -201,6 +212,17 @@ final class TradeTrail {
     if (record.readAtMicros > latest.microsecondsSinceEpoch) return refused;
     if (record.bondStepSeenAtMicros case final seen?
         when seen > record.readAtMicros) {
+      return refused;
+    }
+    // The trace of terms shown otherwise (schema 9, #231): a time no later than the last read, and a premium only with it, finite, within the package's bounds.
+    final changedAt = record.termsChangedAtMicros;
+    final changedPremium = record.termsChangedPremium;
+    if ((changedAt != null && changedAt > record.readAtMicros) ||
+        (changedPremium != null &&
+            (changedAt == null ||
+                !changedPremium.isFinite ||
+                changedPremium < Premium.minPercent ||
+                changedPremium > Premium.maxMarketPercent))) {
       return refused;
     }
     DateTime? at(int? micros) => micros == null
@@ -231,6 +253,8 @@ final class TradeTrail {
         takenAmount: amount,
         earlierEscrows: List.unmodifiable(earlier),
         seenLate: record.seenLate,
+        termsChangedAt: at(changedAt),
+        termsChangedPremium: changedPremium,
       ),
     );
   }
@@ -298,6 +322,8 @@ final class TradeTrail {
     takenAmount: takenAmount,
     earlierEscrows: earlierEscrows.map((hash) => '$hash;').join(),
     seenLate: seenLate,
+    termsChangedAtMicros: termsChangedAt?.toUtc().microsecondsSinceEpoch,
+    termsChangedPremium: termsChangedPremium,
   );
 
   TradeTrail _next({
@@ -310,6 +336,7 @@ final class TradeTrail {
     DateTime? bondStepDeadline,
     required bool breached,
     _Contract? contract,
+    _TermsChange? termsChange,
   }) => TradeTrail._(
     network: network,
     coordinatorAlias: coordinatorAlias,
@@ -343,6 +370,11 @@ final class TradeTrail {
     seenLate: contract != null && contract.isNext
         ? contract.seenLate
         : seenLate,
+    // The first read kept that showed other terms leaves its trace, which no later read changes (schema 9, #231).
+    termsChangedAt: termsChangedAt ?? termsChange?.at.toUtc(),
+    termsChangedPremium: termsChangedAt != null
+        ? termsChangedPremium
+        : termsChange?.premium,
   );
 
   /// The same trail after a refused answer read at [now]: the breach recorded, and the read too, so that a later write never looks older.
@@ -367,6 +399,8 @@ final class TradeTrail {
     takenAmount: takenAmount,
     earlierEscrows: earlierEscrows,
     seenLate: seenLate,
+    termsChangedAt: termsChangedAt,
+    termsChangedPremium: termsChangedPremium,
   );
 
   @override
@@ -405,6 +439,39 @@ final class _Contract {
     this.movedBack = false,
     this.refusal,
   });
+}
+
+/// The trace a read kept with other terms than the trade's leaves on its trail (schema 9, #231): when it was read, and the premium it showed when the premium was one of the terms changed.
+@immutable
+final class _TermsChange {
+  final DateTime at;
+  final double? premium;
+
+  const _TermsChange(this.at, this.premium);
+
+  /// The trace of [order], read at [now] with [readWarnings], against [ownPremium], the trade's premium (`null` for an order priced in sats, whose premium is not compared): `null` unless the read showed other terms ([TradeTermsChanged]); its premium only when it is one of them, an order not priced in sats, and within the package's bounds (a premium the records could not hold is never kept, its time is).
+  static _TermsChange? of(
+    CoordinatorOrder order,
+    List<TradeWarning> readWarnings, {
+    required double? ownPremium,
+    required DateTime now,
+  }) {
+    if (!readWarnings.any((warning) => warning is TradeTermsChanged)) {
+      return null;
+    }
+    final shown = order.premium?.percent;
+    final premium =
+        ownPremium != null &&
+            shown != null &&
+            !order.isExplicit &&
+            order.explicitSatoshis == null &&
+            shown >= Premium.minPercent &&
+            shown <= Premium.maxMarketPercent &&
+            (shown - ownPremium).abs() > TradeTolerances.percent
+        ? shown
+        : null;
+    return _TermsChange(now, premium);
+  }
 }
 
 /// What a screen may show, and the wallet may pay, of a trade: one class per status a taker can see (design note § 3.2), and those a maker sees of its own order (`docs/design/phase-3-making-an-order.md` § 3.2: [WaitingForMakerBond], [MakerOrderPublic]), built only by [TradeStatus.from] from the coordinator's answers, checked against the terms of the take or of the make and the trade's history.
@@ -891,6 +958,14 @@ sealed class TradeStatus {
       bondStepDeadline: to == TradePosition.bondStep ? deadline : null,
       // The invoice's own checks count too: a changed payment hash is a breach.
       breached: breached || _breaches(warningsWith(bond ?? escrow)),
+      termsChange: _TermsChange.of(
+        order,
+        readWarnings,
+        ownPremium: terms.explicitSatoshis == null
+            ? terms.premium.percent
+            : null,
+        now: now,
+      ),
     );
 
     StepInvoice? escrowForSeller() => role == TradeRole.seller
@@ -1528,6 +1603,12 @@ sealed class TradeStatus {
       // The invoice's own checks count too: a changed payment hash, or an escrow not of this contract, is a breach.
       breached: breached || _breaches(warningsWith(bond ?? escrow)),
       contract: contract,
+      termsChange: _TermsChange.of(
+        order,
+        readWarnings,
+        ownPremium: terms.premium.percent,
+        now: now,
+      ),
     );
 
     StepInvoice? escrowForSeller() => role == TradeRole.seller
