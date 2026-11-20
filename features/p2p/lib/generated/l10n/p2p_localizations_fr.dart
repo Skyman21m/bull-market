@@ -4156,7 +4156,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String day,
     String time,
   ) {
-    return '$coordinator a montré cet échange avec une prime de $premium au lieu de $own, le $day à $time.';
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, jusqu’à une prime de $premium au lieu de $own.';
   }
 
   @override
@@ -4166,11 +4166,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String day,
     String time,
   ) {
-    return '$coordinator a montré cet échange avec une prime de $premium, le $day à $time.';
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, jusqu’à une prime de $premium.';
   }
 
   @override
   String p2pTermsShownOther(String coordinator, String day, String time) {
-    return '$coordinator a montré cet échange avec d’autres conditions, le $day à $time.';
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time.';
   }
 }

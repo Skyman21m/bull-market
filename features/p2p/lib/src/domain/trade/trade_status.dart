@@ -370,11 +370,13 @@ final class TradeTrail {
     seenLate: contract != null && contract.isNext
         ? contract.seenLate
         : seenLate,
-    // The first read kept that showed other terms leaves its trace, which no later read changes (schema 9, #231).
+    // The first read kept that showed other terms sets the trace's time, which no later read changes; the premium kept is the farthest from the trade's own that a read kept showed, never cleared, so that the trace never says less than was seen (schema 9, #231; security review of schema 9, C1).
     termsChangedAt: termsChangedAt ?? termsChange?.at.toUtc(),
-    termsChangedPremium: termsChangedAt != null
-        ? termsChangedPremium
-        : termsChange?.premium,
+    termsChangedPremium: _TermsChange.farther(
+      termsChangedPremium,
+      termsChange?.premium,
+      own: termsChange?.own,
+    ),
   );
 
   /// The same trail after a refused answer read at [now]: the breach recorded, and the read too, so that a later write never looks older.
@@ -447,7 +449,18 @@ final class _TermsChange {
   final DateTime at;
   final double? premium;
 
-  const _TermsChange(this.at, this.premium);
+  /// The trade's own premium, from its terms kept here; `null` for an order priced in sats, whose premium is not compared.
+  final double? own;
+
+  const _TermsChange(this.at, this.premium, this.own);
+
+  /// The premium the trace keeps after a read that showed [shown], [kept] being the one it kept: [shown] when none was kept, or when it is farther from [own] than [kept]; [kept] otherwise, and when [own] is not known (as the trigger `trade_trails_terms_trace` refuses any other change).
+  static double? farther(double? kept, double? shown, {required double? own}) {
+    if (shown == null) return kept;
+    if (kept == null) return shown;
+    if (own == null) return kept;
+    return (shown - own).abs() > (kept - own).abs() ? shown : kept;
+  }
 
   /// The trace of [order], read at [now] with [readWarnings], against [ownPremium], the trade's premium (`null` for an order priced in sats, whose premium is not compared): `null` unless the read showed other terms ([TradeTermsChanged]); its premium only when it is one of them, an order not priced in sats, and within the package's bounds (a premium the records could not hold is never kept, its time is).
   static _TermsChange? of(
@@ -470,7 +483,7 @@ final class _TermsChange {
             (shown - ownPremium).abs() > TradeTolerances.percent
         ? shown
         : null;
-    return _TermsChange(now, premium);
+    return _TermsChange(now, premium, ownPremium);
   }
 }
 

@@ -520,7 +520,7 @@ void main() {
       );
       world.coordinator.orderChanges.remove(world.order.id);
       final trace = find.textContaining(
-        'showed this trade with a premium of +7.0% instead of +2.0%, on 11/20 at ',
+        'up to a premium of +7.0% instead of +2.0%.',
       );
       await run.waitFor(trace, seconds: 200);
       expect(

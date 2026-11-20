@@ -111,7 +111,8 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
           final int startedAt,
           final String? id,
           final int? sats,
-        ):
+        )
+            when _amountReadable(sats):
           payments.add(
             TradePaymentRecord(
               step: step,
@@ -168,7 +169,8 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
         final int startedAt,
         final String? id,
         final int? sats,
-      ) =>
+      )
+          when _amountReadable(sats) =>
         Ok(
           TradePaymentRecord(
             step: step,
@@ -260,6 +262,10 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
       return const Err(P2pStorageFailure());
     }
   }
+
+  /// Whether [sats], an amount read back, is one this code writes: unknown, or 1 to 2.1 × 10^15 sats. Any other (a file changed outside the app) is a row this code never writes, records unreadable, the side of the alert, never a figure (security review of schema 9, R2).
+  static bool _amountReadable(int? sats) =>
+      sats == null || (sats >= 1 && sats <= 2100000000000000);
 
   /// The robot's key fingerprint and index, as the tables key a trade.
   static List<Variable<Object>> _robotVariables(RobotSlot robot) => [

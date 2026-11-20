@@ -294,7 +294,7 @@ final class TradeTrailRecord {
   /// When a read of the trade first showed it with other terms than its own (`TradeTermsChanged`), in microseconds since the epoch: that read's time, set in its write and kept to the end (schema 9, #231); `null` when no read did since schema 9.
   final int? termsChangedAtMicros;
 
-  /// The premium that read showed, when the premium was one of the terms it changed; `null` otherwise. Set with [termsChangedAtMicros] and kept as it.
+  /// The premium farthest from the trade's own that a read kept showed otherwise; `null` while none did. Replaced only by a farther one, never cleared (security review of schema 9, C1).
   final double? termsChangedPremium;
 
   const TradeTrailRecord({
@@ -348,8 +348,12 @@ final class TradeTrailRecord {
   ];
 
   /// Whether this record may replace [stored] as the trade's trail: see [whyNotReplace].
-  bool mayReplace(TradeTrailRecord stored, {required bool madeHere}) =>
-      whyNotReplace(stored, madeHere: madeHere) == null;
+  bool mayReplace(
+    TradeTrailRecord stored, {
+    required bool madeHere,
+    double? ownPremium,
+  }) =>
+      whyNotReplace(stored, madeHere: madeHere, ownPremium: ownPremium) == null;
 
   /// Why this record may not replace [stored] as the trade's trail, or `null` when it may (#87 asks before every write of a trail); [madeHere] says whether the trade is a maker's, which the record does not hold (the trade's origin, `madeHere`), required so that no caller applies a taker's rule to a maker's trail by forgetting it.
   ///
@@ -360,12 +364,13 @@ final class TradeTrailRecord {
   /// - a pinned payment hash (bond, escrow) stays set and the same, but the escrow's in the write that moves a maker's contract to the next, where it is cleared or replaced by another hash, never kept, as the trigger `trade_trails_forward` says (design note `docs/design/phase-3-making-an-order.md` § 3.5);
   /// - a maker's contract moves only forward, as the same trigger says (schema 8, as amended by #178): `take` stays, or moves by one from `public`, `paused`, `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` (not a maker buyer's, from which the order never goes back to the book) with a contract deadline, either to `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a later one, or to a position from the chat on (a next contract seen late) with the same deadline, a taker, no escrow, and from 6, 7 or 8 another taker; the contract's deadline, taker and amount taken are written from nothing with `take` unchanged, changed only when it moves, never cleared; a trade not made here never has a contract;
   /// - the escrows of earlier contracts only grow, by the escrow hash held when `take` moves, in that very write, and an escrow hash pinned is never one of them; whether the contract was seen late is set in the write that moves `take`, true exactly when it moves to the chat or later, and kept while the contract lasts;
-  /// - the trace of terms shown otherwise (schema 9, #231), once set, is kept as it is, and is set only with this record's own read time, as the trigger `trade_trails_terms_trace` says;
+  /// - the trace of terms shown otherwise (schema 9, #231): its time, once set, is kept as it is, and is set only with this record's own read time; its premium is never cleared, and is replaced only by one farther from [ownPremium], the premium of the trade's own terms kept here (any change refused when it is not given), as the trigger `trade_trails_terms_trace` says;
   /// - the pre-take's last read stays set and does not move back, and its deadline stays set (the coordinator may move it either way);
   /// - the position stays, or moves along the edges of the trade ([TradeEdges.allows] for a taker, [TradeEdges.allowsMade] for a maker), or anywhere from the start of a trade whose history is unknown, or anywhere but out of an end when the new record records a breach (an unexpected edge is a breach the trail remembers); an end is never left.
   TrailReplacementRefusal? whyNotReplace(
     TradeTrailRecord stored, {
     required bool madeHere,
+    double? ownPremium,
   }) {
     if (version < stored.version) return TrailReplacementRefusal.olderVersion;
     if (network != stored.network ||
@@ -397,11 +402,18 @@ final class TradeTrailRecord {
     if ((!madeHere && _hasContract) || _contractMoved(stored)) {
       return TrailReplacementRefusal.contractMoved;
     }
-    if (stored.termsChangedAtMicros != null
-        ? termsChangedAtMicros != stored.termsChangedAtMicros ||
-              termsChangedPremium != stored.termsChangedPremium
-        : termsChangedAtMicros != null &&
-              termsChangedAtMicros != readAtMicros) {
+    final keptPremium = stored.termsChangedPremium;
+    final premium = termsChangedPremium;
+    if ((stored.termsChangedAtMicros != null
+            ? termsChangedAtMicros != stored.termsChangedAtMicros
+            : termsChangedAtMicros != null &&
+                  termsChangedAtMicros != readAtMicros) ||
+        (keptPremium != null &&
+            premium != keptPremium &&
+            (premium == null ||
+                ownPremium == null ||
+                (premium - ownPremium).abs() <=
+                    (keptPremium - ownPremium).abs()))) {
       return TrailReplacementRefusal.termsTraceChanged;
     }
     final seen = stored.bondStepSeenAtMicros;

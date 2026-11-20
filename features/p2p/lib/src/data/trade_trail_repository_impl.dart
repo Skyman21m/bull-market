@@ -308,6 +308,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
     TradeTrailRecord trail,
   ) async {
     final TradeTrailRecord? stored;
+    // The premium of the trade's own terms kept here, which the trace of terms shown otherwise is compared with (schema 9, security review C1).
+    double? ownPremium;
     switch (await historyOf(trade)) {
       case Err(:final failure):
         return Err(failure);
@@ -315,12 +317,24 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
         return const Err(P2pStorageFailure());
       case Ok(:final value):
         stored = value.trail;
+        ownPremium = value.terms?.premiumPercent;
+    }
+    if (stored != null && trade.origin == TradeOrigin.madeHere) {
+      switch (await makerTermsOf(trade.robot)) {
+        case Ok(value: final terms?):
+          ownPremium = terms.premiumPercent;
+        case Ok(value: null):
+          break;
+        case Err(:final failure):
+          return Err(failure);
+      }
     }
     if (stored != null) {
       // Always asked first: a trail that may not replace the stored one is never sent to the database. A trade made here moves along a maker's edges and contracts (#178).
       if (trail.whyNotReplace(
             stored,
             madeHere: trade.origin == TradeOrigin.madeHere,
+            ownPremium: ownPremium,
           )
           case final reason?) {
         return Ok(TrailKept(stored, reason: reason));

@@ -5907,9 +5907,9 @@
   "@p2pPayoutTraceUnknown": {
     "description": "Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: a contract under way before this version recorded payouts, or records that cannot be read. Never said as « given elsewhere ». Nothing is blocked."
   },
-  "p2pTermsShownPremium": "{coordinator} showed this trade with a premium of {premium} instead of {own}, on {day} at {time}.",
+  "p2pTermsShownPremium": "{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {premium} instead of {own}.",
   "@p2pTermsShownPremium": {
-    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: the first read that showed other terms than the order's had another premium ({premium}) than the order's ({own}, as the order read now gives it). Said once the terms are back; nothing is blocked. {day} and {time} are the device's date and time of that read.",
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own ({day} and {time}, the device's), and the premium farthest from the order's that a read showed ({premium}) instead of the order's own ({own}, from its terms kept here): never less than was seen (security review of schema 9, C1). Said once the terms are back; nothing is blocked.",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -5928,9 +5928,9 @@
       }
     }
   },
-  "p2pTermsShownPremiumAlone": "{coordinator} showed this trade with a premium of {premium}, on {day} at {time}.",
+  "p2pTermsShownPremiumAlone": "{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {premium}.",
   "@p2pTermsShownPremiumAlone": {
-    "description": "Not in the RoboSats texts: the project's own (#231, schema 9): as `p2pTermsShownPremium`, when the order's own premium is not at hand (a status kept from no order). Said once the terms are back; nothing is blocked. {day} and {time} are the device's date and time of that read.",
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9): as `p2pTermsShownPremium`, when the order's own premium is not at hand (its terms not read).",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -5946,9 +5946,9 @@
       }
     }
   },
-  "p2pTermsShownOther": "{coordinator} showed this trade with other terms, on {day} at {time}.",
+  "p2pTermsShownOther": "{coordinator} showed this trade with other terms from {day} at {time}.",
   "@p2pTermsShownOther": {
-    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: the first read that showed other terms than the order's (currency, amount, bond, durations, payment method…, not the premium). Said once the terms are back; nothing is blocked. {day} and {time} are the device's date and time of that read.",
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own (currency, amount, bond, durations, payment method…), no read having shown another premium. {day} and {time} are the device's. Said once the terms are back; nothing is blocked.",
     "placeholders": {
       "coordinator": {
         "type": "String"

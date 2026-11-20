@@ -257,7 +257,11 @@ final class TradeReader {
             terms: terms,
             seen: await _withPayout(
               record,
-              TradeSeen(TradeStatus.beforeFirstRead(trail), order: null),
+              TradeSeen(
+                TradeStatus.beforeFirstRead(trail),
+                order: null,
+                ownPremium: premiumOf(terms),
+              ),
             ),
           ),
         );
@@ -340,7 +344,11 @@ final class TradeReader {
             terms: terms,
             seen: await _withPayout(
               record,
-              TradeSeen(TradeStatus.beforeFirstRead(trail), order: null),
+              TradeSeen(
+                TradeStatus.beforeFirstRead(trail),
+                order: null,
+                ownPremium: premiumOf(terms),
+              ),
             ),
           ),
         );
@@ -572,6 +580,12 @@ final class TradeReader {
   static bool readsEndOnce(TradePosition position) =>
       position == TradePosition.succeeded || position == TradePosition.expired;
 
+  /// The trade's own premium, from [terms] kept here ([TradeSeen.ownPremium]): `null` for an order priced in sats.
+  static Premium? premiumOf(TradeTerms terms) => switch (terms.side) {
+    TakenSide(explicitSatoshis: _?) => null,
+    _ => terms.premium,
+  };
+
   /// The order's amount as the maker of [terms] asked it ([TradeSeen.asked]), `null` for a taker.
   static OrderAmount? askedOf(TradeTerms terms) => switch (terms.side) {
     MadeSide(:final maker) => maker.amount,
@@ -601,6 +615,7 @@ final class TradeReader {
       },
       requestedAt: status.seenAt == at ? requestedAt : null,
       asked: askedOf(terms),
+      ownPremium: premiumOf(terms),
     );
   }
 
@@ -638,8 +653,11 @@ final class TradeReader {
     var record = trade.record;
     // The trail last known on disk, and its own status: what stays when nothing is stored.
     var onDiskTrail = trade.seen.status.trail;
-    TradeSeen ownStatus(TradeTrail trail) =>
-        TradeSeen(TradeStatus.beforeFirstRead(trail), order: null);
+    TradeSeen ownStatus(TradeTrail trail) => TradeSeen(
+      TradeStatus.beforeFirstRead(trail),
+      order: null,
+      ownPremium: premiumOf(trade.terms),
+    );
     var current = ownStatus(onDiskTrail);
     var attempt = seen;
     P2pFailure? problem;
@@ -653,6 +671,7 @@ final class TradeReader {
             stored: true,
             requestedAt: attempt.requestedAt,
             asked: attempt.asked,
+            ownPremium: attempt.ownPremium,
           );
           onDisk = true;
         case Err(:final failure):
@@ -674,6 +693,7 @@ final class TradeReader {
                 order: attempt.order,
                 requestedAt: attempt.requestedAt,
                 asked: attempt.asked,
+                ownPremium: attempt.ownPremium,
               );
             } else if (round == 0 &&
                 answer != null &&

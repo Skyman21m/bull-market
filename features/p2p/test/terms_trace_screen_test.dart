@@ -10,7 +10,10 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:p2p/src/ui/trade/trade_screen.dart' show termsShownOtherwise;
+import 'package:p2p/src/domain/trade/payout_trace.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
+import 'package:p2p/src/ui/trade/trade_screen.dart'
+    show payoutTraceOf, termsShownOtherwise;
 
 import 'support/harness.dart';
 import 'support/make_harness.dart';
@@ -73,16 +76,17 @@ void main() {
   }
 
   testWidgets(
-    'the trace of a premium shown otherwise is said at « Confirm … sent », and no longer once the trade ended',
+    'the trace of a premium shown otherwise is said at « Confirm … sent », from the terms kept here, not while the read shows other terms, and no longer once the trade ended; a payout\'s trace not read or unreadable is « unknown » (security review of schema 9, R1, R6, R7)',
     (tester) async {
       late TradeSeen chat;
+      late TradeSeen changed;
       late TradeSeen end;
       await tester.runAsync(() async {
         final harness = await MakeHarness.start();
         final record = await atChat(harness);
         final changes = harness.coordinator.orderChanges;
         changes[record.orderId] = {'premium': '7.00'};
-        await read(harness, record);
+        changed = await read(harness, record);
         changes.remove(record.orderId);
         chat = await read(harness, record);
         valueOf(await harness.chat.confirmFiatSent(record, chat));
@@ -97,6 +101,9 @@ void main() {
       expect(end.status.trail.termsChangedAt, chat.status.trail.termsChangedAt);
       String? lineAtChat;
       String? lineAtEnd;
+      String? lineWhileChanged;
+      String? lineWithoutRead;
+      final payoutLines = <String?>[];
       await tester.pumpWidget(
         harness(
           Builder(
@@ -105,26 +112,58 @@ void main() {
                 context,
                 chat.status,
                 'Temple of Sats',
-                own: chat.order?.premium,
+                own: chat.ownPremium,
               );
               lineAtEnd = termsShownOtherwise(
                 context,
                 end.status,
                 'Temple of Sats',
-                own: end.order?.premium,
+                own: end.ownPremium,
               );
+              lineWhileChanged = termsShownOtherwise(
+                context,
+                changed.status,
+                'Temple of Sats',
+                own: changed.ownPremium,
+              );
+              // A status kept from no order (after a restart, before its first read): the order's premium from its terms kept here (R1).
+              final unread = TradeSeen(
+                chat.status,
+                order: null,
+                ownPremium: chat.ownPremium,
+              );
+              lineWithoutRead = termsShownOtherwise(
+                context,
+                unread.status,
+                'Temple of Sats',
+                own: unread.ownPremium,
+              );
+              for (final trace in <PayoutTrace?>[
+                null,
+                const PayoutTraceUnreadable(),
+                const PayoutUnrecorded(),
+                PayoutFromThisWallet(PayoutTraceKind.invoice, DateTime.utc(2026)),
+              ]) {
+                payoutLines.add(
+                  payoutTraceOf(context, chat.withPayout(trace), rule: null),
+                );
+              }
               return const SizedBox.shrink();
             },
           ),
         ),
       );
-      expect(
-        lineAtChat,
-        startsWith(
-          'Temple of Sats showed this trade with a premium of +7.0% instead of +2.0%, on ',
-        ),
-      );
+      expect(lineAtChat, startsWith('Temple of Sats showed this trade with other terms from '));
+      expect(lineAtChat, endsWith(', up to a premium of +7.0% instead of +2.0%.'));
       expect(lineAtEnd, isNull);
+      // While the read shows other terms, the state machine's alert speaks alone (security review, R7).
+      expect(changed.status.has<TradeTermsChanged>(), isTrue);
+      expect(lineWhileChanged, isNull);
+      expect(lineWithoutRead, lineAtChat);
+      // Where the payout came from: a trace not read or records unreadable said as unknown, never silence (R6).
+      const unknown =
+          'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.';
+      expect(payoutLines, [unknown, unknown, unknown, null]);
     },
   );
 }

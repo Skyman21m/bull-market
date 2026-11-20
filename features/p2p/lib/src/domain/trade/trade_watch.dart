@@ -32,6 +32,9 @@ final class TradeSeen {
   /// For a buyer's trade, where the payout of the contract [status]'s trail stands at came from, as this device's records say (schema 9, #204), which « Confirm … sent » is preceded by; `null` where it was not read (a seller's trade, a status no reader of the records built).
   final PayoutTrace? payout;
 
+  /// The trade's own premium, from its terms kept here (the taker's, or the maker's), which the trace of terms shown otherwise names beside the premium a coordinator showed (schema 9, #231; security review of schema 9, R1): never the coordinator's read; `null` for an order priced in sats, and where the terms were not at hand.
+  final Premium? ownPremium;
+
   const TradeSeen(
     this.status, {
     required this.order,
@@ -39,6 +42,7 @@ final class TradeSeen {
     this.requestedAt,
     this.asked,
     this.payout,
+    this.ownPremium,
   });
 
   /// This status, with [payout] as where its contract's payout came from.
@@ -49,6 +53,7 @@ final class TradeSeen {
     requestedAt: requestedAt,
     asked: asked,
     payout: payout,
+    ownPremium: ownPremium,
   );
 
   /// Whether the order read gives the contract another amount than the one asked here: for a range, other than the one kept with the contract (`TradeTrail.takenAmount`, kept from the contract's first read), or none; for a fixed amount ([asked], or [madeAs]), another amount or a range (security review of #183, C4, a defect of #182). The state machine then says the terms changed (`TradeTermsChanged`, or refuses the read as a whole), and nothing compares or words a figure with either amount while it lasts, so that no line reassures beside that alert (#183, C5). A status from no order says nothing moved.

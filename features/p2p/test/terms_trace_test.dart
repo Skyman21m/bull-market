@@ -73,63 +73,85 @@ void main() {
   }
 
   test(
-    'a premium shown otherwise at 9, then put back: the trail keeps which and when to the end, after a restart too, whatever comes later',
+    'premiums shown otherwise at 9, each then put back: the trail keeps the first time and the premium farthest from the order\'s, above or below, never a closer one, after a restart too (security review of schema 9, C1)',
     () async {
       final harness = await MakeHarness.start();
       final record = await atChat(harness);
       final changes = harness.coordinator.orderChanges;
-      await harness.elapse(const Duration(minutes: 3));
-      final shownAt = harness.now;
-      changes[record.orderId] = {'premium': '7.00'};
-      final changed = await read(harness, record);
-      expect(changed.status, isA<Chatting>());
-      expect(changed.status.has<TradeTermsChanged>(), isTrue);
-      expect(changed.status.trail.termsChangedAt, shownAt);
-      expect(changed.status.trail.termsChangedPremium, 7);
+      Future<TradeSeen> show(String? premium) async {
+        await harness.elapse(const Duration(minutes: 3));
+        if (premium == null) {
+          changes.remove(record.orderId);
+        } else {
+          changes[record.orderId] = {'premium': premium};
+        }
+        return read(harness, record);
+      }
 
-      // Put back: the state machine's alert goes, the trace stays.
-      await harness.elapse(const Duration(minutes: 3));
-      changes.remove(record.orderId);
-      final back = await read(harness, record);
+      // First a premium barely beyond the tolerance (2.01 for the order's 2): the time set, the premium kept.
+      final first = await show('2.01');
+      final shownAt = harness.now;
+      expect(first.status.has<TradeTermsChanged>(), isTrue);
+      expect(first.status.trail.termsChangedAt, shownAt);
+      expect(first.status.trail.termsChangedPremium, 2.01);
+      await show(null);
+      // Then 99: farther, it replaces the first, the time stays.
+      final far = await show('99.00');
+      expect(far.status.trail.termsChangedPremium, 99);
+      final back = await show(null);
       expect(back.status.has<TradeTermsChanged>(), isFalse);
       expect(back.status.trail.termsChangedAt, shownAt);
-      expect(back.status.trail.termsChangedPremium, 7);
-
-      // Another premium later: the first trace stays as it was.
-      await harness.elapse(const Duration(minutes: 3));
-      changes[record.orderId] = {'premium': '9.00'};
-      final again = await read(harness, record);
-      expect(again.status.has<TradeTermsChanged>(), isTrue);
-      expect(again.status.trail.termsChangedAt, shownAt);
-      expect(again.status.trail.termsChangedPremium, 7);
-      changes.remove(record.orderId);
-      await read(harness, record);
-
+      expect(back.status.trail.termsChangedPremium, 99);
+      // A closer premium later never replaces it.
+      final closer = await show('50.00');
+      expect(closer.status.has<TradeTermsChanged>(), isTrue);
+      expect(closer.status.trail.termsChangedPremium, 99);
+      await show(null);
+      // Below the order's, farther still (-97 is 99 points away, 99 was 97): it replaces it.
+      final below = await show('-97.00');
+      expect(below.status.trail.termsChangedPremium, -97);
+      final end = await show(null);
+      expect(end.status.trail.termsChangedAt, shownAt);
+      expect(end.status.trail.termsChangedPremium, -97);
       // The app started again: the trace is read back from the records.
       final reopened = switch (await harness.restart().reader.open(record)) {
         TradeOpened(:final trade) => trade.seen,
         final other => throw StateError('$other'),
       };
       expect(reopened.status.trail.termsChangedAt, shownAt);
-      expect(reopened.status.trail.termsChangedPremium, 7);
+      expect(reopened.status.trail.termsChangedPremium, -97);
     },
   );
 
   test(
-    'another term shown otherwise (the payment method): the time, no premium',
+    'another term shown otherwise first (the payment method), then a premium: the time of the first, the premium written then (security review of schema 9, C1)',
     () async {
       final harness = await MakeHarness.start();
       final record = await atChat(harness);
       final changes = harness.coordinator.orderChanges;
       changes[record.orderId] = {'payment_method': 'Cash'};
       final changed = await read(harness, record);
+      final shownAt = harness.now;
       expect(changed.status.has<TradeTermsChanged>(), isTrue);
-      expect(changed.status.trail.termsChangedAt, harness.now);
+      expect(changed.status.trail.termsChangedAt, shownAt);
       expect(changed.status.trail.termsChangedPremium, isNull);
       changes.remove(record.orderId);
       final back = await read(harness, record);
       expect(back.status.has<TradeTermsChanged>(), isFalse);
-      expect(back.status.trail.termsChangedAt, isNotNull);
+      expect(back.status.trail.termsChangedAt, shownAt);
+      await harness.elapse(const Duration(minutes: 3));
+      changes[record.orderId] = {'premium': '99.00'};
+      await read(harness, record);
+      changes.remove(record.orderId);
+      final after = await read(harness, record);
+      expect(after.status.trail.termsChangedAt, shownAt);
+      expect(after.status.trail.termsChangedPremium, 99);
+      final reopened = switch (await harness.restart().reader.open(record)) {
+        TradeOpened(:final trade) => trade.seen,
+        final other => throw StateError('$other'),
+      };
+      expect(reopened.status.trail.termsChangedPremium, 99);
+      expect(reopened.ownPremium?.percent, 2);
     },
   );
 
@@ -155,7 +177,7 @@ void main() {
         );
 
     test(
-      'a trace is set with its own read\'s time only, then never changed nor cleared',
+      'a trace\'s time is set with its own read\'s only, then never changed; its premium only moves farther from the order\'s, never cleared',
       () {
         final none = trail();
         expect(
@@ -175,25 +197,65 @@ void main() {
           TrailReplacementRefusal.termsTraceChanged,
         );
         final set = trail(readAt: 3000, at: 3000, premium: 7);
+        // The order's own premium is 2: 8 is farther than 7, 6 closer.
         expect(
           trail(
             readAt: 4000,
             at: 3000,
             premium: 7,
-          ).whyNotReplace(set, madeHere: false),
+          ).whyNotReplace(set, madeHere: false, ownPremium: 2),
+          isNull,
+        );
+        expect(
+          trail(
+            readAt: 4000,
+            at: 3000,
+            premium: 8,
+          ).whyNotReplace(set, madeHere: false, ownPremium: 2),
+          isNull,
+        );
+        expect(
+          trail(
+            readAt: 4000,
+            at: 3000,
+            premium: -4,
+          ).whyNotReplace(set, madeHere: false, ownPremium: 2),
+          isNull,
+        );
+        // A premium added after another term changed first.
+        expect(
+          trail(
+            readAt: 4000,
+            at: 3000,
+            premium: 7,
+          ).whyNotReplace(
+            trail(readAt: 3000, at: 3000),
+            madeHere: false,
+            ownPremium: 2,
+          ),
           isNull,
         );
         for (final changed in [
           trail(readAt: 4000),
           trail(readAt: 4000, at: 3000),
-          trail(readAt: 4000, at: 3000, premium: 8),
+          trail(readAt: 4000, at: 3000, premium: 6),
+          trail(readAt: 4000, at: 3000, premium: -3),
           trail(readAt: 4000, at: 4000, premium: 7),
         ]) {
           expect(
-            changed.whyNotReplace(set, madeHere: false),
+            changed.whyNotReplace(set, madeHere: false, ownPremium: 2),
             TrailReplacementRefusal.termsTraceChanged,
           );
         }
+        // Without the order's own premium, no premium moves.
+        expect(
+          trail(
+            readAt: 4000,
+            at: 3000,
+            premium: 8,
+          ).whyNotReplace(set, madeHere: false),
+          TrailReplacementRefusal.termsTraceChanged,
+        );
       },
     );
   });

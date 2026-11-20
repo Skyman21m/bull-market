@@ -1121,7 +1121,7 @@ class RobotCoordinatorCubit {
                       libraries['lib/src/data/p2p_database.dart'],
                     ) &&
                     text.startsWith(
-                      'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, payment_hash, submitted_at) ',
+                      'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, submitted_at) ',
                     )),
           ),
         ),
@@ -1132,13 +1132,12 @@ class RobotCoordinatorCubit {
           fail('no payout repository');
       expect(payouts.constants, {
         '_replaceSql':
-            'UPDATE trade_payouts SET source = ?, kind = ?, payment_hash = ?, '
-            'submitted_at = ? '
+            'UPDATE trade_payouts SET source = ?, kind = ?, submitted_at = ? '
             'WHERE key_fingerprint = ? AND robot_index = ? AND take = ? '
             'RETURNING robot_index',
         '_insertSql':
             'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, '
-            'kind, payment_hash, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?) '
+            'kind, submitted_at) VALUES (?, ?, ?, ?, ?, ?) '
             'RETURNING robot_index',
         '_traceSql':
             'SELECT source, kind, submitted_at FROM trade_payouts '
@@ -1574,8 +1573,8 @@ class RobotCoordinatorCubit {
       '_dropTradePayoutsInsertedOnce':
           'DROP TRIGGER IF EXISTS trade_payouts_inserted_once',
       '_markPayoutsUnrecorded':
-          'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, payment_hash, submitted_at) '
-          "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL, NULL FROM trade_trails AS trail "
+          'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, submitted_at) '
+          "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL FROM trade_trails AS trail "
           "WHERE role = 'buyer' AND position NOT IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'publicAgain', 'notAvailable') "
           'AND NOT EXISTS (SELECT 1 FROM trade_payouts WHERE trade_payouts.key_fingerprint = trail.key_fingerprint AND trade_payouts.robot_index = trail.robot_index AND trade_payouts.take = trail.take)',
       '_foreignKeys': 'PRAGMA foreign_keys',
@@ -2939,7 +2938,7 @@ const _trailTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL) BEGIN SELECT RAISE(IGNORE); END",
   "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take) OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at)) OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL) OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position) OR (NEW.take IS NOT OLD.take AND NOT (NEW.take IS OLD.take + 1 AND OLD.position IN ('public', 'paused', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NOT (OLD.position = 'waitingForPayout' AND OLD.role = 'buyer') AND OLD.take_deadline IS NOT NULL AND ((NEW.position IN ('waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND NEW.seen_late = 0) OR (NEW.position IN ('chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL AND NEW.escrow_hash IS NULL AND (OLD.position IN ('public', 'paused') OR NEW.taker_hash_id IS NOT OLD.taker_hash_id) AND NEW.seen_late = 1)) AND NEW.earlier_escrows IS (OLD.earlier_escrows || coalesce(OLD.escrow_hash || ';', '')) AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere'))) OR (NEW.take IS OLD.take AND (NEW.earlier_escrows IS NOT OLD.earlier_escrows OR NEW.seen_late IS NOT OLD.seen_late)) OR (NEW.escrow_hash IS NOT NULL AND instr(';' || NEW.earlier_escrows, ';' || NEW.escrow_hash || ';') > 0) OR (OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL) OR (OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL) OR (OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL) OR (NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline) OR (NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id) OR (NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount) OR (NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL) OR (NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL) OR ((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere')) BEGIN SELECT RAISE(ABORT, 'a trail only moves forward'); END",
   // Schema 9 (#231): the trace of terms shown otherwise, set once with its read's time, never changed nor cleared.
-  "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN (OLD.terms_changed_at IS NOT NULL AND (NEW.terms_changed_at IS NOT OLD.terms_changed_at OR NEW.terms_changed_premium IS NOT OLD.terms_changed_premium)) OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at) BEGIN SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN (OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at) OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at) OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL) OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0)) BEGIN SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept'); END",
 ];
 
 /// The triggers of `trade_trails.drift`, squeezed.

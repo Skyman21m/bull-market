@@ -12,6 +12,7 @@ import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/payout_trace.dart';
+import 'package:p2p/src/domain/trade/trade_payment.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:primitives/primitives.dart';
@@ -390,26 +391,79 @@ void main() {
         await database.customStatement(
           "UPDATE trade_trails SET read_at = 1300000, terms_changed_at = 1300000, terms_changed_premium = 7.0 WHERE robot_index = 1 AND key_fingerprint = '$_key'",
         );
+        Future<void> refused(String change, int robot) => expectLater(
+          database.customStatement(
+            "UPDATE trade_trails SET $change WHERE robot_index = $robot AND key_fingerprint = '$_key'",
+          ),
+          throwsA(
+            predicate(
+              (error) =>
+                  '$error'.contains('the trace of terms shown otherwise is kept'),
+            ),
+          ),
+          reason: change,
+        );
+        Future<void> taken(String change, int robot) => database.customStatement(
+          "UPDATE trade_trails SET $change WHERE robot_index = $robot AND key_fingerprint = '$_key'",
+        );
+        // The taker's own premium is -1.5 (its `trade_terms`): 7 is 8.5 away.
         for (final change in [
           'terms_changed_at = NULL, terms_changed_premium = NULL',
-          'terms_changed_premium = 8.0',
           'terms_changed_premium = NULL',
+          'terms_changed_premium = 6.0',
+          'terms_changed_premium = -10.0',
           'read_at = 1400000, terms_changed_at = 1400000',
         ]) {
-          await expectLater(
-            database.customStatement(
-              "UPDATE trade_trails SET $change WHERE robot_index = 1 AND key_fingerprint = '$_key'",
-            ),
-            throwsA(
-              predicate(
-                (error) => '$error'.contains(
-                  'the trace of terms shown otherwise is kept',
-                ),
-              ),
-            ),
-            reason: change,
+          await refused(change, 1);
+        }
+        // Farther, above or below: taken (security review of schema 9, C1); as far, or closer, refused.
+        await taken('terms_changed_premium = 8.0', 1);
+        await refused('terms_changed_premium = -11.0', 1);
+        await taken('terms_changed_premium = -12.0', 1);
+        await refused('terms_changed_premium = 8.0', 1);
+        // The maker's own premium is -1.25 (its `maker_terms`): a trace set with another term first, then premiums.
+        await taken(
+          'read_at = 1800000, terms_changed_at = 1800000',
+          6,
+        );
+        await taken('terms_changed_premium = 5.0', 6);
+        await taken('terms_changed_premium = -8.0', 6);
+        await refused('terms_changed_premium = 4.0', 6);
+        await refused('terms_changed_premium = NULL', 6);
+      },
+    );
+
+    test(
+      'an amount out of its bounds read back from a file changed outside the app is records unreadable, never a figure (security review of schema 9, R2)',
+      () async {
+        final payments = TradePaymentRepositoryImpl(database);
+        final seller = _record(7, TradeRole.seller, TradeOrigin.madeHere, 108);
+        await database.customStatement(
+          'DROP TRIGGER trade_payments_sats_forward',
+        );
+        await database.customStatement('PRAGMA ignore_check_constraints = ON');
+        for (final amount in [-5, 0, 2100000000000001]) {
+          await database.customStatement(
+            "UPDATE trade_payments SET confirmed_sats = $amount WHERE robot_index = 7 AND take = 0 AND step = 'escrow' AND key_fingerprint = '$_key'",
+          );
+          expect(
+            await payments.paymentsOfTrade(seller),
+            isA<Err<List<TradePaymentRecord>, P2pFailure>>(),
+            reason: '$amount',
+          );
+          expect(
+            await payments.paymentOf(seller, InvoiceStep.escrow),
+            isA<Err<TradePaymentRecord?, P2pFailure>>(),
+            reason: '$amount',
           );
         }
+        await database.customStatement(
+          "UPDATE trade_payments SET confirmed_sats = 2100000000000000 WHERE robot_index = 7 AND take = 0 AND step = 'escrow' AND key_fingerprint = '$_key'",
+        );
+        expect(
+          await payments.paymentOf(seller, InvoiceStep.escrow),
+          isA<Ok<TradePaymentRecord?, P2pFailure>>(),
+        );
       },
     );
   });

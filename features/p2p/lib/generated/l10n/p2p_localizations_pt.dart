@@ -4100,7 +4100,7 @@ class P2pLocalizationsPt extends P2pLocalizations {
     String day,
     String time,
   ) {
-    return '$coordinator showed this trade with a premium of $premium instead of $own, on $day at $time.';
+    return '$coordinator showed this trade with other terms from $day at $time, up to a premium of $premium instead of $own.';
   }
 
   @override
@@ -4110,12 +4110,12 @@ class P2pLocalizationsPt extends P2pLocalizations {
     String day,
     String time,
   ) {
-    return '$coordinator showed this trade with a premium of $premium, on $day at $time.';
+    return '$coordinator showed this trade with other terms from $day at $time, up to a premium of $premium.';
   }
 
   @override
   String p2pTermsShownOther(String coordinator, String day, String time) {
-    return '$coordinator showed this trade with other terms, on $day at $time.';
+    return '$coordinator showed this trade with other terms from $day at $time.';
   }
 }
 

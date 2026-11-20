@@ -6353,10 +6353,10 @@ abstract class P2pLocalizations {
   /// **'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.'**
   String get p2pPayoutTraceUnknown;
 
-  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: the first read that showed other terms than the order's had another premium ({premium}) than the order's ({own}, as the order read now gives it). Said once the terms are back; nothing is blocked. {day} and {time} are the device's date and time of that read.
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own ({day} and {time}, the device's), and the premium farthest from the order's that a read showed ({premium}) instead of the order's own ({own}, from its terms kept here): never less than was seen (security review of schema 9, C1). Said once the terms are back; nothing is blocked.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} showed this trade with a premium of {premium} instead of {own}, on {day} at {time}.'**
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {premium} instead of {own}.'**
   String p2pTermsShownPremium(
     String coordinator,
     String premium,
@@ -6365,10 +6365,10 @@ abstract class P2pLocalizations {
     String time,
   );
 
-  /// Not in the RoboSats texts: the project's own (#231, schema 9): as `p2pTermsShownPremium`, when the order's own premium is not at hand (a status kept from no order). Said once the terms are back; nothing is blocked. {day} and {time} are the device's date and time of that read.
+  /// Not in the RoboSats texts: the project's own (#231, schema 9): as `p2pTermsShownPremium`, when the order's own premium is not at hand (its terms not read).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} showed this trade with a premium of {premium}, on {day} at {time}.'**
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {premium}.'**
   String p2pTermsShownPremiumAlone(
     String coordinator,
     String premium,
@@ -6376,10 +6376,10 @@ abstract class P2pLocalizations {
     String time,
   );
 
-  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: the first read that showed other terms than the order's (currency, amount, bond, durations, payment method…, not the premium). Said once the terms are back; nothing is blocked. {day} and {time} are the device's date and time of that read.
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own (currency, amount, bond, durations, payment method…), no read having shown another premium. {day} and {time} are the device's. Said once the terms are back; nothing is blocked.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} showed this trade with other terms, on {day} at {time}.'**
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}.'**
   String p2pTermsShownOther(String coordinator, String day, String time);
 }
 

@@ -1054,7 +1054,7 @@ class _Contract extends StatelessWidget {
               context,
               status,
               coordinator,
-              own: contract.order?.premium,
+              own: contract.seen.ownPremium,
             )
             case final trace?) ...[
           _Line(
@@ -1508,7 +1508,7 @@ class _Contract extends StatelessWidget {
               context,
               status,
               coordinator,
-              own: seen.order?.premium,
+              own: seen.ownPremium,
             )
             case final trace?)
           (text: trace, tone: TradeDialogTone.warning),
@@ -1677,7 +1677,7 @@ class _Contract extends StatelessWidget {
   };
 }
 
-/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): which premium instead of [own], the order's own as the order read now gives it (`null` when the status comes from no order: the premium shown alone), and when, or when for another term; `null` without a trace, once the trade ended (an end is no longer a step to act on), or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
+/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): from when (the first read that showed other terms), and up to which premium (the farthest from the trade's own a read showed, security review of schema 9, C1) instead of [own], the trade's own from its terms kept here (`TradeSeen.ownPremium`, R1; `null`, the premium shown alone); `null` without a trace, once the trade ended (an end is no longer a step to act on), or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
 String? termsShownOtherwise(
   BuildContext context,
   TradeStatus status,
@@ -1714,7 +1714,7 @@ String? termsShownOtherwise(
   };
 }
 
-/// The line of where the payout of the contract shown came from, before « Confirm … sent » of a buyer (#204; design note § 3.5 bis): pasted, not given from this device, or not known (a contract under way before payouts were recorded, records that cannot be read); `null` when it was given from this wallet, for a seller, where « Confirm … sent » is not the step, or when [rule], the owner's payment rule for the step shown, already says in red that this app never saw the contract's payout invoice (`p2pPayoutRateNotSeen`, a contract seen late), which says more: an alert is said alone (functional review of schema 9, C2).
+/// The line of where the payout of the contract shown came from, before « Confirm … sent » of a buyer (#204; design note § 3.5 bis): pasted, not given from this device, or not known (a contract under way before payouts were recorded, records that cannot be read, a trace not read); `null` when it was given from this wallet, for a seller, where « Confirm … sent » is not the step, or when [rule], the owner's payment rule for the step shown, already says in red that this app never saw the contract's payout invoice (`p2pPayoutRateNotSeen`, a contract seen late), which says more: an alert is said alone (functional review of schema 9, C2).
 String? payoutTraceOf(
   BuildContext context,
   TradeSeen seen, {
@@ -1729,12 +1729,15 @@ String? payoutTraceOf(
   }
   final l10n = P2pLocalizations.of(context);
   return switch (seen.payout) {
-    null || PayoutFromThisWallet() => null,
+    PayoutFromThisWallet() => null,
     PayoutPasted(kind: PayoutTraceKind.invoice) => l10n.p2pPayoutTracePasted,
     PayoutPasted(kind: PayoutTraceKind.address) =>
       l10n.p2pPayoutTracePastedAddress,
     PayoutNotGivenHere() => l10n.p2pPayoutTraceNotGivenHere,
-    PayoutUnrecorded() || PayoutTraceUnreadable() => l10n.p2pPayoutTraceUnknown,
+    // A trace not read is said as unknown, never silence, which says « from this wallet » (security review of schema 9, R6).
+    null ||
+    PayoutUnrecorded() ||
+    PayoutTraceUnreadable() => l10n.p2pPayoutTraceUnknown,
   };
 }
 
