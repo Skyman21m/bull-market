@@ -312,7 +312,7 @@ What the owner can do: « Password » (its SHA-256 sent, never stored; asked aga
   - the form shows the point the order sends (« Point sent: … »), already moved, with a cross that removes it, where the reference shows nothing and removes it only with the last face-to-face method; the map opens again on that point, at zoom 6, and without a point at zoom 2 on 0°, 0° (the reference compares a `null` latitude with 0 and opens at zoom 6 on the sea); « Cash F2F » is put first among the methods once, where the reference's `find(...) !== null` can put it twice; the map opens by itself, as the reference's, when the last method chosen holds « F2F », once the list that chooses them is closed;
   - the map is the book's (#30): the bundled world, no tile and no request, so no « Show tiles »; no position of the device is read, no permission asked;
   - the explanations are on demand (the owner's rule of 2026-11-20): one short line by a field, the rest behind « See details », an alert in one line; the reference's texts quoted whole there;
-  - kept as the reference does: the password and the meeting point sent while the advanced options are closed (the summary's line names « a password »), the meeting point gone with the last face-to-face method, the meeting point of a renewal sent again as kept (`TradeBox/index.tsx:172-173`).
+  - kept as the reference does: the password and the meeting point sent while the advanced options are closed (the summary's line names « a password »), the meeting point gone with the last face-to-face method, the meeting point of a renewal sent again as kept (`TradeBox/index.tsx:176-177`).
 
 ### 2.5 End of the phase
 

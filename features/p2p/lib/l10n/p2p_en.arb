@@ -5800,17 +5800,17 @@
   "@p2pMakePasswordOfficialApp": {
     "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; design note § 7, proposal 3)."
   },
-  "p2pMakePasswordReadable": "Whoever asks the coordinator for the order by its number can still read its amount, premium, payment method and your robot's name; not its description nor its location.",
+  "p2pMakePasswordReadable": "Whoever asks the coordinator for the order by its number can still read its side, currency, amount, premium, payment method, bond, timers and your robot's name; not its description nor its location.",
   "@p2pMakePasswordReadable": {
-    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`api/views.py:287-299`; design note § 2.4)."
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`ListOrderSerializer`, `api/serializers.py:83-107`, and `api/views.py:248-299`: type, currency, amount, premium, payment method, bond size, escrow duration, expiry, maker's nickname; location and description removed)."
   },
   "p2pMakePasswordHashOnly": "Only the password's SHA-256 leaves this device, and it is not kept: renewing the order asks for the password again.",
   "@p2pMakePasswordHashOnly": {
     "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189)."
   },
-  "p2pMakePasswordOldCoordinator": "{coordinator} runs version {version}, older than 0.8.7: it shows a protected order to anyone.",
+  "p2pMakePasswordOldCoordinator": "{coordinator} ({version}) shows protected orders to anyone.",
   "@p2pMakePasswordOldCoordinator": {
-    "description": "Not in the RoboSats texts: the project's own: the alert under « Password », in the warning colour, once a password is typed on a coordinator whose `/api/info/` gives a version older than 0.8.7 (#189; advisory GHSA-r6f6-x59j-8q69; design note § 2.4). Never a lock.",
+    "description": "Not in the RoboSats texts: the project's own: the alert in one short line, in the warning colour, under « Password » once a password is typed, or near the summary while the field is not in the form, on a coordinator whose `/api/info/` gives a version older than 0.8.7 (#189; advisory GHSA-r6f6-x59j-8q69 as the design note § 2.4 reports it). Never a lock.",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -5820,9 +5820,9 @@
       }
     }
   },
-  "p2pMakePasswordUnknownVersion": "The version of {coordinator} could not be read: before 0.8.7, a protected order is shown to anyone.",
+  "p2pMakePasswordUnknownVersion": "Version of {coordinator} unknown: a protected order may be visible to anyone.",
   "@p2pMakePasswordUnknownVersion": {
-    "description": "Not in the RoboSats texts: the project's own: the alert under « Password », in the warning colour, once a password is typed on a coordinator whose `/api/info/` could not be read (#189). Never a lock.",
+    "description": "Not in the RoboSats texts: the project's own: the alert in one short line, in the warning colour, under « Password » once a password is typed, or near the summary while the field is not in the form, on a coordinator whose `/api/info/` could not be read (#189). Never a lock.",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -5862,9 +5862,9 @@
   "@p2pMakeLocationRandomized": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 530), with its French (`fr.json`, line 530). Under the map where the location is chosen (`MakerForm.tsx:656-658`), and in the detail of « Face to Face Location » (#189)."
   },
-  "p2pMakeLocationPublished": "Sent to the coordinator and published with the order.",
+  "p2pMakeLocationPublished": "Sent to the coordinator; published with the order unless it has a password.",
   "@p2pMakeLocationPublished": {
-    "description": "Not in the RoboSats texts: the project's own: under the map where the location is chosen, beside the reference's line (#189; `api/nostr.py:151-153`)."
+    "description": "Not in the RoboSats texts: the project's own: under the map where the location is chosen, beside the reference's line (#189; `api/nostr.py:28-30`, `:151-153`: an order with a password is not published on Nostr)."
   },
   "p2pMakeLocationDetail": "The point shown is the one sent: the place you pinned, moved by up to 0.05° each way (a few kilometres). The coordinator shows it with the order, and publishes it on Nostr with an order without a password. Bull Market reads nothing of your phone's position, only the point you pin.",
   "@p2pMakeLocationDetail": {

@@ -47,7 +47,7 @@ import 'widgets/trade_button.dart';
 /// « Existing orders match yours! » (#186, `basic/MakerPage/index.tsx`): while orders of the [book] on the other side resemble the one being made ([MatchingOrders]), the button reads « Submit » and only shows them, above the form, the form's fields folded away as the reference collapses them; the button then reads « Create order », and « Edit order » (a pencil) unfolds the fields. A tap on one of those orders opens it ([onOpenOrder]). Nothing is asked of anyone for this: the search runs on the book the tab received.
 ///
 /// A renewal (#185, [MakeOrderState.renewing]) is the same page titled « Renew Order », its fields filled with the terms this device kept of the order renewed and locked, on that order's coordinator: the same summary, « Estimated Bond », rate and Bull wallet's comparison, the same press and the same make; « Create order » sends only when the form judges its fields into exactly the kept request, and with no « Store your garage key », as the reference's renewal sends at once (`TradeBox/index.tsx:146-200`). Going back sends nothing.
-/// An order renewed that had a password asks for it again (#189, `Prompts/Expired.tsx:42-92`): « Password » is then the only field open, and nothing is sent while it is empty, said under it and under the button; its SHA-256 is what leaves, where the reference sends the text typed (`TradeBox/index.tsx:180`), a defect of the reference (design note § 1.8). The meeting point kept is sent again as it is, as the reference sends the order's own (`:172-173`).
+/// An order renewed that had a password asks for it again (#189, `Prompts/Expired.tsx:42-92`): « Password » is then the only field open, and nothing is sent while it is empty, said under it and under the button; its SHA-256 is what leaves, where the reference sends the text typed (`TradeBox/index.tsx:180`), a defect of the reference (design note § 1.8). The meeting point kept is sent again as it is, as the reference sends the order's own (`:176-177`).
 ///
 /// The explanations are shown on demand (the owner's rule of 2026-11-20): under « Password » and « Face to Face Location » a short line, and « See details » unfolds the rest; an alert stays shown in one line.
 class CreateOrderScreen extends StatefulWidget {
@@ -588,6 +588,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             coordinator.longAlias,
             maxCodePoints: CoordinatorText.name,
           );
+    // What the version of the chosen coordinator says of a protected order (#189).
+    final exposure = switch (coordinator) {
+      final host? => PasswordExposure.of(state.infos[host.shortAlias]),
+      null => null,
+    };
+    // « Password » is in the form while the advanced options are open and the fields are not folded away; a password typed is sent either way (`buildOrderAttributes`, `MakerForm.tsx:273`).
+    final passwordField = _advanced && !_showMatches;
     return MultiBlocListener(
       listeners: [
         BlocListener<MakeOrderCubit, MakeOrderState>(
@@ -824,12 +831,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                   : !fieldsLocked,
                               renewing: renewing,
                               needed: _renewalNeedsPassword(state),
-                              exposure: switch (coordinator) {
-                                final host? => PasswordExposure.of(
-                                  state.infos[host.shortAlias],
-                                ),
-                                null => null,
-                              },
+                              exposure: exposure,
                               coordinator: coordinatorName,
                               onChanged: () => setState(() {}),
                             ),
@@ -883,6 +885,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           state: state,
                           advanced: _advanced,
                         ),
+                        // The alert of a coordinator older than 0.8.7, or of unknown version, while a password is sent and its field is not in the form: options closed, or fields folded away by « Existing orders match yours! » (independent review of #189, C1); under the field otherwise, never both.
+                        if (!passwordField &&
+                            _password.text.isNotEmpty &&
+                            exposure != null) ...[
+                          const Gap(BullSpacing.xs),
+                          _ExposureAlert(
+                            exposure: exposure,
+                            coordinator: coordinatorName,
+                          ),
+                        ],
                         const Gap(BullSpacing.md),
                         _CreateButton(
                           check: check,
@@ -2415,6 +2427,38 @@ class _Location extends StatelessWidget {
   }
 }
 
+/// The alert of a protected order on a coordinator older than 0.8.7, or whose version could not be read (#189): one short line in the warning colour, never a lock; with [details], « See details » unfolds its explanation (the field's own details hold it under « Password »).
+class _ExposureAlert extends StatelessWidget {
+  final PasswordExposure exposure;
+  final String coordinator;
+  final bool details;
+
+  const _ExposureAlert({
+    required this.exposure,
+    required this.coordinator,
+    this.details = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final text = switch (exposure) {
+      PasswordExposedByVersion(:final version) =>
+        l10n.p2pMakePasswordOldCoordinator(coordinator, '$version'),
+      PasswordExposureUnknown() => l10n.p2pMakePasswordUnknownVersion(
+        coordinator,
+      ),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Alert(text, context.bull.warning),
+        if (details) _Details([l10n.p2pMakePasswordOldDetail]),
+      ],
+    );
+  }
+}
+
 /// « Password » (`MakerForm.tsx:1085-1113`) with the reference's tooltip (#189): typed hidden, sent as its SHA-256.
 ///
 /// Once a password is typed, one short line (out of the book, taken with the official app), the alert of a coordinator older than 0.8.7 or of unknown version in one line when there is one ([exposure], never a lock), and « See details »: the reference's help, how to share the order, what stays readable of it, that only the hash leaves and is not kept. In a renewal of an order that had a password ([needed] while it is empty), the reference's « Enter a password again » under the field in the colour of an error (`Prompts/Expired.tsx:49-58`), and the detail that the same password is needed.
@@ -2444,14 +2488,6 @@ class _Password extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final typed = controller.text.isNotEmpty;
     final exposure = typed ? this.exposure : null;
-    final alert = switch (exposure) {
-      PasswordExposedByVersion(:final version) =>
-        l10n.p2pMakePasswordOldCoordinator(coordinator, '$version'),
-      PasswordExposureUnknown() => l10n.p2pMakePasswordUnknownVersion(
-        coordinator,
-      ),
-      null => null,
-    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2489,9 +2525,13 @@ class _Password extends StatelessWidget {
             style: text.bodyMedium?.copyWith(color: colors.text),
           ),
         ],
-        if (alert != null) ...[
+        if (exposure != null) ...[
           const Gap(BullSpacing.xs),
-          _Alert(alert, colors.warning),
+          _ExposureAlert(
+            exposure: exposure,
+            coordinator: coordinator,
+            details: false,
+          ),
         ],
         if (typed || needed)
           _Details([
@@ -2501,7 +2541,7 @@ class _Password extends StatelessWidget {
             l10n.p2pMakePasswordOfficialApp,
             l10n.p2pMakePasswordReadable,
             l10n.p2pMakePasswordHashOnly,
-            if (alert != null) l10n.p2pMakePasswordOldDetail,
+            if (exposure != null) l10n.p2pMakePasswordOldDetail,
           ]),
       ],
     );

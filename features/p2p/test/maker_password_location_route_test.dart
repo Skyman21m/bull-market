@@ -274,9 +274,14 @@ void main() {
     expect(OrderPasswordHash.of(_password)?.hex, _passwordHash);
   });
 
-  for (final words in [_english, _french]) {
+  // The renewal from the expiry (5) in both languages, and from « Trade finished! » (14) in English (independent review of #189, R7): the same page, by another button.
+  for (final (words, succeeded) in [
+    (_english, false),
+    (_french, false),
+    (_english, true),
+  ]) {
     testWidgets(
-      '${words.locale}: a protected order made from the form sends its SHA-256 and never the password, then its renewal asks for it again and sends its SHA-256',
+      '${words.locale}: a protected order made from the form sends its SHA-256 and never the password, then its renewal ${succeeded ? 'at 14' : 'at 5'} asks for it again and sends its SHA-256',
       (tester) async {
         final journey = await _Journey.start(tester, words.locale);
         final l10n = journey.l10n;
@@ -316,11 +321,18 @@ void main() {
           expect(request.url.toString(), isNot(contains(_passwordHash)));
         }
 
-        // The bond locked, then the order expired untaken: « Renew Order ».
-        journey.coordinator
-          ..lockMakerBond(order.id)
-          ..expire(order.id);
-        final renew = find.widgetWithText(TradeButton, l10n.p2pRenewOrder);
+        // The bond locked, then the order expired untaken: « Renew Order »; or taken and its trade finished: « Renew ».
+        journey.coordinator.lockMakerBond(order.id);
+        if (succeeded) {
+          journey.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+          order.status = 14;
+        } else {
+          journey.coordinator.expire(order.id);
+        }
+        final renew = find.widgetWithText(
+          TradeButton,
+          succeeded ? l10n.p2pRenew : l10n.p2pRenewOrder,
+        );
         await journey.waitFor(renew, seconds: 60);
         await journey.tap(renew);
         await settle(tester);
