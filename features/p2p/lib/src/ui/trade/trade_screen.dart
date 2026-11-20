@@ -1572,7 +1572,8 @@ class _Contract extends StatelessWidget {
         role: TradeRole.buyer,
         fiatSent: false,
         :final amount,
-      ) => (rateGap, TradeRole.buyer, amount),
+      ) =>
+        (rateGap, TradeRole.buyer, amount),
       _ => (null, record.role, null),
     };
     final sats = order?.satoshisNow;
