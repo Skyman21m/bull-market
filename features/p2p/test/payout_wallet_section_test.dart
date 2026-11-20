@@ -12,6 +12,7 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
 import 'package:p2p/src/presentation/payout_wallet_cubit.dart';
+import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/payout_wallet_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -320,6 +321,7 @@ void main() {
                   cancelling: cancelling,
                 ),
                 wallet: PayoutWalletSection.slotFor,
+                walletReceipt: PayoutWalletSection.receiptOf,
               ),
             ),
           ),
@@ -356,12 +358,9 @@ void main() {
           payout.state.invoice,
           isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
         );
-        expect(find.text('Receive Amount: 106,400 sats'), findsOneWidget);
-        expect(find.text('Swap fees: 206 sats'), findsOneWidget);
-        expect(
-          find.text('This fee will be deducted from the amount sent'),
-          findsOneWidget,
-        );
+        // What arrives, as the breakdown's last two lines (#228).
+        expect(row(PayoutBreakdownView.swapRow, '-206'), findsOneWidget);
+        expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsOneWidget);
         // Nothing submitted: « Submit » is the user's tap.
         expect(sender.sent, isEmpty);
         expect(tester.widget<TradeButton>(submit()).onPressed, isNotNull);
@@ -377,10 +376,13 @@ void main() {
       await tester.tap(generateInvoice());
       await tester.pump();
       await tester.pump();
-      expect(find.text('Receive Amount: 106,400 sats'), findsOneWidget);
+      expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsOneWidget);
       payout.editInvoice(secondInvoice.text);
       await tester.pump();
-      expect(find.text('Receive Amount: 106,400 sats'), findsNothing);
+      expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
+      expect(find.byKey(PayoutBreakdownView.swapRow), findsNothing);
+      // The invoice to give stays.
+      expect(find.byKey(PayoutBreakdownView.invoiceRow), findsOneWidget);
     });
 
     testWidgets(
@@ -530,7 +532,7 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(payout.state.form.invoice, secondInvoice.text);
-        expect(find.text('Receive Amount: 106,400 sats'), findsNothing);
+        expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
       },
     );
 
@@ -562,7 +564,7 @@ void main() {
       },
     );
 
-    testWidgets('in French, the wallet\'s words', (tester) async {
+    testWidgets('in French, the breakdown\'s words (#228)', (tester) async {
       final (_, port) = await show(tester, six, locale: const Locale('fr'));
       port.scriptInvoice(Ok(made(walletInvoice)));
       final button = find.widgetWithText(TradeButton, 'Générer une facture');
@@ -570,11 +572,8 @@ void main() {
       await tester.tap(button);
       await tester.pump();
       await tester.pump();
-      expect(find.textContaining('Montant à recevoir :'), findsOneWidget);
-      expect(
-        find.text('Ces frais seront déduits du montant envoyé'),
-        findsOneWidget,
-      );
+      expect(find.text('Reçu dans votre portefeuille'), findsOneWidget);
+      expect(find.text('Frais de swap'), findsOneWidget);
     });
   });
 }
@@ -634,3 +633,7 @@ final class _Sender {
     throw StateError('nothing is submitted in these tests');
   }
 }
+
+/// The text [text] in the breakdown's row [key] (#228).
+Finder row(Key key, String text) =>
+    find.descendant(of: find.byKey(key), matching: find.text(text));

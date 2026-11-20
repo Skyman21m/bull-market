@@ -297,6 +297,9 @@ final class P2pRouter {
                     wallet: P2pLocator.paysBondFromWallet(locator)
                         ? PayoutWalletSection.slotFor
                         : null,
+                    walletReceipt: P2pLocator.paysBondFromWallet(locator)
+                        ? PayoutWalletSection.receiptOf
+                        : null,
                   )
                 : null,
             chat: chats
