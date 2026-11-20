@@ -222,4 +222,21 @@ void main() {
       );
     },
   );
+
+  test(
+    'the wallet\'s texts are compared as their formats read them: an invoice and a segwit address without case, another address exactly',
+    () {
+      final given = WalletPayoutDestinations()
+        ..gaveInvoice('lntb1abcdef')
+        ..gaveAddress('tb1qxyz')
+        ..gaveAddress('2NAbc');
+      expect(given.isInvoiceOfThisWallet('LNTB1ABCDEF'), isTrue);
+      expect(given.isInvoiceOfThisWallet('lightning:lntb1abcdef'), isTrue);
+      expect(given.isInvoiceOfThisWallet('lntb1abcdeg'), isFalse);
+      expect(given.isAddressOfThisWallet('TB1QXYZ'), isTrue);
+      expect(given.isAddressOfThisWallet('2NAbc'), isTrue);
+      expect(given.isAddressOfThisWallet('2nabc'), isFalse);
+      expect('$given', 'WalletPayoutDestinations');
+    },
+  );
 }
