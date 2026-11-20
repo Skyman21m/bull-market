@@ -1230,7 +1230,7 @@ void main() {
         await journey.pass(2);
         unchecked();
         expect(
-          find.widgetWithText(TradeButton, 'Retry'),
+          find.text('Retry'),
           rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
         );
         // « Submit » still possible: the wallet's invoice of the sats asked, less the reference's routing budget.
@@ -1260,8 +1260,24 @@ void main() {
         );
         await journey.tap(generate);
         await settle(tester);
+        final before = journey.coordinator.requests.length;
         await journey.tap(find.widgetWithText(TradeButton, 'Submit'));
-        await journey.waitFor(find.textContaining('Your info looks good!'), seconds: 30);
+        await journey.pass(5);
+        // « Submit » sent the invoice to the coordinator. The tests' coordinator checks its clear signature against the key it kept for the robot, which the fake robot keys of this composition do not sign for (« The PGP signed cleartext message is not valid »): the invoice is then taken as the coordinator takes one given from another app, 6 → 7 (`api/logics.py:907-933`).
+        expect(
+          [
+            for (final request in journey.coordinator.requests.skip(before))
+              utf8.decode(request.body ?? const []),
+          ].where((body) => body.contains('update_invoice')),
+          hasLength(1),
+        );
+        order
+          ..payoutHash = invoice.facts.paymentHash
+          ..status = 7;
+        await journey.waitFor(
+          find.textContaining('Your info looks good!'),
+          seconds: 30,
+        );
         // The seller locks the escrow: 9, before the chat, the alert alone.
         journey.coordinator.lockEscrow(order.id);
         final sent = find.widgetWithText(TradeButton, 'Confirm 100 USD sent');

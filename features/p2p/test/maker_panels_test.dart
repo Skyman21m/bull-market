@@ -1779,7 +1779,7 @@ void main() {
       });
 
       testWidgets(
-        'a currency the Bull wallet does not price: one line, no figure, no « Retry »',
+        'a currency the Bull wallet does not price: one line, no figure, no « Retry », and no gap from the creation\'s rate beside it (#234)',
         (tester) async {
           final seen = await _at([
             makerOrderJson(0),
@@ -1800,14 +1800,10 @@ void main() {
             findsOneWidget,
           );
           expect(find.text('Retry'), findsNothing);
-          // No comparison: the gap from the creation's rate under the alert, as information.
-          final gap = find.textContaining('from the rate when you made it');
-          expect(gap, findsOneWidget);
+          // Nothing checked: no gap from the creation's rate, the coordinator's own announcement, beside the alert (#234, the owner's decisions of 2026-11-17).
           expect(
-            tester.getTopLeft(gap).dy,
-            greaterThan(
-              tester.getTopLeft(find.textContaining('has no price for')).dy,
-            ),
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
           );
         },
       );
@@ -2864,7 +2860,7 @@ void main() {
       );
 
       testWidgets(
-        'the Bull wallet\'s price not read: « rate not checked » and the gap; the sats gone, « gives no sats » and no gap line, in the dialog as on the screen',
+        'the Bull wallet\'s price not read: « rate not checked » alone, no gap (#234); the sats gone, « gives no sats » and no gap line, in the dialog as on the screen',
         (tester) async {
           final chain = await chainTo9(later: null);
           final (_, watch) = await _show(
@@ -2878,7 +2874,7 @@ void main() {
             inDialog('could not be read: rate not checked'),
             findsOneWidget,
           );
-          expect(inDialog('+5.85% from the rate'), findsOneWidget);
+          expect(inDialog('from the rate when you made it'), findsNothing);
           watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
           await tester.pump();
           await tester.pump();
@@ -2892,7 +2888,7 @@ void main() {
       );
 
       testWidgets(
-        'a currency the Bull wallet does not price: the coordinator\'s figure moves while the dialog is open, the dialog\'s gap is the new one, the screen\'s',
+        'a currency the Bull wallet does not price: the coordinator\'s figure moves while the dialog is open, the dialog says the alert alone, before and after, never a gap (#234)',
         (tester) async {
           final chain = await chainTo9(later: 120000);
           final (_, watch) = await _show(
@@ -2902,17 +2898,17 @@ void main() {
           );
           await tester.pump();
           await openDialog(tester);
-          expect(inDialog('fixed 101,000 sats'), findsOneWidget);
+          expect(inDialog('has no price for EUR'), findsOneWidget);
+          expect(inDialog('from the rate when you made it'), findsNothing);
           watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
           await tester.pump();
           await tester.pump();
           expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
-          expect(find.textContaining('fixed 101,000 sats'), findsNothing);
-          expect(inDialog('fixed 120,000 sats'), findsOneWidget);
+          expect(inDialog('has no price for EUR'), findsOneWidget);
           expect(
-            find.textContaining('fixed 120,000 sats'),
-            findsNWidgets(2),
-            reason: 'the screen behind the dialog says the same',
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+            reason: 'neither in the dialog nor on the screen behind it',
           );
         },
       );
