@@ -4075,4 +4075,80 @@ class P2pLocalizationsSw extends P2pLocalizations {
   String p2pMapPinned(String point) {
     return 'Place pinned: $point';
   }
+
+  @override
+  String get p2pPayoutTracePasted =>
+      'This contract\'s payout invoice was pasted: the sats will go to the wallet that made it.';
+
+  @override
+  String get p2pPayoutTracePastedAddress =>
+      'This contract\'s payout address was pasted: the sats will go to the wallet it belongs to.';
+
+  @override
+  String get p2pPayoutTraceNotGivenHere =>
+      'This contract\'s payout invoice or address was not given from Bull Market: check where the sats will arrive.';
+
+  @override
+  String get p2pPayoutTraceUnknown =>
+      'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.';
+
+  @override
+  String p2pTermsShownAbove(
+    String coordinator,
+    String day,
+    String time,
+    String high,
+    String own,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, up to a premium of $high instead of $own.';
+  }
+
+  @override
+  String p2pTermsShownBelow(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String own,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with a premium down to $low instead of $own.';
+  }
+
+  @override
+  String p2pTermsShownBoth(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+    String own,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with premiums from $low to $high instead of $own.';
+  }
+
+  @override
+  String p2pTermsShownPremiums(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with premiums from $low to $high.';
+  }
+
+  @override
+  String p2pTermsShownPremiumAlone(
+    String coordinator,
+    String day,
+    String time,
+    String premium,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with a premium of $premium.';
+  }
+
+  @override
+  String p2pTermsShownOther(String coordinator, String day, String time) {
+    return '$coordinator showed this trade with other terms from $day at $time.';
+  }
 }

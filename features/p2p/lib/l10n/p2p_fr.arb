@@ -1017,5 +1017,15 @@
   "p2pMapChooseLocation": "Choisir un lieu",
   "p2pMapSave": "Enregistrer",
   "p2pMapPinHint": "Carte du monde : touchez un endroit pour l’épingler.",
-  "p2pMapPinned": "Endroit épinglé : {point}"
+  "p2pMapPinned": "Endroit épinglé : {point}",
+  "p2pPayoutTracePasted": "La facture de paiement de ce contrat a été collée : les sats iront au portefeuille qui l’a faite.",
+  "p2pPayoutTracePastedAddress": "L’adresse de paiement de ce contrat a été collée : les sats iront au portefeuille auquel elle appartient.",
+  "p2pPayoutTraceNotGivenHere": "La facture ou l’adresse de paiement de ce contrat n’a pas été donnée depuis Bull Market : vérifiez où arriveront les sats.",
+  "p2pPayoutTraceUnknown": "Bull Market ne sait pas si la facture ou l’adresse de paiement de ce contrat vient de ce portefeuille.",
+  "p2pTermsShownAbove": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, jusqu’à une prime de {high} au lieu de {own}.",
+  "p2pTermsShownBelow": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec une prime descendue à {low} au lieu de {own}.",
+  "p2pTermsShownBoth": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec des primes de {low} à {high} au lieu de {own}.",
+  "p2pTermsShownPremiums": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec des primes de {low} à {high}.",
+  "p2pTermsShownPremiumAlone": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec une prime de {premium}.",
+  "p2pTermsShownOther": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}."
 }

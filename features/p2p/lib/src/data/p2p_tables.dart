@@ -281,6 +281,21 @@ class StoredTradeTrails extends Table {
   /// Whether a maker's current contract was first read from the chat on (a next contract seen late, #178), set only in the write that opens that contract; false at contract 0, and always for a trade not made here.
   BoolColumn get seenLate => boolean().withDefault(const Constant(false))();
 
+  /// When a read kept for this trade first showed it with other terms than its own (`TradeTermsChanged`), in microseconds since the epoch: the read time of that write, set once and kept to the end (schema 9, #231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis); absent when none did since schema 9, and for every trail of a schema 8 file, whose trace was never recorded.
+  ///
+  /// Its constraints are the column's own, so that schema 9 adds it to the table without rebuilding it.
+  IntColumn get termsChangedAt => integer().nullable().customConstraint(
+    "NULL CHECK (terms_changed_at IS NULL OR (typeof(terms_changed_at) = 'integer' AND terms_changed_at BETWEEN 0 AND read_at))",
+  )();
+
+  /// The lowest and the highest premium, in percent, that reads kept showed otherwise than the trade's own (an order not priced in sats, within the package's bounds, -100 to 999); both absent while no read showed another premium (schema 9, #231). Both written as soon as a premium differs, even after another term changed first; then the lowest only goes down and the highest only up, neither is cleared: the trigger `trade_trails_terms_trace` keeps them, so that the trace never says less than was seen, on either side (security reviews of schema 9, C1 and R8).
+  RealColumn get termsChangedPremiumLow => real().nullable().customConstraint(
+    "NULL CHECK (terms_changed_premium_low IS NULL OR (terms_changed_at IS NOT NULL AND typeof(terms_changed_premium_low) = 'real' AND terms_changed_premium_low BETWEEN -100 AND 999))",
+  )();
+  RealColumn get termsChangedPremiumHigh => real().nullable().customConstraint(
+    "NULL CHECK ((terms_changed_premium_high IS NULL) = (terms_changed_premium_low IS NULL) AND (terms_changed_premium_high IS NULL OR (typeof(terms_changed_premium_high) = 'real' AND terms_changed_premium_high BETWEEN -100 AND 999 AND terms_changed_premium_high >= terms_changed_premium_low)))",
+  )();
+
   @override
   Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
 
@@ -323,8 +338,8 @@ class StoredTradeTrails extends Table {
 /// Schema 7 (#97) widened its step to `('bond', 'escrow')`: the trigger that refuses any delete does not fire on a drop, so its step rebuilt the table (the rows copied aside, the table dropped and made again, the rows copied back, then the triggers), the one step allowed to drop it (`P2pDatabase`, from 6 to 7).
 /// Schema 8 (#176) rebuilt it again, as it rebuilt `trades` and `trade_trails`, for the contract of a maker's escrow (`take`, in the primary key; design note `docs/design/phase-3-making-an-order.md` § 3.5): every payment of an older file is of contract 0.
 ///
-/// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, and the wallet's local id of the swap that pays it once the port gives one; never the invoice, a preimage, an amount, an address or a transaction id.
-/// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step, contract and payment hash never change, its start never goes back, a row is written only for an open trade whose trail is recorded at the row's contract, and a payment hash another row holds is never written again, whatever its trade, step or contract.
+/// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, the wallet's local id of the swap that pays it once the port gives one, and since schema 9 (#233) the total the user confirmed for it; never the invoice, a preimage, an address or a transaction id.
+/// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step, contract and payment hash never change, its start never goes back, a row is written only for an open trade whose trail is recorded at the row's contract, a payment hash another row holds is never written again, whatever its trade, step or contract, and since schema 9 a row is written only with its amount, which never goes down.
 /// Read and written only by `TradePaymentRepositoryImpl`.
 @DataClassName('TradePaymentRow')
 class StoredTradePayments extends Table {
@@ -352,6 +367,13 @@ class StoredTradePayments extends Table {
   /// The contract the invoice belongs to, the trail's `take` when the row was written (schema 8): 0 for a bond and for every payment of a trade not made here, one more for a maker seller's escrow of each later contract.
   IntColumn get take => integer().withDefault(const Constant(0))();
 
+  /// What the payment takes out of the wallet: the total of the quote the user confirmed (the invoice, the swap service's fee and the network fee, `P2pWalletQuote.total`), in sats, written by the statement that records the payment's start, before the wallet is asked (schema 9, #233; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis); a new attempt of the same invoice never lowers it.
+  ///
+  /// Absent for every payment of a schema 8 file, whose amount was never kept: unknown, never zero. Its constraints are the column's own, so that schema 9 adds it to the table without rebuilding it; the triggers of `trade_payments.drift` refuse a payment recorded without it and an amount that goes down, is cleared, or appears on a payment whose amount was unknown.
+  IntColumn get confirmedSats => integer().nullable().customConstraint(
+    "NULL CHECK (confirmed_sats IS NULL OR (typeof(confirmed_sats) = 'integer' AND confirmed_sats BETWEEN 1 AND 2100000000000000))",
+  )();
+
   @override
   Set<Column<Object>> get primaryKey => {
     keyFingerprint,
@@ -374,6 +396,51 @@ class StoredTradePayments extends Table {
     // The contract (schema 8): an integer from 0, and 0 for a bond, which is one for the order's whole life.
     "CHECK (typeof(take) = 'integer' AND take >= 0)",
     "CHECK (step = 'escrow' OR take = 0)",
+    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
+  ];
+}
+
+/// Where the payout of each contract of a buyer's trade came from, as this device gave it (schema 9, #204; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): one row per trade and contract (`take`), written by `SubmitPayoutUsecase` right after the coordinator's answer took the payout, or may have, so that before « Confirm … sent » the app knows whether the payout of the contract it stands at was given from this wallet, pasted, or not given from this device.
+///
+/// It holds whether the payout was given from this wallet or pasted, whether it is an invoice or an address, and when it was submitted; never the invoice, its payment hash, nor the address (nothing reads them, and the hash of a pasted invoice would tie this file to another wallet's payment: security review of schema 9, R4). `unrecorded` marks a contract already under way when the step to schema 9 ran (its payout, if any, was given before payouts were recorded): written by that step only, it reads « unknown », never « given elsewhere ».
+/// The triggers of `trade_payouts.drift` keep it: a row is never deleted, its trade and contract never change, it never becomes `unrecorded`, its time never goes back, a second insert writes nothing, and a row is written only for an open trade of a buyer whose trail stands at the row's contract.
+/// Read and written only by `TradePayoutRepositoryImpl`.
+@DataClassName('TradePayoutRow')
+class StoredTradePayouts extends Table {
+  @override
+  String get tableName => 'trade_payouts';
+
+  /// The trade's robot, as `trades` keys it.
+  TextColumn get keyFingerprint => text()();
+  IntColumn get robotIndex => integer()();
+
+  /// The contract the payout was given for, the trail's `take` of the read the payout was signed from: 0 for every taker and for a maker's first contract.
+  IntColumn get take => integer()();
+
+  /// `thisWallet` (an invoice or an address this wallet gave), `pasted` (anything else), or `unrecorded` (a contract under way before schema 9).
+  TextColumn get source => text()();
+
+  /// `invoice` or `address`; absent for `unrecorded`.
+  TextColumn get kind => text().nullable()();
+
+  /// When the payout was submitted, in microseconds since the epoch; absent for `unrecorded` only.
+  IntColumn get submittedAt => integer().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex, take};
+
+  @override
+  List<String> get customConstraints => const [
+    // The storage class of each column this code writes, as for the payments.
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer'))",
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
+    'CHECK (take >= 0)',
+    "CHECK (source IN ('thisWallet', 'pasted', 'unrecorded'))",
+    "CHECK (kind IS NULL OR kind IN ('invoice', 'address'))",
+    // A mark of a contract under way before schema 9 says nothing of a payout; a payout given since says what it was and when. Each part is true or false, never `NULL`, which a CHECK would let pass.
+    "CHECK ((source = 'unrecorded' AND kind IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL))",
+    'CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999)',
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }

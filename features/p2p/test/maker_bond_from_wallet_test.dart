@@ -50,12 +50,14 @@ final class _KilledAfterPayment implements TradePaymentRepository {
     InvoiceStep step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   }) => inner.recordStart(
     trade,
     step,
     paymentHash: paymentHash,
     at: at,
+    sats: sats,
     take: take,
   );
 

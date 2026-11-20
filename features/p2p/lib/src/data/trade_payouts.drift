@@ -1,0 +1,35 @@
+-- The rules of the payouts this device gave, per trade and contract, that the database keeps itself (schema 9, #204): see `StoredTradePayouts` in `p2p_tables.dart`.
+import 'p2p_tables.dart';
+
+-- A payout given is never deleted: it is how « Confirm … sent » knows where the payout of the contract came from, after any restart.
+CREATE TRIGGER IF NOT EXISTS trade_payouts_never_deleted BEFORE DELETE ON trade_payouts
+BEGIN
+  SELECT RAISE(ABORT, 'the payout of a contract is kept');
+END;
+
+-- A payout only moves forward: its trade and its contract never change, it never becomes `unrecorded` (a mark the step to schema 9 alone writes), its time never goes back, and it is written again only for an open trade of a buyer whose trail stands at its contract (a new payout at 15 replaces the earlier one).
+CREATE TRIGGER IF NOT EXISTS trade_payouts_forward BEFORE UPDATE ON trade_payouts
+WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint
+  OR NEW.robot_index IS NOT OLD.robot_index
+  OR NEW.take IS NOT OLD.take
+  OR NEW.source IS 'unrecorded'
+  OR (OLD.submitted_at IS NOT NULL AND (NEW.submitted_at IS NULL OR NEW.submitted_at < OLD.submitted_at))
+  OR NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trades.role = 'buyer' AND trade_trails.take = NEW.take)
+BEGIN
+  SELECT RAISE(ABORT, 'a payout only moves forward');
+END;
+
+-- A payout given belongs to an open trade of a buyer whose trail stands at the payout's contract, and is given from this wallet or pasted: `unrecorded` is never written but by the step to schema 9.
+CREATE TRIGGER IF NOT EXISTS trade_payouts_of_their_trade BEFORE INSERT ON trade_payouts
+WHEN (NEW.source IS NOT 'thisWallet' AND NEW.source IS NOT 'pasted')
+  OR NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trades.role = 'buyer' AND trade_trails.take = NEW.take)
+BEGIN
+  SELECT RAISE(ABORT, 'a payout of no open trade');
+END;
+
+-- A payout is written once per trade and contract, then only updated: a second insert, `INSERT OR REPLACE` included, writes nothing. The newest trigger of the insert, so that SQLite fires it first.
+CREATE TRIGGER IF NOT EXISTS trade_payouts_inserted_once BEFORE INSERT ON trade_payouts
+WHEN EXISTS (SELECT 1 FROM trade_payouts WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND take = NEW.take)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;

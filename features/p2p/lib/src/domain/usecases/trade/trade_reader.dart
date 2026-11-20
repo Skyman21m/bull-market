@@ -5,11 +5,13 @@ import 'package:robosats/robosats.dart';
 import '../../network_garage_key.dart';
 import '../../p2p_failure.dart';
 import '../../repositories/robot_binding_repository.dart';
+import '../../repositories/trade_payout_repository.dart';
 import '../../repositories/trade_record_repository.dart';
 import '../../repositories/trade_trail_repository.dart';
 import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
+import '../../trade/payout_trace.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_edges.dart';
 import '../../trade/trade_status.dart';
@@ -126,6 +128,9 @@ final class TradeReader {
   final DateTime Function() _clock;
   final TradeReadOrder _requestOrder;
 
+  /// Where each contract's payout of a buyer came from (schema 9, #204), read into every status of a buyer's trade this reader gives ([TradeSeen.payout]); `null` reads nothing.
+  final TradePayoutRepository? _payouts;
+
   const TradeReader(
     this._robots,
     this._records,
@@ -136,6 +141,7 @@ final class TradeReader {
     this._invoices, {
     required this._clock,
     required this._requestOrder,
+    this._payouts,
   });
 
   DateTime now() => _clock().toUtc();
@@ -249,12 +255,32 @@ final class TradeReader {
             robot: robot,
             coordinator: coordinator,
             terms: terms,
-            seen: TradeSeen(TradeStatus.beforeFirstRead(trail), order: null),
+            seen: await _withPayout(
+              record,
+              TradeSeen(
+                TradeStatus.beforeFirstRead(trail),
+                order: null,
+                ownPremium: premiumOf(terms),
+              ),
+            ),
           ),
         );
       case Err(:final failure):
         return TradeNotOpened(failure);
     }
+  }
+
+  /// [seen], for a buyer's trade [record], with where the payout of the contract its trail stands at came from ([TradeSeen.payout], #204): [PayoutTraceUnreadable] when the records cannot be read; [seen] as it is for a seller's trade, or without the repository.
+  Future<TradeSeen> _withPayout(TradeRecord record, TradeSeen seen) async {
+    final payouts = _payouts;
+    if (payouts == null || record.role != TradeRole.buyer) return seen;
+    return seen.withPayout(switch (await payouts.traceOf(
+      record,
+      take: seen.status.trail.take,
+    )) {
+      Ok(:final value) => value,
+      Err() => const PayoutTraceUnreadable(),
+    });
   }
 
   /// [record], a trade made here, opened from its maker's terms and its trail ([open]).
@@ -316,7 +342,14 @@ final class TradeReader {
             robot: robot,
             coordinator: coordinator,
             terms: terms,
-            seen: TradeSeen(TradeStatus.beforeFirstRead(trail), order: null),
+            seen: await _withPayout(
+              record,
+              TradeSeen(
+                TradeStatus.beforeFirstRead(trail),
+                order: null,
+                ownPremium: premiumOf(terms),
+              ),
+            ),
           ),
         );
       case Err(:final failure):
@@ -547,6 +580,12 @@ final class TradeReader {
   static bool readsEndOnce(TradePosition position) =>
       position == TradePosition.succeeded || position == TradePosition.expired;
 
+  /// The trade's own premium, from [terms] kept here ([TradeSeen.ownPremium]): `null` for an order priced in sats.
+  static Premium? premiumOf(TradeTerms terms) => switch (terms.side) {
+    TakenSide(explicitSatoshis: _?) => null,
+    _ => terms.premium,
+  };
+
   /// The order's amount as the maker of [terms] asked it ([TradeSeen.asked]), `null` for a taker.
   static OrderAmount? askedOf(TradeTerms terms) => switch (terms.side) {
     MadeSide(:final maker) => maker.amount,
@@ -576,6 +615,7 @@ final class TradeReader {
       },
       requestedAt: status.seenAt == at ? requestedAt : null,
       asked: askedOf(terms),
+      ownPremium: premiumOf(terms),
     );
   }
 
@@ -613,8 +653,11 @@ final class TradeReader {
     var record = trade.record;
     // The trail last known on disk, and its own status: what stays when nothing is stored.
     var onDiskTrail = trade.seen.status.trail;
-    TradeSeen ownStatus(TradeTrail trail) =>
-        TradeSeen(TradeStatus.beforeFirstRead(trail), order: null);
+    TradeSeen ownStatus(TradeTrail trail) => TradeSeen(
+      TradeStatus.beforeFirstRead(trail),
+      order: null,
+      ownPremium: premiumOf(trade.terms),
+    );
     var current = ownStatus(onDiskTrail);
     var attempt = seen;
     P2pFailure? problem;
@@ -628,6 +671,7 @@ final class TradeReader {
             stored: true,
             requestedAt: attempt.requestedAt,
             asked: attempt.asked,
+            ownPremium: attempt.ownPremium,
           );
           onDisk = true;
         case Err(:final failure):
@@ -649,6 +693,7 @@ final class TradeReader {
                 order: attempt.order,
                 requestedAt: attempt.requestedAt,
                 asked: attempt.asked,
+                ownPremium: attempt.ownPremium,
               );
             } else if (round == 0 &&
                 answer != null &&
@@ -690,6 +735,8 @@ final class TradeReader {
           problem ??= failure;
       }
     }
+    // Where the payout of the contract it stands at came from, for a buyer (#204), read once the trail is kept: what « Confirm … sent » is preceded by.
+    current = await _withPayout(record, current);
     _requestOrder.noted(record);
     if (current.stored) _requestOrder.stored(record, current);
     return TradeStep(

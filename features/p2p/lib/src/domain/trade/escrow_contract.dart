@@ -44,7 +44,7 @@ final class EarlierEscrow {
 
   final EarlierEscrowCase state;
 
-  /// What it took out of the wallet, as this run of the app asked the wallet to pay it: the total of the quote confirmed (the invoice, the swap service's fee and the network fee, none of which comes back with a refund but the invoice's part); `null` when this run did not pay it (the app started again since): `trade_payments` keeps no amount (schema 8), and the wallet's port gives none.
+  /// What it took out of the wallet: the total of the quote confirmed (the invoice, the swap service's fee and the network fee, none of which comes back with a refund but the invoice's part), as its payment's record keeps it since schema 9 (#233), after any restart; `null` for a payment recorded before schema 9, whose amount was never kept (the wallet's port gives none).
   final Sats? sats;
 
   /// Where the wallet's records say its payment stands; `null` when they hold no payment of this feature for its invoice, or cannot be read.
@@ -57,32 +57,31 @@ final class EarlierEscrow {
     required this.progress,
   });
 
-  /// The escrow of [record], an attempt recorded for an earlier contract, from what the wallet found for its payment hash ([found], `P2pWalletPort.findPayment`, asked for every record, with or without a wallet id), its sats [sats] when this run knows them.
+  /// The escrow of [record], an attempt recorded for an earlier contract, from what the wallet found for its payment hash ([found], `P2pWalletPort.findPayment`, asked for every record, with or without a wallet id), its sats those its record keeps ([TradePaymentRecord.confirmedSats], unknown for a payment recorded before schema 9).
   ///
   /// - The wallet holds a payment of this feature for that hash: its latest one tells ([earlierEscrowCaseOf]); the wallet pays an invoice again only while every earlier order of it is provably unspent (`P2pWalletPort.payInvoice`), so the latest is the one that may hold funds.
   /// - The wallet holds none, and the record names no wallet id: [EarlierEscrowCase.back], never left. Nothing of this feature is ever signed, saved or broadcast without an order in the wallet's records: the swap order's record is written (« creating ») before its request leaves (`OrderSwapRepositoryImpl._createOrderLocked`), deleted only when the service is known not to have made it, and the signed payin is saved on that record before anything is broadcast (`PayCheckedInvoiceUsecase`, step 7). Not seen: a payment of the same invoice made by the wallet's own Send screen; and an order whose invoice the wallet's decoder cannot read is not given by `findPayment` (functional verification of #187, point 1, in the shell).
   /// - The wallet holds none although the record names a wallet id, or its records cannot be read: [EarlierEscrowCase.notBack], its state unknown.
   static EarlierEscrow of(
     TradePaymentRecord record,
-    Result<P2pWalletPaymentFound?, P2pWalletRefusal> found, {
-    Sats? sats,
-  }) => switch (found) {
+    Result<P2pWalletPaymentFound?, P2pWalletRefusal> found,
+  ) => switch (found) {
     Ok(value: final payment?) => EarlierEscrow(
       take: record.take,
       state: earlierEscrowCaseOf(payment.progress),
-      sats: sats,
+      sats: record.confirmedSats,
       progress: payment.progress,
     ),
     Ok(value: null) when record.walletPaymentId == null => EarlierEscrow(
       take: record.take,
       state: EarlierEscrowCase.back,
-      sats: sats,
+      sats: record.confirmedSats,
       progress: null,
     ),
     Ok(value: null) || Err() => EarlierEscrow(
       take: record.take,
       state: EarlierEscrowCase.notBack,
-      sats: sats,
+      sats: record.confirmedSats,
       progress: null,
     ),
   };
@@ -127,17 +126,17 @@ final class EscrowContract {
       if (escrow.state == EarlierEscrowCase.kept) escrow,
   ];
 
-  /// The sats of the earlier escrows not back yet whose amount this run knows.
+  /// The sats of the earlier escrows not back yet whose amount the records hold.
   Sats get notBackSats => _sum(notBack);
 
-  /// How many earlier escrows not back yet have an amount this run does not know (paid before the app started again).
+  /// How many earlier escrows not back yet have an amount the records do not hold (recorded before schema 9, #233).
   int get notBackUnknown =>
       notBack.where((escrow) => escrow.sats == null).length;
 
   /// What will be out of the wallet if this escrow is paid: [notBackSats] and [escrow]; at least that when [notBackUnknown] is above 0.
   Sats get outIfPaid => Sats(notBackSats.value + escrow.value);
 
-  /// The sats of the earlier escrows the coordinator kept whose amount this run knows.
+  /// The sats of the earlier escrows the coordinator kept whose amount the records hold.
   Sats get keptSats => _sum(kept);
 
   /// Whether the confirmation alerts: an earlier escrow not back yet, or kept.

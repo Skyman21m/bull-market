@@ -3,6 +3,7 @@ import 'package:primitives/primitives.dart';
 import '../../../../public/p2p_wallet_port.dart';
 import '../../trade/trade_payout.dart';
 import '../../trade_record.dart';
+import 'wallet_payout_destinations.dart';
 
 /// The buyer's payout from this wallet (#90): an invoice of the wallet's Instant Payments wallet for exactly what the coordinator asks, or a new address of its Bitcoin wallet, which the payout panel puts in its field as a pasted one, so that the panel's own check, display and « Submit » apply unchanged.
 ///
@@ -13,10 +14,14 @@ import '../../trade_record.dart';
 class PayoutFromWalletUsecase {
   final P2pWalletPort _wallet;
 
+  /// The invoices and addresses given, noted for the payout's record (schema 9, #204): a payout submitted with one of them is « from this wallet ».
+  final WalletPayoutDestinations _given;
+
   /// The step ([_stepOf]) at which each invoice was first given, by its text.
   final Map<String, String> _firstGivenAt = {};
 
-  PayoutFromWalletUsecase(this._wallet);
+  PayoutFromWalletUsecase(this._wallet, {WalletPayoutDestinations? given})
+    : _given = given ?? WalletPayoutDestinations();
 
   /// An invoice of exactly [amount] for [ask], the trade's payout as the coordinator asks it; [P2pWalletServiceRefused] if the wallet gave another amount (which its port does not); [PayoutWalletEarlierInvoiceOpen] at 15 for the invoice it gave for this trade before the payout failed.
   Future<Result<P2pWalletInvoice, PayoutWalletNoInvoice>> invoice(
@@ -39,6 +44,7 @@ class PayoutFromWalletUsecase {
         if (ask.isNewInvoice && first != step) {
           return const Err(PayoutWalletEarlierInvoiceOpen());
         }
+        _given.gaveInvoice(value.bolt11);
         return Ok(value);
     }
   }
@@ -46,7 +52,11 @@ class PayoutFromWalletUsecase {
   /// A new address of the wallet's Bitcoin wallet on the trade's network.
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> address(
     TradeRecord record,
-  ) => _wallet.newReceiveAddress(record.network);
+  ) async {
+    final made = await _wallet.newReceiveAddress(record.network);
+    if (made case Ok(:final value)) _given.gaveAddress(value.address);
+    return made;
+  }
 
   /// The key of [ask]'s payout, one per trade and contract: its network, coordinator and order (`network:coordinatorAlias:orderId`), the same at 6, 8 and 15, for contract 0 (every taker's trade, and a maker's first contract), so that an invoice asked before this key had a contract is given again as before; and the contract appended (`network:coordinatorAlias:orderId:take`) from contract 1 on, a maker buyer's order taken again after a return to the book (#179, design note `docs/design/phase-3-making-an-order.md` § 3.4): its amount is the new contract's, and the coordinator keys its payments by payment hash (`api/models/ln_payment.py:67-69`), so the invoice of an earlier contract is never given again.
   /// Two trades never share it: a coordinator's order has one open trade at a time on a network; the contract is the trail's of the status the payout is asked at.

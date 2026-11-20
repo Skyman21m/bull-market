@@ -5890,5 +5890,141 @@
         "type": "String"
       }
     }
+  },
+  "p2pPayoutTracePasted": "This contract's payout invoice was pasted: the sats will go to the wallet that made it.",
+  "@p2pPayoutTracePasted": {
+    "description": "Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: the payout invoice of the contract the trade stands at was pasted, not made by this wallet during the run that submitted it (any wallet's, this one's copied by hand included). Information; nothing is blocked."
+  },
+  "p2pPayoutTracePastedAddress": "This contract's payout address was pasted: the sats will go to the wallet it belongs to.",
+  "@p2pPayoutTracePastedAddress": {
+    "description": "Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: the on-chain payout address of the contract the trade stands at was pasted, not given by this wallet. Information; nothing is blocked."
+  },
+  "p2pPayoutTraceNotGivenHere": "This contract's payout invoice or address was not given from Bull Market: check where the sats will arrive.",
+  "@p2pPayoutTraceNotGivenHere": {
+    "description": "Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: this device recorded no payout for the contract the trade stands at (given from another app with the same Garage Key, or not by this device at all). Nothing is blocked."
+  },
+  "p2pPayoutTraceUnknown": "Bull Market cannot tell whether this contract's payout invoice or address came from this wallet.",
+  "@p2pPayoutTraceUnknown": {
+    "description": "Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: a contract under way before this version recorded payouts, or records that cannot be read. Never said as « given elsewhere ». Nothing is blocked."
+  },
+  "p2pTermsShownAbove": "{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {high} instead of {own}.",
+  "@p2pTermsShownAbove": {
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the highest premium reads showed ({high}), every one above the order's own ({own}, from its terms kept here). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      },
+      "own": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTermsShownBelow": "{coordinator} showed this trade with other terms from {day} at {time}, with a premium down to {low} instead of {own}.",
+  "@p2pTermsShownBelow": {
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the lowest premium reads showed ({low}), every one below the order's own ({own}, from its terms kept here). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "low": {
+        "type": "String"
+      },
+      "own": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTermsShownBoth": "{coordinator} showed this trade with other terms from {day} at {time}, with premiums from {low} to {high} instead of {own}.",
+  "@p2pTermsShownBoth": {
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the lowest and the highest premium reads showed ({low}, {high}), on both sides of the order's own ({own}, from its terms kept here). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      },
+      "own": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTermsShownPremiums": "{coordinator} showed this trade with other terms from {day} at {time}, with premiums from {low} to {high}.",
+  "@p2pTermsShownPremiums": {
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the lowest and the highest premium reads showed ({low}, {high}), the order's own not at hand (its terms not read). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTermsShownPremiumAlone": "{coordinator} showed this trade with other terms from {day} at {time}, with a premium of {premium}.",
+  "@p2pTermsShownPremiumAlone": {
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the one other premium reads showed ({premium}), the order's own not at hand (its terms not read). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "premium": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTermsShownOther": "{coordinator} showed this trade with other terms from {day} at {time}.",
+  "@p2pTermsShownOther": {
+    "description": "Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own (currency, amount, bond, durations, payment method…), no read having shown another premium. {day} and {time} are the device's. Said once the terms are back; nothing is blocked.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
   }
 }

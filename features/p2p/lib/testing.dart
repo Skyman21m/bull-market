@@ -7,7 +7,7 @@ import 'dart:async' show StreamController, StreamSubscription, Timer;
 import 'dart:io' show FileSystemException;
 
 import 'package:bull_tor/tor.dart';
-import 'package:drift/drift.dart' show DatabaseConnection;
+import 'package:drift/drift.dart' show DatabaseConnection, QueryExecutor;
 import 'package:drift/native.dart';
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:get_it/get_it.dart';
@@ -94,6 +94,7 @@ export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 /// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
 /// A meeting point pinned in the create form is moved by [locationDraws] (#189), each from 0 included to 1 excluded; by default 0.5, which leaves it where it was pinned.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
+/// With [databaseOpener], the database is opened over the executor it gives instead of one in memory (a file of the test's): a new composition over the same file is the app started again, its records kept and nothing of the earlier run's memory (schema 9, #204, #231, #233).
 @visibleForTesting
 void setUpP2pForTesting(
   GetIt locator, {
@@ -104,6 +105,7 @@ void setUpP2pForTesting(
   P2pShuffle shuffle = P2pShuffle.unshuffled,
   GarageKeys? garageKeys,
   bool databaseUnavailable = false,
+  QueryExecutor Function()? databaseOpener,
   Bolt11Decoder? bolt11Decoder,
   P2pWalletPort? wallet,
   RobotKeyComputePort? robotKeys,
@@ -143,14 +145,15 @@ void setUpP2pForTesting(
       database: () => P2pDatabase.forTesting(
         // Query streams closed at once when their last listener goes, so that a screen the test disposes, such as the tab and its list of the active trades (#88), leaves no timer of drift behind.
         DatabaseConnection(
-          NativeDatabase.memory(
-            // Each opening fails, as for a file that cannot be opened, and closing it has nothing to release.
-            setup: databaseUnavailable
-                ? (_) => throw const FileSystemException(
-                    'unavailable for the test',
-                  )
-                : null,
-          ),
+          databaseOpener?.call() ??
+              NativeDatabase.memory(
+                // Each opening fails, as for a file that cannot be opened, and closing it has nothing to release.
+                setup: databaseUnavailable
+                    ? (_) => throw const FileSystemException(
+                        'unavailable for the test',
+                      )
+                    : null,
+              ),
           closeStreamsSynchronously: true,
         ),
       ),

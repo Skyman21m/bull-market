@@ -906,12 +906,12 @@ void main() {
         ],
     };
 
-    /// The schema 4 objects of [database], by name, compared without quotes and white space (drift quotes names when it creates a file only).
+    /// The schema 4 objects of [database], by name, compared without quotes and white space (drift quotes names when it creates a file only): the trigger schema 9 adds to the trails is not one.
     Future<Map<String, String>> objectsOf(GeneratedDatabase database) async => {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name IN ('trade_terms', 'trade_trails') OR name = 'trades_one_open_per_order')",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name IN ('trade_terms', 'trade_trails') OR name = 'trades_one_open_per_order') AND name <> 'trade_trails_terms_trace'",
               )
               .get())
         row.read<String>('name'): row
@@ -1184,14 +1184,14 @@ void main() {
 
     // Schema 5 (#100): the payments of a trade's invoices asked of the wallet.
 
-    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them: the trigger schema 8 adds to the payments is not one.
+    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them: the trigger schema 8 adds to the payments is not one, nor the two of schema 9.
     Future<Map<String, String>> paymentObjectsOf(
       GeneratedDatabase database,
     ) async => {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments' AND name <> 'trade_payments_hash_once'",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments' AND name NOT IN ('trade_payments_hash_once', 'trade_payments_sats_known', 'trade_payments_sats_forward')",
               )
               .get())
         row.read<String>('name'): row
@@ -1300,7 +1300,7 @@ void main() {
       // The trades of this file have no trail: none can be paid.
       await expectLater(
         database.customStatement(
-          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 1, 'bond', ?, 0)",
+          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, confirmed_sats) VALUES (?, 1, 'bond', ?, 0, 5000)",
           [drawn.hex, 'ab${'0' * 62}'],
         ),
         throwsA(
@@ -1755,7 +1755,7 @@ void main() {
         );
         await expectLater(
           migrated.customStatement(
-            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 3, 'escrow', ?, 0)",
+            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, confirmed_sats) VALUES (?, 3, 'escrow', ?, 0, 5000)",
             [_payer, 'ef${'0' * 62}'],
           ),
           throwsA(

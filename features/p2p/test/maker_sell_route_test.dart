@@ -16,7 +16,6 @@ import 'package:p2p/src/domain/repositories/trade_payment_repository.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
-import 'package:p2p/src/domain/usecases/trade/escrow_amounts.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
@@ -840,7 +839,7 @@ void main() {
   );
 
   testWidgets(
-    'the app started again between two takes: the earlier collateral\'s sats are no longer known, « at least »',
+    'the trade left and opened again between two takes: the earlier collateral\'s sats come from its record (schema 9, #233), exact',
     (tester) async {
       final journey = await _Journey.start(tester, _english);
       await journey.toFirstTake();
@@ -857,13 +856,10 @@ void main() {
       journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());
       await journey.tap(journey.payOf(walletQuote));
       await settle(tester);
-      // Left, and the sats kept in memory gone, as after a restart (`trade_payments` keeps no amount, schema 8).
+      // Left: nothing of the amount is kept in memory since schema 9 (#233), its record holds it; the relaunch of the app itself is `schema9_relaunch_test.dart`'s.
       final record = journey.record;
       await tester.binding.handlePopRoute();
       await settle(tester);
-      journey.locator
-        ..unregister<EscrowAmounts>()
-        ..registerLazySingleton<EscrowAmounts>(EscrowAmounts.new);
       journey.takenAgain();
       unawaited(
         journey.router.pushNamed(
@@ -875,10 +871,13 @@ void main() {
       await journey.openConfirmation();
       expect(
         find.text(
-          'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount. With this one, at least 196,654 sats will be out of this wallet for the collaterals of this order, bond not included.',
+          _english.earlierOut
+              .replaceAll('{a}', _english.sats(196654))
+              .replaceAll('{b}', _english.sats(393308)),
         ),
         findsOneWidget,
       );
+      expect(find.textContaining('at least'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await settle(tester);
       await tester.pump(const Duration(seconds: 61));
