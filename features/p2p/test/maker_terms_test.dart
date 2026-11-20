@@ -35,6 +35,8 @@ void main() {
     int publicSeconds = 86340,
     int escrowSeconds = 10800,
     String? description,
+    OrderLocation? location,
+    OrderPasswordHash? password,
   }) => _some(
     MakeOrderRequest.tryCreate(
       type: type,
@@ -46,6 +48,8 @@ void main() {
       escrowDuration: Duration(seconds: escrowSeconds),
       bondSize: _some(BondSize.tryCreate(bond)),
       description: description,
+      location: location,
+      password: password,
     ),
   );
 
@@ -379,6 +383,44 @@ void main() {
       );
     });
 
+    test(
+      'a password and a meeting point (#189): the point kept as it is, whether there is a password, never its hash',
+      () {
+        final sent = request(
+          location: OrderLocation.tryCreate(-33.8688, 151.209),
+          password: OrderPasswordHash.of('a friend\'s secret'),
+        );
+        expect(sent.isSendable, isTrue);
+        final made = switch (create(asked: sent)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        // The terms keep the order asked, not the hash.
+        expect(made.request, sent);
+        expect(made.request.hasPassword, isTrue);
+        expect(made.request.passwordHash, isNull);
+        expect(made.request.isSendable, isFalse);
+        final record = made.record;
+        expect(record.hasPassword, isTrue);
+        expect(record.latitude, -33.8688);
+        expect(record.longitude, 151.209);
+        expect('$record', isNot(contains('33.8688')));
+        final restored = switch (MakerTerms.restore(record)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(restored, made);
+        expect(restored.request, sent);
+        expect(restored.request.hasPassword, isTrue);
+        expect(restored.request.passwordHash, isNull);
+        expect(restored.request.isSendable, isFalse);
+        expect(
+          restored.request.location,
+          OrderLocation.tryCreate(-33.8688, 151.209),
+        );
+      },
+    );
+
     MakerTermsRecord changed(
       MakerTermsRecord r, {
       int? version,
@@ -454,9 +496,12 @@ void main() {
         'public too short': changed(r, publicSeconds: 599),
         'escrow too long': changed(r, escrowSeconds: 36001),
         'empty description': changed(r, description: ('',)),
-        'password': changed(r, hasPassword: true),
-        'meeting point': changed(r, place: (48.85, 2.35)),
         'half a meeting point': changed(r, place: (48.85, null)),
+        'a meeting point beyond the poles': changed(r, place: (90.5, 2.35)),
+        'a meeting point with 7 decimals': changed(
+          r,
+          place: (48.8566001, 2.35),
+        ),
         'price zero': changed(r, createdPrice: 0),
         'price too high': changed(r, createdPrice: 1e15),
         'fee above 1 %': changed(r, makerFee: 0.0101),

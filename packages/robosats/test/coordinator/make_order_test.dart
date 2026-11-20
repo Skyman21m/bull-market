@@ -518,7 +518,9 @@ void main() {
         );
         expect(text, isNot(contains('"abc"')));
         // A meeting point on whole degrees is written as the reference's `Number` writes it.
-        final whole = await bodyOf(testMakeRequest(location: testLocation(48, -3)));
+        final whole = await bodyOf(
+          testMakeRequest(location: testLocation(48, -3)),
+        );
         expect(whole['latitude'], 48);
         expect(whole['latitude'], isA<int>());
         expect(whole['longitude'], -3);
@@ -528,7 +530,9 @@ void main() {
     test(
       'a request kept without its password\'s hash is refused, nothing sent (#189)',
       () async {
-        final kept = testMakeRequest(password: OrderPasswordHash.of('abc')).kept;
+        final kept = testMakeRequest(
+          password: OrderPasswordHash.of('abc'),
+        ).kept;
         final failure = expectErr(await make(kept));
         expect(failure, isA<OrderActionRefused>());
         expect(
@@ -701,12 +705,17 @@ void main() {
     test(
       'a meeting point answered as sent, its texts of 6 decimals; any other is unknown (#189)',
       () async {
-        final placed = testMakeRequest(location: testLocation(48.8566, 2.35221));
+        final placed = testMakeRequest(
+          location: testLocation(48.8566, 2.35221),
+        );
         serveJson(madeAnswer(placed));
         expect(madeAnswer(placed)['latitude'], '48.856600');
         expect(madeAnswer(placed)['longitude'], '2.352210');
         expect(expectOk(await make(placed)).request, placed);
-        Future<void> answered(Map<String, Object?> changes, String field) async {
+        Future<void> answered(
+          Map<String, Object?> changes,
+          String field,
+        ) async {
           serveJson(madeAnswer(placed, changes: changes));
           expect(
             expectErr(await make(placed)).cause,
@@ -723,7 +732,9 @@ void main() {
         expect(expectErr(await make(placed)).cause, malformed('latitude'));
         serveJson({...madeAnswer(placed), 'longitude': null});
         expect(expectErr(await make(placed)).cause, malformed('longitude'));
-        final protected = testMakeRequest(password: OrderPasswordHash.of('abc'));
+        final protected = testMakeRequest(
+          password: OrderPasswordHash.of('abc'),
+        );
         serveJson(madeAnswer(protected));
         expect(expectOk(await make(protected)).request.hasPassword, isTrue);
       },

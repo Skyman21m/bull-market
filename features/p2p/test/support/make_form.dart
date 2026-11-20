@@ -46,6 +46,7 @@ Future<CoordinatorInfo> infoAt(
   double? devfund,
   double makerFee = 0.00025,
   RobosatsNetwork network = RobosatsNetwork.mainnet,
+  ({int major, int minor, int patch}) version = (major: 0, minor: 8, patch: 8),
 }) async {
   final fake =
       ScriptedMakerCoordinator(
@@ -55,7 +56,8 @@ Future<CoordinatorInfo> infoAt(
           alias: alias,
         )
         ..devfund = devfund
-        ..makerFee = makerFee;
+        ..makerFee = makerFee
+        ..version = version;
   return switch (await CoordinatorClient(
     fake,
   ).fetchInfo(coordinatorOf(alias), network)) {

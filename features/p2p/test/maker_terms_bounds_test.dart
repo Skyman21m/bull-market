@@ -21,7 +21,7 @@ import 'support/robot_bindings.dart';
 
 /// The bounds of a maker's terms, kept in three places (#177): `MakeOrderRequest.tryCreate` (what is sent), `MakerTerms` (what is checked and stored) and the CHECKs of `maker_terms` (schema 8, what the database keeps). Each bound is tried at its value and one step past it, in all three, which must give the same verdict.
 ///
-/// Where the database is wider by design (it counts no decimals, cleans no text, knows no currency, keeps any version from 1, a password, a meeting point and any price above 0), the last groups say so: `MakerTerms.restore` refuses those records, and no code writes them, since every record comes from `MakerTerms.record`. The coordinator is tied by the database to its make's, by the terms to the federation list.
+/// Where the database is wider by design (it counts no decimals, a meeting point's included, cleans no text, knows no currency, keeps any version from 1 and any price above 0), the last groups say so: `MakerTerms.restore` refuses those records, and no code writes them, since every record comes from `MakerTerms.record`. The coordinator is tied by the database to its make's, by the terms to the federation list.
 void main() {
   const testnet = RobosatsNetwork.testnet;
 
@@ -110,6 +110,16 @@ void main() {
       },
       _ => null,
     };
+    final OrderLocation? location;
+    switch ((record.latitude, record.longitude)) {
+      case (null, null):
+        location = null;
+      case (final latitude?, final longitude?):
+        location = OrderLocation.tryCreate(latitude, longitude);
+        if (location == null) return false;
+      default:
+        return false;
+    }
     if (type == null ||
         currency == null ||
         premium == null ||
@@ -127,6 +137,8 @@ void main() {
           escrowDuration: Duration(seconds: record.escrowSeconds),
           bondSize: bondSize,
           description: record.description,
+          location: location,
+          keptWithPassword: record.hasPassword,
         ) !=
         null;
   }
@@ -229,6 +241,15 @@ void main() {
     ),
     'range upside down': (base(amounts: (null, 600, 100)), false),
     'a sell order\'s seller': (base(role: 'seller', type: 1), true),
+    // The password and the meeting point (#189): whether there is a password, and a point within ±90° and ±180°.
+    'a password': (base(hasPassword: true), true),
+    'a meeting point': (base(place: (48.8566, 2.35221)), true),
+    'latitude 90, longitude 180': (base(place: (90, 180)), true),
+    'latitude -90, longitude -180': (base(place: (-90, -180)), true),
+    'latitude 90.000001': (base(place: (90.000001, 0)), false),
+    'longitude -180.000001': (base(place: (0, -180.000001)), false),
+    'a latitude without its longitude': (base(place: (48.85, null)), false),
+    'a longitude without its latitude': (base(place: (null, 2.35)), false),
   };
 
   test(
@@ -298,6 +319,7 @@ void main() {
           paymentMethod: 'Rev\u0007olut',
         ),
         'a description with a line break': base(description: 'line\nbreak'),
+        'a meeting point with 7 decimals': base(place: (48.8566001, 2.35)),
         'bitcoin, the currency of a swap': base(currencyId: 1000),
         'an unknown currency': base(currencyId: 99999),
       };
@@ -306,11 +328,9 @@ void main() {
         expect(termsTake(record), isFalse, reason: 'terms: $name');
         expect(await stored(record), isTrue, reason: 'database: $name');
       }
-      // What the request does not carry: a later version, a password and a meeting point (#189), a price below `MakerTerms.minCreatedPrice` (the database asks only `created_price > 0`), are kept by the database and refused by the terms.
+      // What the request does not carry: a later version, a price below `MakerTerms.minCreatedPrice` (the database asks only `created_price > 0`), are kept by the database and refused by the terms. A password and a meeting point are carried since #189 (below).
       final notSent = <String, MakerTermsRecord>{
         'a later version': base(version: 2),
-        'a password': base(hasPassword: true),
-        'a meeting point': base(place: (48.85, 2.35)),
         'a price below 0.0001, the smallest the reference gives': base(
           createdPrice: 0.00009999999999999999,
         ),

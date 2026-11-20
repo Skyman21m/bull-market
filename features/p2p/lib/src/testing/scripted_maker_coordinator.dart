@@ -143,6 +143,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   double makerFee = 0.00025;
   double? devfund = 30;
 
+  /// The version `/api/info/` announces (`version`, `api/views.py:1033`, `settings.VERSION`): 0.8.8 by default; an older one for the alert of a protected order (#189).
+  ({int major, int minor, int patch}) version = (major: 0, minor: 8, patch: 8);
+
   /// The orders made, by number.
   final Map<int, ScriptedMadeOrder> orders = {};
 
@@ -1072,7 +1075,11 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     'lnd_version': 'v0.18.0',
     'cln_version': null,
     'robosats_running_commit_hash': 'ff1998c',
-    'version': {'major': 0, 'minor': 8, 'patch': 8},
+    'version': {
+      'major': version.major,
+      'minor': version.minor,
+      'patch': version.patch,
+    },
     'alternative_site': null,
     'alternative_name': null,
     'node_alias': coordinator.shortAlias,

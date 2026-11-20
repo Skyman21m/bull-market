@@ -287,12 +287,11 @@ void main() {
 
   group('the form, field by field', () {
     testWidgets(
-      'the reference\'s fields and texts, the location disabled with its line, the reason of the disabled button, « Sell » a choice (#188)',
+      'the reference\'s fields and texts, the location a button (#189), the reason of the disabled button, « Sell » a choice (#188)',
       (tester) async {
         await _show(tester, _Form());
         for (final text in [
           'Enable advanced options',
-          'Coming in a later version.',
           'Buy or Sell Bitcoin? *',
           'Buy',
           'Sell',
@@ -1590,14 +1589,15 @@ void main() {
         ]) {
           expect(find.text(text), findsOneWidget, reason: text);
         }
-        // Under « Face to Face Location » and « Password ».
-        expect(find.text('Coming in a later version.'), findsNWidgets(2));
+        // Nothing more under « Face to Face Location » and « Password » while nothing is chosen (#189: explanations on demand).
+        expect(find.text('Coming in a later version.'), findsNothing);
+        expect(find.text('See details'), findsNothing);
         expect(tester.widget<TextField>(_minField).controller?.text, '50');
         expect(tester.widget<TextField>(_maxField).controller?.text, '100');
-        // The password cannot be typed before #189.
+        // The password can be typed (#189).
         expect(
           tester.widget<TextField>(find.byType(TextField).at(4)).enabled,
-          isFalse,
+          isTrue,
         );
         // The bond on the maximum, as with 100 typed: (100 / 93,545) × 10^8 × 3 %.
         expect(find.text('Estimated Bond: 3,207 Sats'), findsOneWidget);

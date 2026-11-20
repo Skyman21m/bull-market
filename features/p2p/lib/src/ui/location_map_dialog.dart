@@ -23,6 +23,9 @@ class LocationMapDialog extends StatefulWidget {
   static const double pointZoom = 6;
   static const double worldZoom = 2;
 
+  /// The key of the map itself, where a tap pins a place.
+  static const mapKey = ValueKey('p2p-location-map');
+
   /// The point saved, the one the order sends, or `null`.
   final OrderLocation? initial;
 
@@ -239,6 +242,7 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
                               null => null,
                             },
                             child: RawGestureDetector(
+                              key: LocationMapDialog.mapKey,
                               behavior: HitTestBehavior.opaque,
                               excludeFromSemantics: true,
                               gestures: _gestures(size),

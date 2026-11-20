@@ -1136,6 +1136,61 @@ void main() {
       },
     );
 
+    test(
+      'a protected order with a meeting point (#189): its SHA-256 and the point sent once, the terms stored without the hash, no warning at the reads that agree',
+      () async {
+        final harness = await MakeHarness.start();
+        final point =
+            OrderLocation.tryCreate(48.8816, 2.3272) ?? fail('location');
+        final asked = MakeHarness.request(
+          location: point,
+          password: 'a test password',
+          paymentMethod: 'Cash F2F',
+        );
+        final start = started(await harness.makeOrder(asked));
+        expect(start.status.warnings, isEmpty);
+        final make = harness.coordinator.requests.singleWhere(
+          (r) => r.url.path == '/api/make/',
+        );
+        final body = utf8.decode(make.body ?? const []);
+        final sent = jsonDecode(body) as Map<String, Object?>;
+        expect(sent['password'], OrderPasswordHash.of('a test password')?.hex);
+        expect(sent['latitude'], 48.8816);
+        expect(sent['longitude'], 2.3272);
+        expect(body, isNot(contains('a test password')));
+        // The terms keep that there is a password and the point, never the hash nor the password.
+        final terms = valueOf(
+          await harness.trails.makerTermsOf(start.record.robot),
+        );
+        expect(terms?.hasPassword, isTrue);
+        expect(terms?.latitude, 48.8816);
+        expect(terms?.longitude, 2.3272);
+        final restored = valueOf(MakerTerms.restore(terms ?? fail('no terms')));
+        expect(restored.request, asked);
+        expect(restored.request.passwordHash, isNull);
+        expect(restored.request.isSendable, isFalse);
+      },
+    );
+
+    test(
+      'a request kept without its password\'s hash is never sent (#189)',
+      () async {
+        final harness = await MakeHarness.start();
+        final kept = MakeHarness.request(password: 'a test password').kept;
+        final made = await harness.makeOrder(kept);
+        expect(
+          made,
+          isA<Err<MakeOutcome, MakeRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<MakeTermsRefused>(),
+          ),
+        );
+        expect(harness.coordinator.requests, isEmpty);
+        expect(await harness.allTrades(), isEmpty);
+      },
+    );
+
     test('a description as asked is no warning', () async {
       final harness = await MakeHarness.start();
       final start = started(

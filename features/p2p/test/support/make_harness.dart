@@ -281,6 +281,8 @@ final class MakeHarness {
     Duration escrowDuration = const Duration(seconds: 10800),
     double bondSize = 3,
     String paymentMethod = 'Revolut Instant SEPA',
+    OrderLocation? location,
+    String? password,
   }) {
     T some<T>(T? value) => value ?? (throw StateError('missing'));
     final OrderAmount asked = switch (range) {
@@ -303,6 +305,8 @@ final class MakeHarness {
         escrowDuration: escrowDuration,
         bondSize: some(BondSize.tryCreate(bondSize)),
         description: description,
+        location: location,
+        password: password == null ? null : OrderPasswordHash.of(password),
       ),
     );
   }

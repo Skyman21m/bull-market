@@ -181,21 +181,23 @@ final class MakeOrderRequest {
     );
   }
 
-  /// What a device keeps of this request: the same order, whether it has a password included, never the password's hash, so never sent.
-  MakeOrderRequest get kept => MakeOrderRequest._(
-    type: type,
-    currency: currency,
-    amount: amount,
-    paymentMethod: paymentMethod,
-    premium: premium,
-    publicDuration: publicDuration,
-    escrowDuration: escrowDuration,
-    bondSize: bondSize,
-    description: description,
-    location: location,
-    hasPassword: hasPassword,
-    passwordHash: null,
-  );
+  /// What a device keeps of this request: the same order, whether it has a password included, never the password's hash, so never sent when it has a password; this very request when it holds no hash.
+  MakeOrderRequest get kept => passwordHash == null
+      ? this
+      : MakeOrderRequest._(
+          type: type,
+          currency: currency,
+          amount: amount,
+          paymentMethod: paymentMethod,
+          premium: premium,
+          publicDuration: publicDuration,
+          escrowDuration: escrowDuration,
+          bondSize: bondSize,
+          description: description,
+          location: location,
+          hasPassword: hasPassword,
+          passwordHash: null,
+        );
 
   /// Whether this request can be sent: with its password's hash when it has a password. A request a device kept ([kept]) of a protected order cannot: `CoordinatorClient.makeOrder` refuses it before sending.
   bool get isSendable => !hasPassword || passwordHash != null;

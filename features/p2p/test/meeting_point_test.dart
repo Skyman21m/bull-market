@@ -26,8 +26,7 @@ void main() {
         MeetingPoint.randomized(48.8566, 2.3522, draws([0.5, 0.5])),
         OrderLocation.tryCreate(48.8566, 2.3522),
       );
-      final low =
-          MeetingPoint.randomized(10, 20, draws([0, 0])) ?? fail('low');
+      final low = MeetingPoint.randomized(10, 20, draws([0, 0])) ?? fail('low');
       expect(low.latitude, 9.95);
       expect(low.longitude, 19.95);
       const almostOne = 0.9999999999999999;
@@ -36,15 +35,18 @@ void main() {
           fail('high');
       expect(high.latitude, 10.05);
       expect(high.longitude, 20.05);
-      // Never farther than 0.05° from the place, whatever the draw.
+      // Never farther than 0.05° from the place, whatever the draw, but for the rounding to 6 significant digits (half a unit of the last digit kept: 0.0005 at 151°).
       for (final draw in [0.0, 0.1, 0.33, 0.5, 0.66, 0.9, almostOne]) {
         final point =
             MeetingPoint.randomized(-33.8688, 151.2093, draws([draw, draw])) ??
             fail('$draw');
-        expect((point.latitude - -33.8688).abs(), lessThanOrEqualTo(0.0500001));
+        expect(
+          (point.latitude - -33.8688).abs(),
+          lessThanOrEqualTo(0.05 + 0.0005 + 1e-9),
+        );
         expect(
           (point.longitude - 151.2093).abs(),
-          lessThanOrEqualTo(0.0500001),
+          lessThanOrEqualTo(0.05 + 0.0005 + 1e-9),
         );
       }
     });
@@ -95,27 +97,24 @@ void main() {
       expect(MeetingPoint.rounded(-10.03125), -10.0313);
     });
 
-    test(
-      'at most 6 decimals, the coordinator\'s, below 0.1° (a deviation)',
-      () {
-        // `toPrecision(6)` gives 0.0512345, which the coordinator refuses with an empty `400`.
-        expect(MeetingPoint.rounded(0.0512345), 0.051235);
-        expect(MeetingPoint.rounded(-0.00000049), 0);
-        expect(MeetingPoint.rounded(-0.00000049).isNegative, isFalse);
-        expect(MeetingPoint.rounded(0.0000015), 0.000002);
-        for (final value in [0.0512345, 0.0012345678, 0.099999999]) {
-          final kept = MeetingPoint.rounded(value);
-          final location = OrderLocation.tryCreate(kept, kept);
-          expect(
-            location == null
-                ? null
-                : MakeOrderRequest.locationDecimals >= _decimals(kept),
-            isTrue,
-            reason: '$value',
-          );
-        }
-      },
-    );
+    test('at most 6 decimals, the coordinator\'s, below 0.1° (a deviation)', () {
+      // `toPrecision(6)` gives 0.0512345, which the coordinator refuses with an empty `400`.
+      expect(MeetingPoint.rounded(0.0512345), 0.051235);
+      expect(MeetingPoint.rounded(-0.00000049), 0);
+      expect(MeetingPoint.rounded(-0.00000049).isNegative, isFalse);
+      expect(MeetingPoint.rounded(0.0000015), 0.000002);
+      for (final value in [0.0512345, 0.0012345678, 0.099999999]) {
+        final kept = MeetingPoint.rounded(value);
+        final location = OrderLocation.tryCreate(kept, kept);
+        expect(
+          location == null
+              ? null
+              : MakeOrderRequest.locationDecimals >= _decimals(kept),
+          isTrue,
+          reason: '$value',
+        );
+      }
+    });
   });
 
   group('the face-to-face methods (`MakerForm.tsx:206-232`)', () {
