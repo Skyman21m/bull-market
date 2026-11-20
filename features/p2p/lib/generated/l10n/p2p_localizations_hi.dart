@@ -3760,15 +3760,20 @@ class P2pLocalizationsHi extends P2pLocalizations {
 
   @override
   String p2pPayoutRateWarningAsked(
+    String coordinator,
     String threshold,
     String received,
     String expected,
   ) {
-    return 'The payout invoice this app saw asked for this contract is more than $threshold below the value at the Bull wallet\'s price: $received sats instead of $expected. Check it before going on.';
+    return 'The sats $coordinator gave for this contract at the payout step, kept by this app, are more than $threshold below the value at the Bull wallet\'s price: $received sats instead of $expected. Check it before going on.';
   }
 
   @override
-  String get p2pPayoutBreakdownTitle => 'What you receive, in sats';
+  String get p2pPayoutBreakdownTitle => 'What you will receive, in sats';
+
+  @override
+  String get p2pPayoutBreakdownNotCompared =>
+      'Not compared with the Bull wallet\'s price at this step';
 
   @override
   String get p2pPayoutBreakdownValue => 'Value at the Bull wallet\'s price';
@@ -3798,7 +3803,7 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String get p2pPayoutBreakdownSwapFee => 'Swap fees';
 
   @override
-  String get p2pPayoutBreakdownReceived => 'Received in your wallet';
+  String get p2pPayoutBreakdownReceived => 'To be received in your wallet';
 
   @override
   String p2pPayoutRateNotPriced(String currency, String coordinator) {

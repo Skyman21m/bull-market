@@ -258,7 +258,7 @@ final class PayoutRateTold extends PayoutRateBasis {
   int get hashCode => Object.hash(told, asked);
 }
 
-/// At 9, the coordinator's figures missing or not agreeing: the invoice's sats this app kept for the contract compared alone, the state machine's warning said beside them. Only ever beside that alert, so its neutral line is not said, only its red warning when the kept invoice is too small (#228, the ticket's comment).
+/// At 9, the coordinator's figures missing or not agreeing: the invoice's sats this app kept for the contract compared alone, the state machine's warning said beside them. Only ever beside that alert, so its neutral line is not said, only its red warning when those kept sats (« Given by the coordinator » at 6 or 8, before the routing budget) are too few (#228, the ticket's comment).
 final class PayoutRateAskedOnly extends PayoutRateBasis {
   const PayoutRateAskedOnly();
 

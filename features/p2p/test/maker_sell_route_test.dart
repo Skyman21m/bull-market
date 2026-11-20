@@ -1403,8 +1403,8 @@ void main() {
         ? 'Given by the coordinator'
         : 'Donné par le coordinateur';
     final received = english
-        ? 'Received in your wallet'
-        : 'Reçu dans votre portefeuille';
+        ? 'To be received in your wallet'
+        : 'À recevoir dans votre portefeuille';
     for (final (name, rate) in [
       ('the Bull wallet\'s price as the coordinator\'s', 50000.0),
       ('the Bull wallet\'s price 20 % below the coordinator\'s', 40000.0),
@@ -1494,6 +1494,32 @@ void main() {
                 .last
                 .style;
             expect(gapStyle?.color == error, warns);
+            // Beyond 10 %, the figure at fault in the alert colour, the value at the Bull wallet's price (the reference) plain (security review of #228, R3).
+            Color? colourOf(Key key) => tester
+                .widgetList<Text>(
+                  find.descendant(
+                    of: find.byKey(key),
+                    matching: find.byType(Text),
+                  ),
+                )
+                .last
+                .style
+                ?.color;
+            expect(colourOf(PayoutBreakdownView.givenRow) == error, warns);
+            expect(colourOf(PayoutBreakdownView.valueRow) == error, isFalse);
+            // Under the threshold the gap in the text's size, never the muted detail's (R1).
+            final gapSize = gapStyle?.fontSize;
+            final valueSize = tester
+                .widgetList<Text>(
+                  find.descendant(
+                    of: find.byKey(PayoutBreakdownView.valueRow),
+                    matching: find.byType(Text),
+                  ),
+                )
+                .last
+                .style
+                ?.fontSize;
+            expect(gapSize, valueSize);
             // The rule's red warning, as before, only beyond 10 %.
             expect(
               find.textContaining(

@@ -1564,9 +1564,9 @@ void main() {
           await tester.pump();
           expect(find.textContaining('do not add up'), findsOneWidget);
           // The kept invoice is still compared (R8): its red warning is an alert of its own; the neutral line that recalled it and its gap is not said beside the amounts' alert (#228).
-          // Its red warning names the sats as the kept invoice's, beside the coordinator's alert (#228, functional review C1).
+          // Its red warning names the sats as what the coordinator gave at the payout step, kept by this app (before the routing budget: not the invoice), beside the coordinator's alert (#228, functional review C1, security review C1).
           const keptWarning =
-              'The payout invoice this app saw asked for this contract is more than 10% below the value at the Bull wallet\'s price: 49,988 sats instead of 106,899. Check it before going on.';
+              'The sats Temple of Sats gave for this contract at the payout step, kept by this app, are more than 10% below the value at the Bull wallet\'s price: 49,988 sats instead of 106,899. Check it before going on.';
           expect(find.text(keptWarning), findsOneWidget);
           expect(
             find.textContaining('fewer sats than the value'),
@@ -1587,7 +1587,7 @@ void main() {
           );
           expect(inDialog('do not add up'), findsOneWidget);
           expect(
-            inDialog('this app saw asked for this contract is more than'),
+            inDialog('kept by this app, are more than 10% below'),
             findsOneWidget,
           );
           expect(inDialog('At the Bull wallet\'s price'), findsNothing);

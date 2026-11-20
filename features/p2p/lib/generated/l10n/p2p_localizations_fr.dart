@@ -3814,15 +3814,20 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutRateWarningAsked(
+    String coordinator,
     String threshold,
     String received,
     String expected,
   ) {
-    return 'La facture de paiement demandée pour ce contrat, vue par cette app, est de plus de $threshold en dessous de la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
+    return 'Les sats que $coordinator donnait pour ce contrat à l\'étape du paiement, gardés par cette app, sont de plus de $threshold en dessous de la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
   }
 
   @override
-  String get p2pPayoutBreakdownTitle => 'Ce que vous recevez, en sats';
+  String get p2pPayoutBreakdownTitle => 'Ce que vous allez recevoir, en sats';
+
+  @override
+  String get p2pPayoutBreakdownNotCompared =>
+      'Non comparé au prix du portefeuille Bull à cette étape';
 
   @override
   String get p2pPayoutBreakdownValue => 'Valeur au prix du portefeuille Bull';
@@ -3852,7 +3857,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pPayoutBreakdownSwapFee => 'Frais de swap';
 
   @override
-  String get p2pPayoutBreakdownReceived => 'Reçu dans votre portefeuille';
+  String get p2pPayoutBreakdownReceived => 'À recevoir dans votre portefeuille';
 
   @override
   String p2pPayoutRateNotPriced(String currency, String coordinator) {

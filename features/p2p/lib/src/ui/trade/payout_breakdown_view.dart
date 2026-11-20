@@ -52,6 +52,9 @@ class PayoutBreakdownView extends StatelessWidget {
   /// Whether the amount was just copied: the icon then shows it.
   final bool copied;
 
+  /// Whether nothing is compared at this step (15, a new invoice after a failed payout, where the owner's rule does not run): a discreet line under the title says so, so that the breakdown does not look checked (security review of #228, C2).
+  final bool notCompared;
+
   const PayoutBreakdownView({
     super.key,
     required this.breakdown,
@@ -59,10 +62,12 @@ class PayoutBreakdownView extends StatelessWidget {
     this.lightning = true,
     this.onCopy,
     this.copied = false,
+    this.notCompared = false,
   });
 
   /// The keys of the rows, for the tests.
   static const valueRow = ValueKey('payout-breakdown-value');
+  static const notComparedLine = ValueKey('payout-breakdown-not-compared');
   static const gapRow = ValueKey('payout-breakdown-gap');
   static const givenRow = ValueKey('payout-breakdown-given');
   static const feeRow = ValueKey('payout-breakdown-coordinator-fee');
@@ -107,30 +112,34 @@ class PayoutBreakdownView extends StatelessWidget {
             l10n.p2pPayoutBreakdownTitle,
             style: text.labelMedium?.copyWith(color: colors.textMuted),
           ),
+          if (notCompared && valued == null)
+            Text(
+              l10n.p2pPayoutBreakdownNotCompared,
+              key: notComparedLine,
+              style: text.bodySmall?.copyWith(color: colors.textMuted),
+            ),
           const Gap(BullSpacing.xxs),
           if (valued != null) ...[
             _Row(
               key: valueRow,
               label: l10n.p2pPayoutBreakdownValue,
               amount: sats(valued.value),
-              tone: alert ? _Tone.alert : _Tone.plain,
             ),
-            _Row(
-              label: valued.price,
-              tone: alert ? _Tone.alertDetail : _Tone.detail,
-            ),
+            _Row(label: valued.price, tone: _Tone.detail),
           ],
+          // Beyond the rule's threshold the figure at fault and its gap in the alert colour, the value at the Bull wallet's price, the reference, plain (security review of #228, R3); under it the gap in the text's size and colour, as the comparison's sentence said it before (R1).
           _Row(
             key: givenRow,
             label: l10n.p2pPayoutBreakdownGiven,
             amount: sats(breakdown.given),
+            tone: alert ? _Tone.alert : _Tone.plain,
           ),
           if (valued != null)
             _Row(
               key: gapRow,
               label: l10n.p2pPayoutBreakdownGap,
               amount: valued.gap,
-              tone: alert ? _Tone.alertDetail : _Tone.detail,
+              tone: alert ? _Tone.alert : _Tone.plain,
             ),
           if (fee != null)
             _Row(
@@ -187,9 +196,9 @@ class PayoutBreakdownView extends StatelessWidget {
   }
 }
 
-enum _Tone { plain, detail, total, alert, alertDetail }
+enum _Tone { plain, detail, total, alert }
 
-/// One line: its label, which wraps, and its amount on the right in tabular figures; a detail indented, smaller and muted; a total in bold; the comparison in the alert colour and bold when the rule warns, its details still indented and smaller.
+/// One line: its label, which wraps, and its amount on the right in tabular figures; a detail indented, smaller and muted; a total in bold; the figure at fault and its gap in the alert colour and bold when the rule warns.
 class _Row extends StatelessWidget {
   final String label;
   final String? amount;
@@ -218,10 +227,6 @@ class _Row extends StatelessWidget {
         color: colors.error,
         fontWeight: FontWeight.bold,
       ),
-      _Tone.alertDetail => text.bodySmall?.copyWith(
-        color: colors.error,
-        fontWeight: FontWeight.bold,
-      ),
       _Tone.plain => text.bodyMedium?.copyWith(color: colors.text),
     };
     final amount = this.amount;
@@ -230,9 +235,7 @@ class _Row extends StatelessWidget {
     return MergeSemantics(
       child: Padding(
         padding: EdgeInsets.only(
-          left: tone == _Tone.detail || tone == _Tone.alertDetail
-              ? BullSpacing.sm
-              : 0,
+          left: tone == _Tone.detail ? BullSpacing.sm : 0,
           top: BullSpacing.xxs / 2,
           bottom: BullSpacing.xxs / 2,
         ),

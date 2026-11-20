@@ -129,11 +129,12 @@ class PayoutRateLines extends StatelessWidget {
                 text: l10n.p2pPayoutRateToldNow(coordinator),
                 tone: TradeDialogTone.plain,
               ),
-            // Worded to stand alone (#228, functional review C1): at 6 and 8 the comparison's sentence is not said above it; for the kept invoice compared alone at 9, the sats are named as that invoice's, never as a figure of the coordinator beside its alert.
+            // Worded to stand alone (#228, functional review C1): at 6 and 8 the comparison's sentence is not said above it; for the sats kept at 6 or 8 compared alone at 9, they are named as what the coordinator gave at the payout step, kept by this app (before the routing budget, so not « Your invoice »), never as a figure of the coordinator now beside its alert (security review of #228, C1).
             if (check.warns)
               (
                 text: basis is PayoutRateAskedOnly
                     ? l10n.p2pPayoutRateWarningAsked(
+                        coordinator,
                         formats.threshold(TradeTolerances.walletRateGap),
                         formats.bigSats(check.asked.value),
                         formats.bigSats(expected.value),

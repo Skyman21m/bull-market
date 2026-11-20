@@ -398,6 +398,8 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
               _ => null,
             },
             copied: _copied,
+            // At 15 the owner's rule does not run: said, so that the figures do not look checked (security review of #228, C2).
+            notCompared: ask.isNewInvoice,
           ),
           if (_copied && lightning)
             _Text(l10n.p2pCommonCopied, center: true, live: true),

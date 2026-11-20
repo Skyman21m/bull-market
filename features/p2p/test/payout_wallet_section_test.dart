@@ -564,6 +564,20 @@ void main() {
       },
     );
 
+    testWidgets(
+      'at 15, a new invoice after a failed payout: the breakdown says it is not compared with the Bull wallet\'s price; at 6 nothing says so (security review of #228, C2)',
+      (tester) async {
+        await show(tester, fifteenExpired);
+        expect(find.byKey(PayoutBreakdownView.notComparedLine), findsOneWidget);
+        expect(
+          find.text('Not compared with the Bull wallet\'s price at this step'),
+          findsOneWidget,
+        );
+        await show(tester, six);
+        expect(find.byKey(PayoutBreakdownView.notComparedLine), findsNothing);
+      },
+    );
+
     testWidgets('in French, the breakdown\'s words (#228)', (tester) async {
       final (_, port) = await show(tester, six, locale: const Locale('fr'));
       port.scriptInvoice(Ok(made(walletInvoice)));
@@ -572,7 +586,7 @@ void main() {
       await tester.tap(button);
       await tester.pump();
       await tester.pump();
-      expect(find.text('Reçu dans votre portefeuille'), findsOneWidget);
+      expect(find.text('À recevoir dans votre portefeuille'), findsOneWidget);
       expect(find.text('Frais de swap'), findsOneWidget);
     });
   });

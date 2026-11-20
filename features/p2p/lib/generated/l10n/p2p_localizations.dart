@@ -5866,21 +5866,28 @@ abstract class P2pLocalizations {
     String expected,
   );
 
-  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule at 9 when the invoice this app kept for the contract is compared alone beside the state machine's alert (`PayoutRateAskedOnly`, second security review of #182, R8), whose neutral line is no longer said since #228: {received} is the kept invoice's sats, not a figure the coordinator gives now, so the warning names it (#211's words); {threshold} and {expected} as p2pPayoutRateWarning.
+  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule at 9 when the sats this app kept for the contract at 6 or 8 are compared alone beside the state machine's alert (`PayoutRateAskedOnly`, second security review of #182, R8), whose neutral line is no longer said since #228. {received} is those kept sats: what the coordinator gave the contract at the payout step (`trade_satoshis`, « Given by the coordinator » of the breakdown), before the routing budget, so not the invoice's amount, and not a figure the coordinator gives now (security review of #228, C1); {coordinator} the coordinator's name; {threshold} and {expected} as p2pPayoutRateWarning.
   ///
   /// In en, this message translates to:
-  /// **'The payout invoice this app saw asked for this contract is more than {threshold} below the value at the Bull wallet\'s price: {received} sats instead of {expected}. Check it before going on.'**
+  /// **'The sats {coordinator} gave for this contract at the payout step, kept by this app, are more than {threshold} below the value at the Bull wallet\'s price: {received} sats instead of {expected}. Check it before going on.'**
   String p2pPayoutRateWarningAsked(
+    String coordinator,
     String threshold,
     String received,
     String expected,
   );
 
-  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the title of the breakdown of the payout's sats from top to bottom, above the tabs of the payout panel (« Submit payout info »); the reference shows no breakdown.
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the title of the breakdown of the payout's sats from top to bottom, above the tabs of the payout panel (« Submit payout info »), in the future: nothing is received yet (security review, R2); the reference shows no breakdown.
   ///
   /// In en, this message translates to:
-  /// **'What you receive, in sats'**
+  /// **'What you will receive, in sats'**
   String get p2pPayoutBreakdownTitle;
+
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): a discreet line under the breakdown's title at 15 (the payout failed, a new invoice asked), where the owner's payment rule does not run (it runs at 6, 8 and 9 only): the figures are the coordinator's, compared with nothing, so that the breakdown does not look checked (security review of #228, C2).
+  ///
+  /// In en, this message translates to:
+  /// **'Not compared with the Bull wallet\'s price at this step'**
+  String get p2pPayoutBreakdownNotCompared;
 
   /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the breakdown's first line: the sats the contract's amount is worth at the Bull wallet's price with the order's premium (`WalletRateCheck.ofMakerPayout`, the owner's payment rule of 2026-11-17, #182), only for a maker buyer when the rule compared at 6 or 8; never a figure of the creation's price (#234).
   ///
@@ -5930,10 +5937,10 @@ abstract class P2pLocalizations {
   /// **'Swap fees'**
   String get p2pPayoutBreakdownSwapFee;
 
-  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): what arrives in Instant payments once the invoice is paid (`P2pWalletInvoice.received`), the invoice less the swap service's fee, in bold; said only while the field holds an invoice this wallet made for exactly the invoice's amount.
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): what is to arrive in Instant payments once the invoice is paid (`P2pWalletInvoice.received`, the swap service's announced amount, not guaranteed by an atomic exchange), the invoice less the swap service's fee, in bold; said in the future (the wallet's « Receive Amount » / « Montant à recevoir », security review R2) and only while the field holds an invoice this wallet made for exactly the invoice's amount.
   ///
   /// In en, this message translates to:
-  /// **'Received in your wallet'**
+  /// **'To be received in your wallet'**
   String get p2pPayoutBreakdownReceived;
 
   /// Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side for a currency the Bull wallet does not price (#182, as `p2pPayRateNotPriced` for the bond): no figure, no « Retry ».
