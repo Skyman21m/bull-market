@@ -3019,6 +3019,35 @@ void main() {
       );
 
       testWidgets(
+        'the rule on this page that has not answered (its terms not read) at 9, « Confirm … sent » open: no gap from the creation\'s rate in the dialog (#234)',
+        (tester) async {
+          final chain = await chainTo9(later: 120000);
+          final cubit = PayoutRateCubit(
+            _record,
+            terms: (_) async => null,
+            price: (_, _) async => P2pWalletRateRead(91711.15),
+            memory: PayoutRateMemory(),
+            now: () => tradeNow,
+          );
+          addTearDown(cubit.close);
+          final (_, watch) = await _show(tester, chain[4], rate: cubit);
+          await tester.pump();
+          await openDialog(tester);
+          expect(cubit.state, isA<PayoutRateNone>());
+          expect(inDialog('from the rate when you made it'), findsNothing);
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+            reason: 'neither in the dialog nor on the screen behind it',
+          );
+        },
+      );
+
+      testWidgets(
         'without the rule (no wallet\'s port): the coordinator\'s figure moves while the dialog is open, the dialog\'s gap is the new one, the screen\'s (#209)',
         (tester) async {
           final chain = await chainTo9(later: 120000);

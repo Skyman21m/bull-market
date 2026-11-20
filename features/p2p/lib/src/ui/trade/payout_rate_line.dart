@@ -135,15 +135,6 @@ class PayoutRateLines extends StatelessWidget {
     };
   }
 
-  /// Whether the gap from the creation's rate is not shown beside [state]: whenever the owner's rule has a state for the step shown. A comparison with the Bull wallet's price (one figure for one question, decided after the functional review of #182), amounts that do not agree, or a coordinator's figure that moved at 9 (the gap would read it as fixed, security review of #182); and, since #234, every case where nothing could be checked or is not checked yet: a currency the Bull wallet does not price (one warning line with no figure), its price not read or being read, a read with no sats (« rate not checked »): the creation's rate is the coordinator's own announcement, which a coordinator announcing a false price would have compared with itself beside the alert (the owner's decisions of 2026-11-17; security review of #188, C1). The state machine's warnings are not this line and are always said. The gap stays only where the rule does not run (no wallet's port lent, the step not the rule's).
-  static bool hidesGap(PayoutRateState? state) => switch (state) {
-    null || PayoutRateNone() => false,
-    PayoutRateReading() ||
-    PayoutRateChecked() ||
-    PayoutRateSatsMissing() ||
-    PayoutRateAmountsDisagree() => true,
-  };
-
   /// The contract's amount as the rule's line writes it: the one the rule compares, as asked here ([TradeSeen.contractAmount]: a range's amount kept with the contract, or the terms' fixed amount), never the read's alone (#183, its security review C4); the order's own only where nothing was asked here ([TradeSeen.asked] unknown), as before; nothing while the amount read does not agree, when no line names it.
   static String amountOf(BuildContext context, TradeSeen seen) {
     final formats = P2pFormats.of(context);
