@@ -186,7 +186,7 @@ class _BookViewState extends State<BookView> {
     );
   }
 
-  /// « Search order »: opens the order the URL names when the book received it, or once the book of its coordinator, still awaited, brings it; otherwise says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored for the network, and « This order is not available » when one is, or cannot be read.
+  /// « Search order »: opens the order the URL names when the book received it, or once the book of its coordinator, still awaited, brings it; otherwise says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored for the network, and « This order is not available » when one cannot be read; with one stored, opens the order's page for its robot to read it (#245, [onOpenProtected]), « This order is not available » without that page.
   Future<void> _searchOrder() async {
     setState(() => _searches++);
     final outcome = await SearchOrderDialog.show(

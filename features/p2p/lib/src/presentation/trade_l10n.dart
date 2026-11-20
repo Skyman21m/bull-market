@@ -65,7 +65,7 @@ extension TakeProblemL10n on TakeProblem {
         OrderTakePenalty() => l10n.p2pTakeWaitPenalty,
         OrderNotAvailable() || OrderNotPublic() => l10n.p2pOrderNotAvailable,
         OrderCancelled() => l10n.p2pOrderCancelled,
-        // Error 1045, the reference's message (`api/errors.py:52`), under the button as the reference shows it (`TakeButton.tsx:345-356`, #245).
+        // Error 1045, the reference's message (`api/errors.py:52`), under the button as the reference shows it (`TakeButton.tsx:360-366`, #245).
         OrderWrongPassword() => l10n.p2pTakeWrongPassword,
         final CoordinatorFailure failure => l10n.p2pTakeNotTakenAfter(
           failure.toRobotText(context, coordinator: coordinator),

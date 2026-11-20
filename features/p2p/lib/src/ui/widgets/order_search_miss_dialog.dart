@@ -13,7 +13,7 @@ import 'no_robot_dialog.dart';
 /// The order found meanwhile closes it with that order, for the book to open its page; so does an order its robot can read (#245, [OrderSearchMissProtected]), when [readsProtected], for the book to open the page that reads it: without, it says « This order is not available ».
 /// A book that could not be had: « Coordinator offline », the feature's text for a coordinator that does not answer, and « Acknowledged », which closes it.
 /// No Garage Key stored for the network: the official client's « You do not have a Garage Key » ([NoRobotDialog]).
-/// A Garage Key stored, or one that cannot be read, since a failure is not an absence: the official client's « This order is not available », the text of a coordinator's refusal to show an order (error 1044 of `api/errors.py`), and « Acknowledged ».
+/// A Garage Key that cannot be read, since a failure is not an absence, or a URL that names no coordinator or number: the official client's « This order is not available », the text of a coordinator's refusal to show an order (error 1044 of `api/errors.py`), and « Acknowledged »; a Garage Key stored, the order's page, which the dialog closes for (#245).
 /// The wait is as tall as that last answer, the most frequent, so that the card does not jump when it comes; the answer is announced to a screen reader.
 /// A tap outside closes it, as in the official client, and abandons the search: nothing is read once it is gone.
 class OrderSearchMissDialog extends StatefulWidget {

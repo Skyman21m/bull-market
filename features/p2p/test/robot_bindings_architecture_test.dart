@@ -587,7 +587,16 @@ void main() {
       'the screens take in two steps through the composition, and nothing in lib/ takes in one step',
       () {
         // The take's cubit is given the use case's steps by the composition (`TakeCalls`), its only caller (#119).
-        for (final step in ['prepare', 'confirm', 'abandon', 'abandonOrder']) {
+        // Since #245 the read and the preparation of a password-protected order too.
+        for (final step in [
+          'prepare',
+          'confirm',
+          'abandon',
+          'abandonOrder',
+          'readProtected',
+          'prepareProtected',
+          'abandonRead',
+        ]) {
           expect(referring((r) => r == 'TakeOrderUsecase.$step'), {
             'lib/src/p2p_locator.dart',
           }, reason: step);

@@ -6419,7 +6419,7 @@ abstract class P2pLocalizations {
   /// **'{coordinator} showed this trade with other terms from {day} at {time}.'**
   String p2pTermsShownOther(String coordinator, String day, String time);
 
-  /// The coordinator's message for error 1045 (`api/errors.py:52`, commit ff1998c), which the official client shows under its take button (`TakeButton.tsx:345-356`); not in its translations, so the French is the project's (#245).
+  /// The coordinator's message for error 1045 (`api/errors.py:52`, commit ff1998c), which the official client shows under its take button (`TakeButton.tsx:360-366`); not in its translations, so the French is the project's (#245).
   ///
   /// In en, this message translates to:
   /// **'Wrong password'**
