@@ -105,9 +105,19 @@ runs:
         key: buildrunner-${{ hashFiles('.github/actions/flutter-setup/action.yml', '.github/workflows/cache-warmer.yml') }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}-${{ github.sha }}
         restore-keys: buildrunner-${{ hashFiles('.github/actions/flutter-setup/action.yml', '.github/workflows/cache-warmer.yml') }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pubspec.lock') }}-
 
+    # The restored asset graph can name a source file this checkout no longer has, in another package of the workspace (first seen when a pull request deleted a file of features/p2p): build_runner then stops with « InvalidOutputException … Tried to delete from package not in the build » instead of rebuilding, and every run fails until the cache key changes.
+    # So a failed run is tried again once from the state of a cold run: the asset graph and every restored generated file removed (the same suffixes as the cache's paths above; only untracked ignored files, so a tracked one such as main.directories.g.dart is never touched). A failure that is not the cache's fails again and stops the job.
     - name: Generate code (build_runner)
       shell: bash
-      run: make build-runner
+      run: |
+        if ! make build-runner; then
+          echo "::warning::build_runner failed over the restored cache; trying once more from an empty build cache"
+          rm -rf .dart_tool/build
+          git ls-files -z --others --ignored --exclude-standard -- \
+            '*.g.dart' '*.freezed.dart' '*.mocks.dart' '*.gen.dart' '*.gr.dart' '*.config.dart' \
+            | xargs -0 -r rm -f --
+          make build-runner
+        fi
 
     - name: Generate translations
       shell: bash
