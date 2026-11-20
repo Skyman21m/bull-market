@@ -4012,7 +4012,7 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pMakePasswordReadable =>
-      'Whoever asks the coordinator for the order by its number can still read its amount, premium, payment method and your robot\'s name; not its description nor its location.';
+      'Whoever asks the coordinator for the order by its number can still read its side, currency, amount, premium, payment method, bond, timers and your robot\'s name; not its description nor its location.';
 
   @override
   String get p2pMakePasswordHashOnly =>
@@ -4020,12 +4020,12 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String p2pMakePasswordOldCoordinator(String coordinator, String version) {
-    return '$coordinator runs version $version, older than 0.8.7: it shows a protected order to anyone.';
+    return '$coordinator ($version) shows protected orders to anyone.';
   }
 
   @override
   String p2pMakePasswordUnknownVersion(String coordinator) {
-    return 'The version of $coordinator could not be read: before 0.8.7, a protected order is shown to anyone.';
+    return 'Version of $coordinator unknown: a protected order may be visible to anyone.';
   }
 
   @override
@@ -4056,7 +4056,7 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pMakeLocationPublished =>
-      'Sent to the coordinator and published with the order.';
+      'Sent to the coordinator; published with the order unless it has a password.';
 
   @override
   String get p2pMakeLocationDetail =>

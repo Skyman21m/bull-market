@@ -6227,10 +6227,10 @@ abstract class P2pLocalizations {
   /// **'Bull Market cannot take a protected order yet: whoever takes it uses the official RoboSats app, with the link and the password.'**
   String get p2pMakePasswordOfficialApp;
 
-  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`api/views.py:287-299`; design note § 2.4).
+  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`ListOrderSerializer`, `api/serializers.py:83-107`, and `api/views.py:248-299`: type, currency, amount, premium, payment method, bond size, escrow duration, expiry, maker's nickname; location and description removed).
   ///
   /// In en, this message translates to:
-  /// **'Whoever asks the coordinator for the order by its number can still read its amount, premium, payment method and your robot\'s name; not its description nor its location.'**
+  /// **'Whoever asks the coordinator for the order by its number can still read its side, currency, amount, premium, payment method, bond, timers and your robot\'s name; not its description nor its location.'**
   String get p2pMakePasswordReadable;
 
   /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189).
@@ -6239,16 +6239,16 @@ abstract class P2pLocalizations {
   /// **'Only the password\'s SHA-256 leaves this device, and it is not kept: renewing the order asks for the password again.'**
   String get p2pMakePasswordHashOnly;
 
-  /// Not in the RoboSats texts: the project's own: the alert under « Password », in the warning colour, once a password is typed on a coordinator whose `/api/info/` gives a version older than 0.8.7 (#189; advisory GHSA-r6f6-x59j-8q69; design note § 2.4). Never a lock.
+  /// Not in the RoboSats texts: the project's own: the alert in one short line, in the warning colour, under « Password » once a password is typed, or near the summary while the field is not in the form, on a coordinator whose `/api/info/` gives a version older than 0.8.7 (#189; advisory GHSA-r6f6-x59j-8q69 as the design note § 2.4 reports it). Never a lock.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} runs version {version}, older than 0.8.7: it shows a protected order to anyone.'**
+  /// **'{coordinator} ({version}) shows protected orders to anyone.'**
   String p2pMakePasswordOldCoordinator(String coordinator, String version);
 
-  /// Not in the RoboSats texts: the project's own: the alert under « Password », in the warning colour, once a password is typed on a coordinator whose `/api/info/` could not be read (#189). Never a lock.
+  /// Not in the RoboSats texts: the project's own: the alert in one short line, in the warning colour, under « Password » once a password is typed, or near the summary while the field is not in the form, on a coordinator whose `/api/info/` could not be read (#189). Never a lock.
   ///
   /// In en, this message translates to:
-  /// **'The version of {coordinator} could not be read: before 0.8.7, a protected order is shown to anyone.'**
+  /// **'Version of {coordinator} unknown: a protected order may be visible to anyone.'**
   String p2pMakePasswordUnknownVersion(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: in the detail of the alert of a coordinator older than 0.8.7 or of unknown version (#189; design note § 2.4).
@@ -6293,10 +6293,10 @@ abstract class P2pLocalizations {
   /// **'To protect your privacy, the exact location you pin will be slightly randomized.'**
   String get p2pMakeLocationRandomized;
 
-  /// Not in the RoboSats texts: the project's own: under the map where the location is chosen, beside the reference's line (#189; `api/nostr.py:151-153`).
+  /// Not in the RoboSats texts: the project's own: under the map where the location is chosen, beside the reference's line (#189; `api/nostr.py:28-30`, `:151-153`: an order with a password is not published on Nostr).
   ///
   /// In en, this message translates to:
-  /// **'Sent to the coordinator and published with the order.'**
+  /// **'Sent to the coordinator; published with the order unless it has a password.'**
   String get p2pMakeLocationPublished;
 
   /// Not in the RoboSats texts: the project's own: in the detail of « Face to Face Location » (#189; `F2fMap.tsx` `onSave`, `api/views.py:291-298`, `api/nostr.py:29`, `:151-153`).
