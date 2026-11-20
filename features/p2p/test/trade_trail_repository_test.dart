@@ -588,7 +588,8 @@ void main() {
         "version, network, coordinator_alias, order_id, role, 'bondStep', "
         'read_at + 1, bond_hash, escrow_hash, deadline, bond_step_seen_at, '
         'bond_step_deadline, breached, history_unknown, take, take_deadline, '
-        'taker_hash_id, taken_amount, earlier_escrows, seen_late, terms_changed_at, terms_changed_premium FROM trade_trails',
+        'taker_hash_id, taken_amount, earlier_escrows, seen_late, terms_changed_at, terms_changed_premium_low, '
+        'terms_changed_premium_high FROM trade_trails',
       );
       expect(await row('trade_trails'), before);
     });

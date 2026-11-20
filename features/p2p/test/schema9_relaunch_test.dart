@@ -544,6 +544,34 @@ void main() {
   );
 
   testWidgets(
+    'the line says the order\'s own premium from its terms kept here, never the premium a read shows within the tolerance, on the panel and in the dialog (security review of schema 9, R1)',
+    (tester) async {
+      final run = await buyerAtPayout(tester);
+      await toChat(run, 'f2' * 32);
+      final world = run.world;
+      world.coordinator.orderChanges[world.order.id] = {'premium': '7.00'};
+      await run.waitFor(
+        find.text('The terms of the order are not those of the order taken.'),
+        seconds: 200,
+      );
+      // Put back to a premium closer to the order's own than the tolerance: no change of terms, and a read whose premium is not the order's.
+      world.coordinator.orderChanges[world.order.id] = {'premium': '2.004'};
+      final trace = find.textContaining(
+        'up to a premium of +7.0% instead of +2.0%.',
+      );
+      await run.waitFor(trace, seconds: 200);
+      expect(find.textContaining('+2.004%'), findsNothing);
+      await run.tap(find.widgetWithText(TradeButton, 'Confirm 100 USD sent'));
+      await settle(tester);
+      expect(trace, findsNWidgets(2));
+      expect(find.textContaining('+2.004%'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
     'a contract seen late, its payout invoice never seen here: the red line of the payment rule alone, never the line of where the payout came from beside it, before « Confirm … sent » and in its dialog (functional review of schema 9, C2)',
     (tester) async {
       final world = await _World.of(tester);

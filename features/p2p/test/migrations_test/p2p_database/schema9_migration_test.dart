@@ -118,11 +118,22 @@ void main() {
       // The new columns of every older row: empty, « unknown » and « no trace recorded », never 0.
       expect(
         await _rowsOf(migrated, {
-          'trade_trails': ['terms_changed_at', 'terms_changed_premium'],
+          'trade_trails': [
+            'terms_changed_at',
+            'terms_changed_premium_low',
+            'terms_changed_premium_high',
+          ],
           'trade_payments': ['confirmed_sats'],
         }),
         {
-          'trade_trails': List.filled(8, ['null', null, 'null', null]),
+          'trade_trails': List.filled(8, [
+            'null',
+            null,
+            'null',
+            null,
+            'null',
+            null,
+          ]),
           'trade_payments': List.filled(7, ['null', null]),
         },
       );
@@ -375,62 +386,9 @@ void main() {
           Err(:final failure) => fail('$failure'),
         };
         expect(trail.termsChangedAtMicros, isNull);
-        expect(trail.termsChangedPremium, isNull);
-        await expectLater(
-          database.customStatement(
-            "UPDATE trade_trails SET terms_changed_at = 5 WHERE robot_index = 1 AND key_fingerprint = '$_key'",
-          ),
-          throwsA(
-            predicate(
-              (error) => '$error'.contains(
-                'the trace of terms shown otherwise is kept',
-              ),
-            ),
-          ),
-        );
-        await database.customStatement(
-          "UPDATE trade_trails SET read_at = 1300000, terms_changed_at = 1300000, terms_changed_premium = 7.0 WHERE robot_index = 1 AND key_fingerprint = '$_key'",
-        );
-        Future<void> refused(String change, int robot) => expectLater(
-          database.customStatement(
-            "UPDATE trade_trails SET $change WHERE robot_index = $robot AND key_fingerprint = '$_key'",
-          ),
-          throwsA(
-            predicate(
-              (error) => '$error'.contains(
-                'the trace of terms shown otherwise is kept',
-              ),
-            ),
-          ),
-          reason: change,
-        );
-        Future<void> accepted(
-          String change,
-          int robot,
-        ) => database.customStatement(
-          "UPDATE trade_trails SET $change WHERE robot_index = $robot AND key_fingerprint = '$_key'",
-        );
-        // The taker's own premium is -1.5 (its `trade_terms`): 7 is 8.5 away.
-        for (final change in [
-          'terms_changed_at = NULL, terms_changed_premium = NULL',
-          'terms_changed_premium = NULL',
-          'terms_changed_premium = 6.0',
-          'terms_changed_premium = -10.0',
-          'read_at = 1400000, terms_changed_at = 1400000',
-        ]) {
-          await refused(change, 1);
-        }
-        // Farther, above or below: taken (security review of schema 9, C1); as far, or closer, refused.
-        await accepted('terms_changed_premium = 8.0', 1);
-        await refused('terms_changed_premium = -11.0', 1);
-        await accepted('terms_changed_premium = -12.0', 1);
-        await refused('terms_changed_premium = 8.0', 1);
-        // The maker's own premium is -1.25 (its `maker_terms`): a trace set with another term first, then premiums.
-        await accepted('read_at = 1800000, terms_changed_at = 1800000', 6);
-        await accepted('terms_changed_premium = 5.0', 6);
-        await accepted('terms_changed_premium = -8.0', 6);
-        await refused('terms_changed_premium = 4.0', 6);
-        await refused('terms_changed_premium = NULL', 6);
+        expect(trail.termsChangedPremiumLow, isNull);
+        expect(trail.termsChangedPremiumHigh, isNull);
+        await _termsTraceRules(database);
       },
     );
 
@@ -468,6 +426,19 @@ void main() {
       },
     );
   });
+
+  test(
+    'on a new file, the trigger keeps the trace as on a migrated one (security verification of schema 9, R8)',
+    () async {
+      final fresh = P2pDatabase.forTesting(NativeDatabase.memory());
+      expect(await _versionOf(fresh), 9);
+      for (final statement in _schema8Rows) {
+        await fresh.customStatement(statement);
+      }
+      await _termsTraceRules(fresh);
+      await fresh.close();
+    },
+  );
 }
 
 /// The record of robot [index] of the rows' key on testnet with temple.
@@ -537,6 +508,71 @@ final class _OpenedThrough implements QueryExecutorUser {
       _user.beforeOpen(executor.interceptWith(_interceptor), details);
 }
 
+/// The rule of the trigger `trade_trails_terms_trace` over [database], migrated or new, holding the trails of [_schema8Rows] (security verification of schema 9, R8): the time set once, with its read's own; the lowest premium only going down, the highest only up, neither cleared; widening taken, a premium in between moving nothing.
+Future<void> _termsTraceRules(GeneratedDatabase database) async {
+  Future<void> change(String set, int robot) => database.customStatement(
+    "UPDATE trade_trails SET $set WHERE robot_index = $robot AND key_fingerprint = '$_key'",
+  );
+  Future<void> refused(String set, int robot) => expectLater(
+    change(set, robot),
+    throwsA(
+      predicate(
+        (error) =>
+            '$error'.contains('the trace of terms shown otherwise is kept'),
+      ),
+    ),
+    reason: set,
+  );
+  await refused('terms_changed_at = 5', 1);
+  await change(
+    'read_at = 1300000, terms_changed_at = 1300000, terms_changed_premium_low = 7.0, terms_changed_premium_high = 7.0',
+    1,
+  );
+  for (final set in [
+    'terms_changed_at = NULL, terms_changed_premium_low = NULL, terms_changed_premium_high = NULL',
+    'terms_changed_premium_low = NULL, terms_changed_premium_high = NULL',
+    'terms_changed_premium_low = 8.0, terms_changed_premium_high = 8.0',
+    'terms_changed_premium_high = 6.0, terms_changed_premium_low = 6.0',
+    'read_at = 1400000, terms_changed_at = 1400000',
+  ]) {
+    await refused(set, 1);
+  }
+  // Widening, below then above: taken.
+  await change('terms_changed_premium_low = -3.0', 1);
+  await change('terms_changed_premium_high = 9.0', 1);
+  // A premium in between: nothing moves, and the same values are taken.
+  await change(
+    'terms_changed_premium_low = -3.0, terms_changed_premium_high = 9.0',
+    1,
+  );
+  await refused('terms_changed_premium_low = -2.0', 1);
+  await refused('terms_changed_premium_high = 8.0', 1);
+  await refused('terms_changed_premium_low = NULL', 1);
+  await refused('terms_changed_premium_high = NULL', 1);
+  final kept = await database
+      .customSelect(
+        "SELECT terms_changed_at, terms_changed_premium_low, terms_changed_premium_high FROM trade_trails WHERE robot_index = 1 AND key_fingerprint = '$_key'",
+      )
+      .getSingle();
+  expect(kept.data, {
+    'terms_changed_at': 1300000,
+    'terms_changed_premium_low': -3.0,
+    'terms_changed_premium_high': 9.0,
+  });
+  // Another term first, then premiums.
+  await change('read_at = 1800000, terms_changed_at = 1800000', 6);
+  await change(
+    'terms_changed_premium_low = 5.0, terms_changed_premium_high = 5.0',
+    6,
+  );
+  await change('terms_changed_premium_low = -8.0', 6);
+  await refused('terms_changed_premium_high = 4.0', 6);
+  await refused(
+    'terms_changed_premium_low = NULL, terms_changed_premium_high = NULL',
+    6,
+  );
+}
+
 /// The kind of a statement of the step: what it does, and to what.
 String _kindOf(String statement) {
   final words = statement
@@ -561,7 +597,8 @@ String _kindOf(String statement) {
 const _stepKinds = [
   'add trade_payments.confirmed_sats',
   'add trade_trails.terms_changed_at',
-  'add trade_trails.terms_changed_premium',
+  'add trade_trails.terms_changed_premium_low',
+  'add trade_trails.terms_changed_premium_high',
   'create trade_payouts',
   'drop trigger trade_payouts_never_deleted',
   'drop trigger trade_payouts_forward',

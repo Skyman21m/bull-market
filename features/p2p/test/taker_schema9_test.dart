@@ -116,7 +116,8 @@ void main() {
       final changed = await read(app, record);
       expect(changed.status.has<TradeTermsChanged>(), isTrue);
       expect(changed.status.trail.termsChangedAt, shownAt);
-      expect(changed.status.trail.termsChangedPremium, isNull);
+      expect(changed.status.trail.termsChangedPremiumLow, isNull);
+      expect(changed.status.trail.termsChangedPremiumHigh, isNull);
       await app.elapse(const Duration(minutes: 1));
       app.coordinator.explicitSatoshis = null;
       final back = await read(app, record);

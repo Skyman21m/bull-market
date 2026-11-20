@@ -175,4 +175,86 @@ void main() {
       expect(payoutLines, [unknown, unknown, unknown, null]);
     },
   );
+
+  testWidgets(
+    'the line says the side that was shown: above only, the highest; below only, the lowest; both sides, both; from the first time, in English and in French (security verification of schema 9, R8)',
+    (tester) async {
+      final seen = <String, TradeSeen>{};
+      await tester.runAsync(() async {
+        for (final (name, premiums) in [
+          ('above', ['99.00']),
+          ('below', ['-10.00']),
+          ('both', ['-10.00', '7.00', '1.00']),
+        ]) {
+          final harness = await MakeHarness.start();
+          final record = await atChat(harness);
+          final changes = harness.coordinator.orderChanges;
+          for (final premium in premiums) {
+            await harness.elapse(const Duration(minutes: 3));
+            changes[record.orderId] = {'premium': premium};
+            await read(harness, record);
+            await harness.elapse(const Duration(minutes: 3));
+            changes.remove(record.orderId);
+            seen[name] = await read(harness, record);
+          }
+        }
+      });
+      final lines = <String, String?>{};
+      for (final locale in ['en', 'fr']) {
+        await tester.pumpWidget(
+          harness(
+            Builder(
+              builder: (context) {
+                for (final MapEntry(:key, :value) in seen.entries) {
+                  lines['$locale $key'] = termsShownOtherwise(
+                    context,
+                    value.status,
+                    'Temple of Sats',
+                    own: value.ownPremium,
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            locale: Locale(locale),
+          ),
+        );
+      }
+      String at(String locale, String name, String text) {
+        final line = lines['$locale $name'] ?? fail('no line $locale $name');
+        expect(line, endsWith(text), reason: '$locale $name');
+        return line;
+      }
+
+      expect(
+        at('en', 'above', ', up to a premium of +99.0% instead of +2.0%.'),
+        startsWith('Temple of Sats showed this trade with other terms from '),
+      );
+      at('en', 'below', ', with a premium down to -10.0% instead of +2.0%.');
+      at(
+        'en',
+        'both',
+        ', with premiums from -10.0% to +7.0% instead of +2.0%.',
+      );
+      expect(
+        at('fr', 'above', ', jusqu’à une prime de +99,0 % au lieu de +2,0 %.'),
+        startsWith(
+          'Temple of Sats a montré cet échange avec d’autres conditions à partir du ',
+        ),
+      );
+      at(
+        'fr',
+        'below',
+        ', avec une prime descendue à −10,0 % au lieu de +2,0 %.',
+      );
+      at(
+        'fr',
+        'both',
+        ', avec des primes de −10,0 % à +7,0 % au lieu de +2,0 %.',
+      );
+      // A premium in between afterwards (+1) moved neither.
+      expect(seen['both']?.status.trail.termsChangedPremiumLow, -10);
+      expect(seen['both']?.status.trail.termsChangedPremiumHigh, 7);
+    },
+  );
 }

@@ -1239,7 +1239,8 @@ class RobotCoordinatorCubit {
       // Schema 9 (#233, #231): the amount of a payment and the trace of terms shown otherwise, columns of tables that are not the bindings.
       'addColumn(schema.tradePayments, schema.tradePayments.confirmedSats)',
       'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedAt)',
-      'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremium)',
+      'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremiumLow)',
+      'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremiumHigh)',
     ]);
     // Every call of the migrator, in order: nothing else changes a table; schema 3 adds the table of the trades, the unique index its foreign key needs on the bindings, and its two triggers.
     expect(database.qualifiedCalls.where((call) => call.startsWith('m.')), [
@@ -1312,10 +1313,11 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradePaymentsOfTheirTrade)',
       'm.createTrigger(schema.tradePaymentsForward)',
       'm.createTrigger(schema.tradePaymentsHashOnce)',
-      // Schema 9 (#204, #231, #233): three columns added, the payouts' table, its triggers, and the new triggers of the trails and the payments, each the newest of its table.
+      // Schema 9 (#204, #231, #233): four columns added, the payouts' table, its triggers, and the new triggers of the trails and the payments, each the newest of its table.
       'm.addColumn(schema.tradePayments, schema.tradePayments.confirmedSats)',
       'm.addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedAt)',
-      'm.addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremium)',
+      'm.addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremiumLow)',
+      'm.addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremiumHigh)',
       'm.createTable(schema.tradePayouts)',
       'm.createTrigger(schema.tradePayoutsNeverDeleted)',
       'm.createTrigger(schema.tradePayoutsForward)',
@@ -1457,8 +1459,10 @@ class RobotCoordinatorCubit {
       'addColumn(schema.tradePayments, schema.tradePayments.confirmedSats)',
       '_hasColumn(_trails, \'terms_changed_at\')',
       'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedAt)',
-      '_hasColumn(_trails, \'terms_changed_premium\')',
-      'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremium)',
+      '_hasColumn(_trails, \'terms_changed_premium_low\')',
+      'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremiumLow)',
+      '_hasColumn(_trails, \'terms_changed_premium_high\')',
+      'addColumn(schema.tradeTrails, schema.tradeTrails.termsChangedPremiumHigh)',
       'createTable(schema.tradePayouts)',
       'customStatement(_dropTradePayoutsNeverDeleted)',
       'customStatement(_dropTradePayoutsForward)',
@@ -1782,9 +1786,9 @@ class RobotCoordinatorCubit {
         'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
         'bond_step_deadline, breached, history_unknown, take, take_deadline, '
         'taker_hash_id, taken_amount, earlier_escrows, seen_late, '
-        'terms_changed_at, terms_changed_premium) '
+        'terms_changed_at, terms_changed_premium_low, terms_changed_premium_high) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-        '?, ?) '
+        '?, ?, ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING robot_index',
       );
@@ -1795,7 +1799,7 @@ class RobotCoordinatorCubit {
         'bond_step_deadline = ?, breached = ?, history_unknown = ?, take = ?, '
         'take_deadline = ?, taker_hash_id = ?, taken_amount = ?, '
         'earlier_escrows = ?, seen_late = ?, terms_changed_at = ?, '
-        'terms_changed_premium = ? '
+        'terms_changed_premium_low = ?, terms_changed_premium_high = ? '
         'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
         'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
         'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
@@ -1803,7 +1807,8 @@ class RobotCoordinatorCubit {
         'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
         'AND take IS ? AND take_deadline IS ? AND taker_hash_id IS ? '
         'AND taken_amount IS ? AND earlier_escrows IS ? AND seen_late IS ? '
-        'AND terms_changed_at IS ? AND terms_changed_premium IS ? '
+        'AND terms_changed_at IS ? AND terms_changed_premium_low IS ? '
+        'AND terms_changed_premium_high IS ? '
         'RETURNING robot_index',
       );
       final pinned = [
@@ -2937,8 +2942,8 @@ const _trailTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL AND NEW.take = 0 AND ((trades.origin IN ('takenHere', 'recovered') AND NEW.take_deadline IS NULL AND NEW.taker_hash_id IS NULL AND NEW.taken_amount IS NULL AND EXISTS (SELECT 1 FROM trade_terms WHERE trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index)) OR (trades.origin = 'madeHere' AND EXISTS (SELECT 1 FROM maker_terms WHERE maker_terms.key_fingerprint = trades.key_fingerprint AND maker_terms.robot_index = trades.robot_index)))) BEGIN SELECT RAISE(ABORT, 'a trail of no open trade'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL) BEGIN SELECT RAISE(IGNORE); END",
   "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take) OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at)) OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL) OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position) OR (NEW.take IS NOT OLD.take AND NOT (NEW.take IS OLD.take + 1 AND OLD.position IN ('public', 'paused', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NOT (OLD.position = 'waitingForPayout' AND OLD.role = 'buyer') AND OLD.take_deadline IS NOT NULL AND ((NEW.position IN ('waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND NEW.seen_late = 0) OR (NEW.position IN ('chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL AND NEW.escrow_hash IS NULL AND (OLD.position IN ('public', 'paused') OR NEW.taker_hash_id IS NOT OLD.taker_hash_id) AND NEW.seen_late = 1)) AND NEW.earlier_escrows IS (OLD.earlier_escrows || coalesce(OLD.escrow_hash || ';', '')) AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere'))) OR (NEW.take IS OLD.take AND (NEW.earlier_escrows IS NOT OLD.earlier_escrows OR NEW.seen_late IS NOT OLD.seen_late)) OR (NEW.escrow_hash IS NOT NULL AND instr(';' || NEW.earlier_escrows, ';' || NEW.escrow_hash || ';') > 0) OR (OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL) OR (OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL) OR (OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL) OR (NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline) OR (NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id) OR (NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount) OR (NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL) OR (NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL) OR ((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere')) BEGIN SELECT RAISE(ABORT, 'a trail only moves forward'); END",
-  // Schema 9 (#231): the trace of terms shown otherwise, set once with its read's time, never changed nor cleared.
-  "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN (OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at) OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at) OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL) OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0)) BEGIN SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept'); END",
+  // Schema 9 (#231; security verification, R8): the trace of terms shown otherwise, its time set once with its read's, its lowest premium only going down, its highest only up, neither cleared, without a subquery.
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN (OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at) OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at) OR (OLD.terms_changed_premium_low IS NOT NULL AND (NEW.terms_changed_premium_low IS NULL OR NEW.terms_changed_premium_low > OLD.terms_changed_premium_low)) OR (OLD.terms_changed_premium_high IS NOT NULL AND (NEW.terms_changed_premium_high IS NULL OR NEW.terms_changed_premium_high < OLD.terms_changed_premium_high)) BEGIN SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept'); END",
 ];
 
 /// The triggers of `trade_trails.drift`, squeezed.
