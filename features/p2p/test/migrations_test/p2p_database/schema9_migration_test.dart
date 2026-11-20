@@ -432,8 +432,14 @@ void main() {
     () async {
       final fresh = P2pDatabase.forTesting(NativeDatabase.memory());
       expect(await _versionOf(fresh), 9);
+      // The same trails, written as schema 9 writes them (its three new columns empty); the payments, which schema 9 never starts without an amount, are not needed here.
       for (final statement in _schema8Rows) {
-        await fresh.customStatement(statement);
+        if (statement.startsWith(_payments)) continue;
+        await fresh.customStatement(
+          statement.startsWith(_trails)
+              ? '${statement.substring(0, statement.length - 1)}, NULL, NULL, NULL)'
+              : statement,
+        );
       }
       await _termsTraceRules(fresh);
       await fresh.close();

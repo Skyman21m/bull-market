@@ -237,7 +237,11 @@ void main() {
         ', with premiums from -10.0% to +7.0% instead of +2.0%.',
       );
       expect(
-        at('fr', 'above', ', jusqu’à une prime de +99,0 % au lieu de +2,0 %.'),
+        at(
+          'fr',
+          'above',
+          ', jusqu’à une prime de +99,0\u00a0% au lieu de +2,0\u00a0%.',
+        ),
         startsWith(
           'Temple of Sats a montré cet échange avec d’autres conditions à partir du ',
         ),
@@ -245,12 +249,12 @@ void main() {
       at(
         'fr',
         'below',
-        ', avec une prime descendue à −10,0 % au lieu de +2,0 %.',
+        ', avec une prime descendue à -10,0\u00a0% au lieu de +2,0\u00a0%.',
       );
       at(
         'fr',
         'both',
-        ', avec des primes de −10,0 % à +7,0 % au lieu de +2,0 %.',
+        ', avec des primes de -10,0\u00a0% à +7,0\u00a0% au lieu de +2,0\u00a0%.',
       );
       // A premium in between afterwards (+1) moved neither.
       expect(seen['both']?.status.trail.termsChangedPremiumLow, -10);
