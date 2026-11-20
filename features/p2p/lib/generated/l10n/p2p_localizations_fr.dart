@@ -4059,7 +4059,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakePasswordShare =>
-      'Partagez le lien de l’ordre (« Copier l’URL » sur sa page une fois créé) et le mot de passe avec les robots de votre choix.';
+      'Partagez le lien de l’ordre (« Copier l\'URL » sur sa page une fois créé) et le mot de passe avec les robots de votre choix.';
 
   @override
   String get p2pMakePasswordOfficialApp =>
