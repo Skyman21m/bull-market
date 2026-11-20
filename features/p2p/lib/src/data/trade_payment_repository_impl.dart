@@ -11,13 +11,15 @@ import 'p2p_database.dart';
 
 /// The payments of a trade's invoices asked of the wallet, in the feature's database (schema 5, #100).
 ///
-/// Each write is one statement, which SQLite runs atomically. The triggers of `trade_payments.drift` refuse, whatever the code, any delete, a second insert of a trade's step and contract, a payment of no open trade, of a trade never read or of a contract its trail is not at, a payment hash another payment holds, and any update that changes a payment's trade, step, contract or hash or moves its start back.
+/// Each write is one statement, which SQLite runs atomically. The triggers of `trade_payments.drift` refuse, whatever the code, any delete, a second insert of a trade's step and contract, a payment of no open trade, of a trade never read or of a contract its trail is not at, a payment hash another payment holds, a payment recorded without its amount (schema 9), and any update that changes a payment's trade, step, contract or hash, moves its start back, or lowers, clears or invents its amount.
 /// This class is the only writer of the table, and opens no transaction.
 /// It returns no row of the database: the records only, and a [P2pStorageFailure] for any [Exception] the database throws; an [Error] is a bug (AGENTS.md, rule 11) and is not caught.
 final class TradePaymentRepositoryImpl implements TradePaymentRepository {
-  /// A new attempt of the payment already recorded for this invoice: its start moved forward, the earlier attempt's id kept until the wallet gives a new one (a payment that may have moved funds is never forgotten); whether or not its trade is still open (the use case pays only from a status it has just read and stored, so an open trade); the row comes back only when it is this invoice's.
+  /// A new attempt of the payment already recorded for this invoice: its start moved forward, the earlier attempt's id kept until the wallet gives a new one (a payment that may have moved funds is never forgotten), its amount the larger of the two (an earlier attempt may still hold funds), and an amount never known, of a payment recorded before schema 9, left unknown (#233); whether or not its trade is still open (the use case pays only from a status it has just read and stored, so an open trade); the row comes back only when it is this invoice's.
   static const String _restartSql =
-      'UPDATE trade_payments SET started_at = max(started_at, ?) '
+      'UPDATE trade_payments SET started_at = max(started_at, ?), '
+      'confirmed_sats = CASE WHEN confirmed_sats IS NULL THEN NULL '
+      'ELSE max(confirmed_sats, ?) END '
       'WHERE key_fingerprint = ? AND robot_index = ? AND step = ? '
       'AND take = ? AND payment_hash = ? '
       'RETURNING robot_index';
@@ -25,8 +27,8 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
   /// The first attempt of a trade's step and contract: a second insert writes nothing (the trigger `trade_payments_inserted_once`), nor one of a closed or unread trade, of a contract the trail is not at, or of a payment hash another payment holds (`trade_payments_of_their_trade` and `trade_payments_hash_once` abort it), so the row comes back only when this call wrote it.
   static const String _startSql =
       'INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, '
-      'payment_hash, started_at, wallet_payment_id) '
-      'VALUES (?, ?, ?, ?, ?, ?, NULL) '
+      'payment_hash, started_at, wallet_payment_id, confirmed_sats) '
+      'VALUES (?, ?, ?, ?, ?, ?, NULL, ?) '
       'RETURNING robot_index';
 
   /// The wallet's id of the payment of this invoice.
@@ -37,13 +39,15 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
       'RETURNING robot_index';
 
   static const String _paymentSql =
-      'SELECT payment_hash, started_at, wallet_payment_id FROM trade_payments '
+      'SELECT payment_hash, started_at, wallet_payment_id, confirmed_sats '
+      'FROM trade_payments '
       'WHERE key_fingerprint = ? AND robot_index = ? AND step = ? AND take = ?';
 
   /// Every payment of a trade, by contract then step.
   static const String _paymentsSql =
-      'SELECT step, take, payment_hash, started_at, wallet_payment_id '
-      'FROM trade_payments WHERE key_fingerprint = ? AND robot_index = ? '
+      'SELECT step, take, payment_hash, started_at, wallet_payment_id, '
+      'confirmed_sats FROM trade_payments '
+      'WHERE key_fingerprint = ? AND robot_index = ? '
       'ORDER BY take, step';
 
   /// Whether any payment holds a payment hash.
@@ -98,6 +102,7 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
         data['payment_hash'],
         data['started_at'],
         data['wallet_payment_id'],
+        data['confirmed_sats'],
       )) {
         case (
           final step?,
@@ -105,6 +110,7 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
           final String hash,
           final int startedAt,
           final String? id,
+          final int? sats,
         ):
           payments.add(
             TradePaymentRecord(
@@ -116,6 +122,7 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
               ),
               walletPaymentId: id,
               take: take,
+              confirmedSats: sats == null ? null : Sats.fromInt(sats),
             ),
           );
         // A row this code never writes.
@@ -154,19 +161,27 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
       data['payment_hash'],
       data['started_at'],
       data['wallet_payment_id'],
+      data['confirmed_sats'],
     )) {
-      (final String hash, final int startedAt, final String? id) => Ok(
-        TradePaymentRecord(
-          step: step,
-          paymentHash: hash,
-          startedAt: DateTime.fromMicrosecondsSinceEpoch(
-            startedAt,
-            isUtc: true,
+      (
+        final String hash,
+        final int startedAt,
+        final String? id,
+        final int? sats,
+      ) =>
+        Ok(
+          TradePaymentRecord(
+            step: step,
+            paymentHash: hash,
+            startedAt: DateTime.fromMicrosecondsSinceEpoch(
+              startedAt,
+              isUtc: true,
+            ),
+            walletPaymentId: id,
+            take: take,
+            confirmedSats: sats == null ? null : Sats.fromInt(sats),
           ),
-          walletPaymentId: id,
-          take: take,
         ),
-      ),
       // A row this code never writes.
       _ => const Err(P2pStorageFailure()),
     };
@@ -178,8 +193,12 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
     InvoiceStep step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   }) async {
+    // An amount the records cannot hold is refused before anything is written: the wallet is then not asked.
+    if (!sats.value.isValidInt) return const Err(P2pStorageFailure());
+    final amount = Variable.withInt(sats.value.toInt());
     final key = [
       ..._robotVariables(trade.robot),
       Variable.withString(step.name),
@@ -189,14 +208,14 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
     try {
       final restarted = await _database.customWriteReturning(
         _restartSql,
-        variables: [Variable.withInt(at.microsecondsSinceEpoch), ...key],
+        variables: [Variable.withInt(at.microsecondsSinceEpoch), amount, ...key],
         updates: {_database.storedTradePayments},
         updateKind: UpdateKind.update,
       );
       if (restarted.isNotEmpty) return const Ok(true);
       final started = await _database.customWriteReturning(
         _startSql,
-        variables: [...key, Variable.withInt(at.microsecondsSinceEpoch)],
+        variables: [...key, Variable.withInt(at.microsecondsSinceEpoch), amount],
         updates: {_database.storedTradePayments},
         updateKind: UpdateKind.insert,
       );

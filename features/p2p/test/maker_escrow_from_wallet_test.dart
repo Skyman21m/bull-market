@@ -59,6 +59,7 @@ final class _KilledBeforeWallet implements TradePaymentRepository {
     InvoiceStep step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   }) async {
     final written = await inner.recordStart(
@@ -66,6 +67,7 @@ final class _KilledBeforeWallet implements TradePaymentRepository {
       step,
       paymentHash: paymentHash,
       at: at,
+      sats: sats,
       take: take,
     );
     if (armed) throw AppKilled();
@@ -117,12 +119,14 @@ final class _KilledAfterWallet implements TradePaymentRepository {
     InvoiceStep step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   }) => inner.recordStart(
     trade,
     step,
     paymentHash: paymentHash,
     at: at,
+    sats: sats,
     take: take,
   );
 
@@ -180,12 +184,14 @@ final class _WithRows implements TradePaymentRepository {
     InvoiceStep step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   }) => inner.recordStart(
     trade,
     step,
     paymentHash: paymentHash,
     at: at,
+    sats: sats,
     take: take,
   );
 
@@ -1551,6 +1557,7 @@ void main() {
               InvoiceStep.escrow,
               paymentHash: invoice.paymentHash,
               at: first.harness.now,
+              sats: Sats.fromInt(5000),
             ),
             isA<Ok<bool, P2pFailure>>(),
           );

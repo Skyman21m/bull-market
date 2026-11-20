@@ -36,15 +36,17 @@ abstract interface class TradePaymentRepository {
   @useResult
   Future<Result<bool, P2pFailure>> holdsPaymentHash(String paymentHash);
 
-  /// Records, before the wallet is asked, that an attempt to pay the invoice of [paymentHash] for [trade]'s [step] starts at [at]: the payment when there was none, or a new attempt of the same invoice (its start moved to [at] unless already later, the id of the earlier attempt kept until the wallet gives a new one).
+  /// Records, before the wallet is asked, that an attempt to pay the invoice of [paymentHash] for [trade]'s [step] starts at [at], taking [sats] out of the wallet (the total of the quote the user confirmed, schema 9, #233): the payment when there was none, or a new attempt of the same invoice (its start moved to [at] unless already later, the id of the earlier attempt kept until the wallet gives a new one, its amount the larger of the two, or still unknown for a payment recorded before schema 9).
   ///
-  /// `false`: nothing was written, since [trade]'s payment of [step] in contract [take] is of another invoice. A first attempt for a closed or never read trade, for a contract its trail is not at, or of a payment hash another payment of any trade, step or contract holds, is refused by the database ([P2pStorageFailure]); a new attempt of the same invoice is written whether the trade is still open or not, the caller paying only from a status it has just read and stored. Either way the wallet is not asked unless this is `true`.
+  /// One statement, committed before it returns: the amount is on disk with the payment's start before the wallet is asked, whatever happens next.
+  /// `false`: nothing was written, since [trade]'s payment of [step] in contract [take] is of another invoice. A first attempt for a closed or never read trade, for a contract its trail is not at, or of a payment hash another payment of any trade, step or contract holds, is refused by the database ([P2pStorageFailure]), and so is an amount the records cannot hold (none, or beyond 21 million bitcoins); a new attempt of the same invoice is written whether the trade is still open or not, the caller paying only from a status it has just read and stored. Either way the wallet is not asked unless this is `true`.
   @useResult
   Future<Result<bool, P2pFailure>> recordStart(
     TradeRecord trade,
     InvoiceStep step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   });
 

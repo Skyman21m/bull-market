@@ -107,6 +107,7 @@ final class _Unwritable implements TradePaymentRepository {
     step, {
     required String paymentHash,
     required DateTime at,
+    required Sats sats,
     int take = 0,
   }) async => const Err(P2pStorageFailure());
 
@@ -566,6 +567,7 @@ void main() {
           InvoiceStep.bond,
           paymentHash: quote.invoice.paymentHash,
           at: setup.harness.now,
+          sats: Sats.fromInt(5000),
         );
         expect(
           first,
@@ -577,6 +579,7 @@ void main() {
           InvoiceStep.bond,
           paymentHash: 'cd${'0' * 62}',
           at: setup.harness.now.add(const Duration(minutes: 1)),
+          sats: Sats.fromInt(5000),
         );
         expect(
           other,
@@ -596,6 +599,7 @@ void main() {
           InvoiceStep.bond,
           paymentHash: 'cd${'0' * 62}',
           at: setup.harness.now,
+          sats: Sats.fromInt(5000),
         );
         final paid = await setup.payBond.payBond(setup.record, accepted: quote);
         expect(
@@ -791,6 +795,7 @@ void main() {
         InvoiceStep.bond,
         paymentHash: quote.invoice.paymentHash,
         at: setup.harness.now,
+        sats: Sats.fromInt(5000),
       );
       expect(await setup.payBond.followBond(setup.record).toList(), [
         isA<BondPaymentNone>(),
@@ -809,6 +814,7 @@ void main() {
           InvoiceStep.bond,
           paymentHash: hash,
           at: setup.harness.now,
+          sats: Sats.fromInt(5000),
         );
         final payment = P2pWalletPayment(id: 'swap-5', paymentHash: hash);
         setup.fake

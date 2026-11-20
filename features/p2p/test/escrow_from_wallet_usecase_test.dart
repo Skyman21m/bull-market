@@ -364,6 +364,7 @@ void main() {
         InvoiceStep.escrow,
         paymentHash: hash,
         at: seller.app.now,
+        sats: Sats.fromInt(5000),
       );
       expect(await seller.bond.followBond(seller.record).toList(), [
         isA<BondPaymentNone>(),
@@ -402,6 +403,7 @@ void main() {
           InvoiceStep.bond,
           paymentHash: bondHash,
           at: seller.app.now,
+          sats: Sats.fromInt(5000),
         ),
         isA<Ok<bool, P2pFailure>>().having((o) => o.value, 'value', isTrue),
       );
@@ -411,6 +413,7 @@ void main() {
           InvoiceStep.escrow,
           paymentHash: escrowHash,
           at: seller.app.now,
+          sats: Sats.fromInt(5000),
         ),
         isA<Ok<bool, P2pFailure>>().having((o) => o.value, 'value', isTrue),
       );
