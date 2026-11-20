@@ -387,7 +387,15 @@ final class _Journey {
     await tap(find.text(words.create));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    await tap(inForm(find.text(buy ? 'Buy' : words.sell)));
+    await tap(
+      inForm(
+        find.text(
+          buy
+              ? (words.locale.languageCode == 'en' ? 'Buy' : 'Acheter')
+              : words.sell,
+        ),
+      ),
+    );
     await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
     await settle(tester);
     await tap(inForm(find.byTooltip(words.addMethod)));
@@ -1438,8 +1446,14 @@ void main() {
           expect(row(PayoutBreakdownView.invoiceRow), words.sats(asked));
           expect(find.text(given), findsOneWidget);
           // « You receive » and « Submit invoice for … Sats » no longer said apart.
-          expect(find.textContaining(RegExp(r'You receive [0-9]')), findsNothing);
-          expect(find.textContaining(RegExp(r'Vous recevez [0-9]')), findsNothing);
+          expect(
+            find.textContaining(RegExp(r'You receive [0-9]')),
+            findsNothing,
+          );
+          expect(
+            find.textContaining(RegExp(r'Vous recevez [0-9]')),
+            findsNothing,
+          );
           expect(find.textContaining('Submit invoice for'), findsNothing);
           expect(
             find.textContaining('At the Bull wallet\'s price'),
