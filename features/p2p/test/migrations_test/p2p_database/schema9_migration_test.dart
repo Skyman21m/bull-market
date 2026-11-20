@@ -1,0 +1,811 @@
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
+import 'package:drift/native.dart';
+import 'package:drift_dev/api/migrations_native.dart';
+import 'package:p2p/src/data/p2p_database.dart';
+import 'package:p2p/src/data/trade_payment_repository_impl.dart';
+import 'package:p2p/src/data/trade_payout_repository_impl.dart';
+import 'package:p2p/src/data/trade_trail_repository_impl.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade/payout_trace.dart';
+import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show RobosatsNetwork;
+import 'package:test/test.dart';
+
+import 'generated/schema_v8.dart' as v8;
+
+/// The step from schema 8 to schema 9 of `p2p.sqlite` (#204, #231, #233; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis) over a file of schema 8 that holds every shape of row a user's file of the APKs given out can hold: trades open and closed, taken, made and recovered, a pending take and a pending make, the terms of both sides, trails with and without hashes, a maker's next contract with its earlier escrow, payments of bonds and of escrows of contracts 0 and 1, the pins of a chat, bindings and histories.
+///
+/// Schema 8 is frozen: its snapshot and generated schema are pinned by their bytes. Every row is compared before and after, column by column, value and storage class; the new columns are empty, the marks of the buyers' contracts under way are written and nothing else; the step is stopped after each of its statements and run again to the very file of a step run at once; a file migrated has a new file's tables and triggers in a new file's order; and after the step the records say « unknown » where schema 8 kept nothing, never « zero » nor « given elsewhere ».
+void main() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+  late Directory directory;
+
+  setUp(() async {
+    directory = await Directory.systemTemp.createTemp('p2p-schema9-');
+  });
+
+  tearDown(() => directory.delete(recursive: true));
+
+  /// A file of schema 8 at [name] in the test's directory, written by the generated schema 8 itself, its rows written in the order the app writes them, through schema 8's own triggers.
+  Future<File> schema8File([String name = 'eight.sqlite']) async {
+    final file = File('${directory.path}/$name');
+    final old = v8.DatabaseAtV8(NativeDatabase(file));
+    expect(await _versionOf(old), 8);
+    for (final statement in _schema8Rows) {
+      await old.customStatement(statement);
+    }
+    expect(await _versionOf(old), 8);
+    await old.close();
+    return file;
+  }
+
+  File copyOf(File file, String name) =>
+      file.copySync('${directory.path}/$name');
+
+  test(
+    'schema 8 is frozen: its snapshot and its generated schema keep their bytes',
+    () {
+      // The APKs given out carry schema 8 with real trades in them (#204, #231, #233): any change to these files changes what the step from 8 starts from.
+      expect(
+        sha256
+            .convert(
+              File(
+                'lib/src/data/schemas/p2p_database/drift_schema_v8.json',
+              ).readAsBytesSync(),
+            )
+            .toString(),
+        '88490508e770203fb70ac34bacfc6e3a8894d7f16830040560668aedbe7ef63c',
+      );
+      expect(
+        sha256
+            .convert(
+              File(
+                'test/migrations_test/p2p_database/generated/schema_v8.dart',
+              ).readAsBytesSync(),
+            )
+            .toString(),
+        '89a7118736437443f31487d1f1d3f2ca9687dd24cd8f471c0c658df9328fdd3e',
+      );
+    },
+  );
+
+  test(
+    'the file of schema 8 holds every shape of row the step must keep',
+    () async {
+      final file = await schema8File();
+      final old = v8.DatabaseAtV8(NativeDatabase(file));
+      final rows = await _rowsOf(old, _schema8Columns);
+      await old.close();
+      expect(
+        {for (final MapEntry(:key, :value) in rows.entries) key: value.length},
+        {
+          'garage_key_histories': 2,
+          'robot_bindings': 12,
+          'trades': 10,
+          'trade_terms': 5,
+          'trade_trails': 8,
+          'trade_payments': 7,
+          'trade_chat_pins': 1,
+          'trade_chat_nostr_pins': 1,
+          'maker_terms': 4,
+        },
+      );
+    },
+  );
+
+  test(
+    'keeps every row, every value and its storage class, leaves the new columns empty, marks the buyers\' contracts under way only, and is not migrated again',
+    () async {
+      final file = await schema8File();
+      final old = v8.DatabaseAtV8(NativeDatabase(file));
+      final before = await _rowsOf(old, _schema8Columns);
+      await old.close();
+
+      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+      expect(await _versionOf(migrated), P2pDatabase.schema);
+      expect(P2pDatabase.schema, 9);
+      await migrated.validateDatabaseSchema();
+      expect(await _rowsOf(migrated, _schema8Columns), before);
+      // The new columns of every older row: empty, « unknown » and « no trace recorded », never 0.
+      expect(
+        await _rowsOf(migrated, {
+          'trade_trails': ['terms_changed_at', 'terms_changed_premium'],
+          'trade_payments': ['confirmed_sats'],
+        }),
+        {
+          'trade_trails': List.filled(8, ['null', null, 'null', null]),
+          'trade_payments': List.filled(7, ['null', null]),
+        },
+      );
+      // The marks: a buyer's contract the trail stands at, from a position where its payout may have been given; never a seller's, a pending take's, an order still before its first take.
+      expect(await _rowsOf(migrated, _schema9Columns), {
+        ..._schema9Columns.map((key, _) => MapEntry(key, <List<Object?>>[])),
+        'trade_payouts': [
+          for (final (index, take) in [(1, 0), (6, 1), (8, 0), (9, 0)])
+            [
+              'text',
+              _key,
+              'integer',
+              index,
+              'integer',
+              take,
+              'text',
+              'unrecorded',
+              'null',
+              null,
+              'null',
+              null,
+              'null',
+              null,
+            ],
+        ],
+      });
+      expect(
+        await migrated.customSelect('PRAGMA foreign_key_check').get(),
+        isEmpty,
+      );
+      final objects = await _objectsOf(migrated);
+      final rows = await _rowsOf(migrated, {
+        ..._schema8Columns,
+        ..._schema9Columns,
+      });
+      await migrated.close();
+
+      // Its tables, indexes and triggers are a new file's, as written, in a new file's order.
+      final freshDirectory = await Directory.systemTemp.createTemp(
+        'p2p-fresh-',
+      );
+      addTearDown(() => freshDirectory.delete(recursive: true));
+      final fresh = P2pDatabase.open(() async => freshDirectory);
+      expect(objects, await _objectsOf(fresh));
+      await fresh.close();
+
+      // Opened again: nothing moves.
+      final again = P2pDatabase.forTesting(NativeDatabase(file));
+      expect(await _versionOf(again), P2pDatabase.schema);
+      expect(
+        await _rowsOf(again, {..._schema8Columns, ..._schema9Columns}),
+        rows,
+      );
+      expect(await _objectsOf(again), objects);
+      await again.close();
+    },
+  );
+
+  test(
+    'stopped after any of its statements, the step runs again over the file it left to the very file of a step that ran at once',
+    () async {
+      final first = await schema8File();
+      final reference = copyOf(first, 'reference.sqlite');
+      final recorder = _StopAfter(null);
+      final once = P2pDatabase.forTesting(
+        NativeDatabase(reference).interceptWith(recorder),
+      );
+      expect(await _versionOf(once), 9);
+      final columns = {..._schema8Columns, ..._schema9Columns};
+      final expectedRows = await _rowsOf(once, columns);
+      final expectedObjects = await _objectsOf(once);
+      await once.close();
+      final statements = recorder.statements;
+      expect(statements.map(_kindOf).toList(), _stepKinds);
+
+      for (var stop = 0; stop < statements.length; stop++) {
+        final file = copyOf(first, 'stop-$stop.sqlite');
+        final stopped = P2pDatabase.forTesting(
+          NativeDatabase(file).interceptWith(_StopAfter(stop)),
+        );
+        await expectLater(
+          _versionOf(stopped),
+          throwsA(isA<_Stopped>()),
+          reason: '$stop',
+        );
+        await stopped.close();
+        final left = v8.DatabaseAtV8(NativeDatabase(file));
+        expect(await _versionOf(left), 8, reason: '$stop');
+        await left.close();
+
+        final again = P2pDatabase.forTesting(NativeDatabase(file));
+        expect(await _versionOf(again), 9, reason: '$stop');
+        expect(await _rowsOf(again, columns), expectedRows, reason: '$stop');
+        expect(await _objectsOf(again), expectedObjects, reason: '$stop');
+        await again.close();
+      }
+    },
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
+
+  test(
+    'done to its last statement but its version not written, the step runs again and changes nothing',
+    () async {
+      final file = await schema8File();
+      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+      expect(await _versionOf(migrated), 9);
+      final columns = {..._schema8Columns, ..._schema9Columns};
+      final rows = await _rowsOf(migrated, columns);
+      final objects = await _objectsOf(migrated);
+      await migrated.customStatement('PRAGMA user_version = 8');
+      await migrated.close();
+
+      final again = P2pDatabase.forTesting(NativeDatabase(file));
+      expect(await _versionOf(again), 9);
+      expect(await _rowsOf(again, columns), rows);
+      expect(await _objectsOf(again), objects);
+      await again.close();
+    },
+  );
+
+  group('after the step, the records of schema 8', () {
+    late P2pDatabase database;
+
+    setUp(() async {
+      final file = await schema8File();
+      database = P2pDatabase.forTesting(NativeDatabase(file));
+      expect(await _versionOf(database), 9);
+    });
+
+    tearDown(() => database.close());
+
+    test(
+      'an escrow paid before schema 9 has an unknown amount, never 0, and a new attempt of it leaves it unknown (#233)',
+      () async {
+        final payments = TradePaymentRepositoryImpl(database);
+        final seller = _record(7, TradeRole.seller, TradeOrigin.madeHere, 108);
+        final recorded = switch (await payments.paymentsOfTrade(seller)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(
+          [
+            for (final payment in recorded)
+              (payment.step, payment.take, payment.confirmedSats),
+          ],
+          [
+            (InvoiceStep.bond, 0, null),
+            (InvoiceStep.escrow, 0, null),
+            (InvoiceStep.escrow, 1, null),
+          ],
+        );
+        // A new attempt of contract 1's escrow, the same invoice: its start moves, its amount stays unknown.
+        expect(
+          await payments.recordStart(
+            seller,
+            InvoiceStep.escrow,
+            paymentHash: _escrowOfSevenNext,
+            at: DateTime.fromMicrosecondsSinceEpoch(3000000, isUtc: true),
+            sats: Sats.fromInt(200000),
+            take: 1,
+          ),
+          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isTrue),
+        );
+        final again = switch (await payments.paymentOf(
+          seller,
+          InvoiceStep.escrow,
+          take: 1,
+        )) {
+          Ok(:final value?) => value,
+          final other => fail('$other'),
+        };
+        expect(again.confirmedSats, isNull);
+        expect(again.startedAt.microsecondsSinceEpoch, 3000000);
+        // The database refuses to give it a figure, whatever the code.
+        await expectLater(
+          database.customStatement(
+            "UPDATE trade_payments SET confirmed_sats = 5 WHERE robot_index = 7 AND take = 1 AND key_fingerprint = '$_key'",
+          ),
+          throwsA(
+            predicate(
+              (error) =>
+                  '$error'.contains('the amount of a payment never goes down'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'a buyer\'s contract under way before schema 9 reads « unknown », one with no mark « not given here », and a payout given since replaces the mark, never the reverse (#204)',
+      () async {
+        final payouts = TradePayoutRepositoryImpl(database);
+        final taken = _record(1, TradeRole.buyer, TradeOrigin.takenHere, 101);
+        final made = _record(6, TradeRole.buyer, TradeOrigin.madeHere, 107);
+        final pending = _record(0, TradeRole.buyer, TradeOrigin.takenHere, 100);
+        Future<PayoutTrace> traceOf(TradeRecord record, int take) async =>
+            switch (await payouts.traceOf(record, take: take)) {
+              Ok(:final value) => value,
+              Err(:final failure) => fail('$failure'),
+            };
+        expect(await traceOf(taken, 0), const PayoutUnrecorded());
+        expect(await traceOf(made, 1), const PayoutUnrecorded());
+        // Contract 0 of the made order is over: no mark, never « unknown » read as « given here ».
+        expect(await traceOf(made, 0), const PayoutNotGivenHere());
+        expect(await traceOf(pending, 0), const PayoutNotGivenHere());
+        final at = DateTime.fromMicrosecondsSinceEpoch(4000000, isUtc: true);
+        expect(
+          await payouts.recordPayout(
+            taken,
+            take: 0,
+            source: PayoutTraceSource.thisWallet,
+            kind: PayoutTraceKind.invoice,
+            paymentHash: 'a1' * 32,
+            at: at,
+          ),
+          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isTrue),
+        );
+        expect(
+          await traceOf(taken, 0),
+          PayoutFromThisWallet(PayoutTraceKind.invoice, at),
+        );
+        await expectLater(
+          database.customStatement(
+            "UPDATE trade_payouts SET source = 'unrecorded', kind = NULL, payment_hash = NULL, submitted_at = NULL WHERE robot_index = 1",
+          ),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('a payout only moves forward'),
+            ),
+          ),
+        );
+        // A mark is the step's alone.
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO trade_payouts VALUES ('$_key', 9, 1, 'unrecorded', NULL, NULL, NULL)",
+          ),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('a payout of no open trade'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'a trail of schema 8 has no trace of terms shown otherwise, and gains one only with its read\'s own time, then keeps it (#231)',
+      () async {
+        final trails = TradeTrailRepositoryImpl(database);
+        final taken = _record(1, TradeRole.buyer, TradeOrigin.takenHere, 101);
+        final trail = switch (await trails.historyOf(taken)) {
+          Ok(:final value) => value.trail ?? fail('no trail'),
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(trail.termsChangedAtMicros, isNull);
+        expect(trail.termsChangedPremium, isNull);
+        await expectLater(
+          database.customStatement(
+            "UPDATE trade_trails SET terms_changed_at = 5 WHERE robot_index = 1 AND key_fingerprint = '$_key'",
+          ),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains(
+                'the trace of terms shown otherwise is kept',
+              ),
+            ),
+          ),
+        );
+        await database.customStatement(
+          "UPDATE trade_trails SET read_at = 1300000, terms_changed_at = 1300000, terms_changed_premium = 7.0 WHERE robot_index = 1 AND key_fingerprint = '$_key'",
+        );
+        for (final change in [
+          'terms_changed_at = NULL, terms_changed_premium = NULL',
+          'terms_changed_premium = 8.0',
+          'terms_changed_premium = NULL',
+          'read_at = 1400000, terms_changed_at = 1400000',
+        ]) {
+          await expectLater(
+            database.customStatement(
+              "UPDATE trade_trails SET $change WHERE robot_index = 1 AND key_fingerprint = '$_key'",
+            ),
+            throwsA(
+              predicate(
+                (error) => '$error'.contains(
+                  'the trace of terms shown otherwise is kept',
+                ),
+              ),
+            ),
+            reason: change,
+          );
+        }
+      },
+    );
+  });
+}
+
+/// The record of robot [index] of the rows' key on testnet with temple.
+TradeRecord _record(int index, TradeRole role, TradeOrigin origin, int order) =>
+    TradeRecord(
+      robot: RobotSlot(
+        RobosatsNetwork.testnet,
+        GarageKeyFingerprint.stored(_key) ?? fail('no fingerprint'),
+        index,
+      ),
+      coordinatorAlias: 'temple',
+      coordinatorOnion: 'http://temple.onion',
+      orderId: order,
+      role: role,
+      origin: origin,
+      takenAt: DateTime.fromMillisecondsSinceEpoch(1000, isUtc: true),
+      confirmedAt: DateTime.fromMillisecondsSinceEpoch(1000, isUtc: true),
+      closedAt: null,
+    );
+
+/// What a stop of the step throws, in place of the statement it stops before.
+final class _Stopped implements Exception {
+  const _Stopped();
+}
+
+/// Runs the statements of a step as written and records them, and, given [stopAfter], lets that many run and throws in place of the next, as an app killed there would leave the file (no statement of the step runs in a transaction).
+final class _StopAfter extends QueryInterceptor {
+  final int? stopAfter;
+  final List<String> statements = [];
+
+  _StopAfter(this.stopAfter);
+
+  @override
+  Future<bool> ensureOpen(QueryExecutor executor, QueryExecutorUser user) =>
+      executor.ensureOpen(_OpenedThrough(user, this));
+
+  @override
+  Future<void> runCustom(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    final lower = statement.toLowerCase();
+    if (!lower.startsWith('pragma user_version') &&
+        !lower.startsWith('pragma foreign_keys = on')) {
+      if (stopAfter case final stop? when statements.length >= stop) {
+        throw const _Stopped();
+      }
+      statements.add(statement);
+    }
+    return super.runCustom(executor, statement, args);
+  }
+}
+
+/// The database opening, its steps run through [_interceptor].
+final class _OpenedThrough implements QueryExecutorUser {
+  final QueryExecutorUser _user;
+  final QueryInterceptor _interceptor;
+
+  _OpenedThrough(this._user, this._interceptor);
+
+  @override
+  int get schemaVersion => _user.schemaVersion;
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) =>
+      _user.beforeOpen(executor.interceptWith(_interceptor), details);
+}
+
+/// The kind of a statement of the step: what it does, and to what.
+String _kindOf(String statement) {
+  final words = statement
+      .replaceAll('"', '')
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .toList();
+  return switch (words) {
+    ['ALTER', 'TABLE', final table, 'ADD', 'COLUMN', final column, ...] =>
+      'add $table.$column',
+    ['CREATE', 'TABLE', 'IF', 'NOT', 'EXISTS', final name, ...] =>
+      'create $name',
+    ['CREATE', 'TRIGGER', 'IF', 'NOT', 'EXISTS', final name, ...] =>
+      'trigger $name',
+    ['DROP', 'TRIGGER', 'IF', 'EXISTS', final name] => 'drop trigger $name',
+    ['INSERT', 'INTO', final name, ...] => 'mark $name',
+    _ => statement,
+  };
+}
+
+/// The statements of the step over a file of schema 8, by kind, in their order: nothing dropped but the new table's own triggers, nothing copied.
+const _stepKinds = [
+  'add trade_payments.confirmed_sats',
+  'add trade_trails.terms_changed_at',
+  'add trade_trails.terms_changed_premium',
+  'create trade_payouts',
+  'drop trigger trade_payouts_never_deleted',
+  'drop trigger trade_payouts_forward',
+  'drop trigger trade_payouts_of_their_trade',
+  'drop trigger trade_payouts_inserted_once',
+  'mark trade_payouts',
+  'trigger trade_payouts_never_deleted',
+  'trigger trade_payouts_forward',
+  'trigger trade_payouts_of_their_trade',
+  'trigger trade_payouts_inserted_once',
+  'trigger trade_trails_terms_trace',
+  'trigger trade_payments_sats_known',
+  'trigger trade_payments_sats_forward',
+];
+
+Future<int> _versionOf(GeneratedDatabase database) async =>
+    (await database.customSelect('PRAGMA user_version').getSingle()).read<int>(
+      'user_version',
+    );
+
+/// Every table, index and trigger of [database], table by table and, within a table, in the order SQLite made them (the order it fires the triggers of one event in, newest first), each as its table, its name and its text without quotes and white space.
+Future<List<String>> _objectsOf(GeneratedDatabase database) async => [
+  for (final row
+      in await database
+          .customSelect(
+            "SELECT tbl_name, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, rowid",
+          )
+          .get())
+    '${row.read<String>('tbl_name')} ${row.read<String>('name')} ${row.read<String>('sql').replaceAll('"', '').replaceAll(RegExp(r'\s+'), '')}',
+];
+
+/// The rows of each table of [columns] in [database], ordered by their primary key, each as the storage class and the value of each of its columns, in the order given.
+Future<Map<String, List<List<Object?>>>> _rowsOf(
+  GeneratedDatabase database,
+  Map<String, List<String>> columns,
+) async => {
+  for (final MapEntry(key: table, value: names) in columns.entries)
+    table: [
+      for (final row
+          in await database
+              .customSelect(
+                'SELECT ${[for (final name in names) 'typeof($name), $name'].join(', ')} '
+                'FROM $table ORDER BY ${_keys[table]}',
+              )
+              .get())
+        row.data.values.toList(),
+    ],
+};
+
+const _keys = {
+  'garage_key_histories': 'network, key_fingerprint',
+  'robot_bindings': 'key_fingerprint, robot_index',
+  'trades': 'key_fingerprint, robot_index',
+  'trade_terms': 'key_fingerprint, robot_index',
+  'trade_trails': 'key_fingerprint, robot_index',
+  'trade_payments': 'key_fingerprint, robot_index, step, take',
+  'trade_chat_pins': 'key_fingerprint, robot_index',
+  'trade_chat_nostr_pins': 'key_fingerprint, robot_index',
+  'maker_terms': 'key_fingerprint, robot_index',
+  'trade_payouts': 'key_fingerprint, robot_index, take',
+};
+
+/// Every column of every table of schema 8, in the order of its table.
+const _schema8Columns = {
+  'garage_key_histories': [
+    'network',
+    'key_fingerprint',
+    'origin',
+    'recorded_at',
+  ],
+  'robot_bindings': [
+    'network',
+    'key_fingerprint',
+    'robot_index',
+    'coordinator_alias',
+    'coordinator_onion',
+    'coordinator_node_keys',
+    'coordinator_nostr_key',
+    'bound_at',
+    'provenance',
+  ],
+  'trades': [
+    'network',
+    'key_fingerprint',
+    'robot_index',
+    'coordinator_alias',
+    'coordinator_onion',
+    'order_id',
+    'role',
+    'origin',
+    'taken_at',
+    'confirmed_at',
+    'closed_at',
+  ],
+  'trade_terms': [
+    'key_fingerprint',
+    'robot_index',
+    'version',
+    'network',
+    'coordinator_alias',
+    'order_id',
+    'role',
+    'order_type',
+    'currency_id',
+    'amount',
+    'is_range',
+    'premium_percent',
+    'explicit_satoshis',
+    'bond_size_percent',
+    'escrow_seconds',
+    'book_price',
+    'taker_fee',
+  ],
+  'trade_trails': [
+    'key_fingerprint',
+    'robot_index',
+    'version',
+    'network',
+    'coordinator_alias',
+    'order_id',
+    'role',
+    'position',
+    'read_at',
+    'bond_hash',
+    'escrow_hash',
+    'deadline',
+    'bond_step_seen_at',
+    'bond_step_deadline',
+    'breached',
+    'history_unknown',
+    'take',
+    'take_deadline',
+    'taker_hash_id',
+    'taken_amount',
+    'earlier_escrows',
+    'seen_late',
+  ],
+  'trade_payments': [
+    'key_fingerprint',
+    'robot_index',
+    'step',
+    'payment_hash',
+    'started_at',
+    'wallet_payment_id',
+    'take',
+  ],
+  'trade_chat_pins': [
+    'key_fingerprint',
+    'robot_index',
+    'primary_fingerprint',
+    'subkey_fingerprint',
+    'armored_key',
+  ],
+  'trade_chat_nostr_pins': [
+    'key_fingerprint',
+    'robot_index',
+    'peer_key',
+    'own_key',
+  ],
+  'maker_terms': [
+    'key_fingerprint',
+    'robot_index',
+    'version',
+    'network',
+    'coordinator_alias',
+    'role',
+    'order_type',
+    'currency_id',
+    'amount',
+    'min_amount',
+    'max_amount',
+    'premium_percent',
+    'payment_method',
+    'bond_size_percent',
+    'public_seconds',
+    'escrow_seconds',
+    'description',
+    'has_password',
+    'latitude',
+    'longitude',
+    'created_price',
+    'maker_fee',
+  ],
+};
+
+/// The table schema 9 adds.
+const _schema9Columns = {
+  'trade_payouts': [
+    'key_fingerprint',
+    'robot_index',
+    'take',
+    'source',
+    'kind',
+    'payment_hash',
+    'submitted_at',
+  ],
+};
+
+/// A key fingerprint of the rows: fixed test text, not a key anyone uses.
+final _key = 'ab' * 32;
+
+/// A key fingerprint of a key acknowledged here.
+final _otherKey = 'cd' * 32;
+
+/// Payment hashes and hash ids of the rows: fixed test text, none an invoice anyone paid nor a robot anyone holds.
+final _bondOfOne = '1b' * 32;
+final _bondOfTwo = '2b' * 32;
+final _escrowOfTwo = '2e' * 32;
+final _bondOfSix = '6b' * 32;
+final _bondOfSeven = '7b' * 32;
+final _escrowOfSeven = '7e' * 32;
+final _escrowOfSevenNext = '7f' * 32;
+final _takerA = 'a0' * 32;
+final _takerB = 'b0' * 32;
+
+const _armored = '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nnot a key';
+
+const _trades =
+    'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ';
+const _trails = 'INSERT INTO trade_trails VALUES ';
+const _payments =
+    'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) VALUES ';
+const _makerTerms =
+    'INSERT INTO maker_terms (key_fingerprint, robot_index, version, network, coordinator_alias, role, order_type, currency_id, amount, min_amount, max_amount, premium_percent, payment_method, bond_size_percent, public_seconds, escrow_seconds, description, has_password, latitude, longitude, created_price, maker_fee) VALUES ';
+
+/// The rows of the file of schema 8, written in the order the app writes them through schema 8's triggers.
+final _schema8Rows = [
+  "INSERT INTO garage_key_histories VALUES ('testnet', '$_key', 'generated', 1)",
+  "INSERT INTO garage_key_histories VALUES ('testnet', '$_otherKey', 'acknowledged', 3)",
+  for (var index = 0; index <= 10; index++)
+    "INSERT INTO robot_bindings VALUES ('testnet', '$_key', $index, 'temple', 'http://temple.onion', 'node1,node2', 'nostr$index', ${10 + index}, 'generated')",
+  "INSERT INTO robot_bindings VALUES ('testnet', '$_otherKey', 0, 'lake', 'http://lake.onion', '', 'nostr', 30, 'acknowledged')",
+  // Robot 0: a taker buyer's pending take, its terms and its first trail: no payout yet, no mark.
+  "$_trades('testnet', '$_key', 0, 'temple', 'http://temple.onion', 100, 'buyer', 'takenHere', 1000, NULL, NULL)",
+  "INSERT INTO trade_terms VALUES ('$_key', 0, 1, 'testnet', 'temple', 100, 'buyer', 1, 2, 100.0, 0, 2.0, NULL, 3.0, 10800, 93545.25, 0.00175)",
+  "$_trails('$_key', 0, 1, 'testnet', 'temple', 100, 'buyer', 'start', 1000000, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  // Robot 1: a taker buyer's trade at its payout, its bond paid from the wallet: marked.
+  "$_trades('testnet', '$_key', 1, 'temple', 'http://temple.onion', 101, 'buyer', 'takenHere', 1100, 1150, NULL)",
+  "INSERT INTO trade_terms VALUES ('$_key', 1, 1, 'testnet', 'temple', 101, 'buyer', 1, 3, 123.45, 1, -1.5, NULL, 3.5, 7200, 87654.321, 0.002)",
+  "$_trails('$_key', 1, 1, 'testnet', 'temple', 101, 'buyer', 'bondStep', 1100000, '$_bondOfOne', NULL, 1400000000, 1100000, 1400000000, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  "${_payments}('$_key', 1, 'bond', '$_bondOfOne', 1120000, 'swap-1', 0)",
+  "UPDATE trade_trails SET position = 'waitingForPayout', read_at = 1200000, deadline = 1900000000 WHERE robot_index = 1 AND key_fingerprint = '$_key'",
+  // Robot 2: a taker seller in its chat, bond and escrow paid, the peer's keys pinned: no mark.
+  "$_trades('testnet', '$_key', 2, 'temple', 'http://temple.onion', 102, 'seller', 'takenHere', 1200, 1250, NULL)",
+  "INSERT INTO trade_terms VALUES ('$_key', 2, 1, 'testnet', 'temple', 102, 'seller', 0, 1, 50.0, 0, 0.0, 21000, 2.0, 36000, 60000.5, 0.0)",
+  "$_trails('$_key', 2, 1, 'testnet', 'temple', 102, 'seller', 'bondStep', 1250000, '$_bondOfTwo', NULL, NULL, 1250000, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  "${_payments}('$_key', 2, 'bond', '$_bondOfTwo', 1260000, NULL, 0)",
+  "UPDATE trade_trails SET position = 'waitingForEscrow', read_at = 1300000, escrow_hash = '$_escrowOfTwo', deadline = 2000000000 WHERE robot_index = 2 AND key_fingerprint = '$_key'",
+  "${_payments}('$_key', 2, 'escrow', '$_escrowOfTwo', 1310000, 'swap-2', 0)",
+  "UPDATE trade_trails SET position = 'chatting', read_at = 1400000 WHERE robot_index = 2 AND key_fingerprint = '$_key'",
+  "INSERT INTO trade_chat_pins VALUES ('$_key', 2, '${'A' * 40}', '${'B' * 40}', '$_armored')",
+  "INSERT INTO trade_chat_nostr_pins VALUES ('$_key', 2, '${'a' * 64}', '${'b' * 64}')",
+  // Robot 3: a pending take that never left, closed with no terms and no trail.
+  "$_trades('testnet', '$_key', 3, 'temple', 'http://temple.onion', 103, 'buyer', 'takenHere', 1300, NULL, NULL)",
+  "UPDATE trades SET closed_at = 1301 WHERE robot_index = 3 AND key_fingerprint = '$_key'",
+  // Robot 0 of the acknowledged key: a seller's trade recovered, a breach recorded: no mark.
+  "$_trades('testnet', '$_otherKey', 0, 'lake', 'http://lake.onion', 105, 'seller', 'recovered', 1500, 1500, NULL)",
+  "INSERT INTO trade_terms VALUES ('$_otherKey', 0, 1, 'testnet', 'lake', 105, 'seller', 0, 5, 1.0, 0, 5.25, NULL, 2.5, 3600, 1.5, 0.001)",
+  "$_trails('$_otherKey', 0, 1, 'testnet', 'lake', 105, 'seller', 'start', 1500000, NULL, NULL, NULL, NULL, NULL, 0, 1, 0, NULL, NULL, NULL, '', 0)",
+  "UPDATE trade_trails SET position = 'waitingForBoth', read_at = 1600000, breached = 1 WHERE key_fingerprint = '$_otherKey'",
+  // Robot 5: a pending make, its terms and no trail: no mark.
+  "$_trades('testnet', '$_key', 5, 'temple', 'http://temple.onion', NULL, 'buyer', 'madeHere', 1650, NULL, NULL)",
+  "$_makerTerms('$_key', 5, 1, 'testnet', 'temple', 'buyer', 0, 2, 100.0, NULL, NULL, 2.0, 'Revolut', 3.0, 86400, 10800, NULL, 0, NULL, NULL, 50000.0, 0.00025)",
+  // Robot 6: a maker buyer's order taken, back in the book, taken again: contract 1 at its payout, marked at contract 1.
+  "$_trades('testnet', '$_key', 6, 'temple', 'http://temple.onion', NULL, 'buyer', 'madeHere', 1700, NULL, NULL)",
+  "$_makerTerms('$_key', 6, 1, 'testnet', 'temple', 'buyer', 0, 1, NULL, 20.0, 200.0, -1.25, 'SEPA Instant', 5.5, 3600, 7200, 'Fast', 1, 48.857, 2.352, 45000.5, 0.0)",
+  "UPDATE trades SET order_id = 107, confirmed_at = 1750 WHERE robot_index = 6 AND key_fingerprint = '$_key'",
+  "$_trails('$_key', 6, 1, 'testnet', 'temple', 107, 'buyer', 'makerBondStep', 1750000, '$_bondOfSix', NULL, 1800000000, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  "${_payments}('$_key', 6, 'bond', '$_bondOfSix', 1760000, 'swap-6', 0)",
+  "UPDATE trade_trails SET position = 'public', read_at = 1770000 WHERE robot_index = 6 AND key_fingerprint = '$_key'",
+  "UPDATE trade_trails SET position = 'waitingForBoth', read_at = 1780000, take_deadline = 1800000000, taker_hash_id = '$_takerA', taken_amount = 150.0 WHERE robot_index = 6 AND key_fingerprint = '$_key'",
+  "UPDATE trade_trails SET position = 'public', read_at = 1790000 WHERE robot_index = 6 AND key_fingerprint = '$_key'",
+  "UPDATE trade_trails SET position = 'waitingForPayout', read_at = 1795000, take = 1, take_deadline = 1900000000, taker_hash_id = '$_takerB', taken_amount = 50.0 WHERE robot_index = 6 AND key_fingerprint = '$_key'",
+  // Robot 7: a maker seller's order taken again, contract 0's escrow paid before schema 9, contract 1's too: no mark, its escrows' amounts unknown.
+  "$_trades('testnet', '$_key', 7, 'temple', 'http://temple.onion', NULL, 'seller', 'madeHere', 1800, NULL, NULL)",
+  "$_makerTerms('$_key', 7, 1, 'testnet', 'temple', 'seller', 1, 2, 100.0, NULL, NULL, 2.0, 'Revolut', 3.0, 86400, 10800, NULL, 0, NULL, NULL, 50000.0, 0.00025)",
+  "UPDATE trades SET order_id = 108, confirmed_at = 1850 WHERE robot_index = 7 AND key_fingerprint = '$_key'",
+  "$_trails('$_key', 7, 1, 'testnet', 'temple', 108, 'seller', 'makerBondStep', 1850000, '$_bondOfSeven', NULL, 1800000000, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  "${_payments}('$_key', 7, 'bond', '$_bondOfSeven', 1860000, 'swap-7', 0)",
+  "UPDATE trade_trails SET position = 'public', read_at = 1870000 WHERE robot_index = 7 AND key_fingerprint = '$_key'",
+  "UPDATE trade_trails SET position = 'waitingForEscrow', read_at = 1880000, escrow_hash = '$_escrowOfSeven', take_deadline = 1800000000, taker_hash_id = '$_takerA' WHERE robot_index = 7 AND key_fingerprint = '$_key'",
+  "${_payments}('$_key', 7, 'escrow', '$_escrowOfSeven', 1885000, 'swap-7e', 0)",
+  "UPDATE trade_trails SET position = 'public', read_at = 1890000 WHERE robot_index = 7 AND key_fingerprint = '$_key'",
+  "UPDATE trade_trails SET position = 'waitingForEscrow', read_at = 1895000, take = 1, escrow_hash = '$_escrowOfSevenNext', take_deadline = 1900000000, taker_hash_id = '$_takerB', earlier_escrows = '$_escrowOfSeven;' WHERE robot_index = 7 AND key_fingerprint = '$_key'",
+  "${_payments}('$_key', 7, 'escrow', '$_escrowOfSevenNext', 1897000, NULL, 1)",
+  // Robot 8: a maker buyer's order cancelled at its bond and closed: marked (its end says nothing of a payout).
+  "$_trades('testnet', '$_key', 8, 'temple', 'http://temple.onion', NULL, 'buyer', 'madeHere', 1900, NULL, NULL)",
+  "$_makerTerms('$_key', 8, 1, 'testnet', 'temple', 'buyer', 0, 2, 10.0, NULL, NULL, 0.0, 'Cash', 2.0, 600, 1800, NULL, 0, NULL, NULL, 0.0001, 0.01)",
+  "UPDATE trades SET order_id = 109, confirmed_at = 1950 WHERE robot_index = 8 AND key_fingerprint = '$_key'",
+  "$_trails('$_key', 8, 1, 'testnet', 'temple', 109, 'buyer', 'makerBondStep', 1950000, NULL, NULL, 1960000000, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  "UPDATE trade_trails SET position = 'cancelled', read_at = 1960000 WHERE robot_index = 8 AND key_fingerprint = '$_key'",
+  "UPDATE trades SET closed_at = 1960 WHERE robot_index = 8 AND key_fingerprint = '$_key'",
+  // Robot 9: a taker buyer's trade at « fiat sent »: marked.
+  "$_trades('testnet', '$_key', 9, 'temple', 'http://temple.onion', 110, 'buyer', 'takenHere', 2000, 2050, NULL)",
+  "INSERT INTO trade_terms VALUES ('$_key', 9, 1, 'testnet', 'temple', 110, 'buyer', 1, 2, 75.0, 0, 1.0, NULL, 3.0, 10800, 61000.0, 0.00175)",
+  "$_trails('$_key', 9, 1, 'testnet', 'temple', 110, 'buyer', 'chatting', 2050000, NULL, NULL, 2100000000, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+  "UPDATE trade_trails SET position = 'fiatSent', read_at = 2060000 WHERE robot_index = 9 AND key_fingerprint = '$_key'",
+  // Robot 10: bound, no trade.
+];
