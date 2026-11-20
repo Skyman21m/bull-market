@@ -1809,6 +1809,46 @@ void main() {
       );
 
       testWidgets(
+        'while the Bull wallet\'s price is read: « Reading… », and no gap from the creation\'s rate beside it before anything is checked (#234)',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+          ]);
+          final read = Completer<P2pWalletBitcoinRate>();
+          final cubit = PayoutRateCubit(
+            _record,
+            terms: (_) async => switch (madeTerms().side) {
+              MadeSide(:final maker) => maker,
+            },
+            price: (_, _) => read.future,
+            memory: PayoutRateMemory(),
+            now: () => tradeNow,
+          );
+          addTearDown(cubit.close);
+          await _show(tester, seen, rate: cubit);
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text('Reading the Bull wallet\'s price for comparison…'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+          read.complete(const P2pWalletRateUnavailable());
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
         'at 9 with a read that gives no sats: « rate not checked », never nothing',
         (tester) async {
           final seen = await _at([
