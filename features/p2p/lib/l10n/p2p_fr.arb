@@ -1021,7 +1021,8 @@
   "p2pPayoutTracePasted": "La facture de paiement de ce contrat a été collée : les sats iront au portefeuille qui l’a faite.",
   "p2pPayoutTracePastedAddress": "L’adresse de paiement de ce contrat a été collée : les sats iront au portefeuille auquel elle appartient.",
   "p2pPayoutTraceNotGivenHere": "La facture ou l’adresse de paiement de ce contrat n’a pas été donnée depuis Bull Market : vérifiez où arriveront les sats.",
-  "p2pPayoutTraceUnknown": "Bull Market ne sait pas si la facture de paiement de ce contrat vient de ce portefeuille.",
-  "p2pTermsShownPremium": "{coordinator} a montré cet échange avec une prime de {premium} le {date}.",
-  "p2pTermsShownOther": "{coordinator} a montré cet échange avec d’autres conditions que celles de l’ordre le {date}."
+  "p2pPayoutTraceUnknown": "Bull Market ne sait pas si la facture ou l’adresse de paiement de ce contrat vient de ce portefeuille.",
+  "p2pTermsShownPremium": "{coordinator} a montré cet échange avec une prime de {premium} au lieu de {own}, le {day} à {time}.",
+  "p2pTermsShownPremiumAlone": "{coordinator} a montré cet échange avec une prime de {premium}, le {day} à {time}.",
+  "p2pTermsShownOther": "{coordinator} a montré cet échange avec d’autres conditions, le {day} à {time}."
 }

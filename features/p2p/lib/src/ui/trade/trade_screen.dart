@@ -21,6 +21,7 @@ import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
+import '../../domain/usecases/trade/check_payout_rate_usecase.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
@@ -1049,7 +1050,12 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         // The trace of terms the coordinator showed otherwise, then put back (#231): said until the trade ends.
-        if (termsShownOtherwise(context, status, coordinator)
+        if (termsShownOtherwise(
+              context,
+              status,
+              coordinator,
+              own: contract.order?.premium,
+            )
             case final trace?) ...[
           _Line(
             trace,
@@ -1354,7 +1360,8 @@ class _Contract extends StatelessWidget {
             const Gap(BullSpacing.sm),
           ],
           // Where this contract's payout came from, before « Confirm … sent » of a buyer (#204): nothing when from this wallet.
-          if (payoutTraceOf(context, contract.seen) case final trace?) ...[
+          if (payoutTraceOf(context, contract.seen, rule: _ruleShown)
+              case final trace?) ...[
             _Line(
               trace,
               color: colors.warning,
@@ -1497,9 +1504,20 @@ class _Contract extends StatelessWidget {
         for (final warning in warningsOf(status, now: clock()))
           alertOf(warning),
         // The trace of terms shown otherwise (#231) and where this contract's payout came from (#204), as the screen says them.
-        if (termsShownOtherwise(context, status, coordinator) case final trace?)
+        if (termsShownOtherwise(
+              context,
+              status,
+              coordinator,
+              own: seen.order?.premium,
+            )
+            case final trace?)
           (text: trace, tone: TradeDialogTone.warning),
-        if (payoutTraceOf(context, seen) case final trace?)
+        if (payoutTraceOf(
+              context,
+              seen,
+              rule: _ruleOf(rateCubit?.state, status),
+            )
+            case final trace?)
           (text: trace, tone: TradeDialogTone.warning),
         if (madeHere &&
             (status.trail.breached || status.has<CoordinatorInconsistent>()))
@@ -1659,35 +1677,54 @@ class _Contract extends StatelessWidget {
   };
 }
 
-/// The line of [warning] under a contract's title or above the wait (#211): a next contract seen late is information, not an alert (#178, #182), its own words in the text colour; every other in the warning colour.
-/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): which premium and when, or when for another term; `null` without a trace, once the trade ended, or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
+/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): which premium instead of [own], the order's own as the order read now gives it (`null` when the status comes from no order: the premium shown alone), and when, or when for another term; `null` without a trace, once the trade ended (an end is no longer a step to act on), or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
 String? termsShownOtherwise(
   BuildContext context,
   TradeStatus status,
-  String coordinator,
-) {
+  String coordinator, {
+  required Premium? own,
+}) {
   final at = status.trail.termsChangedAt;
   if (at == null || status.isTerminal || status.has<TradeTermsChanged>()) {
     return null;
   }
   final l10n = P2pLocalizations.of(context);
   final formats = P2pFormats.of(context);
-  final date = formats.moment(at);
+  final day = formats.day(at);
+  final time = formats.time(at);
   final premium = switch (status.trail.termsChangedPremium) {
     final percent? => Premium.tryCreate(percent),
     null => null,
   };
-  return premium == null
-      ? l10n.p2pTermsShownOther(coordinator, date)
-      : l10n.p2pTermsShownPremium(coordinator, formats.premium(premium), date);
+  return switch ((premium, own)) {
+    (null, _) => l10n.p2pTermsShownOther(coordinator, day, time),
+    (final shown?, final own?) => l10n.p2pTermsShownPremium(
+      coordinator,
+      formats.premium(shown),
+      formats.premium(own),
+      day,
+      time,
+    ),
+    (final shown?, null) => l10n.p2pTermsShownPremiumAlone(
+      coordinator,
+      formats.premium(shown),
+      day,
+      time,
+    ),
+  };
 }
 
-/// The line of where the payout of the contract shown came from, before « Confirm … sent » of a buyer (#204; design note § 3.5 bis): pasted, not given from this device, or not known (a contract under way before payouts were recorded, records that cannot be read); `null` when it was given from this wallet, for a seller, or where « Confirm … sent » is not the step.
-String? payoutTraceOf(BuildContext context, TradeSeen seen) {
+/// The line of where the payout of the contract shown came from, before « Confirm … sent » of a buyer (#204; design note § 3.5 bis): pasted, not given from this device, or not known (a contract under way before payouts were recorded, records that cannot be read); `null` when it was given from this wallet, for a seller, where « Confirm … sent » is not the step, or when [rule], the owner's payment rule for the step shown, already says in red that this app never saw the contract's payout invoice (`p2pPayoutRateNotSeen`, a contract seen late), which says more: an alert is said alone (functional review of schema 9, C2).
+String? payoutTraceOf(
+  BuildContext context,
+  TradeSeen seen, {
+  required PayoutRateState? rule,
+}) {
   final status = seen.status;
   if (status is! Chatting ||
       status.role != TradeRole.buyer ||
-      status.fiatSent) {
+      status.fiatSent ||
+      _saysPayoutNotSeen(rule)) {
     return null;
   }
   final l10n = P2pLocalizations.of(context);
@@ -1701,6 +1738,15 @@ String? payoutTraceOf(BuildContext context, TradeSeen seen) {
   };
 }
 
+/// Whether [rule] says in red that this app never saw the payout invoice of the contract (`PayoutRateLines`, `p2pPayoutRateNotSeen`).
+bool _saysPayoutNotSeen(PayoutRateState? rule) => switch (rule) {
+  PayoutRateSatsMissing(notSeen: true) ||
+  PayoutRateAmountsDisagree(notSeen: true) ||
+  PayoutRateChecked(basis: PayoutRateNotSeen()) => true,
+  _ => false,
+};
+
+/// The line of [warning] under a contract's title or above the wait (#211): a next contract seen late is information, not an alert (#178, #182), its own words in the text colour; every other in the warning colour.
 Widget _warningLine(
   BuildContext context,
   TradeWarning warning,

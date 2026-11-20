@@ -4146,15 +4146,31 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayoutTraceUnknown =>
-      'Bull Market ne sait pas si la facture de paiement de ce contrat vient de ce portefeuille.';
+      'Bull Market ne sait pas si la facture ou l’adresse de paiement de ce contrat vient de ce portefeuille.';
 
   @override
-  String p2pTermsShownPremium(String coordinator, String premium, String date) {
-    return '$coordinator a montré cet échange avec une prime de $premium le $date.';
+  String p2pTermsShownPremium(
+    String coordinator,
+    String premium,
+    String own,
+    String day,
+    String time,
+  ) {
+    return '$coordinator a montré cet échange avec une prime de $premium au lieu de $own, le $day à $time.';
   }
 
   @override
-  String p2pTermsShownOther(String coordinator, String date) {
-    return '$coordinator a montré cet échange avec d’autres conditions que celles de l’ordre le $date.';
+  String p2pTermsShownPremiumAlone(
+    String coordinator,
+    String premium,
+    String day,
+    String time,
+  ) {
+    return '$coordinator a montré cet échange avec une prime de $premium, le $day à $time.';
+  }
+
+  @override
+  String p2pTermsShownOther(String coordinator, String day, String time) {
+    return '$coordinator a montré cet échange avec d’autres conditions, le $day à $time.';
   }
 }

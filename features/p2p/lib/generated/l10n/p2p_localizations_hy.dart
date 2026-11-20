@@ -4090,15 +4090,31 @@ class P2pLocalizationsHy extends P2pLocalizations {
 
   @override
   String get p2pPayoutTraceUnknown =>
-      'Bull Market cannot tell whether this contract\'s payout invoice came from this wallet.';
+      'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.';
 
   @override
-  String p2pTermsShownPremium(String coordinator, String premium, String date) {
-    return '$coordinator showed this trade with a premium of $premium on $date.';
+  String p2pTermsShownPremium(
+    String coordinator,
+    String premium,
+    String own,
+    String day,
+    String time,
+  ) {
+    return '$coordinator showed this trade with a premium of $premium instead of $own, on $day at $time.';
   }
 
   @override
-  String p2pTermsShownOther(String coordinator, String date) {
-    return '$coordinator showed this trade with other terms than the order\'s on $date.';
+  String p2pTermsShownPremiumAlone(
+    String coordinator,
+    String premium,
+    String day,
+    String time,
+  ) {
+    return '$coordinator showed this trade with a premium of $premium, on $day at $time.';
+  }
+
+  @override
+  String p2pTermsShownOther(String coordinator, String day, String time) {
+    return '$coordinator showed this trade with other terms, on $day at $time.';
   }
 }

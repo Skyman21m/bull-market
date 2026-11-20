@@ -414,7 +414,7 @@ void main() {
   const notGivenHere =
       'This contract\'s payout invoice or address was not given from Bull Market: check where the sats will arrive.';
   const unknown =
-      'Bull Market cannot tell whether this contract\'s payout invoice came from this wallet.';
+      'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.';
 
   testWidgets(
     'a payout given from another app: « not given from Bull Market » before « Confirm … sent » and in its dialog, after the app started again too (#204)',
@@ -521,7 +521,7 @@ void main() {
       );
       world.coordinator.orderChanges.remove(world.order.id);
       final trace = find.textContaining(
-        'showed this trade with a premium of +7.0% on Nov 20, 2026',
+        'showed this trade with a premium of +7.0% instead of +2.0%, on 11/20 at ',
       );
       await run.waitFor(trace, seconds: 200);
       expect(
@@ -543,9 +543,143 @@ void main() {
       await tester.pump(const Duration(seconds: 61));
     },
   );
+
+  testWidgets(
+    'a contract seen late, its payout invoice never seen here: the red line of the payment rule alone, never the line of where the payout came from beside it, before « Confirm … sent » and in its dialog (functional review of schema 9, C2)',
+    (tester) async {
+      final world = await _World.of(tester);
+      final run = await _Run.start(tester, world, first: true);
+      await run.makeOrder(buy: true);
+      world.coordinator.lockMakerBond(world.order.id);
+      await run.waitFor(
+        find.textContaining('Your order is public'),
+        seconds: 20,
+      );
+      final record = run.record;
+      // Taken (contract 0, seen at 6), then back in the book, taken again by another robot, its payout given from another app and the escrow locked, all before the next read: the next contract is seen late, at 9.
+      world.coordinator.take(world.order.id, TradeHarness.robotsOf(_net)[5]);
+      await run.waitFor(find.text('Generate Invoice'), seconds: 60);
+      world.coordinator.backToBook(world.order.id);
+      world.clock = world.clock.add(const Duration(minutes: 1));
+      world.coordinator.take(world.order.id, TradeHarness.robotsOf(_net)[4]);
+      world.order
+        ..payoutHash = 'c2' * 32
+        ..status = 7;
+      world.coordinator.lockEscrow(world.order.id);
+      final confirm = find.widgetWithText(TradeButton, 'Confirm 100 USD sent');
+      await run.waitFor(confirm, seconds: 200);
+      const notSeen =
+          'Bull Market has not seen this contract\'s payout invoice: do not send the money before checking in the official app.';
+      await run.waitFor(find.text(notSeen), seconds: 30);
+      expect(find.text(notSeen), findsOneWidget);
+      expect(find.text(notGivenHere), findsNothing);
+      // The trace is there all the same: the screen says the red line alone.
+      late PayoutTrace trace;
+      await tester.runAsync(() async {
+        trace = switch (await run.locator<TradePayoutRepository>().traceOf(
+          record,
+          take: 1,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+      });
+      expect(trace, const PayoutNotGivenHere());
+      await run.tap(confirm);
+      await settle(tester);
+      expect(find.text(notSeen), findsNWidgets(2));
+      expect(find.text(notGivenHere), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
+    'the composition\'s wiring: an invoice « Generate Invoice » gave, then « Submit », is traced « from this wallet » by the payout\'s use case, and nothing is said before « Confirm … sent », after the app started again too (functional review of schema 9, C5, m15)',
+    (tester) async {
+      final run = await buyerAtPayout(tester);
+      final record = run.record;
+      final world = run.world;
+      final order = world.order;
+      final payout = _halfEven(
+        order.lastSatoshis - order.lastSatoshis * world.coordinator.makerFee,
+      );
+      final asked = (payout - payout * 1000 / 1000000).truncate();
+      final now = world.coordinator.clock();
+      final invoice = Bolt11TestInvoice(
+        network: Bolt11Network.testnet,
+        sats: asked,
+        seed: 88,
+        createdAt: now,
+        expiry: const Duration(hours: 24),
+        description: 'Bull wallet payout',
+      );
+      world.coordinator.decoder.add(invoice);
+      world.wallet.scriptInvoice(
+        Ok(
+          P2pWalletInvoice(
+            bolt11: invoice.text,
+            amount: Sats.fromInt(asked),
+            expiresAt: now.add(const Duration(hours: 24)),
+            received: Sats.fromInt(asked),
+          ),
+        ),
+      );
+      await run.tap(find.text('Generate Invoice'));
+      await settle(tester);
+      // The answer lost on its way back: the coordinator may hold it, so its trace is written (the test coordinator would refuse the fake keys' signature, see this file's note).
+      world.coordinator.failNext(
+        ScriptedMakerRequest.payout,
+        ScriptedFault.timedOut,
+      );
+      await run.tap(find.widgetWithText(TradeButton, 'Submit'));
+      await run.pass(10);
+      late PayoutTrace trace;
+      await tester.runAsync(() async {
+        trace = switch (await run.locator<TradePayoutRepository>().traceOf(
+          record,
+          take: 0,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+      });
+      expect(
+        trace,
+        isA<PayoutFromThisWallet>().having(
+          (given) => given.kind,
+          'kind',
+          PayoutTraceKind.invoice,
+        ),
+      );
+      await toChat(run, invoice.facts.paymentHash);
+      final again = await run.relaunch();
+      again.open(record);
+      await again.waitFor(
+        find.widgetWithText(TradeButton, 'Confirm 100 USD sent'),
+        seconds: 30,
+      );
+      for (final text in [pasted, notGivenHere, unknown]) {
+        expect(find.text(text), findsNothing, reason: text);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
 }
 
 String _sats(Sats sats) => sats.value.toString().replaceAllMapped(
   RegExp(r'(\d)(?=(\d{3})+$)'),
   (match) => '${match[1]},',
 );
+
+/// Python's round, half to even, as the coordinator rounds the payout (`api/logics.py:666-668`).
+int _halfEven(double value) {
+  final floor = value.floorToDouble();
+  final diff = value - floor;
+  if (diff < 0.5) return floor.toInt();
+  if (diff > 0.5) return floor.toInt() + 1;
+  return floor.toInt().isEven ? floor.toInt() : floor.toInt() + 1;
+}

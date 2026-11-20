@@ -1,4 +1,5 @@
 import 'package:p2p/public/p2p_wallet_port.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/payout_trace.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
@@ -11,7 +12,12 @@ import 'package:p2p/src/domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/wallet_payout_destinations.dart';
 import 'package:p2p/src/presentation/trade_panel.dart';
-import 'package:p2p/testing.dart' show Bolt11TestInvoice, FakeP2pWalletPort;
+import 'package:p2p/testing.dart'
+    show
+        Bolt11TestInvoice,
+        FakeP2pWalletPort,
+        ScriptedFault,
+        ScriptedMakerRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -237,6 +243,96 @@ void main() {
       expect(given.isAddressOfThisWallet('2NAbc'), isTrue);
       expect(given.isAddressOfThisWallet('2nabc'), isFalse);
       expect('$given', 'WalletPayoutDestinations');
+    },
+  );
+
+  test(
+    'a payout whose answer was lost (an outcome unknown) leaves its trace: the coordinator may hold it (functional review of schema 9, C5, m12)',
+    () async {
+      final harness = await MakeHarness.start();
+      final (record, seen) = await takenBuyOrder(harness);
+      final (invoice, _) = invoiceFor(harness, record, seen);
+      final checked = valueOf(
+        harness.payout.check(
+          record,
+          seen,
+          PayoutInvoiceText(
+            invoice.text,
+            budget: RoutingBudgetPpm.referenceDefault,
+          ),
+        ),
+      );
+      harness.coordinator.failNext(
+        ScriptedMakerRequest.payout,
+        ScriptedFault.timedOut,
+      );
+      expect(
+        valueOf(await harness.payout.execute(record, checked)),
+        isA<PayoutOutcomeUnknown>(),
+      );
+      expect(
+        valueOf(await harness.payouts.traceOf(record, take: 0)),
+        PayoutPasted(PayoutTraceKind.invoice, harness.now),
+      );
+    },
+  );
+
+  test(
+    'a payout the coordinator refused once it was sent leaves no trace: it does not hold it (functional review of schema 9, C5, m11)',
+    () async {
+      final harness = await MakeHarness.start();
+      final (record, seen) = await takenBuyOrder(harness);
+      final (invoice, _) = invoiceFor(harness, record, seen);
+      final checked = valueOf(
+        harness.payout.check(
+          record,
+          seen,
+          PayoutInvoiceText(
+            invoice.text,
+            budget: RoutingBudgetPpm.referenceDefault,
+          ),
+        ),
+      );
+      harness.coordinator.failNext(
+        ScriptedMakerRequest.payout,
+        ScriptedFault.refused,
+      );
+      expect(
+        valueOf(await harness.payout.execute(record, checked)),
+        isA<PayoutNotTaken>(),
+      );
+      expect(
+        valueOf(await harness.payouts.traceOf(record, take: 0)),
+        const PayoutNotGivenHere(),
+      );
+    },
+  );
+
+  test(
+    'records that cannot be read say « unknown », never « from this wallet » (functional review of schema 9, C5, m10)',
+    () async {
+      final harness = await MakeHarness.start();
+      final (record, _) = await takenBuyOrder(harness);
+      await harness.payouts.recordPayout(
+        record,
+        take: 0,
+        source: PayoutTraceSource.thisWallet,
+        kind: PayoutTraceKind.invoice,
+        paymentHash: 'a7' * 32,
+        at: harness.now,
+      );
+      // The table of the payouts gone from the file (a test's own statement): every read of it fails.
+      await harness.database.customStatement(
+        'ALTER TABLE trade_payouts RENAME TO trade_payouts_gone',
+      );
+      expect(
+        await harness.payouts.traceOf(record, take: 0),
+        isA<Err<PayoutTrace, P2pFailure>>(),
+      );
+      final opened = await reopened(harness, record);
+      expect(opened.payout, const PayoutTraceUnreadable());
+      final again = await read(harness.restart(), record);
+      expect(again.payout, const PayoutTraceUnreadable());
     },
   );
 }
