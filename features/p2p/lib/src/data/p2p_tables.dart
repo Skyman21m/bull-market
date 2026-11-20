@@ -288,7 +288,7 @@ class StoredTradeTrails extends Table {
     "NULL CHECK (terms_changed_at IS NULL OR (typeof(terms_changed_at) = 'integer' AND terms_changed_at BETWEEN 0 AND read_at))",
   )();
 
-  /// The premium that read showed, in percent, when the premium was one of the terms it changed (an order not priced in sats, within the package's bounds, -100 to 999); absent otherwise (schema 9, #231). Set with [termsChangedAt], in the same write, and kept as it.
+  /// The premium farthest from the trade's own (its terms kept here) that a read kept showed otherwise, in percent (an order not priced in sats, within the package's bounds, -100 to 999); absent while no read showed another premium (schema 9, #231). Written as soon as a premium differs, then replaced only by a farther one, never cleared: the trigger `trade_trails_terms_trace` keeps it (security review of schema 9, C1).
   RealColumn get termsChangedPremium => real().nullable().customConstraint(
     "NULL CHECK (terms_changed_premium IS NULL OR (terms_changed_at IS NOT NULL AND typeof(terms_changed_premium) = 'real' AND terms_changed_premium BETWEEN -100 AND 999))",
   )();
@@ -399,7 +399,7 @@ class StoredTradePayments extends Table {
 
 /// Where the payout of each contract of a buyer's trade came from, as this device gave it (schema 9, #204; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): one row per trade and contract (`take`), written by `SubmitPayoutUsecase` right after the coordinator's answer took the payout, or may have, so that before « Confirm … sent » the app knows whether the payout of the contract it stands at was given from this wallet, pasted, or not given from this device.
 ///
-/// It holds whether the payout was given from this wallet or pasted, whether it is an invoice or an address, the invoice's payment hash (public, part of the invoice) and when it was submitted; never the invoice nor the address. `unrecorded` marks a contract already under way when the step to schema 9 ran (its payout, if any, was given before payouts were recorded): written by that step only, it reads « unknown », never « given elsewhere ».
+/// It holds whether the payout was given from this wallet or pasted, whether it is an invoice or an address, and when it was submitted; never the invoice, its payment hash, nor the address (nothing reads them, and the hash of a pasted invoice would tie this file to another wallet's payment: security review of schema 9, R4). `unrecorded` marks a contract already under way when the step to schema 9 ran (its payout, if any, was given before payouts were recorded): written by that step only, it reads « unknown », never « given elsewhere ».
 /// The triggers of `trade_payouts.drift` keep it: a row is never deleted, its trade and contract never change, it never becomes `unrecorded`, its time never goes back, a second insert writes nothing, and a row is written only for an open trade of a buyer whose trail stands at the row's contract.
 /// Read and written only by `TradePayoutRepositoryImpl`.
 @DataClassName('TradePayoutRow')
@@ -420,9 +420,6 @@ class StoredTradePayouts extends Table {
   /// `invoice` or `address`; absent for `unrecorded`.
   TextColumn get kind => text().nullable()();
 
-  /// The payment hash of the invoice, 64 lowercase hexadecimal characters; absent for an address and for `unrecorded`.
-  TextColumn get paymentHash => text().nullable()();
-
   /// When the payout was submitted, in microseconds since the epoch; absent for `unrecorded` only.
   IntColumn get submittedAt => integer().nullable()();
 
@@ -432,17 +429,14 @@ class StoredTradePayouts extends Table {
   @override
   List<String> get customConstraints => const [
     // The storage class of each column this code writes, as for the payments.
-    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (payment_hash IS NULL OR typeof(payment_hash) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer'))",
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer'))",
     "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
     'CHECK (take >= 0)',
     "CHECK (source IN ('thisWallet', 'pasted', 'unrecorded'))",
     "CHECK (kind IS NULL OR kind IN ('invoice', 'address'))",
     // A mark of a contract under way before schema 9 says nothing of a payout; a payout given since says what it was and when. Each part is true or false, never `NULL`, which a CHECK would let pass.
-    "CHECK ((source = 'unrecorded' AND kind IS NULL AND payment_hash IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL))",
-    // An invoice's payment hash, for an invoice only.
-    "CHECK ((kind IS 'invoice') = (payment_hash IS NOT NULL))",
-    "CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*'))",
+    "CHECK ((source = 'unrecorded' AND kind IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL))",
     'CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999)',
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];

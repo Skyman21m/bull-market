@@ -318,7 +318,6 @@ void main() {
         take: 0,
         source: PayoutTraceSource.thisWallet,
         kind: PayoutTraceKind.invoice,
-        paymentHash: 'a7' * 32,
         at: harness.now,
       );
       // The table of the payouts gone from the file (a test's own statement): every read of it fails.

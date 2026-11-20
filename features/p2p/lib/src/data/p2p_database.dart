@@ -143,8 +143,8 @@ final class P2pDatabase extends _$P2pDatabase {
 
   /// The marks of the contracts under way when the step to schema 9 runs: for every trail of a buyer at a position where the payout of its current contract may already have been given, a row `unrecorded` of that contract, unless one is there already. Schema 8 recorded no payout, so such a payout is unknown, never « given elsewhere ».
   static const String _markPayoutsUnrecorded =
-      'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, payment_hash, submitted_at) '
-      "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL, NULL FROM trade_trails AS trail "
+      'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, submitted_at) '
+      "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL FROM trade_trails AS trail "
       "WHERE role = 'buyer' AND position NOT IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'publicAgain', 'notAvailable') "
       'AND NOT EXISTS (SELECT 1 FROM trade_payouts WHERE trade_payouts.key_fingerprint = trail.key_fingerprint AND trade_payouts.robot_index = trail.robot_index AND trade_payouts.take = trail.take)';
 

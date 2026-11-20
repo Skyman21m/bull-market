@@ -106,10 +106,12 @@ BEGIN
   SELECT RAISE(ABORT, 'a trail only moves forward');
 END;
 
--- The trace of terms shown otherwise (schema 9, #231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): set once, in the write of the read that first showed this trade with other terms than its own (its time that read's), with the premium that read showed when it was one of them; then never changed nor cleared, to the trade's end, whatever the coordinator shows later.
+-- The trace of terms shown otherwise (schema 9, #231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): its time set once, in the write of the read that first showed this trade with other terms than its own (its time that read's), then never changed nor cleared; the premium a read showed otherwise written as soon as one differs, even after another term changed first, then replaced only by one farther from the premium of the trade's own terms kept here (`trade_terms` or `maker_terms`), never cleared, so that the trace never says less than was seen (security review of schema 9, C1). A premium compared with no own premium kept is refused (the comparison is never `NULL`).
 CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails
-WHEN (OLD.terms_changed_at IS NOT NULL AND (NEW.terms_changed_at IS NOT OLD.terms_changed_at OR NEW.terms_changed_premium IS NOT OLD.terms_changed_premium))
+WHEN (OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)
   OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)
+  OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL)
+  OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0))
 BEGIN
   SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept');
 END;

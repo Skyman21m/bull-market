@@ -143,8 +143,6 @@ void main() {
               null,
               'null',
               null,
-              'null',
-              null,
             ],
         ],
       });
@@ -334,7 +332,6 @@ void main() {
             take: 0,
             source: PayoutTraceSource.thisWallet,
             kind: PayoutTraceKind.invoice,
-            paymentHash: 'a1' * 32,
             at: at,
           ),
           isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isTrue),
@@ -345,7 +342,7 @@ void main() {
         );
         await expectLater(
           database.customStatement(
-            "UPDATE trade_payouts SET source = 'unrecorded', kind = NULL, payment_hash = NULL, submitted_at = NULL WHERE robot_index = 1",
+            "UPDATE trade_payouts SET source = 'unrecorded', kind = NULL, submitted_at = NULL WHERE robot_index = 1",
           ),
           throwsA(
             predicate(
@@ -356,7 +353,7 @@ void main() {
         // A mark is the step's alone.
         await expectLater(
           database.customStatement(
-            "INSERT INTO trade_payouts VALUES ('$_key', 9, 1, 'unrecorded', NULL, NULL, NULL)",
+            "INSERT INTO trade_payouts VALUES ('$_key', 9, 1, 'unrecorded', NULL, NULL)",
           ),
           throwsA(
             predicate(
@@ -703,7 +700,6 @@ const _schema9Columns = {
     'take',
     'source',
     'kind',
-    'payment_hash',
     'submitted_at',
   ],
 };

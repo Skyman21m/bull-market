@@ -1116,14 +1116,6 @@ class TradePayouts extends Table
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<String> paymentHash = GeneratedColumn<String>(
-    'payment_hash',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
   late final GeneratedColumn<int> submittedAt = GeneratedColumn<int>(
     'submitted_at',
     aliasedName,
@@ -1139,7 +1131,6 @@ class TradePayouts extends Table
     take,
     source,
     kind,
-    paymentHash,
     submittedAt,
   ];
   @override
@@ -1173,10 +1164,6 @@ class TradePayouts extends Table
         DriftSqlType.string,
         data['${effectivePrefix}kind'],
       ),
-      paymentHash: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}payment_hash'],
-      ),
       submittedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}submitted_at'],
@@ -1192,15 +1179,13 @@ class TradePayouts extends Table
   @override
   List<String> get customConstraints => const [
     'PRIMARY KEY(key_fingerprint, robot_index, take)',
-    'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(take) = \'integer\' AND typeof(source) = \'text\' AND(kind IS NULL OR typeof(kind) = \'text\')AND(payment_hash IS NULL OR typeof(payment_hash) = \'text\')AND(submitted_at IS NULL OR typeof(submitted_at) = \'integer\'))',
+    'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(take) = \'integer\' AND typeof(source) = \'text\' AND(kind IS NULL OR typeof(kind) = \'text\')AND(submitted_at IS NULL OR typeof(submitted_at) = \'integer\'))',
     'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
     'CHECK(robot_index BETWEEN 0 AND 2147483647)',
     'CHECK(take >= 0)',
     'CHECK(source IN (\'thisWallet\', \'pasted\', \'unrecorded\'))',
     'CHECK(kind IS NULL OR kind IN (\'invoice\', \'address\'))',
-    'CHECK((source = \'unrecorded\' AND kind IS NULL AND payment_hash IS NULL AND submitted_at IS NULL)OR(source <> \'unrecorded\' AND kind IS NOT NULL AND submitted_at IS NOT NULL))',
-    'CHECK((kind IS \'invoice\')=(payment_hash IS NOT NULL))',
-    'CHECK(payment_hash IS NULL OR(length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\'))',
+    'CHECK((source = \'unrecorded\' AND kind IS NULL AND submitted_at IS NULL)OR(source <> \'unrecorded\' AND kind IS NOT NULL AND submitted_at IS NOT NULL))',
     'CHECK(submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999)',
     'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
   ];
@@ -1215,7 +1200,6 @@ class TradePayoutsData extends DataClass
   final int take;
   final String source;
   final String? kind;
-  final String? paymentHash;
   final int? submittedAt;
   const TradePayoutsData({
     required this.keyFingerprint,
@@ -1223,7 +1207,6 @@ class TradePayoutsData extends DataClass
     required this.take,
     required this.source,
     this.kind,
-    this.paymentHash,
     this.submittedAt,
   });
   @override
@@ -1235,9 +1218,6 @@ class TradePayoutsData extends DataClass
     map['source'] = Variable<String>(source);
     if (!nullToAbsent || kind != null) {
       map['kind'] = Variable<String>(kind);
-    }
-    if (!nullToAbsent || paymentHash != null) {
-      map['payment_hash'] = Variable<String>(paymentHash);
     }
     if (!nullToAbsent || submittedAt != null) {
       map['submitted_at'] = Variable<int>(submittedAt);
@@ -1252,9 +1232,6 @@ class TradePayoutsData extends DataClass
       take: Value(take),
       source: Value(source),
       kind: kind == null && nullToAbsent ? const Value.absent() : Value(kind),
-      paymentHash: paymentHash == null && nullToAbsent
-          ? const Value.absent()
-          : Value(paymentHash),
       submittedAt: submittedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(submittedAt),
@@ -1272,7 +1249,6 @@ class TradePayoutsData extends DataClass
       take: serializer.fromJson<int>(json['take']),
       source: serializer.fromJson<String>(json['source']),
       kind: serializer.fromJson<String?>(json['kind']),
-      paymentHash: serializer.fromJson<String?>(json['paymentHash']),
       submittedAt: serializer.fromJson<int?>(json['submittedAt']),
     );
   }
@@ -1285,7 +1261,6 @@ class TradePayoutsData extends DataClass
       'take': serializer.toJson<int>(take),
       'source': serializer.toJson<String>(source),
       'kind': serializer.toJson<String?>(kind),
-      'paymentHash': serializer.toJson<String?>(paymentHash),
       'submittedAt': serializer.toJson<int?>(submittedAt),
     };
   }
@@ -1296,7 +1271,6 @@ class TradePayoutsData extends DataClass
     int? take,
     String? source,
     Value<String?> kind = const Value.absent(),
-    Value<String?> paymentHash = const Value.absent(),
     Value<int?> submittedAt = const Value.absent(),
   }) => TradePayoutsData(
     keyFingerprint: keyFingerprint ?? this.keyFingerprint,
@@ -1304,7 +1278,6 @@ class TradePayoutsData extends DataClass
     take: take ?? this.take,
     source: source ?? this.source,
     kind: kind.present ? kind.value : this.kind,
-    paymentHash: paymentHash.present ? paymentHash.value : this.paymentHash,
     submittedAt: submittedAt.present ? submittedAt.value : this.submittedAt,
   );
   TradePayoutsData copyWithCompanion(TradePayoutsCompanion data) {
@@ -1318,9 +1291,6 @@ class TradePayoutsData extends DataClass
       take: data.take.present ? data.take.value : this.take,
       source: data.source.present ? data.source.value : this.source,
       kind: data.kind.present ? data.kind.value : this.kind,
-      paymentHash: data.paymentHash.present
-          ? data.paymentHash.value
-          : this.paymentHash,
       submittedAt: data.submittedAt.present
           ? data.submittedAt.value
           : this.submittedAt,
@@ -1335,22 +1305,14 @@ class TradePayoutsData extends DataClass
           ..write('take: $take, ')
           ..write('source: $source, ')
           ..write('kind: $kind, ')
-          ..write('paymentHash: $paymentHash, ')
           ..write('submittedAt: $submittedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-    keyFingerprint,
-    robotIndex,
-    take,
-    source,
-    kind,
-    paymentHash,
-    submittedAt,
-  );
+  int get hashCode =>
+      Object.hash(keyFingerprint, robotIndex, take, source, kind, submittedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1360,7 +1322,6 @@ class TradePayoutsData extends DataClass
           other.take == this.take &&
           other.source == this.source &&
           other.kind == this.kind &&
-          other.paymentHash == this.paymentHash &&
           other.submittedAt == this.submittedAt);
 }
 
@@ -1370,7 +1331,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
   final Value<int> take;
   final Value<String> source;
   final Value<String?> kind;
-  final Value<String?> paymentHash;
   final Value<int?> submittedAt;
   final Value<int> rowid;
   const TradePayoutsCompanion({
@@ -1379,7 +1339,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
     this.take = const Value.absent(),
     this.source = const Value.absent(),
     this.kind = const Value.absent(),
-    this.paymentHash = const Value.absent(),
     this.submittedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1389,7 +1348,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
     required int take,
     required String source,
     this.kind = const Value.absent(),
-    this.paymentHash = const Value.absent(),
     this.submittedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : keyFingerprint = Value(keyFingerprint),
@@ -1402,7 +1360,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
     Expression<int>? take,
     Expression<String>? source,
     Expression<String>? kind,
-    Expression<String>? paymentHash,
     Expression<int>? submittedAt,
     Expression<int>? rowid,
   }) {
@@ -1412,7 +1369,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
       if (take != null) 'take': take,
       if (source != null) 'source': source,
       if (kind != null) 'kind': kind,
-      if (paymentHash != null) 'payment_hash': paymentHash,
       if (submittedAt != null) 'submitted_at': submittedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1424,7 +1380,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
     Value<int>? take,
     Value<String>? source,
     Value<String?>? kind,
-    Value<String?>? paymentHash,
     Value<int?>? submittedAt,
     Value<int>? rowid,
   }) {
@@ -1434,7 +1389,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
       take: take ?? this.take,
       source: source ?? this.source,
       kind: kind ?? this.kind,
-      paymentHash: paymentHash ?? this.paymentHash,
       submittedAt: submittedAt ?? this.submittedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1458,9 +1412,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
-    if (paymentHash.present) {
-      map['payment_hash'] = Variable<String>(paymentHash.value);
-    }
     if (submittedAt.present) {
       map['submitted_at'] = Variable<int>(submittedAt.value);
     }
@@ -1478,7 +1429,6 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
           ..write('take: $take, ')
           ..write('source: $source, ')
           ..write('kind: $kind, ')
-          ..write('paymentHash: $paymentHash, ')
           ..write('submittedAt: $submittedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -5917,7 +5867,7 @@ class DatabaseAtV9 extends GeneratedDatabase {
     'trade_trails_forward',
   );
   late final Trigger tradeTrailsTermsTrace = Trigger(
-    'CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND(NEW.terms_changed_at IS NOT OLD.terms_changed_at OR NEW.terms_changed_premium IS NOT OLD.terms_changed_premium))OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)BEGIN SELECT RAISE (ABORT, \'the trace of terms shown otherwise is kept\');END',
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0))BEGIN SELECT RAISE (ABORT, \'the trace of terms shown otherwise is kept\');END',
     'trade_trails_terms_trace',
   );
   late final Index robotBindingsNetwork = Index(

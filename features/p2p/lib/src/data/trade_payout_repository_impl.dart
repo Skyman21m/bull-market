@@ -16,15 +16,14 @@ import 'p2p_database.dart';
 final class TradePayoutRepositoryImpl implements TradePayoutRepository {
   /// A later payout of a contract already recorded (or marked `unrecorded` by the step to schema 9): the row comes back only when this call wrote it.
   static const String _replaceSql =
-      'UPDATE trade_payouts SET source = ?, kind = ?, payment_hash = ?, '
-      'submitted_at = ? '
+      'UPDATE trade_payouts SET source = ?, kind = ?, submitted_at = ? '
       'WHERE key_fingerprint = ? AND robot_index = ? AND take = ? '
       'RETURNING robot_index';
 
   /// The first payout of a contract: a second insert writes nothing (the trigger `trade_payouts_inserted_once`), so the row comes back only when this call wrote it.
   static const String _insertSql =
       'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, '
-      'kind, payment_hash, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?) '
+      'kind, submitted_at) VALUES (?, ?, ?, ?, ?, ?) '
       'RETURNING robot_index';
 
   static const String _traceSql =
@@ -79,13 +78,11 @@ final class TradePayoutRepositoryImpl implements TradePayoutRepository {
     required int take,
     required PayoutTraceSource source,
     required PayoutTraceKind kind,
-    required String? paymentHash,
     required DateTime at,
   }) async {
     final values = [
       Variable.withString(source.name),
       Variable.withString(kind.name),
-      Variable<String>(paymentHash),
       Variable.withInt(at.toUtc().microsecondsSinceEpoch),
     ];
     final key = [..._robotVariables(trade.robot), Variable.withInt(take)];

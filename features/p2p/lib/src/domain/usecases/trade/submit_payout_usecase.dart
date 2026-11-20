@@ -174,7 +174,7 @@ final class SubmitPayoutUsecase {
     final Future<Result<PayoutOutcome, OrderActionFailure>> Function() submit;
     // The contract the payout is signed for, and what it is, for its record (#204).
     final int take;
-    final ({PayoutTraceKind kind, String? hash, bool fromWallet}) given;
+    final ({PayoutTraceKind kind, bool fromWallet}) given;
     try {
       // The order as it is now, kept: the payout is signed from this read only.
       onProgress?.call(PayoutProgress.readingOrder);
@@ -237,14 +237,12 @@ final class SubmitPayoutUsecase {
       if (lastRead == null) return Err(PayoutReadFailed(seen: seen));
       take = seen.status.trail.take;
       given = switch (checked) {
-        CheckedPayoutInvoice(:final text, :final facts) => (
+        CheckedPayoutInvoice(:final text) => (
           kind: PayoutTraceKind.invoice,
-          hash: facts.paymentHash,
           fromWallet: _fromWallet?.isInvoiceOfThisWallet(text) ?? false,
         ),
         CheckedPayoutAddress(:final address) => (
           kind: PayoutTraceKind.address,
-          hash: null,
           fromWallet: _fromWallet?.isAddressOfThisWallet(address.text) ?? false,
         ),
       };
@@ -329,7 +327,6 @@ final class SubmitPayoutUsecase {
               ? PayoutTraceSource.thisWallet
               : PayoutTraceSource.pasted,
           kind: given.kind,
-          paymentHash: given.hash,
           at: _reader.now(),
         )) {
           case Ok(value: true):

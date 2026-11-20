@@ -328,16 +328,6 @@
             "dsl_features": []
           },
           {
-            "name": "payment_hash",
-            "getter_name": "paymentHash",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "submitted_at",
             "getter_name": "submittedAt",
             "moor_type": "int",
@@ -351,15 +341,13 @@
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [
-          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (payment_hash IS NULL OR typeof(payment_hash) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer'))",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer'))",
           "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
           "CHECK (robot_index BETWEEN 0 AND 2147483647)",
           "CHECK (take >= 0)",
           "CHECK (source IN ('thisWallet', 'pasted', 'unrecorded'))",
           "CHECK (kind IS NULL OR kind IN ('invoice', 'address'))",
-          "CHECK ((source = 'unrecorded' AND kind IS NULL AND payment_hash IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL))",
-          "CHECK ((kind IS 'invoice') = (payment_hash IS NOT NULL))",
-          "CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*'))",
+          "CHECK ((source = 'unrecorded' AND kind IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL))",
           "CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999)",
           "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
         ],
@@ -2008,16 +1996,20 @@
     {
       "id": 44,
       "references": [
-        4
+        4,
+        9,
+        13
       ],
       "type": "trigger",
       "data": {
         "on": 4,
         "references_in_body": [
-          4
+          4,
+          9,
+          13
         ],
         "name": "trade_trails_terms_trace",
-        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails\nWHEN (OLD.terms_changed_at IS NOT NULL AND (NEW.terms_changed_at IS NOT OLD.terms_changed_at OR NEW.terms_changed_premium IS NOT OLD.terms_changed_premium))\n  OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)\nBEGIN\n  SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept');\nEND;"
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails\nWHEN (OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)\n  OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)\n  OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL)\n  OR (OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0))\nBEGIN\n  SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept');\nEND;"
       }
     },
     {
@@ -2121,7 +2113,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"trade_payouts\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"take\" INTEGER NOT NULL, \"source\" TEXT NOT NULL, \"kind\" TEXT NULL, \"payment_hash\" TEXT NULL, \"submitted_at\" INTEGER NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\", \"take\"), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (payment_hash IS NULL OR typeof(payment_hash) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (take >= 0), CHECK (source IN ('thisWallet', 'pasted', 'unrecorded')), CHECK (kind IS NULL OR kind IN ('invoice', 'address')), CHECK ((source = 'unrecorded' AND kind IS NULL AND payment_hash IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL)), CHECK ((kind IS 'invoice') = (payment_hash IS NOT NULL)), CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*')), CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_payouts\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"take\" INTEGER NOT NULL, \"source\" TEXT NOT NULL, \"kind\" TEXT NULL, \"submitted_at\" INTEGER NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\", \"take\"), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (take >= 0), CHECK (source IN ('thisWallet', 'pasted', 'unrecorded')), CHECK (kind IS NULL OR kind IN ('invoice', 'address')), CHECK ((source = 'unrecorded' AND kind IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL)), CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
         }
       ]
     },
@@ -2499,7 +2491,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND(NEW.terms_changed_at IS NOT OLD.terms_changed_at OR NEW.terms_changed_premium IS NOT OLD.terms_changed_premium))OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)BEGIN SELECT RAISE (ABORT, 'the trace of terms shown otherwise is kept');END"
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0))BEGIN SELECT RAISE (ABORT, 'the trace of terms shown otherwise is kept');END"
         }
       ]
     },

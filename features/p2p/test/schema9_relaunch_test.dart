@@ -455,7 +455,6 @@ void main() {
             take: 0,
             source: source,
             kind: PayoutTraceKind.invoice,
-            paymentHash: 'd1' * 32,
             at: run.world.clock,
           ),
         );
