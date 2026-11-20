@@ -1098,7 +1098,7 @@ abstract class P2pLocalizations {
   /// **'Search order'**
   String get p2pSearchOrderTitle;
 
-  /// Text of the « Search order » dialog; written in the RoboSats code only, absent from its translation files. Troc opens only an order of the public book until the Garage brings robots.
+  /// Text of the « Search order » dialog (`components/Dialogs/GoToOrder.tsx:52`); written in the RoboSats code only, absent from its translation files. Since #245 it holds here too: an order the books received do not hold, a password-protected one included, is read by the robot that would take it.
   ///
   /// In en, this message translates to:
   /// **'Enter here an order URL to search for it, even if it\'s password protected'**
