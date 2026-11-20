@@ -1854,7 +1854,10 @@ void main() {
           final seen = await _at([
             makerOrderJson(0),
             makerOrderJson(1),
-            makerOrderJson(6, changes: {'trade_satoshis': null}),
+            makerOrderJson(
+              6,
+              changes: {'trade_satoshis': null, 'invoice_amount': null},
+            ),
           ]);
           expect(seen.order?.satoshisNow, isNotNull);
           await _show(tester, seen, rate: rateOf(() => atWallet));
