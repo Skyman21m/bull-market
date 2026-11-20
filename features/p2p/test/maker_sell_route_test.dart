@@ -13,7 +13,6 @@ import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_payment_repository.dart';
-import 'package:p2p/src/domain/trade/bolt11.dart' show Bolt11Network;
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
