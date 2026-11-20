@@ -259,6 +259,12 @@ void main() {
           expect(find.text('# 42'), findsOneWidget);
           expect(find.text(l10n.p2pMakePassword), findsOneWidget);
           expect(find.text(l10n.p2pTakeProtectedHidden), findsOneWidget);
+          // Typed hidden, and nothing of it learnt, suggested or corrected by the keyboard.
+          final field = tester.widget<TextField>(journey.passwordField);
+          expect(field.obscureText, isTrue);
+          expect(field.autocorrect, isFalse);
+          expect(field.enableSuggestions, isFalse);
+          expect(field.enableIMEPersonalizedLearning, isFalse);
           // Its description hidden from a robot that takes no part.
           expect(find.text('Cash in hand, near the station.'), findsNothing);
           expect(journey.takes, isEmpty);
@@ -341,6 +347,30 @@ void main() {
             await settle(tester);
             await journey.waitFor(find.text('Cash in hand, near the station.'));
             expect(find.text(l10n.p2pTradeMeetingPoint), findsNothing);
+            await journey.close();
+          },
+        );
+
+        testWidgets(
+          'an order a coordinator shows to a robot that takes no part although it is no longer public: « This order is not available », nothing to take',
+          (tester) async {
+            final journey = await _Journey.start(
+              tester,
+              locale,
+              password: null,
+            );
+            // The reference answers 1044 there (`api/views.py:265-271`); a coordinator that shows the order at 6 all the same is not believed.
+            journey.coordinator.robotView['status'] = 6;
+            final l10n = journey.l10n;
+            await journey.searchOrder(
+              shown: find.text(l10n.p2pOrderNotAvailable),
+            );
+            final page = find.byType(UnlistedOrderScreen);
+            expect(
+              find.descendant(of: page, matching: find.text(l10n.p2pTakeOrder)),
+              findsNothing,
+            );
+            expect(journey.takes, isEmpty);
             await journey.close();
           },
         );
