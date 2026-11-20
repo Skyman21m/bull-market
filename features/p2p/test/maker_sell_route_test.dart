@@ -1211,7 +1211,10 @@ void main() {
         final order = journey.order;
         expect(order.type, 0);
         journey.coordinator.lockMakerBond(order.id);
-        await journey.waitFor(find.textContaining(_english.public), seconds: 20);
+        await journey.waitFor(
+          find.textContaining(_english.public),
+          seconds: 20,
+        );
         journey.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
         final generate = find.text('Generate Invoice');
         await journey.waitFor(generate, seconds: 60);
@@ -1235,7 +1238,8 @@ void main() {
         );
         // « Submit » still possible: the wallet's invoice of the sats asked, less the reference's routing budget.
         final payout = _halfEven(
-          order.lastSatoshis - order.lastSatoshis * journey.coordinator.makerFee,
+          order.lastSatoshis -
+              order.lastSatoshis * journey.coordinator.makerFee,
         );
         final asked = (payout - payout * 1000 / 1000000).truncate();
         final now = journey.coordinator.clock();
