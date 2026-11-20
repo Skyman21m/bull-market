@@ -70,6 +70,9 @@ void main() {
       Duration escrowDuration = const Duration(seconds: 10800),
       double bondSize = 3,
       String? description,
+      OrderLocation? location,
+      OrderPasswordHash? password,
+      bool keptWithPassword = false,
     }) => MakeOrderRequest.tryCreate(
       type: type,
       currency: RobosatsCurrency.fromId(currencyId) ?? fail('currency'),
@@ -80,6 +83,9 @@ void main() {
       escrowDuration: escrowDuration,
       bondSize: BondSize.tryCreate(bondSize) ?? fail('bond'),
       description: description,
+      location: location,
+      password: password,
+      keptWithPassword: keptWithPassword,
     );
 
     test('the reference client\'s defaults make a request', () {
@@ -300,10 +306,101 @@ void main() {
             description: 'Meet at the café',
             paymentMethod: 'Bizum',
             premium: 7.77,
+            location: testLocation(),
+            password: OrderPasswordHash.of('abc'),
           ) ??
           fail('request');
       expect('$made', 'MakeOrderRequest(buy, EUR)');
+      expect('${made.passwordHash}', 'OrderPasswordHash(<redacted>)');
     });
+
+    test(
+      'a meeting point: none, or a latitude and a longitude within their bounds with at most 6 decimals (#189)',
+      () {
+        expect(request()?.location, isNull);
+        for (final (lat, lon) in [
+          (48.8566, 2.35221),
+          (-33.8688, 151.209),
+          (90.0, 180.0),
+          (-90.0, -180.0),
+          (0.000001, -0.000001),
+          (12.345678, -123.456789),
+          (0.0, 0.0),
+        ]) {
+          final location = OrderLocation.tryCreate(lat, lon) ?? fail('$lat');
+          expect(request(location: location)?.location, location);
+        }
+        // More than 6 decimals: the coordinator's empty `400` (`decimal_places=6`, `api/models/order.py:148-167`).
+        for (final (lat, lon) in [
+          (48.8566001, 2.35221),
+          (48.8566, 2.3522101),
+          (0.0000001, 0.0),
+          (1e-7, 1e-7),
+        ]) {
+          final location = OrderLocation.tryCreate(lat, lon) ?? fail('$lat');
+          expect(request(location: location), isNull, reason: '$lat, $lon');
+        }
+        expect(OrderLocation.tryCreate(90.000001, 0), isNull);
+        expect(OrderLocation.tryCreate(0, -180.000001), isNull);
+        expect(OrderLocation.tryCreate(double.nan, 0), isNull);
+        expect(
+          request(location: testLocation()),
+          isNot(request(location: testLocation(48.8566, 2.3522))),
+        );
+        expect(request(location: testLocation()), isNot(request()));
+      },
+    );
+
+    test(
+      'a password: its SHA-256 in lowercase hexadecimal, of the text as typed, none for an empty text (#189)',
+      () {
+        // The FIPS 180-2 vector of SHA-256, and texts of the reference's field: neither trimmed nor bounded.
+        expect(
+          OrderPasswordHash.of('abc')?.hex,
+          'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+        );
+        expect(
+          OrderPasswordHash.of('mot de passe é 🔑')?.hex,
+          '3da7efd4406cc4f61fc3bd6243ed0f140cb7cccddaa3851b1d0aa6487c933882',
+        );
+        expect(
+          OrderPasswordHash.of('  spaces  ')?.hex,
+          '3294fa4c529bfcd6d2b5683a79ea6ca944a92bc2dd8b2601cb2427a6abd0ba04',
+        );
+        expect(OrderPasswordHash.of(''), isNull);
+        expect(OrderPasswordHash.of('x' * 10000)?.hex, hasLength(64));
+        final protected =
+            request(password: OrderPasswordHash.of('abc')) ?? fail('request');
+        expect(protected.hasPassword, isTrue);
+        expect(protected.isSendable, isTrue);
+        expect(request()?.hasPassword, isFalse);
+        expect(request()?.isSendable, isTrue);
+      },
+    );
+
+    test(
+      'two requests of the same order are equal whatever the password\'s hash; what a device keeps says there is one and is never sendable',
+      () {
+        final one =
+            request(password: OrderPasswordHash.of('one')) ?? fail('one');
+        final two =
+            request(password: OrderPasswordHash.of('two')) ?? fail('two');
+        expect(one, two);
+        expect(one.hashCode, two.hashCode);
+        expect(one, isNot(request()));
+        final kept = one.kept;
+        expect(kept.passwordHash, isNull);
+        expect(kept.hasPassword, isTrue);
+        expect(kept.isSendable, isFalse);
+        expect(kept, one);
+        final restored = request(keptWithPassword: true) ?? fail('restored');
+        expect(restored.hasPassword, isTrue);
+        expect(restored.isSendable, isFalse);
+        expect(restored, kept);
+        expect(request()?.kept, request());
+        expect(request()?.kept.isSendable, isTrue);
+      },
+    );
   });
 
   group('the request sent', () {
@@ -394,6 +491,53 @@ void main() {
       expect(body['is_explicit'], isFalse);
       expect(body.keys, hasLength(17));
     });
+
+    test(
+      'a meeting point and a password\'s SHA-256, never the password (#189)',
+      () async {
+        final body = await bodyOf(
+          testMakeRequest(
+            location: testLocation(-33.8688, 151.209),
+            password: OrderPasswordHash.of('abc'),
+          ),
+        );
+        expect(body['latitude'], -33.8688);
+        expect(body['longitude'], 151.209);
+        expect(
+          body['password'],
+          'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+        );
+        expect(body.keys, hasLength(17));
+        final text = utf8.decode(transport.requests.single.body ?? const []);
+        expect(
+          text,
+          contains(
+            '"latitude":-33.8688,"longitude":151.209,'
+            '"password":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",',
+          ),
+        );
+        expect(text, isNot(contains('"abc"')));
+        // A meeting point on whole degrees is written as the reference's `Number` writes it.
+        final whole = await bodyOf(testMakeRequest(location: testLocation(48, -3)));
+        expect(whole['latitude'], 48);
+        expect(whole['latitude'], isA<int>());
+        expect(whole['longitude'], -3);
+      },
+    );
+
+    test(
+      'a request kept without its password\'s hash is refused, nothing sent (#189)',
+      () async {
+        final kept = testMakeRequest(password: OrderPasswordHash.of('abc')).kept;
+        final failure = expectErr(await make(kept));
+        expect(failure, isA<OrderActionRefused>());
+        expect(
+          failure.cause,
+          isA<OrderRequestRefused>().having((f) => f.errorCode, 'code', null),
+        );
+        expect(transport.requests, isEmpty);
+      },
+    );
 
     test(
       'a coordinator with no instance on the network: nothing sent',
@@ -553,6 +697,37 @@ void main() {
       await unknown({'latitude': '48.856600'}, 'latitude');
       await unknown({'longitude': '2.352200'}, 'longitude');
     });
+
+    test(
+      'a meeting point answered as sent, its texts of 6 decimals; any other is unknown (#189)',
+      () async {
+        final placed = testMakeRequest(location: testLocation(48.8566, 2.35221));
+        serveJson(madeAnswer(placed));
+        expect(madeAnswer(placed)['latitude'], '48.856600');
+        expect(madeAnswer(placed)['longitude'], '2.352210');
+        expect(expectOk(await make(placed)).request, placed);
+        Future<void> answered(Map<String, Object?> changes, String field) async {
+          serveJson(madeAnswer(placed, changes: changes));
+          expect(
+            expectErr(await make(placed)).cause,
+            malformed(field),
+            reason: '$changes',
+          );
+        }
+
+        await answered({'latitude': '48.856601'}, 'latitude');
+        await answered({'longitude': '2.352200'}, 'longitude');
+        await answered({'latitude': 48.8566}, 'latitude');
+        await answered({'latitude': '90.000001'}, 'latitude');
+        serveJson({...madeAnswer(placed), 'latitude': null});
+        expect(expectErr(await make(placed)).cause, malformed('latitude'));
+        serveJson({...madeAnswer(placed), 'longitude': null});
+        expect(expectErr(await make(placed)).cause, malformed('longitude'));
+        final protected = testMakeRequest(password: OrderPasswordHash.of('abc'));
+        serveJson(madeAnswer(protected));
+        expect(expectOk(await make(protected)).request.hasPassword, isTrue);
+      },
+    );
 
     test('a range answered as another range, or as a fixed amount', () async {
       final range = testMakeRequest(amount: testRange(100, 300));

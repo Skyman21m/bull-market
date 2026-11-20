@@ -38,6 +38,20 @@ abstract final class WebMercator {
     return 0.5 - math.log((1 + sin) / (1 - sin)) / (4 * math.pi);
   }
 
+  /// The latitude and longitude of [point], as Leaflet's `unproject` gives the place of a tap (`event.latlng`, `components/Map/index.tsx`): the point held within the map's square first, so that a tap beside the world gives a place on its edge, never a longitude beyond ±180° nor a latitude beyond ±[maxLatitude].
+  static ({double latitude, double longitude}) unproject(MapPoint point) {
+    final x = point.x.isFinite ? point.x.clamp(0.0, 1.0) : 0.5;
+    final y = point.y.isFinite ? point.y.clamp(0.0, 1.0) : 0.5;
+    final latitude =
+        (2 * math.atan(math.exp((0.5 - y) * 2 * math.pi)) - math.pi / 2) *
+        180 /
+        math.pi;
+    return (
+      latitude: latitude.clamp(-maxLatitude, maxLatitude),
+      longitude: (x - 0.5) * 360,
+    );
+  }
+
   /// The width in points of the whole world at [zoom].
   static double worldSize(double zoom) => tileSize * math.pow(2, zoom);
 }

@@ -687,8 +687,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       'taker': null,
       'escrow_duration': made.escrowSeconds,
       'bond_size': _decimal(body['bond_size'], 2),
-      'latitude': null,
-      'longitude': null,
+      // `ListOrderSerializer`'s texts of 6 decimals (`api/serializers.py:105-106`, `api/models/order.py:148-167`), #189.
+      'latitude': _decimal(body['latitude'], 6),
+      'longitude': _decimal(body['longitude'], 6),
     };
     if (makeAnswerChanges.isNotEmpty) {
       _apply(answer, makeAnswerChanges.removeAt(0));
@@ -829,6 +830,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     final buyer = made.type == 0;
     final taker = made.taker;
     final body = made.body;
+    final protected = body['password'] != null;
     final data = <String, Object?>{
       'id': made.id,
       'status': status,
@@ -850,8 +852,17 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       'taker': taker == null ? null : 8,
       'escrow_duration': made.escrowSeconds,
       'bond_size': _decimal(body['bond_size'], 2),
-      'latitude': null,
-      'longitude': null,
+      // To a participant the stored `Decimal` as a JSON number (`api/views.py:320-321`); to another robot the serializer's text, removed with the description for a protected order (`:291-298`), #189.
+      'latitude': isMaker
+          ? _stored(body['latitude'])
+          : protected
+          ? null
+          : _decimal(body['latitude'], 6),
+      'longitude': isMaker
+          ? _stored(body['longitude'])
+          : protected
+          ? null
+          : _decimal(body['longitude'], 6),
       'is_maker': isMaker,
       'is_taker': false,
       'is_participant': isMaker,
@@ -862,7 +873,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
           .clamp(0, 1 << 31),
       'maker_nick': made.maker.nickname,
       'maker_hash_id': made.maker.hashId.hex,
-      'description': body['description'],
+      'description': !isMaker && protected ? null : body['description'],
       'maker_status': 'Active',
       if (taker != null) 'taker_status': 'Active',
     };
@@ -1094,6 +1105,12 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// [value], a number of the make's body, as the serializer writes a decimal of [places] places, or `null`.
   static String? _decimal(Object? value, int places) =>
       value is num ? value.toDouble().toStringAsFixed(places) : null;
+
+  /// [value] as the coordinator stores it, 6 decimals, then written as a JSON number (`float` of the `Decimal`, Django REST framework's encoder), or `null`.
+  static double? _stored(Object? value) => switch (_decimal(value, 6)) {
+    final text? => double.parse(text),
+    null => null,
+  };
 
   static void _apply(Map<String, Object?> data, Map<String, Object?> changes) {
     for (final MapEntry(:key, :value) in changes.entries) {

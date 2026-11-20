@@ -203,6 +203,7 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
               initialType: initialType,
               coordinatorDetails: (_) => throw StateError('not opened'),
               onMade: opened.add,
+              locationDraws: () => 0.5,
               book: book,
               activeTrades: activeTrades,
               onOpenOrder: openedOrders?.add,

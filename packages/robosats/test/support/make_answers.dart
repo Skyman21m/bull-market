@@ -16,6 +16,8 @@ MakeOrderRequest testMakeRequest({
   Duration escrowDuration = const Duration(seconds: 10800),
   double bondSize = 3,
   String? description,
+  OrderLocation? location,
+  OrderPasswordHash? password,
 }) {
   final request = MakeOrderRequest.tryCreate(
     type: type,
@@ -27,6 +29,8 @@ MakeOrderRequest testMakeRequest({
     escrowDuration: escrowDuration,
     bondSize: BondSize.tryCreate(bondSize) ?? _missing('bond size'),
     description: description,
+    location: location,
+    password: password,
   );
   return request ?? _missing('request');
 }
@@ -35,6 +39,12 @@ MakeOrderRequest testMakeRequest({
 RangeOrderAmount testRange([double min = 100, double max = 300]) =>
     RangeOrderAmount.tryCreate(fiat(min), fiat(max)) ?? _missing('range');
 
+/// A meeting point of the tests.
+OrderLocation testLocation([
+  double latitude = 48.8566,
+  double longitude = 2.35221,
+]) => OrderLocation.tryCreate(latitude, longitude) ?? _missing('location');
+
 FiatAmount fiat(double value) =>
     FiatAmount.tryCreate(value) ?? _missing('$value');
 
@@ -42,7 +52,7 @@ Never _missing(String what) => throw StateError('invalid test $what');
 
 /// The `201` answer of `MakerView.post` to [request] (`api/views.py:179-216`): the order as `ListOrderSerializer` writes it (`api/serializers.py:83-107`), with [changes] applied last, a `null` value removing its key.
 ///
-/// The serializer writes the order's `DecimalField`s as strings with the field's decimal places (`amount` 8, `premium` and `bond_size` 2, `api/models/order.py:77-146`), the integers as numbers, the dates in ISO 8601 with `Z` (`TIME_ZONE = "UTC"`, `robosats/settings.py:248`); `maker` is the coordinator's internal user id and `taker` is `null`.
+/// The serializer writes the order's `DecimalField`s as strings with the field's decimal places (`amount` 8, `premium` and `bond_size` 2, `latitude` and `longitude` 6, `api/models/order.py:77-167`), the integers as numbers, the dates in ISO 8601 with `Z` (`TIME_ZONE = "UTC"`, `robosats/settings.py:248`); `maker` is the coordinator's internal user id and `taker` is `null`.
 /// `created_at` is the model's default, taken when the order is built, and `expires_at` the view's `timezone.now()` plus `EXP_MAKER_BOND_INVOICE`, 300 seconds, taken just before (`api/views.py:190`): a few microseconds less than 300 seconds apart.
 Map<String, Object?> madeAnswer(
   MakeOrderRequest request, {
@@ -75,7 +85,13 @@ Map<String, Object?> madeAnswer(
     'taker': null,
     'escrow_duration': request.escrowDuration.inSeconds,
     'bond_size': decimal(request.bondSize.percent, 2),
-    'latitude': null,
-    'longitude': null,
+    'latitude': switch (request.location) {
+      final location? => decimal(location.latitude, 6),
+      null => null,
+    },
+    'longitude': switch (request.location) {
+      final location? => decimal(location.longitude, 6),
+      null => null,
+    },
   }, changes);
 }

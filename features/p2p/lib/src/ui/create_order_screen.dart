@@ -9,6 +9,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/matching_orders.dart';
+import '../domain/meeting_point.dart';
 import '../domain/option_search.dart';
 import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
@@ -24,6 +25,7 @@ import '../presentation/make_order_l10n.dart';
 import '../presentation/p2p_formats.dart';
 import '../presentation/pending_makes_cubit.dart';
 import 'garage/select_host_sheet.dart';
+import 'location_map_dialog.dart';
 import 'trade/pending_make_lines.dart';
 import 'widgets/add_payment_method_dialog.dart';
 import 'widgets/coordinator_avatar.dart';
@@ -38,13 +40,16 @@ import 'widgets/trade_button.dart';
 
 /// The « Create » page: the official client's basic form (`components/MakerForm/MakerForm.tsx`, `basic/MakerPage/index.tsx`, commit ff1998c; design note `docs/design/phase-3-making-an-order.md` § 1.11, § 2.1), in the wallet's look (#181).
 ///
-/// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy » and « Sell » (« Sell » since #188); with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location », disabled with « Coming in a later version. » (#189); « Premium over Market (%) * »; with the advanced options, « Description », « Password » (disabled until #189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
+/// Field by field, as the reference lays them out: « Enable advanced options » (#183); « Buy or Sell Bitcoin? * » with « Buy » and « Sell » (« Sell » since #188); with the advanced options, « Amount Range » or « Exact Amount »; « Amount * » and the currency, or for a range « From » … « to », the currency and the reference's slider; « Fiat Payment Method(s) * » with « Add custom payment method »; « Face to Face Location » (#189), its map opened by itself when the last method chosen is face to face; « Premium over Market (%) * »; with the advanced options, « Description », « Password » (#189), « Public Duration (HH:mm) », « Escrow/Invoice Timer (HH:mm) » and « Fidelity Bond Size »; the coordinator, drawn by the reference's lottery and chosen with « Select Host »; the summary and « Estimated Bond »; « Create order », disabled with the reference's reason; « Order current rate », then the Bull wallet's indicative price for comparison (the owner's decision of 2026-11-17).
 ///
 /// What is typed stays here; it is judged by [MakerFormCheck] at each build, and the request « Create order » sends is the one the summary shows, taken at the press. From the press the fields are locked: « You do not have a Garage Key » without a key, else « Store your garage key », whose « Done » sends the make once ([MakeOrderCubit.make]), its « Go back » sending nothing. A made order opens its trade ([onMade]); a make refused or not made says why; a make whose outcome is unknown locks the form.
 ///
 /// « Existing orders match yours! » (#186, `basic/MakerPage/index.tsx`): while orders of the [book] on the other side resemble the one being made ([MatchingOrders]), the button reads « Submit » and only shows them, above the form, the form's fields folded away as the reference collapses them; the button then reads « Create order », and « Edit order » (a pencil) unfolds the fields. A tap on one of those orders opens it ([onOpenOrder]). Nothing is asked of anyone for this: the search runs on the book the tab received.
 ///
 /// A renewal (#185, [MakeOrderState.renewing]) is the same page titled « Renew Order », its fields filled with the terms this device kept of the order renewed and locked, on that order's coordinator: the same summary, « Estimated Bond », rate and Bull wallet's comparison, the same press and the same make; « Create order » sends only when the form judges its fields into exactly the kept request, and with no « Store your garage key », as the reference's renewal sends at once (`TradeBox/index.tsx:146-200`). Going back sends nothing.
+/// An order renewed that had a password asks for it again (#189, `Prompts/Expired.tsx:42-92`): « Password » is then the only field open, and nothing is sent while it is empty, said under it and under the button; its SHA-256 is what leaves, where the reference sends the text typed (`TradeBox/index.tsx:180`), a defect of the reference (design note § 1.8). The meeting point kept is sent again as it is, as the reference sends the order's own (`:172-173`).
+///
+/// The explanations are shown on demand (the owner's rule of 2026-11-20): under « Password » and « Face to Face Location » a short line, and « See details » unfolds the rest; an alert stays shown in one line.
 class CreateOrderScreen extends StatefulWidget {
   /// « Buy » or « Sell » chosen when the form opens, as the reference starts from the book's choice (`fav.type`); `null` for none.
   final OrderType? initialType;
@@ -74,10 +79,14 @@ class CreateOrderScreen extends StatefulWidget {
   /// The time of the orders' expiry rings.
   final DateTime Function() now;
 
+  /// The draws that move a meeting point pinned (#189, [MeetingPoint.randomized]).
+  final double Function() locationDraws;
+
   const CreateOrderScreen({
     super.key,
     required this.coordinatorDetails,
     required this.onMade,
+    required this.locationDraws,
     this.initialType,
     this.offline = const {},
     this.onOpenGarage,
@@ -99,6 +108,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _minAmount = TextEditingController();
   final _maxAmount = TextEditingController();
   final _description = TextEditingController();
+
+  /// « Password » (#189): its text stays in this field only; the request carries its SHA-256.
+  final _password = TextEditingController();
+
+  /// « Face to Face Location »: the meeting point saved, as the order sends it, or `null` (#189).
+  OrderLocation? _location;
 
   /// « Enable advanced options » and « Amount Range » (`maker.advancedOptions`, `amountRangeEnabled`, `MakerForm.tsx:90`), and the values of the options, the reference's defaults (`models/Maker.model.ts:29-56`).
   bool _advanced = false;
@@ -154,6 +169,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _publicDuration = request.publicDuration;
     _escrowDuration = request.escrowDuration;
     _bondSize = request.bondSize.percent;
+    // The meeting point kept, sent again as it is; the password never kept, typed again (#189).
+    _location = request.location;
+    _password.clear();
     switch (request.amount) {
       case FixedOrderAmount(:final amount):
         _amount.text = _plain(amount.value);
@@ -168,7 +186,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         request.description != null ||
         request.publicDuration != MakerFormCheck.publicDurationDefault ||
         request.escrowDuration != MakerFormCheck.escrowDurationDefault ||
-        request.bondSize.percent != MakerFormCheck.bondSizeDefault;
+        request.bondSize.percent != MakerFormCheck.bondSizeDefault ||
+        request.hasPassword;
   }
 
   @override
@@ -178,6 +197,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _minAmount.dispose();
     _maxAmount.dispose();
     _description.dispose();
+    _password.dispose();
     _scroll.dispose();
     if (!_gone.isCompleted) _gone.complete();
     super.dispose();
@@ -198,6 +218,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         publicDuration: _publicDuration,
         escrowDuration: _escrowDuration,
         bondSizePercent: _bondSize,
+        password: _password.text,
+        location: _location,
       );
 
   /// The form as typed, judged in [currency] when given, else in the currency shown.
@@ -298,7 +320,17 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  /// Whether the form renews an order that had a password and « Password » is empty (#189): nothing is sent, said under the field and the button (`Prompts/Expired.tsx:84-89`).
+  bool _renewalNeedsPassword(MakeOrderState state) =>
+      switch (state.renewal) {
+        MakeRenewalReady(:final renewal) => renewal.request.hasPassword,
+        _ => false,
+      } &&
+      _password.text.isEmpty;
+
   /// Whether the form renews an order (#185) and [request], what the form judges its fields into, is not exactly the request kept of that order, or the kept terms are not filled yet: nothing is sent then, and the button says why.
+  ///
+  /// Requests are equal whatever the password's hash (`MakeOrderRequest ==`), which this device never kept: an order that had a password matches only with a password typed again (#189).
   bool _renewalMismatch(MakeOrderState state, MakeOrderRequest? request) {
     if (!state.renewing) return false;
     final filled = _filled;
@@ -392,6 +424,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _minAmount.clear();
       _maxAmount.clear();
       _description.clear();
+      // The password back to none (`defaultMaker`), the meeting point gone with the methods (`handlePaymentMethodChange([])`, `MakerForm.tsx:491`), #189.
+      _password.clear();
+      _location = null;
       _publicDuration = MakerFormCheck.publicDurationDefault;
       _escrowDuration = MakerFormCheck.escrowDurationDefault;
       _bondSize = MakerFormCheck.bondSizeDefault;
@@ -436,6 +471,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   Future<void> _chooseMethods() async {
     final l10n = P2pLocalizations.of(context);
+    final before = List.of(_methods);
     final listed = [for (final method in PaymentMethods.fiat) method.name];
     await FilterSheet.show<String>(
       context,
@@ -468,11 +504,44 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         );
       },
     );
+    if (mounted) _methodsChanged(before);
+  }
+
+  /// The methods chosen changed from [before] (`handlePaymentMethodChange`, `MakerForm.tsx:206-232`, #189): the meeting point stays only with a face-to-face method, and the map opens by itself when the last method is one, once the list that chooses them is closed.
+  void _methodsChanged(List<String> before) {
+    if (_sameMethods(before, _methods)) return;
+    if (_location != null && !MeetingPoint.keptWith(_methods)) {
+      setState(() => _location = null);
+    }
+    if (MeetingPoint.opensMap(_methods)) unawaited(_openMap());
+  }
+
+  static bool _sameMethods(List<String> a, List<String> b) =>
+      a.length == b.length &&
+      Iterable<int>.generate(a.length).every((i) => a[i] == b[i]);
+
+  /// « Face to Face Location » (`MakerForm.tsx:1002-1027`): the map, opened on the point saved; « Save » keeps the place pinned moved as the reference moves it, and puts « Cash F2F » first among the methods, as the reference does (`handleAddLocation`, `:494-513`).
+  Future<void> _openMap() async {
+    final point = await LocationMapDialog.show(
+      context,
+      initial: _location,
+      primary: _type == OrderType.buy,
+      draw: widget.locationDraws,
+    );
+    if (point == null || !mounted) return;
+    setState(() {
+      _location = point;
+      final methods = MeetingPoint.methodsWithPoint(_methods);
+      _methods
+        ..clear()
+        ..addAll(methods);
+    });
   }
 
   Future<void> _addMethod() async {
     final method = await AddPaymentMethodDialog.show(context);
     if (method == null || !mounted) return;
+    final before = List.of(_methods);
     setState(() {
       if (!_methods.any(
         (chosen) => CustomPaymentMethod.sameMethod(chosen, method.text),
@@ -480,6 +549,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         _methods.add(method.text);
       }
     });
+    _methodsChanged(before);
   }
 
   Future<void> _chooseHost(MakeOrderState state) async {
@@ -711,11 +781,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             enabled: !fieldsLocked,
                             onChoose: () => unawaited(_chooseMethods()),
                             onAdd: () => unawaited(_addMethod()),
-                            onRemove: (method) =>
-                                setState(() => _methods.remove(method)),
+                            onRemove: (method) {
+                              final before = List.of(_methods);
+                              setState(() => _methods.remove(method));
+                              _methodsChanged(before);
+                            },
                           ),
                           const Gap(BullSpacing.md),
-                          const _Location(),
+                          _Location(
+                            location: _location,
+                            enabled: !fieldsLocked,
+                            onOpen: () => unawaited(_openMap()),
+                            onRemove: () => setState(() => _location = null),
+                          ),
                           const Gap(BullSpacing.md),
                           _PremiumField(
                             controller: _premium,
@@ -732,7 +810,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                               onChanged: () => setState(() {}),
                             ),
                             const Gap(BullSpacing.md),
-                            const _Password(),
+                            _Password(
+                              controller: _password,
+                              // The only field of a renewal that can be typed, for an order that had a password (#189).
+                              enabled: renewing
+                                  ? !locked &&
+                                        switch (state.renewal) {
+                                          MakeRenewalReady(:final renewal) =>
+                                            renewal.request.hasPassword,
+                                          _ => false,
+                                        }
+                                  : !fieldsLocked,
+                              renewing: renewing,
+                              needed: _renewalNeedsPassword(state),
+                              exposure: switch (coordinator) {
+                                final host? => PasswordExposure.of(
+                                  state.infos[host.shortAlias],
+                                ),
+                                null => null,
+                              },
+                              coordinator: coordinatorName,
+                              onChanged: () => setState(() {}),
+                            ),
                             const Gap(BullSpacing.md),
                             _DurationField(
                               label: l10n.p2pMakePublicDuration,
@@ -798,6 +897,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             state,
                             check.request,
                           ),
+                          renewalNeedsPassword: _renewalNeedsPassword(state),
                           renewing: renewing,
                           coordinator: coordinatorName,
                           submits: submits,
@@ -1385,6 +1485,7 @@ class _Summary extends StatelessWidget {
     final formats = P2pFormats.of(context);
     final options = [
       if (sent.description) l10n.p2pMakeOptionSentDescription,
+      if (sent.password) l10n.p2pMakeOptionSentPassword,
       if (sent.publicDuration case final duration?)
         l10n.p2pMakeOptionSentPublicDuration(_DurationField.hhmm(duration)),
       if (sent.escrowDuration case final duration?)
@@ -1490,6 +1591,9 @@ class _CreateButton extends StatelessWidget {
   /// Whether a renewal's fields are not judged into exactly its kept request (#185): nothing can be sent, and a line says so.
   final bool renewalMismatch;
 
+  /// Whether a renewal of an order that had a password waits for it to be typed again (#189): the line says so, in place of [renewalMismatch]'s.
+  final bool renewalNeedsPassword;
+
   /// Whether the form renews an order (#185): its fields cannot be changed, so a refusal the user could correct in a creation says what to do instead (functional review of #185, R3).
   final bool renewing;
   final String coordinator;
@@ -1510,6 +1614,7 @@ class _CreateButton extends StatelessWidget {
     required this.asking,
     required this.stopped,
     required this.renewalMismatch,
+    required this.renewalNeedsPassword,
     required this.renewing,
     required this.coordinator,
     required this.submits,
@@ -1548,7 +1653,9 @@ class _CreateButton extends StatelessWidget {
     };
     final lines = <Widget>[
       if (why != null && progress is MakeIdle) _Line(why, live: true),
-      if (block == null && renewalMismatch && progress is MakeIdle)
+      if (block == null && renewalNeedsPassword && progress is MakeIdle)
+        _Line(l10n.p2pRenewPasswordAgain, color: colors.error, live: true)
+      else if (block == null && renewalMismatch && progress is MakeIdle)
         _Line(l10n.p2pRenewNotAsKept, color: colors.warning, live: true),
       // A renewal the form or the make refuses for its kept terms, which cannot be changed here: what to do (functional review of #185, R3).
       if (renewing &&
@@ -2171,80 +2278,230 @@ class _RangeField extends StatelessWidget {
   }
 }
 
-/// A field shown and not usable before #189, with the reference's label and tooltip and « Coming in a later version. » under it.
-class _Later extends StatelessWidget {
-  final Widget child;
-  final String tooltip;
+/// « See details » under a field, which unfolds [lines], the explanation shown only on demand (the owner's rule of 2026-11-20: screens kept bare), and folds them again (#189).
+class _Details extends StatefulWidget {
+  final List<String> lines;
 
-  const _Later({required this.child, required this.tooltip});
+  const _Details(this.lines);
+
+  @override
+  State<_Details> createState() => _DetailsState();
+}
+
+class _DetailsState extends State<_Details> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Tooltip(message: tooltip, child: child),
-        const Gap(BullSpacing.xxs),
-        Text(
-          P2pLocalizations.of(context).p2pMakeComingLater,
-          style: Theme.of(
-            context,
-          ).textTheme.labelMedium?.copyWith(color: colors.textMuted),
+        Semantics(
+          button: true,
+          expanded: _open,
+          excludeSemantics: true,
+          label: _open ? l10n.p2pMakeHideDetails : l10n.p2pMakeSeeDetails,
+          onTap: () => setState(() => _open = !_open),
+          child: InkWell(
+            onTap: () => setState(() => _open = !_open),
+            borderRadius: BorderRadius.circular(BullRadius.xxs),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      _open ? l10n.p2pMakeHideDetails : l10n.p2pMakeSeeDetails,
+                      style: text.labelLarge?.copyWith(color: colors.primary),
+                    ),
+                  ),
+                  Icon(
+                    _open ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: colors.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
+        if (_open)
+          for (final line in widget.lines) ...[
+            Text(
+              line,
+              style: text.bodySmall?.copyWith(color: colors.textMuted),
+            ),
+            const Gap(BullSpacing.xxs),
+          ],
       ],
     );
   }
 }
 
-/// « Face to Face Location » (`MakerForm.tsx:1002-1027`), where the reference puts it, under the payment methods: disabled until #189.
+/// « Face to Face Location » (`MakerForm.tsx:1002-1027`), where the reference puts it, under the payment methods, with its tooltip: a tap opens the map (#189). Once a point is saved, the point the order sends, already moved, in one line with a cross that removes it (the reference removes it only with the last face-to-face method), and « See details »: the reference's line on the randomization, what is published, and that nothing of the device's position is read.
 class _Location extends StatelessWidget {
-  const _Location();
+  final OrderLocation? location;
+  final bool enabled;
+  final VoidCallback onOpen;
+  final VoidCallback onRemove;
+
+  const _Location({
+    required this.location,
+    required this.enabled,
+    required this.onOpen,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
+    final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    return _Later(
-      tooltip: l10n.p2pMakeLocationHint,
-      child: OutlinedButton.icon(
-        onPressed: null,
-        icon: const Icon(Icons.map_outlined),
-        iconAlignment: IconAlignment.end,
-        style: OutlinedButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          minimumSize: const Size.fromHeight(48),
-          side: BorderSide(color: colors.outline),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(BullRadius.xxs),
+    final point = location;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Tooltip(
+          message: l10n.p2pMakeLocationHint,
+          child: OutlinedButton.icon(
+            onPressed: enabled ? onOpen : null,
+            icon: const Icon(Icons.map_outlined),
+            iconAlignment: IconAlignment.end,
+            style: OutlinedButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              minimumSize: const Size.fromHeight(48),
+              foregroundColor: colors.textMuted,
+              side: BorderSide(color: colors.outline),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(BullRadius.xxs),
+              ),
+            ),
+            label: Text(l10n.p2pMakeLocation),
           ),
         ),
-        label: Text(l10n.p2pMakeLocation),
-      ),
+        if (point != null) ...[
+          const Gap(BullSpacing.xxs),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l10n.p2pMakeLocationSent(
+                    meetingPointText(point.latitude, point.longitude),
+                  ),
+                  style: text.bodyMedium?.copyWith(color: colors.text),
+                ),
+              ),
+              if (enabled)
+                IconButton(
+                  tooltip: l10n.p2pMakeLocationRemove,
+                  onPressed: onRemove,
+                  color: colors.textMuted,
+                  icon: const Icon(Icons.close),
+                ),
+            ],
+          ),
+          _Details([
+            l10n.p2pMakeLocationRandomized,
+            l10n.p2pMakeLocationDetail,
+          ]),
+        ],
+      ],
     );
   }
 }
 
-/// « Password » (`MakerForm.tsx:1085-1113`): disabled until #189.
+/// « Password » (`MakerForm.tsx:1085-1113`) with the reference's tooltip (#189): typed hidden, sent as its SHA-256.
+///
+/// Once a password is typed, one short line (out of the book, taken with the official app), the alert of a coordinator older than 0.8.7 or of unknown version in one line when there is one ([exposure], never a lock), and « See details »: the reference's help, how to share the order, what stays readable of it, that only the hash leaves and is not kept. In a renewal of an order that had a password ([needed] while it is empty), the reference's « Enter a password again » under the field in the colour of an error (`Prompts/Expired.tsx:49-58`), and the detail that the same password is needed.
 class _Password extends StatelessWidget {
-  const _Password();
+  final TextEditingController controller;
+  final bool enabled;
+  final bool renewing;
+  final bool needed;
+  final PasswordExposure? exposure;
+  final String coordinator;
+  final VoidCallback onChanged;
+
+  const _Password({
+    required this.controller,
+    required this.enabled,
+    required this.renewing,
+    required this.needed,
+    required this.exposure,
+    required this.coordinator,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
+    final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    return _Later(
-      tooltip: l10n.p2pMakePasswordHint,
-      child: TextField(
-        enabled: false,
-        obscureText: true,
-        decoration: InputDecoration(
-          labelText: l10n.p2pMakePassword,
-          filled: true,
-          fillColor: colors.surface,
-          disabledBorder: _border(colors.outline),
-        ),
+    final typed = controller.text.isNotEmpty;
+    final exposure = typed ? this.exposure : null;
+    final alert = switch (exposure) {
+      PasswordExposedByVersion(:final version) =>
+        l10n.p2pMakePasswordOldCoordinator(coordinator, '$version'),
+      PasswordExposureUnknown() => l10n.p2pMakePasswordUnknownVersion(
+        coordinator,
       ),
+      null => null,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Tooltip(
+          message: l10n.p2pMakePasswordHint,
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            obscureText: true,
+            // A secret, not words: nothing suggested, corrected or learnt by the keyboard.
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            keyboardType: TextInputType.visiblePassword,
+            textAlign: TextAlign.center,
+            style: text.bodyLarge?.copyWith(color: colors.text),
+            onChanged: (_) => onChanged(),
+            decoration: InputDecoration(
+              labelText: l10n.p2pMakePassword,
+              errorText: needed ? l10n.p2pRenewPasswordAgain : null,
+              filled: true,
+              fillColor: colors.surface,
+              enabledBorder: _border(colors.outline),
+              disabledBorder: _border(colors.outline),
+              focusedBorder: _border(colors.primary),
+              errorBorder: _border(colors.error),
+              focusedErrorBorder: _border(colors.error),
+            ),
+          ),
+        ),
+        if (typed) ...[
+          const Gap(BullSpacing.xxs),
+          Text(
+            l10n.p2pMakePasswordLine,
+            style: text.bodyMedium?.copyWith(color: colors.text),
+          ),
+        ],
+        if (alert != null) ...[
+          const Gap(BullSpacing.xs),
+          _Alert(alert, colors.warning),
+        ],
+        if (typed || needed)
+          _Details([
+            if (needed || renewing) l10n.p2pRenewPasswordSame,
+            l10n.p2pMakePasswordHint,
+            l10n.p2pMakePasswordShare,
+            l10n.p2pMakePasswordOfficialApp,
+            l10n.p2pMakePasswordReadable,
+            l10n.p2pMakePasswordHashOnly,
+            if (alert != null) l10n.p2pMakePasswordOldDetail,
+          ]),
+      ],
     );
   }
 }

@@ -3137,9 +3137,6 @@ class P2pLocalizationsDe extends P2pLocalizations {
   String get p2pMakeEnableAdvanced => 'Enable advanced options';
 
   @override
-  String get p2pMakeComingLater => 'Coming in a later version.';
-
-  @override
   String get p2pMakeBuyOrSell => 'Buy or Sell Bitcoin?';
 
   @override
@@ -3994,4 +3991,88 @@ class P2pLocalizationsDe extends P2pLocalizations {
 
   @override
   String get p2pMakeMatchesFound => 'Existing orders match yours!';
+
+  @override
+  String get p2pMakeSeeDetails => 'See details';
+
+  @override
+  String get p2pMakeHideDetails => 'Hide details';
+
+  @override
+  String get p2pMakePasswordLine =>
+      'Kept out of the book; to be taken with the official RoboSats app.';
+
+  @override
+  String get p2pMakePasswordShare =>
+      'Share the order\'s link (« Copy URL » on its page once it is made) and the password with the robots you choose.';
+
+  @override
+  String get p2pMakePasswordOfficialApp =>
+      'Bull Market cannot take a protected order yet: whoever takes it uses the official RoboSats app, with the link and the password.';
+
+  @override
+  String get p2pMakePasswordReadable =>
+      'Whoever asks the coordinator for the order by its number can still read its amount, premium, payment method and your robot\'s name; not its description nor its location.';
+
+  @override
+  String get p2pMakePasswordHashOnly =>
+      'Only the password\'s SHA-256 leaves this device, and it is not kept: renewing the order asks for the password again.';
+
+  @override
+  String p2pMakePasswordOldCoordinator(String coordinator, String version) {
+    return '$coordinator runs version $version, older than 0.8.7: it shows a protected order to anyone.';
+  }
+
+  @override
+  String p2pMakePasswordUnknownVersion(String coordinator) {
+    return 'The version of $coordinator could not be read: before 0.8.7, a protected order is shown to anyone.';
+  }
+
+  @override
+  String get p2pMakePasswordOldDetail =>
+      'Before version 0.8.7 (advisory GHSA-r6f6-x59j-8q69), a coordinator gives a protected order\'s amount, premium, payment method, your robot\'s name and its location to whoever asks for it, without the password. The order can still be made; choose another coordinator to keep it private.';
+
+  @override
+  String get p2pMakeOptionSentPassword => 'a password';
+
+  @override
+  String get p2pRenewPasswordAgain => 'Enter a password again';
+
+  @override
+  String get p2pRenewPasswordSame =>
+      'This device does not keep the password: type the same one as before, the one you shared, or the order will not open with it.';
+
+  @override
+  String p2pMakeLocationSent(String point) {
+    return 'Point sent: $point';
+  }
+
+  @override
+  String get p2pMakeLocationRemove => 'Remove the location';
+
+  @override
+  String get p2pMakeLocationRandomized =>
+      'To protect your privacy, the exact location you pin will be slightly randomized.';
+
+  @override
+  String get p2pMakeLocationPublished =>
+      'Sent to the coordinator and published with the order.';
+
+  @override
+  String get p2pMakeLocationDetail =>
+      'The point shown is the one sent: the place you pinned, moved by up to 0.05° each way (a few kilometres). The coordinator shows it with the order, and publishes it on Nostr with an order without a password. Bull Market reads nothing of your phone\'s position, only the point you pin.';
+
+  @override
+  String get p2pMapChooseLocation => 'Choose a location';
+
+  @override
+  String get p2pMapSave => 'Save';
+
+  @override
+  String get p2pMapPinHint => 'World map: tap a place to pin it.';
+
+  @override
+  String p2pMapPinned(String point) {
+    return 'Place pinned: $point';
+  }
 }

@@ -4935,12 +4935,6 @@ abstract class P2pLocalizations {
   /// **'Enable advanced options'**
   String get p2pMakeEnableAdvanced;
 
-  /// Not in the RoboSats texts: the project's own: under « Password » and « Face to Face Location », shown disabled until #189 (design note § 2.2; under « Enable advanced options » in #181, which #183 enabled).
-  ///
-  /// In en, this message translates to:
-  /// **'Coming in a later version.'**
-  String get p2pMakeComingLater;
-
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 482), with its French (`fr.json`, line 482). The label over « Buy » and « Sell » in the create form (`MakerForm.tsx:752`), followed by « * » as the reference writes it; the French adds the space before « ? » of French typography.
   ///
   /// In en, this message translates to:
@@ -5253,7 +5247,7 @@ abstract class P2pLocalizations {
   /// **'Must be equal to or shorter than {max} characters'**
   String p2pMakeDescriptionTooLong(String max);
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 507), with its French (`fr.json`, line 507). The label of the order's password in the advanced options (`MakerForm.tsx:1096`), shown disabled with « Coming in a later version. » until #189.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 507), with its French (`fr.json`, line 507). The label of the order's password in the advanced options (`MakerForm.tsx:1096`), and of the renewal's (`Prompts/Expired.tsx:53`), #189.
   ///
   /// In en, this message translates to:
   /// **'Password'**
@@ -5307,7 +5301,7 @@ abstract class P2pLocalizations {
   /// **'{percent}%'**
   String p2pMakeBondSizeValue(String percent);
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 492), with its French (`fr.json`, line 492). The button of a face-to-face trade's location (`MakerForm.tsx:1022`), shown disabled with « Coming in a later version. » until #189.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 492), with its French (`fr.json`, line 492). The button of a face-to-face trade's location (`MakerForm.tsx:1022`), which opens the map (#189).
   ///
   /// In en, this message translates to:
   /// **'Face to Face Location'**
@@ -6202,6 +6196,138 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Existing orders match yours!'**
   String get p2pMakeMatchesFound;
+
+  /// Not in the RoboSats texts: the project's own: the line that unfolds, under a field of the create form, the explanation shown only on demand (the owner's rule of 2026-11-20: screens kept bare, explanations on demand), #189.
+  ///
+  /// In en, this message translates to:
+  /// **'See details'**
+  String get p2pMakeSeeDetails;
+
+  /// Not in the RoboSats texts: the project's own: the same line once the explanation is unfolded, which folds it again (#189).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide details'**
+  String get p2pMakeHideDetails;
+
+  /// Not in the RoboSats texts: the project's own: the short line under « Password » once one is typed (#189): the coordinator leaves a protected order out of its book (`api/views.py:788-795`), and this app cannot take one (`take_order_usecase.dart`).
+  ///
+  /// In en, this message translates to:
+  /// **'Kept out of the book; to be taken with the official RoboSats app.'**
+  String get p2pMakePasswordLine;
+
+  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), how a protected order is shared, with the reference's « Copy URL » (`TradeBox/CancelButton.tsx:58`).
+  ///
+  /// In en, this message translates to:
+  /// **'Share the order\'s link (« Copy URL » on its page once it is made) and the password with the robots you choose.'**
+  String get p2pMakePasswordShare;
+
+  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; design note § 7, proposal 3).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot take a protected order yet: whoever takes it uses the official RoboSats app, with the link and the password.'**
+  String get p2pMakePasswordOfficialApp;
+
+  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`api/views.py:287-299`; design note § 2.4).
+  ///
+  /// In en, this message translates to:
+  /// **'Whoever asks the coordinator for the order by its number can still read its amount, premium, payment method and your robot\'s name; not its description nor its location.'**
+  String get p2pMakePasswordReadable;
+
+  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189).
+  ///
+  /// In en, this message translates to:
+  /// **'Only the password\'s SHA-256 leaves this device, and it is not kept: renewing the order asks for the password again.'**
+  String get p2pMakePasswordHashOnly;
+
+  /// Not in the RoboSats texts: the project's own: the alert under « Password », in the warning colour, once a password is typed on a coordinator whose `/api/info/` gives a version older than 0.8.7 (#189; advisory GHSA-r6f6-x59j-8q69; design note § 2.4). Never a lock.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} runs version {version}, older than 0.8.7: it shows a protected order to anyone.'**
+  String p2pMakePasswordOldCoordinator(String coordinator, String version);
+
+  /// Not in the RoboSats texts: the project's own: the alert under « Password », in the warning colour, once a password is typed on a coordinator whose `/api/info/` could not be read (#189). Never a lock.
+  ///
+  /// In en, this message translates to:
+  /// **'The version of {coordinator} could not be read: before 0.8.7, a protected order is shown to anyone.'**
+  String p2pMakePasswordUnknownVersion(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: in the detail of the alert of a coordinator older than 0.8.7 or of unknown version (#189; design note § 2.4).
+  ///
+  /// In en, this message translates to:
+  /// **'Before version 0.8.7 (advisory GHSA-r6f6-x59j-8q69), a coordinator gives a protected order\'s amount, premium, payment method, your robot\'s name and its location to whoever asks for it, without the password. The order can still be made; choose another coordinator to keep it private.'**
+  String get p2pMakePasswordOldDetail;
+
+  /// Not in the RoboSats texts: the project's own: in the list of the options sent, that a password protects the order (its text is never repeated there), #189.
+  ///
+  /// In en, this message translates to:
+  /// **'a password'**
+  String get p2pMakeOptionSentPassword;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 756); its `fr.json` keeps it in English, the French is the project's. The tooltip of the renewal's « Password » (`Prompts/Expired.tsx:49`); here, as its field's error and why « Create order » is disabled while it is empty, the reference drawing the field in red (`:58`, `:84-89`), #189.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a password again'**
+  String get p2pRenewPasswordAgain;
+
+  /// Not in the RoboSats texts: the project's own: in the detail of the renewal's « Password » (#189).
+  ///
+  /// In en, this message translates to:
+  /// **'This device does not keep the password: type the same one as before, the one you shared, or the order will not open with it.'**
+  String get p2pRenewPasswordSame;
+
+  /// Not in the RoboSats texts: the project's own: under « Face to Face Location » once a point is saved, the point the order sends, already moved as the reference moves it (#189). {point} is the latitude and the longitude, as « 48.8571, 2.3498 ».
+  ///
+  /// In en, this message translates to:
+  /// **'Point sent: {point}'**
+  String p2pMakeLocationSent(String point);
+
+  /// Not in the RoboSats texts: the project's own: the tooltip of the button that removes the meeting point saved (#189; the reference removes it only with the last face-to-face method).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the location'**
+  String get p2pMakeLocationRemove;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 530), with its French (`fr.json`, line 530). Under the map where the location is chosen (`MakerForm.tsx:656-658`), and in the detail of « Face to Face Location » (#189).
+  ///
+  /// In en, this message translates to:
+  /// **'To protect your privacy, the exact location you pin will be slightly randomized.'**
+  String get p2pMakeLocationRandomized;
+
+  /// Not in the RoboSats texts: the project's own: under the map where the location is chosen, beside the reference's line (#189; `api/nostr.py:151-153`).
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to the coordinator and published with the order.'**
+  String get p2pMakeLocationPublished;
+
+  /// Not in the RoboSats texts: the project's own: in the detail of « Face to Face Location » (#189; `F2fMap.tsx` `onSave`, `api/views.py:291-298`, `api/nostr.py:29`, `:151-153`).
+  ///
+  /// In en, this message translates to:
+  /// **'The point shown is the one sent: the place you pinned, moved by up to 0.05° each way (a few kilometres). The coordinator shows it with the order, and publishes it on Nostr with an order without a password. Bull Market reads nothing of your phone\'s position, only the point you pin.'**
+  String get p2pMakeLocationDetail;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 374), with its French (`fr.json`, line 374). The title of the map where the meeting point is chosen (`F2fMap.tsx`), #189.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a location'**
+  String get p2pMapChooseLocation;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 375), with its French (`fr.json`, line 375). The button of the map that keeps the place pinned, moved as the reference moves it (`F2fMap.tsx`), #189.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get p2pMapSave;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader says of the map where the meeting point is chosen (#189).
+  ///
+  /// In en, this message translates to:
+  /// **'World map: tap a place to pin it.'**
+  String get p2pMapPinHint;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader says of the pin of the map where the meeting point is chosen (#189). {point} is the latitude and the longitude.
+  ///
+  /// In en, this message translates to:
+  /// **'Place pinned: {point}'**
+  String p2pMapPinned(String point);
 }
 
 class _P2pLocalizationsDelegate
