@@ -1849,6 +1849,33 @@ void main() {
       );
 
       testWidgets(
+        'the rule on this page that has not answered (its terms not read): still no gap from the creation\'s rate, the rule running (functional review of #234, R4)',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+          ]);
+          final cubit = PayoutRateCubit(
+            _record,
+            terms: (_) async => null,
+            price: (_, _) async => atWallet,
+            memory: PayoutRateMemory(),
+            now: () => tradeNow,
+          );
+          addTearDown(cubit.close);
+          await _show(tester, seen, rate: cubit);
+          await tester.pump();
+          await tester.pump();
+          expect(cubit.state, isA<PayoutRateNone>());
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
         'at 6 with a read that gives no sats to receive: « rate not checked » alone, no gap from the creation\'s rate beside it (#234)',
         (tester) async {
           final seen = await _at([
