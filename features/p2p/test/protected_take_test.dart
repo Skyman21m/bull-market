@@ -228,6 +228,8 @@ void main() {
         }
         for (final (label, change) in [
           ('sats', {'satoshis_now': 110107}),
+          ('bond', {'bond_size': '4.00'}),
+          ('premium', {'premium': '5.00', 'premium_now': 5.0}),
           ('no longer protected', {'has_password': false}),
         ]) {
           final (app, shown) = await readOne();
