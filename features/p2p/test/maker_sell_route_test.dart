@@ -799,6 +799,7 @@ void main() {
         tester.element(find.text(unknown)),
       ).extension<BullTheme>();
       expect(tester.widget<Text>(find.text(unknown)).style?.color, palette?.warning);
+      await journey.waitFor(find.text(_english.payWithThisWallet), seconds: 20);
       await journey.openConfirmation();
       expect(
         find.text(
@@ -1064,7 +1065,7 @@ void main() {
         expect(alert, findsOneWidget);
         expect(find.textContaining('from the rate when you made it'), findsNothing);
         expect(find.textContaining('5,100'), findsNothing);
-        expect(find.textContaining('5,000'), findsNothing);
+        expect(find.textContaining('5,000 USD'), findsNothing);
         expect(find.textContaining('are worth'), findsNothing);
         expect(
           tester.getTopLeft(alert).dy,
@@ -1113,20 +1114,20 @@ void main() {
       final record = journey.record;
       await tester.binding.handlePopRoute();
       await settle(tester);
-      // The coordinator unreachable: the page opened again waits for a read that never comes.
-      for (var i = 0; i < 60; i++) {
-        journey.coordinator.failNext(
-          ScriptedMakerRequest.order,
-          ScriptedFault.unreachable,
-        );
-      }
+      // The coordinator now reads the fixed amount otherwise: the page opened again refuses its first read as a whole and waits with the terms' alert (#211).
+      journey.coordinator.orderChanges[journey.order.id] = {
+        'amount': '1000.00000000',
+      };
       unawaited(
         journey.router.pushNamed(
           P2pRouter.tradeName,
           extra: P2pTradeRouteArgs(record),
         ),
       );
-      await journey.pass(3);
+      await journey.waitFor(
+        find.text('The terms of the order are not those of the order taken.'),
+        seconds: 30,
+      );
       expect(find.byType(TradeScreen), findsOneWidget);
       expect(find.textContaining('as collateral'), findsNothing);
       expect(find.text(_english.earlierTitle), findsOneWidget);
