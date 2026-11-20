@@ -1495,7 +1495,7 @@ class _Contract extends StatelessWidget {
     };
   }
 
-  /// The lines « Confirm … sent » says after the reference's text for a maker buyer (#182), from the status the screen shows now, never the press's (#209; security review of #219, C1): the rule's lines for the step of that status only, none when it shows another step or no contract (a wait, a message); and without a comparison the gap from the creation's rate, in the warning colour when it is against the buyer.
+  /// The lines « Confirm … sent » says after the reference's text for a maker buyer (#182), from the status the screen shows now, never the press's (#209; security review of #219, C1): the rule's lines for the step of that status only, none when it shows another step or no contract (a wait, a message); and, only where the rule does not run, the gap from the creation's rate, in the warning colour when it is against the buyer (#234: never beside « rate not checked »).
   List<TradeDialogLine> _dialogLines(
     BuildContext context,
     PayoutRateState? now,
@@ -1540,7 +1540,7 @@ class _Contract extends StatelessWidget {
     );
   }
 
-  /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only when the owner's rule shows no comparison with the Bull wallet's price (a currency it does not price, a price not read, no rule without the wallet's port); `null` for a taker, whose statuses carry no gap.
+  /// The line of the gap of a maker's contract at 6, 8 and 9 ([RateGapLine]), only where the owner's rule does not run (no wallet's port, [PayoutRateLines.hidesGap]): never beside a comparison, nor beside « rate not checked » or a currency the Bull wallet does not price (#234); `null` for a taker, whose statuses carry no gap.
   Widget? _gapLine(BuildContext context) {
     if (PayoutRateLines.hidesGap(_ruleShown)) return null;
     final gap = _gapOf(context, contract.seen);
