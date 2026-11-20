@@ -108,42 +108,44 @@ class PayoutRateLines extends StatelessWidget {
         if (basis is PayoutRateNotSeen)
           (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
         ...switch (check) {
-          WalletRateCompared(
-            :final price,
-            :final expected,
-            :final gapHundredths,
-          ) =>
-            [
-              // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red warning still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219). At 6 and 8 the payout panel's breakdown says the comparison when it draws it (#228).
-              if (basis is! PayoutRateAskedOnly &&
-                  !(comparisonInBreakdown && basis is PayoutRateAskedNow))
-                (
-                  text: l10n.p2pPayoutRateWallet(
-                    formats.orderRate(price),
-                    check.currency.code,
-                    amount,
-                    formats.bigSats(expected.value),
-                    formats.bigSats(check.asked.value),
-                    formats.gap(gapHundredths),
-                  ),
-                  tone: TradeDialogTone.plain,
+          WalletRateCompared(:final price, :final expected, :final gapHundredths) => [
+            // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red warning still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219). At 6 and 8 the payout panel's breakdown says the comparison when it draws it (#228).
+            if (basis is! PayoutRateAskedOnly &&
+                !(comparisonInBreakdown && basis is PayoutRateAskedNow))
+              (
+                text: l10n.p2pPayoutRateWallet(
+                  formats.orderRate(price),
+                  check.currency.code,
+                  amount,
+                  formats.bigSats(expected.value),
+                  formats.bigSats(check.asked.value),
+                  formats.gap(gapHundredths),
                 ),
-              // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
-              if (basis is PayoutRateToldNow)
-                (
-                  text: l10n.p2pPayoutRateToldNow(coordinator),
-                  tone: TradeDialogTone.plain,
-                ),
-              if (check.warns)
-                (
-                  text: l10n.p2pPayoutRateWarning(
-                    formats.threshold(TradeTolerances.walletRateGap),
-                    formats.bigSats(check.asked.value),
-                    formats.bigSats(expected.value),
-                  ),
-                  tone: TradeDialogTone.alert,
-                ),
-            ],
+                tone: TradeDialogTone.plain,
+              ),
+            // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
+            if (basis is PayoutRateToldNow)
+              (
+                text: l10n.p2pPayoutRateToldNow(coordinator),
+                tone: TradeDialogTone.plain,
+              ),
+            // Worded to stand alone (#228, functional review C1): at 6 and 8 the comparison's sentence is not said above it; for the kept invoice compared alone at 9, the sats are named as that invoice's, never as a figure of the coordinator beside its alert.
+            if (check.warns)
+              (
+                text: basis is PayoutRateAskedOnly
+                    ? l10n.p2pPayoutRateWarningAsked(
+                        formats.threshold(TradeTolerances.walletRateGap),
+                        formats.bigSats(check.asked.value),
+                        formats.bigSats(expected.value),
+                      )
+                    : l10n.p2pPayoutRateWarning(
+                        formats.threshold(TradeTolerances.walletRateGap),
+                        formats.bigSats(check.asked.value),
+                        formats.bigSats(expected.value),
+                      ),
+                tone: TradeDialogTone.alert,
+              ),
+          ],
           WalletRateNotPriced() => [
             (
               text: l10n.p2pPayoutRateNotPriced(

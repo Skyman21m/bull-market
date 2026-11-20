@@ -1497,7 +1497,9 @@ void main() {
             // The rule's red warning, as before, only beyond 10 %.
             expect(
               find.textContaining(
-                english ? 'fewer sats than that' : 'de sats de moins que prévu',
+                english
+                    ? 'fewer sats than the value'
+                    : 'de sats en moins que la valeur',
               ),
               warns ? findsOneWidget : findsNothing,
             );

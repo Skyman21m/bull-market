@@ -5856,11 +5856,21 @@ abstract class P2pLocalizations {
     String gap,
   );
 
-  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule on a maker buyer's side (#182), beyond the threshold, nothing blocked. {threshold} is the threshold as a percentage, such as « 10% ».
+  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule on a maker buyer's side (#182), beyond the threshold, nothing blocked. {threshold} is the threshold as a percentage, such as « 10% »; {received} the sats compared (at 6 and 8 « Given by the coordinator » of the breakdown, `trade_satoshis`; at 9 the figure the rule's line above names), {expected} the value at the Bull wallet's price. Worded to stand alone since #228 (functional review, C1): at 6 and 8 the comparison's sentence is no longer said above it, and « You receive » named another figure than what reaches the wallet.
   ///
   /// In en, this message translates to:
-  /// **'You receive more than {threshold} fewer sats than that: {received} sats received, {expected} sats expected. Check it before going on.'**
+  /// **'More than {threshold} fewer sats than the value at the Bull wallet\'s price: {received} sats instead of {expected}. Check it before going on.'**
   String p2pPayoutRateWarning(
+    String threshold,
+    String received,
+    String expected,
+  );
+
+  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule at 9 when the invoice this app kept for the contract is compared alone beside the state machine's alert (`PayoutRateAskedOnly`, second security review of #182, R8), whose neutral line is no longer said since #228: {received} is the kept invoice's sats, not a figure the coordinator gives now, so the warning names it (#211's words); {threshold} and {expected} as p2pPayoutRateWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'The payout invoice this app saw asked for this contract is more than {threshold} below the value at the Bull wallet\'s price: {received} sats instead of {expected}. Check it before going on.'**
+  String p2pPayoutRateWarningAsked(
     String threshold,
     String received,
     String expected,
@@ -5896,7 +5906,7 @@ abstract class P2pLocalizations {
   /// **'Gap from the value above'**
   String get p2pPayoutBreakdownGap;
 
-  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the coordinator's fee taken out of the payout before the sats given (`api/logics.py:650-669`): the order's `satoshis_now` (its `last_satoshis`, `api/views.py:323`) less `trade_satoshis`, two figures of the same read, never computed from the announced rate; the state machine checks it against the announced fee (`MakerFeeAboveAnnounced`, `TakerFeeAboveAnnounced`) and the breakdown is not said while it disagrees.
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the coordinator's fee taken out of the payout before the sats given (`api/logics.py:650-669`): the order's `satoshis_now` (its `last_satoshis`, `api/views.py:324`) less `trade_satoshis`, two figures of the same read, never computed from the announced rate; the state machine checks it against the announced fee (`MakerFeeAboveAnnounced`, `TakerFeeAboveAnnounced`) and the breakdown is not said while it disagrees.
   ///
   /// In en, this message translates to:
   /// **'Coordinator\'s fee, already deducted'**

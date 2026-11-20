@@ -16,7 +16,7 @@ final class PayoutBreakdown {
   /// What the coordinator gives the contract for the buyer (`trade_satoshis`, its `invoice_amount`): the trade's sats less the coordinator's fee (`api/logics.py:650-669`).
   final Sats given;
 
-  /// The coordinator's fee taken out of [given]: the trade's sats the order gives a participant (`satoshis_now`, the order's `last_satoshis`, `api/views.py:323`) less [given], two figures of the same read; `null` when the read gives no `satoshis_now` or a figure below [given] (the state machine then raises an amount warning and there is no breakdown at all: never here in practice). Whether it agrees with the fee announced is the state machine's check (`MakerTerms.feeAgrees`, `TakerFeeAboveAnnounced`), whose warning hides the breakdown.
+  /// The coordinator's fee taken out of [given]: the trade's sats the order gives a participant (`satoshis_now`, the order's `last_satoshis`, `api/views.py:324`) less [given], two figures of the same read; `null` when the read gives no `satoshis_now` or a figure below [given] (the state machine then raises an amount warning and there is no breakdown at all: never here in practice). Whether it agrees with the fee announced is the state machine's check (`MakerTerms.feeAgrees`, `TakerFeeAboveAnnounced`), whose warning hides the breakdown.
   final Sats? coordinatorFee;
 
   /// The invoice to give for the form's routing budget ([PayoutAsk.invoiceSatsFor]); `null` above the read bounds, and the lines from the budget on are then not said.

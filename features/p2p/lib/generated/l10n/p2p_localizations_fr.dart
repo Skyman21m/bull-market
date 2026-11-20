@@ -3809,7 +3809,16 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String received,
     String expected,
   ) {
-    return 'Vous recevez plus de $threshold de sats de moins que prévu : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
+    return 'Plus de $threshold de sats en moins que la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
+  }
+
+  @override
+  String p2pPayoutRateWarningAsked(
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'La facture de paiement demandée pour ce contrat, vue par cette app, est de plus de $threshold en dessous de la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
   }
 
   @override

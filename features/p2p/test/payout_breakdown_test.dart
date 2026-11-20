@@ -12,7 +12,7 @@ import 'support/harness.dart';
 import 'support/trade_orders.dart';
 import 'support/trade_screens.dart';
 
-/// The breakdown of the buyer's payout (#228), from the state machine's own statuses of a take answered as the reference answers a buyer (`test/support/trade_orders.dart`: `satoshis_now` the order's `last_satoshis`, `trade_satoshis` and `invoice_amount` the trade's sats less the taker fee, `api/views.py:323`, `:345-371`, `api/logics.py:650-669`): every line, the sums to the sat whatever the sats and the budget, and each line that is missing.
+/// The breakdown of the buyer's payout (#228), from the state machine's own statuses of a take answered as the reference answers a buyer (`test/support/trade_orders.dart`: `satoshis_now` the order's `last_satoshis`, `trade_satoshis` and `invoice_amount` the trade's sats less the taker fee, `api/views.py:324`, `:345-371`, `api/logics.py:650-669`): every line, the sums to the sat whatever the sats and the budget, and each line that is missing.
 void main() {
   final record = TradeScreenStatuses.record;
   late TradeScreenStatuses statuses;

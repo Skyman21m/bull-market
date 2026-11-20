@@ -3755,7 +3755,16 @@ class P2pLocalizationsUk extends P2pLocalizations {
     String received,
     String expected,
   ) {
-    return 'You receive more than $threshold fewer sats than that: $received sats received, $expected sats expected. Check it before going on.';
+    return 'More than $threshold fewer sats than the value at the Bull wallet\'s price: $received sats instead of $expected. Check it before going on.';
+  }
+
+  @override
+  String p2pPayoutRateWarningAsked(
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'The payout invoice this app saw asked for this contract is more than $threshold below the value at the Bull wallet\'s price: $received sats instead of $expected. Check it before going on.';
   }
 
   @override
