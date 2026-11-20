@@ -42,10 +42,11 @@ void main() {
     bookOrder(id: 14, currency: 1, premium: 3),
   ];
 
-  /// The tab over the real composition, the device's active trades listed as [active] (the composition's lister replaced, as `maker_tab_routes_test.dart` does), everything else the composition's own.
+  /// The tab over the real composition, temple's book [book] (else [templeBook]), the device's active trades listed as [active] (the composition's lister replaced, as `maker_tab_routes_test.dart` does), everything else the composition's own.
   Future<(_Coordinators, GoRouter)> open(
     WidgetTester tester, {
     List<ActiveTrade>? active,
+    List<Map<String, Object?>>? book,
   }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 2400 * 3)
@@ -56,7 +57,7 @@ void main() {
     addTearDown(locator.reset);
     final tor = StreamController<P2pTorState>.broadcast();
     addTearDown(tor.close);
-    final coordinators = _Coordinators({'temple': templeBook});
+    final coordinators = _Coordinators({'temple': book ?? templeBook});
     setUpP2pForTesting(
       locator,
       transport: coordinators,
@@ -107,6 +108,31 @@ void main() {
     await tester.tap(find.text('Add payment method'));
     await settle(tester);
     await tester.enterText(inForm(find.byType(TextField)).at(1), '2');
+    await settle(tester);
+  }
+
+  /// « Buy », « Revolut », 2 %, then « Enable advanced options » with « Amount Range », « From » [min] « to » [max], typed as the user does; nothing in « Amount », which the reference would search (at 0, keeping no order).
+  Future<void> fillRange(
+    WidgetTester tester, {
+    required String min,
+    required String max,
+  }) async {
+    await tester.tap(inForm(find.text('Buy')));
+    await settle(tester);
+    await tester.tap(inForm(find.byTooltip('Add custom payment method')));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).last, 'Revolut');
+    await tester.pump();
+    await tester.tap(find.text('Add payment method'));
+    await settle(tester);
+    await tester.enterText(inForm(find.byType(TextField)).at(1), '2');
+    await settle(tester);
+    await tester.tap(inForm(find.byType(Switch)).first);
+    await settle(tester);
+    expect(inForm(find.text('Amount Range')), findsOneWidget);
+    await tester.enterText(inForm(find.byType(TextField)).at(0), min);
+    await settle(tester);
+    await tester.enterText(inForm(find.byType(TextField)).at(1), max);
     await settle(tester);
   }
 
@@ -168,6 +194,37 @@ void main() {
       expect(find.byType(OrderDetailsScreen), findsNothing);
       expect(inForm(find.text('Existing orders match yours!')), findsOneWidget);
       expect(shown(tester), [11, 12]);
+    },
+  );
+
+  testWidgets(
+    'an order made with a range (#230): « Amount Range » 50 to 200 USD, « Submit » shows the order of 120 USD, not the one of 400 USD',
+    (tester) async {
+      final (coordinators, _) = await open(
+        tester,
+        book: [
+          bookOrder(id: 21, currency: 1, amount: 120),
+          bookOrder(id: 22, currency: 1, amount: 400),
+        ],
+      );
+      final atBook = coordinators.requested.length;
+      await tester.tap(find.text('Create'));
+      await settle(tester);
+      expect(find.byType(CreateOrderScreen), findsOneWidget);
+      await fillRange(tester, min: '50', max: '200');
+      expect(
+        inForm(find.text('Buy BTC for 50-200 USD at a 2% premium')),
+        findsOneWidget,
+      );
+      final atForm = [...coordinators.requested.skip(atBook)];
+      expect(inForm(find.text('Submit')), findsOneWidget);
+      await tester.tap(inForm(find.text('Submit')));
+      await settle(tester);
+      expect(inForm(find.text('Existing orders match yours!')), findsOneWidget);
+      expect(shown(tester), [21]);
+      expect(inForm(find.text('Create order')), findsOneWidget);
+      // The search and « Submit » asked nothing of anyone.
+      expect(coordinators.requested.skip(atBook), atForm);
     },
   );
 
