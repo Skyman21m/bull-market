@@ -16,6 +16,7 @@ import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
 import 'data/trade_chat_pin_repository_impl.dart';
 import 'data/trade_payment_repository_impl.dart';
+import 'data/trade_payout_repository_impl.dart';
 import 'data/trade_record_repository_impl.dart';
 import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
@@ -30,6 +31,7 @@ import 'domain/interim_trade_robots.dart';
 import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/repositories/trade_chat_pin_repository.dart';
 import 'domain/repositories/trade_payment_repository.dart';
+import 'domain/repositories/trade_payout_repository.dart';
 import 'domain/repositories/trade_record_repository.dart';
 import 'domain/repositories/trade_trail_repository.dart';
 import 'domain/network_garage_key.dart';
@@ -88,6 +90,7 @@ import 'domain/usecases/trade/trade_read_order.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/trade_make_locks.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
+import 'domain/usecases/trade/wallet_payout_destinations.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
 import 'domain/usecases/trade/watch_chat_usecase.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
@@ -319,6 +322,13 @@ final class P2pLocator {
     locator.registerLazySingleton<TradePaymentRepository>(
       () => TradePaymentRepositoryImpl(locator()),
     );
+    // Where each contract's payout of a buyer came from (schema 9, #204), and the invoices and addresses the wallet gave during this run, which tell a payout from this wallet from one pasted: one for the feature, in memory.
+    locator.registerLazySingleton<TradePayoutRepository>(
+      () => TradePayoutRepositoryImpl(locator()),
+    );
+    locator.registerLazySingleton<WalletPayoutDestinations>(
+      WalletPayoutDestinations.new,
+    );
     // The peer's public key each trade's chat pinned, with its fingerprints, and its Nostr keys (#139, part of #159).
     locator.registerLazySingleton<TradeChatPinRepository>(
       () => TradeChatPinRepositoryImpl(locator()),
@@ -344,6 +354,7 @@ final class P2pLocator {
         invoices(),
         clock: clock,
         requestOrder: locator(),
+        payouts: locator(),
       ),
     );
     // One for the feature: the takes and the payouts of an order run one at a time, whichever use case object runs them.
@@ -526,6 +537,8 @@ final class P2pLocator {
         locator(),
         locator(),
         invoices(),
+        payouts: locator(),
+        fromWallet: locator(),
       ),
     );
     // One for the feature: the chats of the trades, in memory only, so that a peer's key stays pinned when a trade screen is opened again (#93).
@@ -723,7 +736,10 @@ final class P2pLocator {
     });
     // The buyer's payout from the wallet (#90): the wallet's invoice and address in the payout panel, resolved only where the wallet's port was lent, as the bond's payment; one use case for the run, which remembers at which step it gave each invoice.
     locator.registerLazySingleton<PayoutFromWalletUsecase>(
-      () => PayoutFromWalletUsecase(locator<P2pWalletPort>()),
+      () => PayoutFromWalletUsecase(
+        locator<P2pWalletPort>(),
+        given: locator<WalletPayoutDestinations>(),
+      ),
     );
     locator.registerFactory<PayoutWalletCubit>(
       () => PayoutWalletCubit(locator()),

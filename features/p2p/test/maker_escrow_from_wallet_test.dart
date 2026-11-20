@@ -1234,7 +1234,7 @@ void main() {
       );
 
       test(
-        'after a restart, one more escrow of an unknown amount out between the confirmation and the payment (an attempt with no order whose late order lands) asks a new confirmation (functional verification of #187, C2, A05)',
+        'after a restart, one more escrow out between the confirmation and the payment (an attempt with no order whose late order lands) asks a new confirmation, its exact sats from its record (functional verification of #187, C2, A05; schema 9, #233)',
         () async {
           final seller = await _Seller.start();
           final quote0 = await seller.quoted();
@@ -1249,7 +1249,7 @@ void main() {
             isA<Err<P2pWalletPayment, BondPayRefusal>>(),
           );
           await seller.takenAgain();
-          // The app started again: what contract 0's attempt took out is no longer known.
+          // The app started again: what contract 0's attempt takes out is in its record (schema 9, #233).
           final restarted = _Seller.payOf(
             seller.harness.restart(),
             seller.wallet,
@@ -1289,18 +1289,20 @@ void main() {
             Err(failure: BondPayConfirmAgain(:final contract)) => contract,
             final other => fail('$other'),
           };
-          expect(again.notBackUnknown, 1);
-          expect(again.notBackSats, Sats.zero);
+          expect(again.notBackUnknown, 0);
+          expect(again.notBackSats, quote0.total);
+          expect(again.outIfPaid, Sats(quote0.total.value + quote.total.value));
           // Only contract 0's refused attempt reached the wallet.
           expect(seller.escrowPayments, hasLength(1));
         },
       );
 
       test(
-        'after the app started again, an earlier escrow\'s sats are not known: said as not known, never as 0',
+        'after the app started again, an earlier escrow\'s sats are its record\'s, exact, never « at least » (schema 9, #233)',
         () async {
           final seller = await _Seller.start();
           await seller.pay('swap-e0');
+          final paid0 = seller.escrowPayments.single.$2.total;
           await seller.takenAgain();
           final restarted = _Seller.payOf(
             seller.harness.restart(),
@@ -1322,10 +1324,13 @@ void main() {
             Ok(value: final contract?) => contract,
             final other => fail('$other'),
           };
-          expect(contract.earlier.single.sats, isNull);
-          expect(contract.notBackUnknown, 1);
-          expect(contract.notBackSats, Sats.zero);
-          expect(contract.outIfPaid, seller.quoteOf(offered).total);
+          expect(contract.earlier.single.sats, paid0);
+          expect(contract.notBackUnknown, 0);
+          expect(contract.notBackSats, paid0);
+          expect(
+            contract.outIfPaid,
+            Sats(paid0.value + seller.quoteOf(offered).total.value),
+          );
         },
       );
 

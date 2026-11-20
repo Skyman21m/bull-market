@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 
 import '../p2p_failure.dart';
 import '../trade_record.dart';
+import 'payout_trace.dart';
 import 'trade_status.dart';
 import 'trade_storable.dart';
 import 'trade_tolerances.dart';
@@ -28,13 +29,27 @@ final class TradeSeen {
   /// For a trade made here, the order's amount as its maker asked it (the terms' fixed amount or range), so that a screen judges the amount read against it without the terms at hand ([contractAmount], [contractAmountMoved]); `null` for a taker, whose amounts come from its take or the order as before, and where the terms were not at hand.
   final OrderAmount? asked;
 
+  /// For a buyer's trade, where the payout of the contract [status]'s trail stands at came from, as this device's records say (schema 9, #204), which « Confirm … sent » is preceded by; `null` where it was not read (a seller's trade, a status no reader of the records built).
+  final PayoutTrace? payout;
+
   const TradeSeen(
     this.status, {
     required this.order,
     this.stored = false,
     this.requestedAt,
     this.asked,
+    this.payout,
   });
+
+  /// This status, with [payout] as where its contract's payout came from.
+  TradeSeen withPayout(PayoutTrace? payout) => TradeSeen(
+    status,
+    order: order,
+    stored: stored,
+    requestedAt: requestedAt,
+    asked: asked,
+    payout: payout,
+  );
 
   /// Whether the order read gives the contract another amount than the one asked here: for a range, other than the one kept with the contract (`TradeTrail.takenAmount`, kept from the contract's first read), or none; for a fixed amount ([asked], or [madeAs]), another amount or a range (security review of #183, C4, a defect of #182). The state machine then says the terms changed (`TradeTermsChanged`, or refuses the read as a whole), and nothing compares or words a figure with either amount while it lasts, so that no line reassures beside that alert (#183, C5). A status from no order says nothing moved.
   bool get contractAmountMoved => contractAmountMovedFrom(asked);

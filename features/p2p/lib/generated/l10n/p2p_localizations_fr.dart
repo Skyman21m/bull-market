@@ -4131,4 +4131,30 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pMapPinned(String point) {
     return 'Endroit épinglé : $point';
   }
+
+  @override
+  String get p2pPayoutTracePasted =>
+      'La facture de paiement de ce contrat a été collée : les sats iront au portefeuille qui l’a faite.';
+
+  @override
+  String get p2pPayoutTracePastedAddress =>
+      'L’adresse de paiement de ce contrat a été collée : les sats iront au portefeuille auquel elle appartient.';
+
+  @override
+  String get p2pPayoutTraceNotGivenHere =>
+      'La facture ou l’adresse de paiement de ce contrat n’a pas été donnée depuis Bull Market : vérifiez où arriveront les sats.';
+
+  @override
+  String get p2pPayoutTraceUnknown =>
+      'Bull Market ne sait pas si la facture de paiement de ce contrat vient de ce portefeuille.';
+
+  @override
+  String p2pTermsShownPremium(String coordinator, String premium, String date) {
+    return '$coordinator a montré cet échange avec une prime de $premium le $date.';
+  }
+
+  @override
+  String p2pTermsShownOther(String coordinator, String date) {
+    return '$coordinator a montré cet échange avec d’autres conditions que celles de l’ordre le $date.';
+  }
 }

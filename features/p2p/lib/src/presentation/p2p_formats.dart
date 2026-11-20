@@ -97,6 +97,10 @@ final class P2pFormats {
     return premium.percent > 0 ? '+$text' : text;
   }
 
+  /// A moment of the device's clock, its date and time in the conventions of the locale, such as `Nov 20, 2026 14:02`: when a coordinator showed a trade with other terms (#231).
+  String moment(DateTime at) =>
+      DateFormat.yMMMd(_locale).add_Hm().format(at.toLocal());
+
   /// The premium as a bare number, for a sentence that writes the percent sign itself.
   String premiumNumber(Premium premium) =>
       (NumberFormat.decimalPattern(_locale)

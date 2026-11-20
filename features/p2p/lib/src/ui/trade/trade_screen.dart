@@ -12,6 +12,7 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
 import '../../domain/trade/maker_terms.dart';
+import '../../domain/trade/payout_trace.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_edges.dart';
 import '../../domain/trade/trade_pause.dart';
@@ -1047,6 +1048,16 @@ class _Contract extends StatelessWidget {
           _warningLine(context, warning, coordinator),
           const Gap(BullSpacing.sm),
         ],
+        // The trace of terms the coordinator showed otherwise, then put back (#231): said until the trade ends.
+        if (termsShownOtherwise(context, status, coordinator)
+            case final trace?) ...[
+          _Line(
+            trace,
+            color: colors.warning,
+            icon: Icons.warning_amber_rounded,
+          ),
+          const Gap(BullSpacing.sm),
+        ],
         // An order made here whose coordinator contradicted the trade's history (a breach): what to do (design note § 6, row 8, #182).
         if (record.origin == TradeOrigin.madeHere &&
             (status.trail.breached ||
@@ -1342,6 +1353,15 @@ class _Contract extends StatelessWidget {
             gap,
             const Gap(BullSpacing.sm),
           ],
+          // Where this contract's payout came from, before « Confirm … sent » of a buyer (#204): nothing when from this wallet.
+          if (payoutTraceOf(context, contract.seen) case final trace?) ...[
+            _Line(
+              trace,
+              color: colors.warning,
+              icon: Icons.warning_amber_rounded,
+            ),
+            const Gap(BullSpacing.sm),
+          ],
           ChatStepPanel(
             seen: contract.seen,
             order: order,
@@ -1473,9 +1493,14 @@ class _Contract extends StatelessWidget {
     );
     final madeHere = record.origin == TradeOrigin.madeHere;
     return switch (_viewNow) {
-      TradeContract(:final status) => [
+      TradeContract(:final status, :final seen) => [
         for (final warning in warningsOf(status, now: clock()))
           alertOf(warning),
+        // The trace of terms shown otherwise (#231) and where this contract's payout came from (#204), as the screen says them.
+        if (termsShownOtherwise(context, status, coordinator) case final trace?)
+          (text: trace, tone: TradeDialogTone.warning),
+        if (payoutTraceOf(context, seen) case final trace?)
+          (text: trace, tone: TradeDialogTone.warning),
         if (madeHere &&
             (status.trail.breached || status.has<CoordinatorInconsistent>()))
           advice,
@@ -1635,6 +1660,47 @@ class _Contract extends StatelessWidget {
 }
 
 /// The line of [warning] under a contract's title or above the wait (#211): a next contract seen late is information, not an alert (#178, #182), its own words in the text colour; every other in the warning colour.
+/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): which premium and when, or when for another term; `null` without a trace, once the trade ended, or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
+String? termsShownOtherwise(
+  BuildContext context,
+  TradeStatus status,
+  String coordinator,
+) {
+  final at = status.trail.termsChangedAt;
+  if (at == null || status.isTerminal || status.has<TradeTermsChanged>()) {
+    return null;
+  }
+  final l10n = P2pLocalizations.of(context);
+  final formats = P2pFormats.of(context);
+  final date = formats.moment(at);
+  final premium = switch (status.trail.termsChangedPremium) {
+    final percent? => Premium.tryCreate(percent),
+    null => null,
+  };
+  return premium == null
+      ? l10n.p2pTermsShownOther(coordinator, date)
+      : l10n.p2pTermsShownPremium(coordinator, formats.premium(premium), date);
+}
+
+/// The line of where the payout of the contract shown came from, before « Confirm … sent » of a buyer (#204; design note § 3.5 bis): pasted, not given from this device, or not known (a contract under way before payouts were recorded, records that cannot be read); `null` when it was given from this wallet, for a seller, or where « Confirm … sent » is not the step.
+String? payoutTraceOf(BuildContext context, TradeSeen seen) {
+  final status = seen.status;
+  if (status is! Chatting ||
+      status.role != TradeRole.buyer ||
+      status.fiatSent) {
+    return null;
+  }
+  final l10n = P2pLocalizations.of(context);
+  return switch (seen.payout) {
+    null || PayoutFromThisWallet() => null,
+    PayoutPasted(kind: PayoutTraceKind.invoice) => l10n.p2pPayoutTracePasted,
+    PayoutPasted(kind: PayoutTraceKind.address) =>
+      l10n.p2pPayoutTracePastedAddress,
+    PayoutNotGivenHere() => l10n.p2pPayoutTraceNotGivenHere,
+    PayoutUnrecorded() || PayoutTraceUnreadable() => l10n.p2pPayoutTraceUnknown,
+  };
+}
+
 Widget _warningLine(
   BuildContext context,
   TradeWarning warning,

@@ -687,7 +687,7 @@ void main() {
         await expectLater(
           database.customStatement(
             "INSERT INTO trade_trails VALUES (?, 0, 1, 'testnet', 'temple', 7, "
-            "'buyer', $values, 0, NULL, NULL, NULL, '', 0)",
+            "'buyer', $values, 0, NULL, NULL, NULL, '', 0, NULL, NULL)",
             [trade.robot.keyFingerprint.hex],
           ),
           refusedBy(check),
@@ -702,7 +702,7 @@ void main() {
       await expectLater(
         database.customStatement(
           "INSERT INTO trade_trails VALUES (?, 0, 1, 'testnet', 'temple', 8, "
-          "'buyer', 'start', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0)",
+          "'buyer', 'start', 0, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, NULL, NULL, '', 0, NULL, NULL)",
           [trade.robot.keyFingerprint.hex],
         ),
         refusedBy(trigger),

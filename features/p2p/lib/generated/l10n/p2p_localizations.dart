@@ -6328,6 +6328,42 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Place pinned: {point}'**
   String p2pMapPinned(String point);
+
+  /// Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: the payout invoice of the contract the trade stands at was pasted, not made by this wallet during the run that submitted it (any wallet's, this one's copied by hand included). Information; nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'This contract\'s payout invoice was pasted: the sats will go to the wallet that made it.'**
+  String get p2pPayoutTracePasted;
+
+  /// Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: the on-chain payout address of the contract the trade stands at was pasted, not given by this wallet. Information; nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'This contract\'s payout address was pasted: the sats will go to the wallet it belongs to.'**
+  String get p2pPayoutTracePastedAddress;
+
+  /// Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: this device recorded no payout for the contract the trade stands at (given from another app with the same Garage Key, or not by this device at all). Nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'This contract\'s payout invoice or address was not given from Bull Market: check where the sats will arrive.'**
+  String get p2pPayoutTraceNotGivenHere;
+
+  /// Not in the RoboSats texts: the project's own (#204, schema 9), in the alert colour, before « Confirm … sent » of a buyer and in its dialog: a contract under way before this version recorded payouts, or records that cannot be read. Never said as « given elsewhere ». Nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot tell whether this contract\'s payout invoice came from this wallet.'**
+  String get p2pPayoutTraceUnknown;
+
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: the first read that showed other terms than the order's had another premium ({premium}, as the order's premium is written), at {date} (the device's date and time). Said once the terms are back; nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} showed this trade with a premium of {premium} on {date}.'**
+  String p2pTermsShownPremium(String coordinator, String premium, String date);
+
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: the first read that showed other terms than the order's (currency, amount, bond, durations, payment method…, not the premium) was at {date} (the device's date and time). Said once the terms are back; nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} showed this trade with other terms than the order\'s on {date}.'**
+  String p2pTermsShownOther(String coordinator, String date);
 }
 
 class _P2pLocalizationsDelegate

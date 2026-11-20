@@ -208,14 +208,22 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
     try {
       final restarted = await _database.customWriteReturning(
         _restartSql,
-        variables: [Variable.withInt(at.microsecondsSinceEpoch), amount, ...key],
+        variables: [
+          Variable.withInt(at.microsecondsSinceEpoch),
+          amount,
+          ...key,
+        ],
         updates: {_database.storedTradePayments},
         updateKind: UpdateKind.update,
       );
       if (restarted.isNotEmpty) return const Ok(true);
       final started = await _database.customWriteReturning(
         _startSql,
-        variables: [...key, Variable.withInt(at.microsecondsSinceEpoch), amount],
+        variables: [
+          ...key,
+          Variable.withInt(at.microsecondsSinceEpoch),
+          amount,
+        ],
         updates: {_database.storedTradePayments},
         updateKind: UpdateKind.insert,
       );

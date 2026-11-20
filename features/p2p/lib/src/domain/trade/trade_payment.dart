@@ -45,8 +45,14 @@ final class TradePaymentRecord {
       other.confirmedSats == confirmedSats;
 
   @override
-  int get hashCode =>
-      Object.hash(step, paymentHash, startedAt, walletPaymentId, take, confirmedSats);
+  int get hashCode => Object.hash(
+    step,
+    paymentHash,
+    startedAt,
+    walletPaymentId,
+    take,
+    confirmedSats,
+  );
 
   /// The step only: no hash and no id.
   @override

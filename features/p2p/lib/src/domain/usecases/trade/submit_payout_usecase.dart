@@ -4,8 +4,10 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../p2p_failure.dart';
+import '../../repositories/trade_payout_repository.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
+import '../../trade/payout_trace.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_payout.dart';
 import '../../trade/trade_payout_outcome.dart';
@@ -15,6 +17,7 @@ import 'trade_keyring.dart';
 import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
+import 'wallet_payout_destinations.dart';
 
 /// Gives the coordinator where the buyer of a trade is to be paid: a Lightning invoice or an on-chain address, clear-signed by the robot's key (#90, design note § 2.2, § 4.4; `AGENTS.md` « The buyer's payout »).
 ///
@@ -26,7 +29,8 @@ import 'trade_take_locks.dart';
 /// 4. the destination shown is checked again against that read ([PayoutAsk.check]): a refusal, or anything the user would now see differently (a figure, a warning), sends nothing ([PayoutNoLongerValid], [PayoutChangedSinceShown]);
 /// 5. the very text shown is signed (`UnlockedRobotPgpKey.signPayoutInvoice`, `signPayoutAddress`), the signed text, network and signer compared with what was shown, and the lease closed;
 /// 6. the payout is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: a refusal the coordinator client decided from that read (`PayoutRefused.fromLastRead`) is followed by one more read and one more try, signed again, before anything is told;
-/// 7. its answer is kept, then the order read again and kept: [PayoutGiven], [PayoutNotTaken] or [PayoutOutcomeUnknown], each with the status as stored (or the trail on disk's own), never one made up.
+/// 7. once the coordinator answered that it took the payout, or may have (an outcome unknown), where it came from is recorded for the contract it was signed for (schema 9, #204: from this wallet, when the text is an invoice or an address this wallet gave during this run, else pasted), before anything else; never for a refusal, whose payout the coordinator does not hold;
+/// 8. its answer is kept, then the order read again and kept: [PayoutGiven], [PayoutNotTaken] or [PayoutOutcomeUnknown], each with the status as stored (or the trail on disk's own), never one made up.
 /// Nothing here pays or moves the wallet's funds; nothing is printed or logged.
 final class SubmitPayoutUsecase {
   final CoordinatorClient _client;
@@ -36,14 +40,22 @@ final class SubmitPayoutUsecase {
   final TradeTakeLocks _locks;
   final Bolt11Reader _invoices;
 
+  /// Where each contract's payout came from (schema 9, #204); `null` records nothing, as before schema 9.
+  final TradePayoutRepository? _payouts;
+
+  /// The invoices and addresses this wallet gave during this run; `null`, every payout is pasted.
+  final WalletPayoutDestinations? _fromWallet;
+
   const SubmitPayoutUsecase(
     this._client,
     this._reader,
     this._limiter,
     this._keyring,
     this._locks,
-    this._invoices,
-  );
+    this._invoices, {
+    this._payouts,
+    this._fromWallet,
+  });
 
   /// What the coordinator asks of the buyer of [record] at [seen], the status the screen shows (marked stored): the amounts and options the panel shows.
   Result<PayoutAsk, PayoutCheckRefusal> ask(
@@ -160,6 +172,9 @@ final class SubmitPayoutUsecase {
         lease = value;
     }
     final Future<Result<PayoutOutcome, OrderActionFailure>> Function() submit;
+    // The contract the payout is signed for, and what it is, for its record (#204).
+    final int take;
+    final ({PayoutTraceKind kind, String? hash, bool fromWallet}) given;
     try {
       // The order as it is now, kept: the payout is signed from this read only.
       onProgress?.call(PayoutProgress.readingOrder);
@@ -220,6 +235,19 @@ final class SubmitPayoutUsecase {
       }
       final lastRead = seen.order;
       if (lastRead == null) return Err(PayoutReadFailed(seen: seen));
+      take = seen.status.trail.take;
+      given = switch (checked) {
+        CheckedPayoutInvoice(:final text, :final facts) => (
+          kind: PayoutTraceKind.invoice,
+          hash: facts.paymentHash,
+          fromWallet: _fromWallet?.isInvoiceOfThisWallet(text) ?? false,
+        ),
+        CheckedPayoutAddress(:final address) => (
+          kind: PayoutTraceKind.address,
+          hash: null,
+          fromWallet: _fromWallet?.isAddressOfThisWallet(address.text) ?? false,
+        ),
+      };
 
       // The very text shown, signed now, for this read; what was signed compared with what was shown before it may leave.
       bool isShown(SignedPayout signed) =>
@@ -284,6 +312,34 @@ final class SubmitPayoutUsecase {
         );
       }
       return Err(PayoutRefusedFromRead(cause, current.seen));
+    }
+
+    // Where the payout came from, for the contract it was signed for, as soon as the coordinator took it or may have (#204): written before the answer is kept, so that the status read after it finds it. A write that fails is told as the records' other failures; its absence later reads « not given from this device », the side that alerts.
+    if (_payouts case final payouts?) {
+      final took = switch (sent) {
+        Ok(value: Ok()) ||
+        Ok(value: Err(failure: OrderActionOutcomeUnknown())) => true,
+        _ => false,
+      };
+      if (took) {
+        switch (await payouts.recordPayout(
+          record,
+          take: take,
+          source: given.fromWallet
+              ? PayoutTraceSource.thisWallet
+              : PayoutTraceSource.pasted,
+          kind: given.kind,
+          paymentHash: given.hash,
+          at: _reader.now(),
+        )) {
+          case Ok(value: true):
+            break;
+          case Ok(value: false):
+            problem ??= const P2pStorageFailure();
+          case Err(:final failure):
+            problem ??= failure;
+        }
+      }
     }
 
     // The answer first, then a read after it, which stores the status (an answer superseded is judged from itself only: what it says of the payout).

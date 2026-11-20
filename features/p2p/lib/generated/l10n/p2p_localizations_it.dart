@@ -4075,4 +4075,30 @@ class P2pLocalizationsIt extends P2pLocalizations {
   String p2pMapPinned(String point) {
     return 'Place pinned: $point';
   }
+
+  @override
+  String get p2pPayoutTracePasted =>
+      'This contract\'s payout invoice was pasted: the sats will go to the wallet that made it.';
+
+  @override
+  String get p2pPayoutTracePastedAddress =>
+      'This contract\'s payout address was pasted: the sats will go to the wallet it belongs to.';
+
+  @override
+  String get p2pPayoutTraceNotGivenHere =>
+      'This contract\'s payout invoice or address was not given from Bull Market: check where the sats will arrive.';
+
+  @override
+  String get p2pPayoutTraceUnknown =>
+      'Bull Market cannot tell whether this contract\'s payout invoice came from this wallet.';
+
+  @override
+  String p2pTermsShownPremium(String coordinator, String premium, String date) {
+    return '$coordinator showed this trade with a premium of $premium on $date.';
+  }
+
+  @override
+  String p2pTermsShownOther(String coordinator, String date) {
+    return '$coordinator showed this trade with other terms than the order\'s on $date.';
+  }
 }

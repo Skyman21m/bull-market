@@ -202,7 +202,7 @@ void main() {
       // The hash of robot 1's bond, paid again as robot 2's escrow of its open trade.
       await expectLater(
         database.customStatement(
-          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES ('$_key', 2, 'bond', '$_bondOfOne', 9000)",
+          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, confirmed_sats) VALUES ('$_key', 2, 'bond', '$_bondOfOne', 9000, 5000)",
         ),
         throwsA(
           predicate((error) => '$error'.contains('an invoice is paid once')),
@@ -218,10 +218,11 @@ void main() {
       final first = await schema7File();
       final reference = copyOf(first, 'reference.sqlite');
       final recorder = _StopAfter(null);
-      final once = P2pDatabase.forTesting(
+      // The step to schema 8 alone, which stops at 8: the step to schema 9 is `schema9_migration_test.dart`'s.
+      final once = _atSchema8(
         NativeDatabase(reference).interceptWith(recorder),
       );
-      expect(await _versionOf(once), P2pDatabase.schema);
+      expect(await _versionOf(once), 8);
       final expectedRows = await _rowsOf(once, _schema8Columns);
       final expectedObjects = await _objectsOf(once);
       await once.close();
@@ -232,7 +233,7 @@ void main() {
       final states = <Set<String>>[];
       for (var stop = 0; stop < statements.length; stop++) {
         final file = copyOf(first, 'stop-$stop.sqlite');
-        final stopped = P2pDatabase.forTesting(
+        final stopped = _atSchema8(
           NativeDatabase(file).interceptWith(_StopAfter(stop)),
         );
         await expectLater(
@@ -247,8 +248,8 @@ void main() {
         states.add(await _namesOf(left));
         await left.close();
 
-        final again = P2pDatabase.forTesting(NativeDatabase(file));
-        expect(await _versionOf(again), P2pDatabase.schema, reason: '$stop');
+        final again = _atSchema8(NativeDatabase(file));
+        expect(await _versionOf(again), 8, reason: '$stop');
         expect(
           await _rowsOf(again, _schema8Columns),
           expectedRows,
@@ -272,15 +273,15 @@ void main() {
     'done to its last statement but its version not written, the step runs again and changes nothing',
     () async {
       final file = await schema7File();
-      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
-      expect(await _versionOf(migrated), P2pDatabase.schema);
+      final migrated = _atSchema8(NativeDatabase(file));
+      expect(await _versionOf(migrated), 8);
       final rows = await _rowsOf(migrated, _schema8Columns);
       final objects = await _objectsOf(migrated);
       await migrated.customStatement('PRAGMA user_version = 7');
       await migrated.close();
 
-      final again = P2pDatabase.forTesting(NativeDatabase(file));
-      expect(await _versionOf(again), P2pDatabase.schema);
+      final again = _atSchema8(NativeDatabase(file));
+      expect(await _versionOf(again), 8);
       expect(await _rowsOf(again, _schema8Columns), rows);
       expect(await _objectsOf(again), objects);
       await again.close();
@@ -608,6 +609,35 @@ void main() {
       await migrated.close();
     },
   );
+}
+
+/// The database opened on [executor] as an app of schema 8 opened it: only the steps up to 8 run, and drift writes version 8 (schema 9, #204, #231, #233, is the next step, tested apart).
+P2pDatabase _atSchema8(QueryExecutor executor) =>
+    P2pDatabase.forTesting(executor.interceptWith(_UpToSchema(8)));
+
+/// An opening that tells drift the database's schema is [version], so that the steps run up to it only.
+final class _UpToSchema extends QueryInterceptor {
+  final int version;
+
+  _UpToSchema(this.version);
+
+  @override
+  Future<bool> ensureOpen(QueryExecutor executor, QueryExecutorUser user) =>
+      executor.ensureOpen(_AtVersion(user, version));
+}
+
+/// [_user] at schema [schemaVersion].
+final class _AtVersion implements QueryExecutorUser {
+  final QueryExecutorUser _user;
+
+  @override
+  final int schemaVersion;
+
+  _AtVersion(this._user, this.schemaVersion);
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) =>
+      _user.beforeOpen(executor, details);
 }
 
 /// What a stop of the step throws, in place of the statement it stops before.

@@ -1585,6 +1585,7 @@ void main() {
             step: InvoiceStep.escrow,
             paymentHash: hashA,
             startedAt: at.add(const Duration(seconds: 1)),
+            confirmedSats: Sats.fromInt(5000),
           ),
         );
         expect(
@@ -1595,6 +1596,7 @@ void main() {
             startedAt: at,
             walletPaymentId: 'swap-1',
             take: 1,
+            confirmedSats: Sats.fromInt(5000),
           ),
         );
         expect(
@@ -1648,14 +1650,14 @@ void main() {
       );
       await expectLater(
         database.customStatement(
-          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, 10, 'bond', 0, ?, 0)",
+          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at, confirmed_sats) VALUES (?, 10, 'bond', 0, ?, 0, 5000)",
           [fingerprint.hex, hashA],
         ),
         refusedBy(once),
       );
       // Its own row written again writes nothing, as before.
       await database.customStatement(
-        "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, 0, 'escrow', 0, ?, 0)",
+        "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at, confirmed_sats) VALUES (?, 0, 'escrow', 0, ?, 0, 5000)",
         [fingerprint.hex, hashA],
       );
       // Another hash: the take's bond, paid.
@@ -1716,7 +1718,7 @@ void main() {
         ]) {
           await expectLater(
             database.customStatement(
-              "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, ?, 'escrow', ?, ?, 0)",
+              "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at, confirmed_sats) VALUES (?, ?, 'escrow', ?, ?, 0, 5000)",
               [key, index, take, hashA],
             ),
             refusedBy(once),
@@ -1748,14 +1750,14 @@ void main() {
         );
         await expectLater(
           database.customStatement(
-            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, 0, 'bond', 1, ?, 0)",
+            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at, confirmed_sats) VALUES (?, 0, 'bond', 1, ?, 0, 5000)",
             [fingerprint.hex, hashB],
           ),
           refusedBy(check, 'a payment of no open trade'),
         );
         await expectLater(
           database.customStatement(
-            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, 0, 'escrow', -1, ?, 0)",
+            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at, confirmed_sats) VALUES (?, 0, 'escrow', -1, ?, 0, 5000)",
             [fingerprint.hex, hashB],
           ),
           refusedBy(check, 'a payment of no open trade'),
@@ -1771,7 +1773,7 @@ void main() {
         ]) {
           await expectLater(
             database.customStatement(
-              'INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, 0, ?, ?, ?, 0)',
+              'INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at, confirmed_sats) VALUES (?, 0, ?, ?, ?, 0, 5000)',
               [fingerprint.hex, step, take, hashC],
             ),
             refusedBy(check),
