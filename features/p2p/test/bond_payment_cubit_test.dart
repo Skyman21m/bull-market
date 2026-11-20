@@ -5,12 +5,15 @@ import 'package:p2p/src/domain/trade/bond_payment.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart' show InvoiceStep;
 import 'package:p2p/src/domain/trade/escrow_contract.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
+import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/wallet_payment.dart';
+import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/bond_payment_cubit.dart';
 import 'package:p2p/testing.dart';
 import 'package:test/test.dart';
 
+import 'support/maker_orders.dart' show madeTerms;
 import 'support/trade_screens.dart';
 
 /// The use case's functions, played by the test.
@@ -103,6 +106,15 @@ P2pWalletQuote walletQuote() {
 }
 
 Future<void> settle() => pumpEventQueue();
+
+/// The comparison of a maker's quote when the Bull wallet's price could not be read.
+final WalletRateCheck unverifiedRate = WalletRateCheck.ofMakerBond(
+  switch (madeTerms().side) {
+    MadeSide(:final maker) => maker,
+  },
+  asked: Sats.fromInt(3207),
+  wallet: const P2pWalletRateUnavailable(),
+);
 
 void main() {
   late TradeSeen seen;
@@ -663,6 +675,44 @@ void main() {
         if (again is! BondPayConfirming) fail('$again');
         expect(again.again, isTrue);
         expect(again.stale, isTrue);
+        await cubit.close();
+      },
+    );
+
+    test(
+      '« Retry » on a stale confirmation keeps it stale: never payable from it (security review of #188, M17)',
+      () async {
+        final payments = Payments();
+        var reads = 0;
+        final cubit = EscrowPaymentCubit(
+          TradeScreenStatuses.record,
+          payments.balance,
+          payments.check,
+          payments.quote,
+          payments.pay,
+          payments.follow,
+          (record) => null,
+          step: InvoiceStep.escrow,
+          contract: (record, walletQuote) async =>
+              Ok(contractOf(walletQuote, take: 1)),
+          rate: (record, walletQuote) async {
+            reads += 1;
+            return Ok(unverifiedRate);
+          },
+        )..start();
+        payments.follows.single.add(const BondPaymentNone());
+        await settle();
+        final asking = cubit.ask(seen);
+        payments.quotes.single.complete(Ok(walletQuote()));
+        await asking;
+        final before = cubit.state.step;
+        if (before is! BondPayConfirming) fail('$before');
+        expect(before.stale, isTrue);
+        await cubit.retryRate();
+        expect(reads, 2);
+        final after = cubit.state.step;
+        if (after is! BondPayConfirming) fail('$after');
+        expect(after.stale, isTrue);
         await cubit.close();
       },
     );

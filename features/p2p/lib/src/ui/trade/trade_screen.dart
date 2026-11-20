@@ -435,9 +435,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       ),
                       const Gap(BullSpacing.sm),
                     ],
-                    // The escrows of the order's other contracts (#188), whatever the view: an escrow paid for a contract the order moved on from is said until it is back, after the trade's end too.
-                    if (widget.walletEarlierEscrows case final earlier?
-                        when view is! TradeWaiting)
+                    // The escrows of the order's other contracts (#188), whatever the view, a wait included (security review of #188, R3): an escrow paid for a contract the order moved on from is said until it is back, after the trade's end too.
+                    if (widget.walletEarlierEscrows case final earlier?)
                       earlier(context),
                     switch (view) {
                       TradeWaiting(:final warnings)

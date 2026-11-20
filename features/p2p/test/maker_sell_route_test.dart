@@ -444,6 +444,11 @@ final class _Journey {
     find.byType(TradeScreen).evaluate().single,
   ).state.record;
 
+  /// [record]'s coordinator as the panel names it.
+  String coordinatorNameOf(TradeRecord record) =>
+      Federation.robosats.byAlias(record.coordinatorAlias)?.longAlias ??
+      record.coordinatorAlias;
+
   /// The trade's coordinator as the panel names it.
   String get coordinatorName =>
       Federation.robosats.byAlias(record.coordinatorAlias)?.longAlias ??
@@ -786,12 +791,14 @@ void main() {
       expect(journey.wallet.paid, hasLength(1));
       journey.takenAgain();
       await journey.waitFor(find.text(_english.earlierTitle), seconds: 60);
-      expect(
-        find.text(
-          'Take 1: state unknown, this device cannot tell where it stands',
-        ),
-        findsOneWidget,
-      );
+      const unknown =
+          'Take 1: state unknown, this device cannot tell where it stands';
+      expect(find.text(unknown), findsOneWidget);
+      // Counted not back, in the colour of a collateral not back (security review of #188, M14).
+      final palette = Theme.of(
+        tester.element(find.text(unknown)),
+      ).extension<BullTheme>();
+      expect(tester.widget<Text>(find.text(unknown)).style?.color, palette?.warning);
       await journey.openConfirmation();
       expect(
         find.text(
@@ -1025,6 +1032,145 @@ void main() {
       expect(tester.widget<TradeButton>(pay).busy, isFalse);
       expect(find.text('Sending the payment…'), findsNothing);
       expect(await journey.rows(journey.record), [(InvoiceStep.escrow, 0)]);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  for (final (name, rate, line) in [
+    (
+      'a currency the Bull wallet does not price',
+      const P2pWalletRateNotPriced() as P2pWalletBitcoinRate,
+      'The Bull wallet has no price for USD: rate not checked.',
+    ),
+    (
+      'the Bull wallet\'s price not read',
+      const P2pWalletRateUnavailable() as P2pWalletBitcoinRate,
+      'could not be read: rate not checked.',
+    ),
+  ]) {
+    testWidgets(
+      '$name, a coordinator\'s price ten times too low: the confirmation\'s alert alone, above the buttons, no gap and no price of the creation; « Pay » offered (security review of #188, C1, R11)',
+      (tester) async {
+        final journey = await _Journey.start(tester, _english);
+        // 5,000 USD/BTC announced before the make and fixed at the take: a collateral ten times too large.
+        journey.coordinator.prices[1] = 5000;
+        journey.wallet.rate = rate;
+        await journey.toFirstTake();
+        final walletQuote = await journey.openConfirmation();
+        expect(walletQuote.amount, Sats.fromInt(1961274));
+        final alert = find.textContaining(line);
+        expect(alert, findsOneWidget);
+        expect(find.textContaining('from the rate when you made it'), findsNothing);
+        expect(find.textContaining('5,100'), findsNothing);
+        expect(find.textContaining('5,000'), findsNothing);
+        expect(find.textContaining('are worth'), findsNothing);
+        expect(
+          tester.getTopLeft(alert).dy,
+          greaterThan(
+            tester.getTopLeft(find.textContaining('Until the trade ends')).dy,
+          ),
+        );
+        expect(
+          tester.getTopLeft(alert).dy,
+          lessThan(tester.getTopLeft(find.text('Go back')).dy),
+        );
+        final palette = Theme.of(tester.element(alert)).extension<BullTheme>();
+        expect(tester.widget<Text>(alert).style?.color, palette?.warning);
+        expect(
+          tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
+          isNotNull,
+        );
+        expect(
+          find.widgetWithText(TradeButton, 'Retry'),
+          rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 61));
+      },
+    );
+  }
+
+  testWidgets(
+    'the earlier takes\' collaterals stay listed while the screen waits for its first read (security review of #188, R3)',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      final walletQuote = await journey.openConfirmation();
+      final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
+      journey.wallet.scriptPayment(
+        Ok(
+          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow0.facts.paymentHash),
+        ),
+      );
+      journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());
+      await journey.tap(journey.payOf(walletQuote));
+      await settle(tester);
+      journey.takenAgain();
+      await journey.waitFor(find.text(_english.earlierTitle), seconds: 60);
+      final record = journey.record;
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      // The coordinator unreachable: the page opened again waits for a read that never comes.
+      for (var i = 0; i < 60; i++) {
+        journey.coordinator.failNext(
+          ScriptedMakerRequest.order,
+          ScriptedFault.unreachable,
+        );
+      }
+      unawaited(
+        journey.router.pushNamed(
+          P2pRouter.tradeName,
+          extra: P2pTradeRouteArgs(record),
+        ),
+      );
+      await journey.pass(3);
+      expect(find.byType(TradeScreen), findsOneWidget);
+      expect(find.textContaining('as collateral'), findsNothing);
+      expect(find.text(_english.earlierTitle), findsOneWidget);
+      expect(
+        find.text(
+          'Take 1: not back yet, paid by the swap service and held by ${journey.coordinatorNameOf(record)}',
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+
+  testWidgets(
+    'the order taken again while the earlier take\'s payment is being sent, and that payment refused: the refusal stays said, « Pay with this wallet » offered under it (functional verification of #188, R10)',
+    (tester) async {
+      final journey = await _Journey.start(tester, _english);
+      await journey.toFirstTake();
+      final walletQuote = await journey.openConfirmation();
+      final hold = Completer<void>();
+      journey.wallet
+        ..holdPayments = hold.future
+        ..scriptPayment(const Err(P2pWalletServiceUnreachable()));
+      await journey.tap(journey.payOf(walletQuote));
+      await settle(tester);
+      journey.takenAgain();
+      await journey.pass(20);
+      hold.complete();
+      journey.wallet.holdPayments = null;
+      const refusal = 'Swap server is unavailable. Please try again later.';
+      await journey.waitFor(find.text(refusal), seconds: 20);
+      final pay = find.widgetWithText(TradeButton, _english.payWithThisWallet);
+      for (var i = 0; i < 20 * 4; i++) {
+        if (pay.evaluate().isNotEmpty &&
+            tester.widget<TradeButton>(pay).onPressed != null) {
+          break;
+        }
+        await journey.pass(1);
+      }
+      expect(tester.widget<TradeButton>(pay).onPressed, isNotNull);
+      await journey.pass(20);
+      expect(find.text(refusal), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await settle(tester);
       await tester.pump(const Duration(seconds: 61));

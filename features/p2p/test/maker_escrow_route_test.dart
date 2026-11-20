@@ -436,7 +436,7 @@ void main() {
       );
 
       testWidgets(
-        'a fixed amount the coordinator reads otherwise, the confirmation open: never its figure; what is compared is still the amount asked here',
+        'a fixed amount the coordinator reads otherwise, the confirmation open: the terms\' alert alone, no comparison beside it, nothing paid (security review of #188, C2)',
         (tester) async {
           final app = await _App.start(tester);
           await app.openTrade();
@@ -453,14 +453,15 @@ void main() {
             await tester.pump(const Duration(seconds: 1));
           }
           await app.settle();
-          for (final text in tester.widgetList<Text>(find.byType(Text))) {
-            final data = text.data ?? '';
-            expect(data, isNot(contains('1,000 EUR')));
-            expect(data, isNot(contains('1000 EUR')));
-            if (data.contains('are worth')) {
-              expect(data, contains('100 EUR are worth 196,078 sats'));
-            }
-          }
+          expect(
+            find.text(
+              'The terms of the order are not those of the order taken.',
+            ),
+            findsOneWidget,
+          );
+          expect(find.textContaining('are worth'), findsNothing);
+          expect(find.textContaining('fee included'), findsNothing);
+          expect(find.textContaining('1,000 EUR'), findsNothing);
           expect(app.wallet.paid, isEmpty);
           await app.close();
         },

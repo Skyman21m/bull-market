@@ -7,11 +7,12 @@ import '../../../public/p2p_wallet_port.dart';
 import '../../domain/trade/bond_payment.dart';
 import '../../domain/trade/escrow_contract.dart';
 import '../../presentation/bond_payment_cubit.dart';
+import '../../presentation/trade_cubit.dart';
 import 'bond_payment_panel.dart' show bondPaymentCoordinator;
 
 /// Where the escrows of a maker seller's order paid or attempted with this wallet for its other contracts stand (#188, design note § 2.3, § 4.3; security review of #187, C2, R6): one line per contract, « Take {n}: {state} », in the words of the three cases of the confirmation ([EarlierEscrowCase]: back, not back yet, kept) with what the wallet's records say, « state unknown » for a payment whose records cannot be read or whose recorded wallet id the wallet does not hold; and above them, in red, each escrow whose refund was pending and which the wallet's records now show held again or kept.
 ///
-/// It reads the trade's [EscrowPaymentCubit] (`followEscrows`, listened to again at each contract and after each payment), whatever the view, after the trade's end too, as the line of the current escrow (`BondPaymentLine`); the escrow of the contract the panel follows is that line's, never here. Nothing to tap: it pays nothing and offers nothing.
+/// It reads the trade's [EscrowPaymentCubit] (`followEscrows`, listened to again at each contract and after each payment), whatever the view, a wait included, after the trade's end too, as the line of the current escrow (`BondPaymentLine`); the escrow of the contract the trade stands at is that line's, never here. Nothing to tap: it pays nothing and offers nothing.
 class EarlierEscrowLines extends StatelessWidget {
   const EarlierEscrowLines({super.key});
 
@@ -20,10 +21,16 @@ class EarlierEscrowLines extends StatelessWidget {
     final cubit = context.watch<EscrowPaymentCubit?>();
     if (cubit == null) return const SizedBox.shrink();
     final state = cubit.state;
+    // The contract the trade stands at, from the trail the screen holds whatever it shows (a wait before the first read included, security review of #188, R3), else the one the panel follows.
+    final current =
+        context.select<TradeCubit, int?>(
+          (trade) => trade.state.seen?.status.trail.take,
+        ) ??
+        state.followedTake;
     final escrows = switch (state.escrows) {
       EscrowPaymentsFollowed(:final escrows) => [
         for (final escrow in escrows)
-          if (escrow.take != state.followedTake) escrow,
+          if (escrow.take != current) escrow,
       ],
       _ => const <EscrowPaymentOfContract>[],
     };
