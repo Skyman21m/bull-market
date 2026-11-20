@@ -267,7 +267,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         seen == null ||
         cubit.state.locked ||
         context.read<PendingMakesCubit>().state.blocksMaking ||
-        _renewalMismatch(cubit.state, request)) {
+        _renewalMismatch(cubit.state, request) ||
+        _renewalNeedsPassword(cubit.state)) {
       return;
     }
     setState(() {
@@ -1632,7 +1633,8 @@ class _CreateButton extends StatelessWidget {
         block == null &&
         progress is MakeIdle &&
         !pendingFirst &&
-        !renewalMismatch;
+        !renewalMismatch &&
+        !renewalNeedsPassword;
     final button = TradeButton(
       label: submits ? l10n.p2pMakeSubmit : l10n.p2pMakeCreateOrder,
       busy: asking || progress is MakeSending,
