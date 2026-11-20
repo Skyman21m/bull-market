@@ -10,6 +10,7 @@ import 'package:p2p/src/domain/repositories/trade_chat_pin_repository.dart';
 import 'package:p2p/src/domain/trade/trade_chat_pin.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
+import 'package:p2p/src/data/trade_payout_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
@@ -44,6 +45,7 @@ import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
+import 'package:p2p/src/domain/usecases/trade/wallet_payout_destinations.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
 import 'package:p2p/src/domain/usecases/trade/watch_chat_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/watch_trade_usecase.dart';
@@ -468,6 +470,13 @@ final class TradeHarness {
   late final TestTrails trails;
   late final InterimTradeRobots robots;
   late final RobotRequestLimiter limiter;
+
+  /// Where each contract's payout came from (schema 9, #204), in this run's database.
+  late final TradePayoutRepositoryImpl payouts;
+
+  /// The invoices and addresses the wallet gave during this run, in memory: lost at a restart, as in the app.
+  final WalletPayoutDestinations walletPayouts = WalletPayoutDestinations();
+
   late final TradeReader reader;
   late final TakeOrderUsecase take;
   late final WatchTradeUsecase watch;
@@ -533,6 +542,7 @@ final class TradeHarness {
       TradeRecordRepositoryImpl(database, clock: clock),
       () => kill,
     );
+    payouts = TradePayoutRepositoryImpl(database);
     trails = TestTrails(TradeTrailRepositoryImpl(database), () => kill);
     robots = InterimTradeRobots(_vault, records);
     limiter = RobotRequestLimiter(
@@ -556,6 +566,7 @@ final class TradeHarness {
       invoices,
       clock: clock,
       requestOrder: TradeReadOrder(),
+      payouts: payouts,
     );
     final fetch = FetchRobotUsecase(client, bindings, keys);
     final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
@@ -587,6 +598,8 @@ final class TradeHarness {
       keyring,
       locks,
       invoices,
+      payouts: payouts,
+      fromWallet: walletPayouts,
     );
     pins = TestPins(TradeChatPinRepositoryImpl(database));
     chatRead = WatchChatUsecase(

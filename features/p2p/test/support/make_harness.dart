@@ -7,6 +7,7 @@ import 'package:p2p/src/data/tor_coordinator_transport.dart'
     show coordinatorRequestDeadline;
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
+import 'package:p2p/src/data/trade_payout_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
@@ -38,6 +39,7 @@ import 'package:p2p/src/domain/usecases/trade/trade_make_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
+import 'package:p2p/src/domain/usecases/trade/wallet_payout_destinations.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
 import 'package:p2p/src/domain/usecases/trade/watch_trade_usecase.dart';
 import 'package:p2p/testing.dart' show ScriptedMakerCoordinator;
@@ -88,6 +90,13 @@ final class MakeHarness {
   late final MakeTrails trails;
   late final InterimTradeRobots robots;
   late final RobotRequestLimiter limiter;
+
+  /// Where each contract's payout came from (schema 9, #204), in this run's database.
+  late final TradePayoutRepositoryImpl payouts;
+
+  /// The invoices and addresses the wallet gave during this run, in memory: lost at a restart, as in the app.
+  final WalletPayoutDestinations walletPayouts = WalletPayoutDestinations();
+
   late final TradeReader reader;
   late final MakeOrderUsecase make;
 
@@ -132,6 +141,7 @@ final class MakeHarness {
       TradeRecordRepositoryImpl(database, clock: clock),
       () => kill,
     );
+    payouts = TradePayoutRepositoryImpl(database);
     trails = MakeTrails(TradeTrailRepositoryImpl(database), () => kill);
     robots = InterimTradeRobots(_vault, records);
     limiter = RobotRequestLimiter(
@@ -151,6 +161,7 @@ final class MakeHarness {
       invoices,
       clock: clock,
       requestOrder: TradeReadOrder(),
+      payouts: payouts,
     );
     final fetch = FetchRobotUsecase(client, bindings, keys);
     final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
@@ -167,6 +178,8 @@ final class MakeHarness {
       TradeKeyring(readRobot, keys),
       locks,
       invoices,
+      payouts: payouts,
+      fromWallet: walletPayouts,
     );
     chat = ChatStepActionUsecase(client, reader, limiter, locks);
     makeOn = (federation) => MakeOrderUsecase(

@@ -1103,56 +1103,62 @@ class RobotCoordinatorCubit {
     );
   });
 
-  test('the payouts a buyer gave are written by their repository alone, one statement each, never deleted (schema 9, #204)', () {
-    // No other file holds SQL that writes the payouts, but the triggers as drift copies them and the marks the step to schema 9 writes, pinned in the database by value.
-    expect(
-      where(
-        (facts) => facts.strings.any(
-          (text) =>
-              RegExp(
-                r'\b(into|update|delete\s+from)\s+"?trade_payouts\b',
-                caseSensitive: false,
-              ).hasMatch(text) &&
-              !isDriftTrigger(facts, text) &&
-              !(identical(facts, libraries['lib/src/data/p2p_database.dart']) &&
-                  text.startsWith('INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, payment_hash, submitted_at) ')),
+  test(
+    'the payouts a buyer gave are written by their repository alone, one statement each, never deleted (schema 9, #204)',
+    () {
+      // No other file holds SQL that writes the payouts, but the triggers as drift copies them and the marks the step to schema 9 writes, pinned in the database by value.
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) =>
+                RegExp(
+                  r'\b(into|update|delete\s+from)\s+"?trade_payouts\b',
+                  caseSensitive: false,
+                ).hasMatch(text) &&
+                !isDriftTrigger(facts, text) &&
+                !(identical(
+                      facts,
+                      libraries['lib/src/data/p2p_database.dart'],
+                    ) &&
+                    text.startsWith(
+                      'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, kind, payment_hash, submitted_at) ',
+                    )),
+          ),
         ),
-      ),
-      {'lib/src/data/trade_payout_repository_impl.dart'},
-    );
-    final payouts =
-        libraries['lib/src/data/trade_payout_repository_impl.dart'] ??
-        fail('no payout repository');
-    expect(payouts.constants, {
-      '_replaceSql':
-          'UPDATE trade_payouts SET source = ?, kind = ?, payment_hash = ?, '
-          'submitted_at = ? '
-          'WHERE key_fingerprint = ? AND robot_index = ? AND take = ? '
-          'RETURNING robot_index',
-      '_insertSql':
-          'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, '
-          'kind, payment_hash, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?) '
-          'RETURNING robot_index',
-      '_traceSql':
-          'SELECT source, kind, submitted_at FROM trade_payouts '
-          'WHERE key_fingerprint = ? AND robot_index = ? AND take = ?',
-    });
-    expect(
-      payouts.strings.where(
-        (text) => RegExp(r'\bdelete\b', caseSensitive: false).hasMatch(text),
-      ),
-      isEmpty,
-    );
-    // Only the payout's use case records a payout, and only the reader reads where it came from.
-    expect(
-      where((facts) => facts.invoked.contains('recordPayout')),
-      {'lib/src/domain/usecases/trade/submit_payout_usecase.dart'},
-    );
-    expect(
-      where((facts) => facts.invoked.contains('traceOf')),
-      {'lib/src/domain/usecases/trade/trade_reader.dart'},
-    );
-  });
+        {'lib/src/data/trade_payout_repository_impl.dart'},
+      );
+      final payouts =
+          libraries['lib/src/data/trade_payout_repository_impl.dart'] ??
+          fail('no payout repository');
+      expect(payouts.constants, {
+        '_replaceSql':
+            'UPDATE trade_payouts SET source = ?, kind = ?, payment_hash = ?, '
+            'submitted_at = ? '
+            'WHERE key_fingerprint = ? AND robot_index = ? AND take = ? '
+            'RETURNING robot_index',
+        '_insertSql':
+            'INSERT INTO trade_payouts (key_fingerprint, robot_index, take, source, '
+            'kind, payment_hash, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?) '
+            'RETURNING robot_index',
+        '_traceSql':
+            'SELECT source, kind, submitted_at FROM trade_payouts '
+            'WHERE key_fingerprint = ? AND robot_index = ? AND take = ?',
+      });
+      expect(
+        payouts.strings.where(
+          (text) => RegExp(r'\bdelete\b', caseSensitive: false).hasMatch(text),
+        ),
+        isEmpty,
+      );
+      // Only the payout's use case records a payout, and only the reader reads where it came from.
+      expect(where((facts) => facts.invoked.contains('recordPayout')), {
+        'lib/src/domain/usecases/trade/submit_payout_usecase.dart',
+      });
+      expect(where((facts) => facts.invoked.contains('traceOf')), {
+        'lib/src/domain/usecases/trade/trade_reader.dart',
+      });
+    },
+  );
 
   test('nothing changes or deletes a binding', () {
     final repository =

@@ -1469,6 +1469,102 @@ void main() {
     }
 
     test(
+      'keep what each payment takes out of the wallet with its start, never lower, never invented, never cleared (schema 9, #233)',
+      () async {
+        final made = await makeAtContract();
+        Future<Sats?> kept() async =>
+            switch (await payments.paymentOf(made, InvoiceStep.escrow)) {
+              Ok(value: final payment?) => payment.confirmedSats,
+              final other => fail('$other'),
+            };
+        expect(
+          valueOf(
+            await payments.recordStart(
+              made,
+              InvoiceStep.escrow,
+              paymentHash: hashA,
+              at: testNow,
+              sats: Sats.fromInt(200150),
+            ),
+          ),
+          isTrue,
+        );
+        expect(await kept(), Sats.fromInt(200150));
+        // A new attempt of the same invoice with a cheaper quote: an earlier attempt may still hold its funds, so the larger stays.
+        expect(
+          valueOf(
+            await payments.recordStart(
+              made,
+              InvoiceStep.escrow,
+              paymentHash: hashA,
+              at: testNow.add(const Duration(seconds: 1)),
+              sats: Sats.fromInt(200100),
+            ),
+          ),
+          isTrue,
+        );
+        expect(await kept(), Sats.fromInt(200150));
+        expect(
+          valueOf(
+            await payments.recordStart(
+              made,
+              InvoiceStep.escrow,
+              paymentHash: hashA,
+              at: testNow.add(const Duration(seconds: 2)),
+              sats: Sats.fromInt(200400),
+            ),
+          ),
+          isTrue,
+        );
+        expect(await kept(), Sats.fromInt(200400));
+        // An amount the records cannot hold is refused before anything is written: the wallet is never asked.
+        expect(
+          await payments.recordStart(
+            made,
+            InvoiceStep.escrow,
+            paymentHash: hashA,
+            at: testNow.add(const Duration(seconds: 3)),
+            sats: Sats(BigInt.from(2100000000000001)),
+          ),
+          refusedWith<P2pStorageFailure>(),
+        );
+        expect(
+          await payments.recordStart(
+            made,
+            InvoiceStep.escrow,
+            paymentHash: hashA,
+            at: testNow.add(const Duration(seconds: 3)),
+            sats: Sats(BigInt.two.pow(64)),
+          ),
+          refusedWith<P2pStorageFailure>(),
+        );
+        expect(await kept(), Sats.fromInt(200400));
+        // Whatever the code, the database: no payment without its amount, never lowered nor cleared.
+        for (final (statement, message) in [
+          (
+            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES ('${made.robot.keyFingerprint.hex}', ${made.robot.accountIndex}, 'bond', 0, '${'0f' * 32}', 0)",
+            'a payment is recorded with its amount',
+          ),
+          (
+            'UPDATE trade_payments SET confirmed_sats = 200399 WHERE robot_index = ${made.robot.accountIndex}',
+            'the amount of a payment never goes down',
+          ),
+          (
+            'UPDATE trade_payments SET confirmed_sats = NULL WHERE robot_index = ${made.robot.accountIndex}',
+            'the amount of a payment never goes down',
+          ),
+        ]) {
+          await expectLater(
+            database.customStatement(statement),
+            throwsA(predicate((error) => '$error'.contains(message))),
+            reason: statement,
+          );
+        }
+        expect(await kept(), Sats.fromInt(200400));
+      },
+    );
+
+    test(
       'are one per contract, at the contract the trail is at, and read by it',
       () async {
         final made = await makeAtContract();

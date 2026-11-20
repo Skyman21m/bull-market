@@ -1354,6 +1354,8 @@ void main() {
           expect(seller.escrowPayments, isEmpty);
           final first = (await seller.rows()).single;
           expect(first.walletPaymentId, isNull);
+          // What it takes out of the wallet is on disk with its start, before the wallet was asked anything (schema 9, #233).
+          expect(first.confirmedSats, quote.total);
           killed.armed = false;
           // The app started again over the same records: the same escrow is still payable.
           final again = _Seller.payOf(
