@@ -224,11 +224,7 @@ void main() {
         );
         // A premium added after another term changed first.
         expect(
-          trail(
-            readAt: 4000,
-            at: 3000,
-            premium: 7,
-          ).whyNotReplace(
+          trail(readAt: 4000, at: 3000, premium: 7).whyNotReplace(
             trail(readAt: 3000, at: 3000),
             madeHere: false,
             ownPremium: 2,

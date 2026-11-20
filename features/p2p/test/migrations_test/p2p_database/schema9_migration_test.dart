@@ -397,13 +397,17 @@ void main() {
           ),
           throwsA(
             predicate(
-              (error) =>
-                  '$error'.contains('the trace of terms shown otherwise is kept'),
+              (error) => '$error'.contains(
+                'the trace of terms shown otherwise is kept',
+              ),
             ),
           ),
           reason: change,
         );
-        Future<void> taken(String change, int robot) => database.customStatement(
+        Future<void> accepted(
+          String change,
+          int robot,
+        ) => database.customStatement(
           "UPDATE trade_trails SET $change WHERE robot_index = $robot AND key_fingerprint = '$_key'",
         );
         // The taker's own premium is -1.5 (its `trade_terms`): 7 is 8.5 away.
@@ -417,17 +421,14 @@ void main() {
           await refused(change, 1);
         }
         // Farther, above or below: taken (security review of schema 9, C1); as far, or closer, refused.
-        await taken('terms_changed_premium = 8.0', 1);
+        await accepted('terms_changed_premium = 8.0', 1);
         await refused('terms_changed_premium = -11.0', 1);
-        await taken('terms_changed_premium = -12.0', 1);
+        await accepted('terms_changed_premium = -12.0', 1);
         await refused('terms_changed_premium = 8.0', 1);
         // The maker's own premium is -1.25 (its `maker_terms`): a trace set with another term first, then premiums.
-        await taken(
-          'read_at = 1800000, terms_changed_at = 1800000',
-          6,
-        );
-        await taken('terms_changed_premium = 5.0', 6);
-        await taken('terms_changed_premium = -8.0', 6);
+        await accepted('read_at = 1800000, terms_changed_at = 1800000', 6);
+        await accepted('terms_changed_premium = 5.0', 6);
+        await accepted('terms_changed_premium = -8.0', 6);
         await refused('terms_changed_premium = 4.0', 6);
         await refused('terms_changed_premium = NULL', 6);
       },

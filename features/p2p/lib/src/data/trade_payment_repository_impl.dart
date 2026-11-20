@@ -105,13 +105,13 @@ final class TradePaymentRepositoryImpl implements TradePaymentRepository {
         data['confirmed_sats'],
       )) {
         case (
-          final step?,
-          final int take,
-          final String hash,
-          final int startedAt,
-          final String? id,
-          final int? sats,
-        )
+              final step?,
+              final int take,
+              final String hash,
+              final int startedAt,
+              final String? id,
+              final int? sats,
+            )
             when _amountReadable(sats):
           payments.add(
             TradePaymentRecord(

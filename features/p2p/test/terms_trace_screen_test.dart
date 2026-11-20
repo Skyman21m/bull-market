@@ -142,7 +142,10 @@ void main() {
                 null,
                 const PayoutTraceUnreadable(),
                 const PayoutUnrecorded(),
-                PayoutFromThisWallet(PayoutTraceKind.invoice, DateTime.utc(2026)),
+                PayoutFromThisWallet(
+                  PayoutTraceKind.invoice,
+                  DateTime.utc(2026),
+                ),
               ]) {
                 payoutLines.add(
                   payoutTraceOf(context, chat.withPayout(trace), rule: null),
@@ -153,8 +156,14 @@ void main() {
           ),
         ),
       );
-      expect(lineAtChat, startsWith('Temple of Sats showed this trade with other terms from '));
-      expect(lineAtChat, endsWith(', up to a premium of +7.0% instead of +2.0%.'));
+      expect(
+        lineAtChat,
+        startsWith('Temple of Sats showed this trade with other terms from '),
+      );
+      expect(
+        lineAtChat,
+        endsWith(', up to a premium of +7.0% instead of +2.0%.'),
+      );
       expect(lineAtEnd, isNull);
       // While the read shows other terms, the state machine's alert speaks alone (security review, R7).
       expect(changed.status.has<TradeTermsChanged>(), isTrue);

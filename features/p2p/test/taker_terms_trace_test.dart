@@ -29,9 +29,7 @@ void main() {
     DateTime at, [
     Map<String, Object?> changes = const {},
   ]) async {
-    final TradeAnswer answer = await readAnswer(
-      orderJson(6, changes: changes),
-    );
+    final TradeAnswer answer = await readAnswer(orderJson(6, changes: changes));
     return TradeStatus.from(
       previous: previous,
       answer: answer,
@@ -58,7 +56,9 @@ void main() {
       var status = await at6(await preTake(), tradeNow);
       expect(status.trail.termsChangedAt, isNull);
       var at = tradeNow;
-      Future<TradeStatus> show([Map<String, Object?> changes = const {}]) async {
+      Future<TradeStatus> show([
+        Map<String, Object?> changes = const {},
+      ]) async {
         at = at.add(const Duration(minutes: 1));
         return status = await at6(status, at, changes);
       }
@@ -83,7 +83,10 @@ void main() {
       expect(status.trail.termsChangedPremium, -6);
       // As stored and read back: the record the trigger takes.
       expect(status.trail.record.termsChangedPremium, -6);
-      expect(status.trail.record.termsChangedAtMicros, shownAt.microsecondsSinceEpoch);
+      expect(
+        status.trail.record.termsChangedAtMicros,
+        shownAt.microsecondsSinceEpoch,
+      );
     },
   );
 
