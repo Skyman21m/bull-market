@@ -798,7 +798,10 @@ void main() {
       final palette = Theme.of(
         tester.element(find.text(unknown)),
       ).extension<BullTheme>();
-      expect(tester.widget<Text>(find.text(unknown)).style?.color, palette?.warning);
+      expect(
+        tester.widget<Text>(find.text(unknown)).style?.color,
+        palette?.warning,
+      );
       await journey.waitFor(find.text(_english.payWithThisWallet), seconds: 20);
       await journey.openConfirmation();
       expect(
@@ -1063,7 +1066,10 @@ void main() {
         expect(walletQuote.amount, Sats.fromInt(1961274));
         final alert = find.textContaining(line);
         expect(alert, findsOneWidget);
-        expect(find.textContaining('from the rate when you made it'), findsNothing);
+        expect(
+          find.textContaining('from the rate when you made it'),
+          findsNothing,
+        );
         expect(find.textContaining('5,100'), findsNothing);
         expect(find.textContaining('5,000 USD'), findsNothing);
         expect(find.textContaining('are worth'), findsNothing);
@@ -1103,7 +1109,10 @@ void main() {
       final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
       journey.wallet.scriptPayment(
         Ok(
-          P2pWalletPayment(id: 'swap-e0', paymentHash: escrow0.facts.paymentHash),
+          P2pWalletPayment(
+            id: 'swap-e0',
+            paymentHash: escrow0.facts.paymentHash,
+          ),
         ),
       );
       journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());
