@@ -1275,6 +1275,17 @@ void main() {
           ].where((body) => body.contains('update_invoice')),
           hasLength(1),
         );
+        // The invoice sent is the wallet's own, clear-signed in the request's body (security review of #234, R5).
+        expect(
+          [
+            for (final request in journey.coordinator.requests.skip(before))
+              utf8.decode(request.body ?? const []),
+          ].where(
+            (body) =>
+                body.contains('update_invoice') && body.contains(invoice.text),
+          ),
+          hasLength(1),
+        );
         order
           ..payoutHash = invoice.facts.paymentHash
           ..status = 7;

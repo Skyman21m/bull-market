@@ -1506,7 +1506,7 @@ class _Contract extends StatelessWidget {
     };
     if (shown == null) return const [];
     final state = _ruleOf(now, shown.status);
-    // As on the screen: only where the rule does not run (#234).
+    // As on the screen: only where the rule is not on the page (#234).
     final gap = rateCubit == null ? _gapOf(context, shown) : null;
     return [
       if (state != null)
@@ -1516,7 +1516,7 @@ class _Contract extends StatelessWidget {
           coordinator: coordinator,
           amount: PayoutRateLines.amountOf(context, shown),
         ),
-      if (gap != null && !PayoutRateLines.hidesGap(state))
+      if (gap != null)
         (
           text: gap.text,
           tone: gap.gap.effectFor(gap.role) == RateGapEffect.unfavourable
@@ -1543,10 +1543,10 @@ class _Contract extends StatelessWidget {
     );
   }
 
-  /// The line of the gap of a maker buyer's contract at 6, 8 and 9 ([RateGapLine]), only where the owner's rule does not run (no wallet's port lent): never beside a comparison, nor beside « rate not checked » or a currency the Bull wallet does not price, nor before the rule's first answer (#234, [PayoutRateLines.hidesGap]); `null` for a taker, whose statuses carry no gap, and for a maker seller ([_gapOf]).
+  /// The line of the gap of a maker buyer's contract at 6, 8 and 9 ([RateGapLine]), only where the owner's rule is not on the page ([rateCubit] `null`: no wallet's port lent, a composition the app does not use): one mechanism, so never beside a comparison, « rate not checked » or a currency the Bull wallet does not price, nor before the rule's first answer (#234); `null` for a taker, whose statuses carry no gap, and for a maker seller ([_gapOf]).
   Widget? _gapLine(BuildContext context) {
-    // The rule runs on this page (a wallet's port lent): no gap from the creation's rate, whatever it says or before it says anything (functional review of #234, R4).
-    if (rateCubit != null || PayoutRateLines.hidesGap(_ruleShown)) return null;
+    // The rule is on this page (a wallet's port lent): no gap from the creation's rate, whatever it says or before it says anything (#234; its functional review, R4).
+    if (rateCubit != null) return null;
     final gap = _gapOf(context, contract.seen);
     if (gap == null) return null;
     return RateGapLine(gap: gap.gap, role: gap.role, text: gap.text);
