@@ -1849,6 +1849,47 @@ void main() {
       );
 
       testWidgets(
+        'a maker seller at 9, without the rule (no wallet\'s port): no gap from the creation\'s rate in the chat, never a seller\'s (functional review of #234, C1)',
+        (tester) async {
+          final seller = TradeRole.seller;
+          final chain = await _chain([
+            makerOrderJson(0, role: seller),
+            makerOrderJson(1, role: seller),
+            makerOrderJson(8, role: seller),
+            makerOrderJson(9, role: seller),
+          ], terms: madeTerms(role: seller));
+          final seen = chain.last;
+          expect(seen.status, isA<Chatting>());
+          expect(switch (seen.status) {
+            Chatting(:final rateGap) => rateGap,
+            _ => null,
+          }, isNotNull);
+          await _show(
+            tester,
+            seen,
+            record: TradeRecord(
+              robot: _record.robot,
+              coordinatorAlias: _record.coordinatorAlias,
+              coordinatorOnion: _record.coordinatorOnion,
+              orderId: _record.orderId,
+              role: seller,
+              origin: TradeOrigin.madeHere,
+              takenAt: madeAt,
+              confirmedAt: madeAt,
+              closedAt: null,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('Chat with the buyer'), findsOneWidget);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
         'the rule on this page that has not answered (its terms not read): still no gap from the creation\'s rate, the rule running (functional review of #234, R4)',
         (tester) async {
           final seen = await _at([
