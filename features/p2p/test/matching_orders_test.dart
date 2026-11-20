@@ -10,11 +10,12 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
+import 'support/make_form.dart' show limitsOf;
 import 'support/trade_harness.dart' show tradeKey;
 
 final _eur = RobosatsCurrency.fromCode('EUR') ?? (throw StateError('EUR'));
 
-/// The search of a form whose fields are typed as given: the side chosen [side] (the order made), EUR, the amount and the premium as typed, the methods chosen, and for a range the bounds typed, as the screen hands them to [MatchingOrders.of].
+/// The search of a form whose fields are typed as given: the side chosen [side] (the order made), EUR, the amount and the premium as typed, the methods chosen, and for a range the bounds typed, as the screen hands them to [MatchingOrders.of], the coordinator's limits [market] being read unless given (no size limit then).
 MatchingOrders _of({
   OrderType? side = OrderType.buy,
   String amount = '100',
@@ -23,6 +24,7 @@ MatchingOrders _of({
   bool range = false,
   String min = '',
   String max = '',
+  MakerFormLimits market = const MakerFormLimitsLoading(),
 }) {
   final input = MakerFormInput(
     type: side,
@@ -39,8 +41,8 @@ MatchingOrders _of({
     MakerFormCheck.of(
       input,
       coordinatorsLoaded: true,
-      market: const MakerFormLimitsLoading(),
-      sizeLimitSats: 0,
+      market: market,
+      sizeLimitSats: 21 * 100000000,
     ),
   );
 }
@@ -234,26 +236,224 @@ void main() {
         expect(_kept(_of(amount: '-5'), book), isEmpty);
       },
     );
-
-    test(
-      'the reference\'s defect, reproduced: a range typed is never searched, the exact amount the hidden field « Amount » holds is (`filter.amount !== \'\'` always holds)',
-      () async {
-        final book = [
-          await _order(1, amount: 100),
-          await _order(2, amount: 700),
-        ];
-        // « Amount Range » 500 to 1,000, the field « Amount » holding 100 from before the options opened.
-        final ranged = _of(range: true, min: '500', max: '1000');
-        expect(ranged.amount, 100);
-        expect(_kept(ranged, book), [1]);
-        // The same range with nothing in « Amount »: nothing, the 700 inside the range included.
-        expect(
-          _kept(_of(amount: '', range: true, min: '500', max: '1000'), book),
-          isEmpty,
-        );
-      },
-    );
   });
+
+  group(
+    'an order made with a range (#230, a deviation from the reference, its defect corrected): the range typed is searched, from 0.3 times its minimum to 1.7 times its maximum, as `filterOrders.ts:47-50` is written',
+    () {
+      test(
+        'the reference\'s threshold, the same as for an exact amount, in floating point: 50 to 200 searches from 50 × (1 − 0.7), 15.000000000000002, so 15 is out, to 200 × 1.7, 340, in',
+        () async {
+          final book = [
+            await _order(1, amount: 15),
+            await _order(2, amount: 15.01),
+            await _order(3, amount: 120),
+            await _order(4, amount: 340),
+            await _order(5, amount: 340.01),
+            await _order(6, amount: 400),
+          ];
+          final ranged = _of(amount: '', range: true, min: '50', max: '200');
+          expect(MatchingOrders.rangeThreshold, MatchingOrders.threshold);
+          expect(ranged.range?.min, 50);
+          expect(ranged.range?.max, 200);
+          expect(_kept(ranged, book), [2, 3, 4]);
+        },
+      );
+
+      test(
+        'a range order is kept when its range overlaps the range searched (`Math.max(filterMin, orderMin) <= Math.min(filterMax, orderMax)`)',
+        () async {
+          final book = [
+            await _order(1, amount: null, minAmount: 5, maxAmount: 15),
+            await _order(2, amount: null, minAmount: 5, maxAmount: 15.01),
+            await _order(3, amount: null, minAmount: 340, maxAmount: 900),
+            await _order(4, amount: null, minAmount: 340.01, maxAmount: 900),
+            await _order(5, amount: null, minAmount: 1, maxAmount: 900),
+            await _order(6, amount: null, minAmount: 60, maxAmount: 90),
+          ];
+          expect(
+            _kept(_of(amount: '', range: true, min: '50', max: '200'), book),
+            [2, 3, 5, 6],
+          );
+        },
+      );
+
+      test(
+        'the field « Amount » that « Amount Range » hides is not searched: 100 held from before the options opened, 500 to 1,000 typed, 150 to 1,700 searched',
+        () async {
+          final book = [
+            await _order(1, amount: 100),
+            await _order(2, amount: 700),
+            await _order(3, amount: 150),
+            await _order(4, amount: 1700),
+          ];
+          final ranged = _of(range: true, min: '500', max: '1000');
+          expect(ranged.amount, 100);
+          expect(_kept(ranged, book), [2, 4]);
+          // The same range with nothing in « Amount », which the reference searches at 0 and keeps nothing.
+          expect(
+            _kept(_of(amount: '', range: true, min: '500', max: '1000'), book),
+            [2, 4],
+          );
+        },
+      );
+
+      test(
+        'the range only while it is on: the options closed, or « Exact Amount », search the amount typed, the bounds kept aside',
+        () async {
+          final book = [
+            await _order(1, amount: 100),
+            await _order(2, amount: 700),
+          ];
+          for (final input in [
+            MakerFormInput(
+              type: OrderType.buy,
+              currency: _eur,
+              amount: '100',
+              paymentMethods: const [],
+              premium: '',
+              minAmount: '500',
+              maxAmount: '1000',
+            ),
+            MakerFormInput(
+              type: OrderType.buy,
+              currency: _eur,
+              amount: '100',
+              paymentMethods: const [],
+              premium: '',
+              advanced: true,
+              rangeEnabled: false,
+              minAmount: '500',
+              maxAmount: '1000',
+            ),
+          ]) {
+            final search = MatchingOrders.of(
+              input,
+              MakerFormCheck.of(
+                input,
+                coordinatorsLoaded: true,
+                market: const MakerFormLimitsLoading(),
+                sizeLimitSats: 21 * 100000000,
+              ),
+            );
+            expect(search.range, isNull);
+            expect(_kept(search, book), [1]);
+          }
+        },
+      );
+
+      test(
+        'bounds that are no range the form takes search nothing, as an exact amount none typed: empty, no number, 0 or below, crossed, too close or too far apart (`AmountRange.tsx:57-77`)',
+        () async {
+          final book = [
+            await _order(1, amount: 0.01),
+            await _order(2, amount: 60),
+            await _order(3, amount: 120),
+            await _order(4, amount: null, minAmount: 0.01, maxAmount: 99999),
+          ];
+          for (final (min, max) in [
+            ('', ''),
+            ('', '200'),
+            ('50', ''),
+            ('x', '200'),
+            ('50', '2O0'),
+            ('0', '200'),
+            ('-50', '200'),
+            ('-200', '-50'),
+            // Crossed: 200 to 50 would otherwise search from 60 to 85.
+            ('200', '50'),
+            // Under 1.5 times apart, or over 14.95 times.
+            ('50', '74.99'),
+            ('20', '300'),
+          ]) {
+            final search = _of(amount: '120', range: true, min: min, max: max);
+            expect(search.range, MatchingOrders.noRange, reason: '$min-$max');
+            expect(_kept(search, book), isEmpty, reason: '$min-$max');
+          }
+          // At 1.5 and 14.95 times apart, the form's own bounds: searched.
+          expect(
+            _kept(_of(amount: '', range: true, min: '50', max: '75'), book),
+            [2, 3, 4],
+          );
+          expect(
+            _kept(_of(amount: '', range: true, min: '20', max: '299'), book),
+            [2, 3, 4],
+          );
+        },
+      );
+
+      test(
+        'a range outside the coordinator\'s limits, which the form refuses, searches nothing; a range within them is searched',
+        () async {
+          // EUR at 50,000, orders from 100 to 1,000 EUR.
+          final market = MakerFormLimitsRead(
+            await limitsOf({2: (50000, 100, 1000)}),
+          );
+          final book = [await _order(1, amount: 120), await _order(2)];
+          final below = _of(
+            amount: '',
+            range: true,
+            min: '50',
+            max: '200',
+            market: market,
+          );
+          expect(below.range, MatchingOrders.noRange);
+          expect(_kept(below, book), isEmpty);
+          final within = _of(
+            amount: '',
+            range: true,
+            min: '200',
+            max: '500',
+            market: market,
+          );
+          expect(within.range?.min, 200);
+          expect(_kept(within, book), [1, 2]);
+        },
+      );
+
+      test(
+        'the other fields do not change with a range: the side, the currency, bitcoin, the premium and the methods filter as for an exact amount',
+        () async {
+          final book = [
+            await _order(1, premium: 1),
+            await _order(2, type: 0, amount: 120),
+            await _order(3, currency: 1, amount: 120),
+            await _order(4, currency: 1000, amount: 120),
+            await _order(5, premium: 2.5, amount: 120),
+            await _order(6, paymentMethod: 'PayPal', amount: 120),
+            await _order(7, amount: 120, premium: 0),
+          ];
+          expect(
+            _kept(
+              _of(
+                amount: '',
+                range: true,
+                min: '50',
+                max: '200',
+                premium: '2',
+                methods: ['Revolut'],
+              ),
+              book,
+            ),
+            [7, 1],
+          );
+          expect(
+            _kept(
+              _of(
+                side: OrderType.sell,
+                amount: '',
+                range: true,
+                min: '50',
+                max: '200',
+              ),
+              book,
+            ),
+            [2],
+          );
+        },
+      );
+    },
+  );
 
   test(
     'an order this device holds is never offered, the others are (the owner\'s rule; the reference shows them)',
