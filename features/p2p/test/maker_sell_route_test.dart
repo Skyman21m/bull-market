@@ -380,13 +380,13 @@ final class _Journey {
   }
 
   /// « Create », « Sell », 100 USD, « Revolut » as a custom method, 2 %, « Create order », « Done »: the trade of the order made, at its maker bond.
-  Future<void> makeSellOrder() async {
+  Future<void> makeSellOrder({bool buy = false}) async {
     Finder inForm(Finder finder) =>
         find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
     await tap(find.text(words.create));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    await tap(inForm(find.text(words.sell)));
+    await tap(inForm(find.text(buy ? 'Buy' : words.sell)));
     await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
     await settle(tester);
     await tap(inForm(find.byTooltip(words.addMethod)));
@@ -397,7 +397,7 @@ final class _Journey {
     await settle(tester);
     await tester.enterText(inForm(find.byType(TextField)).at(1), '2');
     await settle(tester);
-    expect(inForm(find.text(words.sellSummary)), findsOneWidget);
+    if (!buy) expect(inForm(find.text(words.sellSummary)), findsOneWidget);
     await tap(inForm(find.text(words.createOrder)));
     await settle(tester);
     await tap(find.text(words.done));
@@ -1186,4 +1186,200 @@ void main() {
       await tester.pump(const Duration(seconds: 61));
     },
   );
+
+  for (final (name, rate, line) in [
+    (
+      'a currency the Bull wallet does not price',
+      const P2pWalletRateNotPriced() as P2pWalletBitcoinRate,
+      'The Bull wallet has no price for USD: rate not checked.',
+    ),
+    (
+      'the Bull wallet\'s price not read',
+      const P2pWalletRateUnavailable() as P2pWalletBitcoinRate,
+      'could not be read: rate not checked.',
+    ),
+  ]) {
+    testWidgets(
+      'a maker buyer, $name, a coordinator\'s price ten times too low: before « Submit », before the chat and in « Confirm … sent », the warning line alone, no gap and no price of the creation, each gesture still possible (#234)',
+      (tester) async {
+        final journey = await _Journey.start(tester, _english);
+        // 5,000 USD/BTC announced before the make and fixed at the take: the buyer told 1,960,784 sats for 100 USD at +2 %.
+        journey.coordinator.prices[1] = 5000;
+        journey.wallet.rate = rate;
+        await journey.makeSellOrder(buy: true);
+        final order = journey.order;
+        expect(order.type, 0);
+        journey.coordinator.lockMakerBond(order.id);
+        await journey.waitFor(
+          find.textContaining(_english.public),
+          seconds: 20,
+        );
+        journey.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+        final generate = find.text('Generate Invoice');
+        await journey.waitFor(generate, seconds: 60);
+
+        void unchecked() {
+          expect(find.textContaining(line), findsWidgets);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+          expect(find.textContaining('5,100'), findsNothing);
+          expect(find.textContaining('are worth'), findsNothing);
+        }
+
+        // Before « Submit » (6): the alert alone.
+        await journey.pass(2);
+        unchecked();
+        expect(
+          find.text('Retry'),
+          rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
+        );
+        // « Submit » still possible: the wallet's invoice of the sats asked, less the reference's routing budget.
+        final payout = _halfEven(
+          order.lastSatoshis -
+              order.lastSatoshis * journey.coordinator.makerFee,
+        );
+        final asked = (payout - payout * 1000 / 1000000).truncate();
+        final now = journey.coordinator.clock();
+        final invoice = Bolt11TestInvoice(
+          network: Bolt11Network.testnet,
+          sats: asked,
+          seed: 77,
+          createdAt: now,
+          expiry: const Duration(hours: 24),
+          description: 'Bull wallet payout',
+        );
+        journey.coordinator.decoder.add(invoice);
+        journey.wallet.scriptInvoice(
+          Ok(
+            P2pWalletInvoice(
+              bolt11: invoice.text,
+              amount: Sats.fromInt(asked),
+              expiresAt: now.add(const Duration(hours: 24)),
+              received: Sats.fromInt(asked),
+            ),
+          ),
+        );
+        await journey.tap(generate);
+        await settle(tester);
+        final before = journey.coordinator.requests.length;
+        await journey.tap(find.widgetWithText(TradeButton, 'Submit'));
+        await journey.pass(5);
+        // « Submit » sent the invoice to the coordinator. The tests' coordinator checks its clear signature against the key it kept for the robot, which the fake robot keys of this composition do not sign for (« The PGP signed cleartext message is not valid »): the invoice is then taken as the coordinator takes one given from another app, 6 → 7 (`api/logics.py:907-933`).
+        expect(
+          [
+            for (final request in journey.coordinator.requests.skip(before))
+              utf8.decode(request.body ?? const []),
+          ].where((body) => body.contains('update_invoice')),
+          hasLength(1),
+        );
+        order
+          ..payoutHash = invoice.facts.paymentHash
+          ..status = 7;
+        await journey.waitFor(
+          find.textContaining('Your info looks good!'),
+          seconds: 30,
+        );
+        // The seller locks the escrow: 9, before the chat, the alert alone.
+        journey.coordinator.lockEscrow(order.id);
+        final sent = find.widgetWithText(TradeButton, 'Confirm 100 USD sent');
+        await journey.waitFor(sent, seconds: 30);
+        await journey.pass(2);
+        unchecked();
+        expect(
+          find.text('Retry'),
+          rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
+        );
+        // « Confirm … sent » and its dialog: the alert alone; « Confirm » sends.
+        for (var i = 0; i < 20 * 4; i++) {
+          if (tester.widget<TradeButton>(sent).onPressed != null) break;
+          await journey.pass(1);
+        }
+        await journey.tap(sent);
+        await settle(tester);
+        await settle(tester);
+        final dialog = find.byType(Dialog);
+        expect(dialog, findsOneWidget);
+        expect(
+          find.descendant(of: dialog, matching: find.textContaining(line)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.textContaining('from the rate when you made it'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: dialog, matching: find.textContaining('5,100')),
+          findsNothing,
+        );
+        await tester.tap(
+          find.descendant(of: dialog, matching: find.text('Confirm')),
+        );
+        await journey.waitFor(
+          find.textContaining('Wait for the seller to confirm'),
+          seconds: 30,
+        );
+        expect(journey.order.status, 10);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 61));
+      },
+    );
+  }
+
+  for (final (name, rate) in [
+    (
+      'a currency the Bull wallet does not price',
+      const P2pWalletRateNotPriced() as P2pWalletBitcoinRate,
+    ),
+    (
+      'the Bull wallet\'s price not read',
+      const P2pWalletRateUnavailable() as P2pWalletBitcoinRate,
+    ),
+  ]) {
+    testWidgets(
+      'a maker seller at 9, $name, a coordinator\'s price ten times too low: no gap from the creation\'s rate nor its price in the chat (functional review of #234, C1)',
+      (tester) async {
+        final journey = await _Journey.start(tester, _english);
+        journey.coordinator.prices[1] = 5000;
+        journey.wallet.rate = rate;
+        await journey.toFirstTake();
+        // The collateral locked from another wallet, the buyer's invoice given: 9.
+        journey.coordinator
+          ..lockEscrow(journey.order.id)
+          ..buyerGivesInvoice(journey.order.id);
+        await journey.waitFor(find.textContaining(_english.chat), seconds: 30);
+        await journey.pass(12);
+        expect(find.textContaining(_english.chat), findsWidgets);
+        expect(
+          find.textContaining('from the rate when you made it'),
+          findsNothing,
+        );
+        expect(find.textContaining('5,100'), findsNothing);
+        expect(find.textContaining('fixed 1,960,784 sats'), findsNothing);
+        // « Confirm … received » shown, off at 9 as the reference's.
+        expect(
+          find.widgetWithText(TradeButton, _english.received),
+          findsOneWidget,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 61));
+      },
+    );
+  }
+}
+
+/// [value] rounded to the nearest whole number, a half to the even one, as Python's `round` (`Logics.payout_amount`, `api/logics.py:650-669`).
+int _halfEven(double value) {
+  final floor = value.floorToDouble();
+  final rest = value - floor;
+  final whole = floor.toInt();
+  if (rest > 0.5) return whole + 1;
+  if (rest < 0.5) return whole;
+  return whole.isEven ? whole : whole + 1;
 }

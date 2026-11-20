@@ -1779,7 +1779,7 @@ void main() {
       });
 
       testWidgets(
-        'a currency the Bull wallet does not price: one line, no figure, no « Retry »',
+        'a currency the Bull wallet does not price: one line, no figure, no « Retry », and no gap from the creation\'s rate beside it (#234)',
         (tester) async {
           final seen = await _at([
             makerOrderJson(0),
@@ -1800,14 +1800,141 @@ void main() {
             findsOneWidget,
           );
           expect(find.text('Retry'), findsNothing);
-          // No comparison: the gap from the creation's rate under the alert, as information.
-          final gap = find.textContaining('from the rate when you made it');
-          expect(gap, findsOneWidget);
+          // Nothing checked: no gap from the creation's rate, the coordinator's own announcement, beside the alert (#234, the owner's decisions of 2026-11-17).
           expect(
-            tester.getTopLeft(gap).dy,
-            greaterThan(
-              tester.getTopLeft(find.textContaining('has no price for')).dy,
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'while the Bull wallet\'s price is read: « Reading… », and no gap from the creation\'s rate beside it before anything is checked (#234)',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+          ]);
+          final read = Completer<P2pWalletBitcoinRate>();
+          final cubit = PayoutRateCubit(
+            _record,
+            terms: (_) async => switch (madeTerms().side) {
+              MadeSide(:final maker) => maker,
+            },
+            price: (_, _) => read.future,
+            memory: PayoutRateMemory(),
+            now: () => tradeNow,
+          );
+          addTearDown(cubit.close);
+          await _show(tester, seen, rate: cubit);
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text('Reading the Bull wallet\'s price for comparison…'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+          read.complete(const P2pWalletRateUnavailable());
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'a maker seller at 9, without the rule (no wallet\'s port): no gap from the creation\'s rate in the chat, never a seller\'s (functional review of #234, C1)',
+        (tester) async {
+          final seller = TradeRole.seller;
+          final chain = await _chain([
+            makerOrderJson(0, role: seller),
+            makerOrderJson(1, role: seller),
+            makerOrderJson(8, role: seller),
+            makerOrderJson(9, role: seller),
+          ], terms: madeTerms(role: seller));
+          final seen = chain.last;
+          expect(seen.status, isA<Chatting>());
+          expect(switch (seen.status) {
+            Chatting(:final rateGap) => rateGap,
+            _ => null,
+          }, isNotNull);
+          await _show(
+            tester,
+            seen,
+            record: TradeRecord(
+              robot: _record.robot,
+              coordinatorAlias: _record.coordinatorAlias,
+              coordinatorOnion: _record.coordinatorOnion,
+              orderId: _record.orderId,
+              role: seller,
+              origin: TradeOrigin.madeHere,
+              takenAt: madeAt,
+              confirmedAt: madeAt,
+              closedAt: null,
             ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('Chat with the buyer'), findsOneWidget);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'the rule on this page that has not answered (its terms not read): still no gap from the creation\'s rate, the rule running (functional review of #234, R4)',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+          ]);
+          final cubit = PayoutRateCubit(
+            _record,
+            terms: (_) async => null,
+            price: (_, _) async => atWallet,
+            memory: PayoutRateMemory(),
+            now: () => tradeNow,
+          );
+          addTearDown(cubit.close);
+          await _show(tester, seen, rate: cubit);
+          await tester.pump();
+          await tester.pump();
+          expect(cubit.state, isA<PayoutRateNone>());
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'at 6 with a read that gives no sats to receive: « rate not checked » alone, no gap from the creation\'s rate beside it (#234)',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(
+              6,
+              changes: {'trade_satoshis': null, 'invoice_amount': null},
+            ),
+          ]);
+          expect(seen.order?.satoshisNow, isNotNull);
+          await _show(tester, seen, rate: rateOf(() => atWallet));
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('Rate not checked'), findsOneWidget);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
           );
         },
       );
@@ -2864,7 +2991,7 @@ void main() {
       );
 
       testWidgets(
-        'the Bull wallet\'s price not read: « rate not checked » and the gap; the sats gone, « gives no sats » and no gap line, in the dialog as on the screen',
+        'the Bull wallet\'s price not read: « rate not checked » alone, no gap (#234); the sats gone, « gives no sats » and no gap line, in the dialog as on the screen',
         (tester) async {
           final chain = await chainTo9(later: null);
           final (_, watch) = await _show(
@@ -2878,7 +3005,7 @@ void main() {
             inDialog('could not be read: rate not checked'),
             findsOneWidget,
           );
-          expect(inDialog('+5.85% from the rate'), findsOneWidget);
+          expect(inDialog('from the rate when you made it'), findsNothing);
           watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
           await tester.pump();
           await tester.pump();
@@ -2892,14 +3019,10 @@ void main() {
       );
 
       testWidgets(
-        'a currency the Bull wallet does not price: the coordinator\'s figure moves while the dialog is open, the dialog\'s gap is the new one, the screen\'s',
+        'without the rule (no wallet\'s port): the coordinator\'s figure moves while the dialog is open, the dialog\'s gap is the new one, the screen\'s (#209)',
         (tester) async {
           final chain = await chainTo9(later: 120000);
-          final (_, watch) = await _show(
-            tester,
-            chain[4],
-            rate: _rateCubit(() => const P2pWalletRateNotPriced()),
-          );
+          final (_, watch) = await _show(tester, chain[4]);
           await tester.pump();
           await openDialog(tester);
           expect(inDialog('fixed 101,000 sats'), findsOneWidget);
@@ -2913,6 +3036,32 @@ void main() {
             find.textContaining('fixed 120,000 sats'),
             findsNWidgets(2),
             reason: 'the screen behind the dialog says the same',
+          );
+        },
+      );
+
+      testWidgets(
+        'a currency the Bull wallet does not price: the coordinator\'s figure moves while the dialog is open, the dialog says the alert alone, before and after, never a gap (#234)',
+        (tester) async {
+          final chain = await chainTo9(later: 120000);
+          final (_, watch) = await _show(
+            tester,
+            chain[4],
+            rate: _rateCubit(() => const P2pWalletRateNotPriced()),
+          );
+          await tester.pump();
+          await openDialog(tester);
+          expect(inDialog('has no price for EUR'), findsOneWidget);
+          expect(inDialog('from the rate when you made it'), findsNothing);
+          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+          expect(inDialog('has no price for EUR'), findsOneWidget);
+          expect(
+            find.textContaining('from the rate when you made it'),
+            findsNothing,
+            reason: 'neither in the dialog nor on the screen behind it',
           );
         },
       );
