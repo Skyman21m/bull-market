@@ -13,7 +13,6 @@ import '../../domain/trade/escrow_contract.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_tolerances.dart';
 import '../../domain/trade/trade_warning.dart';
-import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade/wallet_payment.dart';
 import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/trade_record.dart';
