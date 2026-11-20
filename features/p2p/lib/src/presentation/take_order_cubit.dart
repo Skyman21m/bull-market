@@ -20,10 +20,19 @@ typedef PrepareTake =
       TakeProgress? onStep,
     });
 
+/// [TakeOrderUsecase.prepareProtected], which the locator gives the cubit (#245).
+typedef PrepareProtectedTake =
+    Future<Result<PreparedTake, TakeRefusal>> Function(
+      ProtectedOrder shown, {
+      TakeAmount? amount,
+      TakeProgress? onStep,
+    });
+
 /// [TakeOrderUsecase.confirm], which the locator gives the cubit.
 typedef ConfirmTake =
     Future<Result<TakeOutcome, TakeRefusal>> Function(
       PreparedTake prepared, {
+      OrderPassword? password,
       TakeProgress? onStep,
     });
 
@@ -42,12 +51,16 @@ typedef HasGarageKey =
 @immutable
 final class TakeCalls {
   final PrepareTake prepare;
+
+  /// The preparation of a password-protected order (#245), given by the locator; `null` where no protected order is taken.
+  final PrepareProtectedTake? prepareProtected;
   final ConfirmTake confirm;
   final AbandonTake abandon;
   final AbandonOrderTake abandonOrder;
 
   const TakeCalls({
     required this.prepare,
+    this.prepareProtected,
     required this.confirm,
     required this.abandon,
     required this.abandonOrder,
@@ -159,7 +172,13 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   /// The locator's name of the cubit that takes an order public again from the trade screen, given the trade shown ([shownTrade]).
   static const fromTrade = 'fromTrade';
 
+  /// The locator's name of the cubit that takes a password-protected order its robot read ([TakeOrderCubit.protected], #245).
+  static const protectedOrder = 'protectedOrder';
+
   final PublicOrder order;
+
+  /// The password-protected order the page shows, as its robot read it (#245), `null` for an order of the book: its take is prepared with [TakeCalls.prepareProtected] and confirmed with the password's hash.
+  final ProtectedOrder? protected;
 
   /// The trade the screen shows, when the take starts from it: a take refused because the order still has that very trade open here (its close could not be written) is said as a refusal, not opened again over itself.
   final TradeRecord? shownTrade;
@@ -182,7 +201,27 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     this._hasKey, {
     this._stillWaitingAfter = TakeOrderCubit.stillWaitingAfter,
     this.shownTrade,
-  }) : super(const TakeIdle());
+    this.protected,
+  }) : super(const TakeIdle()) {
+    if (protected != null && _calls.prepareProtected == null) {
+      throw ArgumentError('A protected order without its preparation.');
+    }
+  }
+
+  /// The take of the password-protected order [shown] (#245): [order] is the order as its robot read it.
+  TakeOrderCubit.protected(
+    ProtectedOrder shown,
+    TakeCalls calls,
+    HasGarageKey hasKey, {
+    Duration stillWaitingAfter = TakeOrderCubit.stillWaitingAfter,
+  }) : this(
+         shown.order,
+         shown.network,
+         calls,
+         hasKey,
+         stillWaitingAfter: stillWaitingAfter,
+         protected: shown,
+       );
 
   /// Whether a Garage Key is stored for the network, which decides between preparing the take and « You do not have a Garage Key » (`Dialogs/Confirmation.tsx`): `false` only when the vault says there is none; a key that cannot be read goes on, and the take says why it fails.
   Future<bool> hasGarageKey() async => switch (await _hasKey(network)) {
@@ -200,14 +239,18 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   }
 
   /// Sends the take of the order as it was read and shown ([TakeReady]): « Done » of « Store your garage key ».
-  Future<void> confirm() async {
+  ///
+  /// [password], for a protected order (#245), is the password the user typed, held as its hash only and passed on, never kept here; without it nothing is sent for such an order, the screen having said why. For an order without a password it is never sent.
+  Future<void> confirm({OrderPassword? password}) async {
     final current = state;
     if (isClosed || current is! TakeReady) return;
     final prepared = current.prepared;
+    if (prepared.order.hasPassword && password == null) return;
     emit(TakeConfirming(prepared));
     _startWaiting();
     final result = await _calls.confirm(
       prepared,
+      password: prepared.order.hasPassword ? password : null,
       onStep: (step) {
         if (!isClosed && state is TakeConfirming) {
           emit(TakeConfirming(prepared, step: step, slow: _slow));
@@ -259,23 +302,29 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   }) async {
     emit(TakePreparing(previous: previous, changed: changed));
     _startWaiting();
-    final result = await _calls.prepare(
-      order,
-      network: network,
-      amount: _amount,
-      onStep: (step) {
-        if (!isClosed && state is TakePreparing) {
-          emit(
-            TakePreparing(
-              step: step,
-              slow: _slow,
-              previous: previous,
-              changed: changed,
-            ),
+    void onStep(TakeStep step) {
+      if (!isClosed && state is TakePreparing) {
+        emit(
+          TakePreparing(
+            step: step,
+            slow: _slow,
+            previous: previous,
+            changed: changed,
+          ),
+        );
+      }
+    }
+
+    final protected = this.protected;
+    final prepareProtected = _calls.prepareProtected;
+    final result = protected != null && prepareProtected != null
+        ? await prepareProtected(protected, amount: _amount, onStep: onStep)
+        : await _calls.prepare(
+            order,
+            network: network,
+            amount: _amount,
+            onStep: onStep,
           );
-        }
-      },
-    );
     _stillWaiting?.cancel();
     if (isClosed) {
       // The page was left while the order was read: what was prepared is abandoned at once.

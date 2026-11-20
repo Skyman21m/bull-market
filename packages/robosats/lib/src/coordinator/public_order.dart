@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
+import 'package:robosats/src/coordinator/coordinator_order.dart';
 import 'package:robosats/src/coordinator/dropped_order_reason.dart';
 import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
@@ -233,6 +234,43 @@ final class PublicOrder {
             ? null
             : MakerActivity.fromWire(makerStatus),
       ),
+    );
+  }
+
+  /// The order as the book would list it, from [read], a read of a public order by a robot that takes no part in it (`GET /api/order/`), or `null` for any other read (#245).
+  ///
+  /// For an order the book does not list: a password-protected order is left out of every book (`api/views.py:788-790`), and only an authenticated robot can read it (`:232-233`).
+  /// Such a read carries what the book carries (`ListOrderSerializer`, the maker's hash id and activity, `api/views.py:276-293`, `:804-815`): its price is `price_now` and its premium `premium_now`, the very values the book computes (`Logics.price_and_premium_now`, `:289` and `:811-812`), its sats `satoshis_now`; a protected order's description and location are hidden from such a robot (`:294-298`).
+  /// The premium of an order priced against the market is held within the book's bounds, as [parse] holds it; a read without `premium_now` gives `null`.
+  static PublicOrder? ofRead(CoordinatorOrder read) {
+    if (read.status != CoordinatorOrderStatus.public || read.isParticipant) {
+      return null;
+    }
+    final premium = read.premiumNow;
+    if (premium == null ||
+        (read.explicitSatoshis == null &&
+            premium.percent > Premium.maxMarketPercent)) {
+      return null;
+    }
+    final price = read.priceNow;
+    return PublicOrder._(
+      coordinator: read.coordinator,
+      id: read.id,
+      createdAt: read.createdAt,
+      expiresAt: read.expiresAt,
+      type: read.type,
+      currency: read.currency,
+      amount: read.amount,
+      paymentMethods: read.paymentMethods,
+      premium: premium,
+      explicitSatoshis: read.explicitSatoshis,
+      satoshisNow: read.satoshisNow,
+      price: price == null || price == 0 ? null : price,
+      escrowDuration: read.escrowDuration,
+      bondSize: read.bondSize,
+      location: read.location,
+      maker: read.maker,
+      makerActivity: read.makerActivity,
     );
   }
 

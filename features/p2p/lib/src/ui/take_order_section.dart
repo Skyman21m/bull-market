@@ -29,6 +29,7 @@ import 'widgets/trade_button.dart';
 /// - « The order changed. » says, from its start, that a confirmation found the order changed and reads it again: the read the user saw stays shown meanwhile, the rows that differ are marked when the new one arrives, and it waits for « Continue » and « Done » again, never confirmed by itself. When the take was sent, [onTaken] opens its trade, the read shown until then.
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
+/// - A password-protected order (#245, `TakeOrderCubit.protected`): « Password » above the button, as the reference puts it above its take button (`components/OrderDetails/index.tsx:546-571`), typed hidden, with a short line above it that its description and location come with the take; its text stays in this field, and « Done » hands the cubit its hash only ([OrderPassword]); « Take Order » or « Continue » pressed with the field empty starts nothing and says so under the button, where the reference would send the take and be refused (error 1045); a wrong password is said there with the coordinator's message (« Wrong password », `api/errors.py:52`), the field kept to be corrected.
 ///
 /// Without [canTake] (the feature was set up without the vault's handle, so it holds no robot) a press shows « You do not have a Garage Key », as the reference does without a robot.
 class TakeOrderSection extends StatefulWidget {
@@ -56,13 +57,31 @@ class TakeOrderSection extends StatefulWidget {
 class _TakeOrderSectionState extends State<TakeOrderSection> {
   final _amount = TextEditingController();
 
+  /// « Password » of a protected order (#245): its text lives here only.
+  final _password = TextEditingController();
+
+  /// Whether « Take Order » or « Continue » was pressed with « Password » empty: said under the button until the field changes.
+  bool _passwordMissing = false;
+
   /// Whether a dialog of the take is open: a second press meanwhile opens nothing more.
   bool _asking = false;
 
   @override
   void dispose() {
     _amount.dispose();
+    _password.dispose();
     super.dispose();
+  }
+
+  /// Whether the order is protected by a password (#245).
+  bool get _protected =>
+      widget.canTake && context.read<TakeOrderCubit>().protected != null;
+
+  /// For a protected order, whether « Password » holds a password; otherwise says so under the button and starts nothing.
+  bool _passwordGiven() {
+    if (!_protected || _password.text.isNotEmpty) return true;
+    setState(() => _passwordMissing = true);
+    return false;
   }
 
   /// « You do not have a Garage Key » ([NoRobotDialog], a dialog's content since #121) in a dialog.
@@ -82,6 +101,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         await _showNoRobot();
         return;
       }
+      if (!_passwordGiven()) return;
       final cubit = context.read<TakeOrderCubit>();
       if (!await cubit.hasGarageKey()) {
         if (!mounted) return;
@@ -109,14 +129,26 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
   }
 
   /// « Continue »: « Store your garage key », whose « Done » sends the take. Its « Go back », or a tap outside, only closes it, as the reference's does (`TakeButton.tsx:380-382`): the order as read stays on the page with its take prepared, and « Go back » of the page is what abandons it.
+  ///
+  /// For a protected order, nothing opens while « Password » is empty; « Done » hands the cubit the hash of the password the field holds then (#245).
   Future<void> _continue() async {
     if (_asking) return;
+    if (!_passwordGiven()) return;
     _asking = true;
     try {
       final cubit = context.read<TakeOrderCubit>();
       final done = await StoreTokenDialog.show(context);
       if (!mounted) return;
-      if (done) unawaited(cubit.confirm());
+      if (done) {
+        if (cubit.protected == null) {
+          unawaited(cubit.confirm());
+        } else if (OrderPassword.tryCreate(_password.text)
+            case final password?) {
+          unawaited(cubit.confirm(password: password));
+        } else {
+          setState(() => _passwordMissing = true);
+        }
+      }
     } finally {
       _asking = false;
     }
@@ -135,6 +167,22 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         : const TakeAmountEmpty();
     final ready = !isRange || input is TakeAmountValid;
     final cubit = widget.canTake ? context.read<TakeOrderCubit>() : null;
+    final protected = cubit?.protected != null;
+    final wrongPassword = switch (state) {
+      TakeIdle(problem: TakeWasNotMade(refusal: OrderWrongPassword())) => true,
+      _ => false,
+    };
+    final above = <Widget>[
+      if (protected)
+        _PasswordField(
+          controller: _password,
+          enabled: state is TakeIdle || state is TakeReady,
+          error: _passwordMissing || wrongPassword,
+          onChanged: () {
+            if (_passwordMissing) setState(() => _passwordMissing = false);
+          },
+        ),
+    ];
     // The read the order details show: while it is there, « Continue » and « Go back » stand in place of « Take Order », down to the trade's screen.
     final read = TakeOrderDetailsCard.readOf(state);
     final changed = switch (state) {
@@ -197,7 +245,13 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
           _Line(step.toText(context, coordinator: coordinator), live: true),
         if (slow) _Line(l10n.p2pRobotStillWaiting(coordinator), live: true),
       ],
-      if (state case TakeIdle(:final problem?))
+      if (protected && _passwordMissing)
+        _Line(
+          l10n.p2pTakePasswordMissing,
+          color: context.bull.error,
+          live: true,
+        )
+      else if (state case TakeIdle(:final problem?))
         _Line(
           problem.toText(context, coordinator: coordinator),
           color: context.bull.error,
@@ -206,6 +260,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     ];
     final content = isRange
         ? _RangeTake(
+            leading: above,
             order: order,
             read: read,
             controller: _amount,
@@ -223,7 +278,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
                   ),
             under: under,
           )
-        : _Column(button: button, under: under);
+        : _Column(above: above, button: button, under: under);
     if (!widget.canTake) return content;
     return BlocListener<TakeOrderCubit, TakeOrderState>(
       listenWhen: (_, current) => current is TakeSent,
@@ -339,6 +394,8 @@ class TakeOrderMakerRow extends StatelessWidget {
 
 /// The amount field of a range order, its estimate under it, then the button.
 class _RangeTake extends StatelessWidget {
+  /// What comes above the amount: « Password » of a protected order (#245).
+  final List<Widget> leading;
   final PublicOrder order;
 
   /// The robot's read, once the take is prepared: the estimate under the amount is its own.
@@ -352,6 +409,7 @@ class _RangeTake extends StatelessWidget {
   final List<Widget> under;
 
   const _RangeTake({
+    required this.leading,
     required this.order,
     required this.read,
     required this.controller,
@@ -400,6 +458,7 @@ class _RangeTake extends StatelessWidget {
     final edge = error == null ? colors.outline : colors.error;
     return _Column(
       above: [
+        ...leading,
         // The label above the field rather than inside its border: a floating label is kept on one line, which three times the text size would cut on a phone of 320 points.
         // A screen reader hears it as the field's label.
         ExcludeSemantics(
@@ -456,6 +515,76 @@ class _RangeTake extends StatelessWidget {
             color: colors.textMuted,
           ),
         ...under,
+      ],
+    );
+  }
+}
+
+/// « Password » of a protected order (#245): the reference's label (`t('Password')`, `components/OrderDetails/index.tsx:550`) above the field, as the amount's, a short line above it, the field typed hidden, and nothing learnt, suggested or corrected by the keyboard.
+class _PasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final bool enabled;
+  final bool error;
+  final VoidCallback onChanged;
+
+  const _PasswordField({
+    required this.controller,
+    required this.enabled,
+    required this.error,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    OutlineInputBorder border(Color color) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(BullRadius.xxs),
+      borderSide: BorderSide(color: color),
+    );
+    final edge = error ? colors.error : colors.outline;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          l10n.p2pTakeProtectedHidden,
+          style: text.bodyMedium?.copyWith(color: colors.textMuted),
+        ),
+        const Gap(BullSpacing.sm),
+        // A screen reader hears it as the field's label.
+        ExcludeSemantics(
+          child: Text(
+            l10n.p2pMakePassword,
+            style: text.labelLarge?.copyWith(
+              color: error ? colors.error : colors.textMuted,
+            ),
+          ),
+        ),
+        const Gap(BullSpacing.xs),
+        Semantics(
+          container: true,
+          label: l10n.p2pMakePassword,
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            obscureText: true,
+            keyboardType: TextInputType.visiblePassword,
+            autocorrect: false,
+            enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            textAlign: TextAlign.center,
+            style: text.bodyLarge?.copyWith(color: colors.text),
+            onChanged: (_) => onChanged(),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: colors.surface,
+              enabledBorder: border(edge),
+              disabledBorder: border(colors.outline),
+              focusedBorder: border(error ? colors.error : colors.primary),
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -70,7 +70,7 @@ final class _Take {
       if (waiting != null) return waiting.future;
       return prepared.length > 1 ? prepared.removeAt(0) : prepared.single;
     },
-    confirm: (prepared, {onStep}) async {
+    confirm: (prepared, {password, onStep}) async {
       confirmed.add(prepared);
       confirmingSteps.forEach(onStep ?? (_) {});
       final waiting = confirming;

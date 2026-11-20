@@ -108,7 +108,7 @@ TakeOrderCubit _neverTaken(PublicOrder order) => TakeOrderCubit(
   TakeCalls(
     prepare: (shown, {required network, amount, onStep}) =>
         throw StateError('not prepared'),
-    confirm: (prepared, {onStep}) => throw StateError('not taken'),
+    confirm: (prepared, {password, onStep}) => throw StateError('not taken'),
     abandon: (prepared) {},
     abandonOrder: (shown, {required network}) {},
   ),
@@ -1004,7 +1004,7 @@ void main() {
                 takes.add(shown);
                 return Ok(_prepared);
               },
-              confirm: (prepared, {onStep}) async =>
+              confirm: (prepared, {password, onStep}) async =>
                   Ok(TakeOutcomeUnknown(_record)),
               abandon: (prepared) {},
               abandonOrder: (shown, {required network}) {},
@@ -1088,7 +1088,8 @@ void main() {
             TakeCalls(
               prepare: (shown, {required network, amount, onStep}) async =>
                   Err(TakeOrderAlreadyTraded(_record)),
-              confirm: (prepared, {onStep}) => throw StateError('not taken'),
+              confirm: (prepared, {password, onStep}) =>
+                  throw StateError('not taken'),
               abandon: (prepared) {},
               abandonOrder: (shown, {required network}) {},
             ),

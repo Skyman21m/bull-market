@@ -4055,15 +4055,15 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakePasswordLine =>
-      'Hors du carnet ; à prendre avec l’application officielle RoboSats.';
+      'Hors du carnet ; se prend avec son lien et le mot de passe.';
 
   @override
   String get p2pMakePasswordShare =>
       'Partagez le lien de l’ordre (« Copier l\'URL » sur sa page une fois créé) et le mot de passe avec les robots de votre choix.';
 
   @override
-  String get p2pMakePasswordOfficialApp =>
-      'Bull Market ne sait pas encore prendre un ordre protégé : la personne qui le prend utilise l’application officielle RoboSats, avec le lien et le mot de passe.';
+  String get p2pMakePasswordTakers =>
+      'Qui a le lien et le mot de passe peut le prendre, dans Bull Market (« Rechercher un ordre ») ou dans l’application officielle RoboSats.';
 
   @override
   String get p2pMakePasswordReadable =>
@@ -4207,4 +4207,21 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pTermsShownOther(String coordinator, String day, String time) {
     return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time.';
   }
+
+  @override
+  String get p2pTakeWrongPassword => 'Mot de passe incorrect';
+
+  @override
+  String get p2pTakePasswordMissing => 'Saisissez le mot de passe de l’ordre.';
+
+  @override
+  String get p2pTakeProtectedHidden =>
+      'Ordre protégé : sa description et son lieu s’affichent une fois que vous l’avez pris.';
+
+  @override
+  String get p2pTradeMeetingPoint => 'Emplacement F2F';
+
+  @override
+  String get p2pTradeMeetingPointApproximate =>
+      'L\'emplacement épinglé est approximatif. L\'emplacement exact du lieu de rencontre doit être échangé dans le chat crypté.';
 }

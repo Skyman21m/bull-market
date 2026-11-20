@@ -39,6 +39,7 @@ import 'domain/robot_key_compute_port.dart';
 import 'domain/robot_request_limiter.dart';
 import 'domain/trade/bolt11.dart';
 import 'domain/trade/trade_status.dart';
+import 'domain/trade/trade_take.dart';
 import 'domain/trade_record.dart';
 import 'domain/trade_robots.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
@@ -109,6 +110,7 @@ import 'presentation/payout_cubit.dart';
 import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
+import 'presentation/protected_order_cubit.dart';
 import 'presentation/renewals_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
@@ -589,6 +591,7 @@ final class P2pLocator {
       final take = locator<TakeOrderUsecase>();
       return TakeCalls(
         prepare: take.prepare,
+        prepareProtected: take.prepareProtected,
         confirm: take.confirm,
         abandon: take.abandon,
         abandonOrder: take.abandonOrder,
@@ -603,6 +606,30 @@ final class P2pLocator {
         locator<HasGarageKeyUsecase>().execute,
       ),
     );
+    // The take of a password-protected order its robot read, reached by its URL (#245), and the read itself.
+    locator.registerFactoryParam<TakeOrderCubit, ProtectedOrder, void>(
+      (order, _) => TakeOrderCubit.protected(
+        order,
+        takeCalls(),
+        locator<HasGarageKeyUsecase>().execute,
+      ),
+      instanceName: TakeOrderCubit.protectedOrder,
+    );
+    locator.registerFactoryParam<
+      ProtectedOrderCubit,
+      (Coordinator, int),
+      RobosatsNetwork
+    >((order, network) {
+      final take = locator<TakeOrderUsecase>();
+      final (coordinator, orderId) = order;
+      return ProtectedOrderCubit(
+        coordinator,
+        orderId,
+        network,
+        take.readProtected,
+        take.abandonRead,
+      );
+    });
     // The same, from the trade screen of an order public again: the trade shown is given, so that a take refused for that very trade is not opened over itself.
     locator.registerFactoryParam<TakeOrderCubit, PublicOrder, TradeRecord>(
       (order, shown) => TakeOrderCubit(

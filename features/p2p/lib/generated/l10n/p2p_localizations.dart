@@ -6209,10 +6209,10 @@ abstract class P2pLocalizations {
   /// **'Hide details'**
   String get p2pMakeHideDetails;
 
-  /// Not in the RoboSats texts: the project's own: the short line under « Password » once one is typed (#189): the coordinator leaves a protected order out of its book (`api/views.py:788-795`), and this app cannot take one (`take_order_usecase.dart`).
+  /// Not in the RoboSats texts: the project's own: the short line under « Password » once one is typed (#189): the coordinator leaves a protected order out of its book (`api/views.py:788-790`); it is taken with its URL (« Search order ») and the password (#245).
   ///
   /// In en, this message translates to:
-  /// **'Kept out of the book; to be taken with the official RoboSats app.'**
+  /// **'Kept out of the book; taken with its link and the password.'**
   String get p2pMakePasswordLine;
 
   /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), how a protected order is shared, with the reference's « Copy URL » (`TradeBox/CancelButton.tsx:58`).
@@ -6221,11 +6221,11 @@ abstract class P2pLocalizations {
   /// **'Share the order\'s link (« Copy URL » on its page once it is made) and the password with the robots you choose.'**
   String get p2pMakePasswordShare;
 
-  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; design note § 7, proposal 3).
+  /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; since #245 this app takes a protected order reached by its URL).
   ///
   /// In en, this message translates to:
-  /// **'Bull Market cannot take a protected order yet: whoever takes it uses the official RoboSats app, with the link and the password.'**
-  String get p2pMakePasswordOfficialApp;
+  /// **'Whoever has the link and the password can take it, in Bull Market (« Search order ») or in the official RoboSats app.'**
+  String get p2pMakePasswordTakers;
 
   /// Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), what `GET /api/order/` still shows of a protected public order to a robot that is no participant (`ListOrderSerializer`, `api/serializers.py:83-107`, and `api/views.py:248-299`: type, currency, amount, premium, payment method, bond size, escrow duration, expiry, maker's nickname; location and description removed).
   ///
@@ -6418,6 +6418,36 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'{coordinator} showed this trade with other terms from {day} at {time}.'**
   String p2pTermsShownOther(String coordinator, String day, String time);
+
+  /// The coordinator's message for error 1045 (`api/errors.py:52`, commit ff1998c), which the official client shows under its take button (`TakeButton.tsx:345-356`); not in its translations, so the French is the project's (#245).
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong password'**
+  String get p2pTakeWrongPassword;
+
+  /// Not in the RoboSats texts: the project's own: under « Take Order » or « Continue » of a protected order pressed with « Password » empty: nothing is sent (the reference sends the take without a password and gets error 1045), #245.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the order\'s password.'**
+  String get p2pTakePasswordMissing;
+
+  /// Not in the RoboSats texts: the project's own: above « Password » on the page of a protected order, whose description and location the coordinator hides from a robot that takes no part in it (`api/views.py:294-298`) and gives with the take (`:248-252`, `:280`, `:320-321`), #245.
+  ///
+  /// In en, this message translates to:
+  /// **'Protected order: its description and location are shown once you take it.'**
+  String get p2pTakeProtectedHidden;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the tooltip of the map of an order's place (`components/OrderDetails/index.tsx:411`); on the « Order » tab of a trade of a protected order, once the coordinator gives the place to a participant (#245).
+  ///
+  /// In en, this message translates to:
+  /// **'F2F location'**
+  String get p2pTradeMeetingPoint;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), under the map of an order's place (`components/OrderDetails/index.tsx:292-294`), #245.
+  ///
+  /// In en, this message translates to:
+  /// **'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.'**
+  String get p2pTradeMeetingPointApproximate;
 }
 
 class _P2pLocalizationsDelegate
