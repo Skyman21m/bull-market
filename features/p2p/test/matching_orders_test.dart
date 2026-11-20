@@ -236,7 +236,6 @@ void main() {
         expect(_kept(_of(amount: '-5'), book), isEmpty);
       },
     );
-
   });
 
   group(
