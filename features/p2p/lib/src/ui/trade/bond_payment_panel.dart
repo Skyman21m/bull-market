@@ -9,8 +9,10 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../../public/p2p_wallet_port.dart';
 import '../../domain/trade/bond_payment.dart';
+import '../../domain/trade/escrow_contract.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_tolerances.dart';
+import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/wallet_payment.dart';
 import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/trade_record.dart';
@@ -19,6 +21,7 @@ import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
 import '../widgets/trade_button.dart';
+import 'escrow_contract_lines.dart';
 import 'wallet_payment_section.dart';
 
 /// « Pay with this wallet », the slot of the bond panel at status 3 (#100, W4) and of the escrow panel at 6 and 7 (#97): the Instant payments balance, the button, the swap's quote and its confirmation, the payment and where it stands, in the reference's words and the wallet's for the swap (#135).
@@ -31,7 +34,14 @@ import 'wallet_payment_section.dart';
 class BondPaymentPanel extends StatefulWidget {
   final WalletPaymentRequest request;
 
-  const BondPaymentPanel({super.key, required this.request});
+  /// For the escrow, whether the order's bond was paid with this wallet ([paidHereOf] of the bond's payment): a maker seller's confirmation says it beside the alert of the earlier escrows, whose total leaves it out (#188, security review of #187, C5).
+  final WalletPaidHere bondPaidHere;
+
+  const BondPaymentPanel({
+    super.key,
+    required this.request,
+    this.bondPaidHere = WalletPaidHere.no,
+  });
 
   /// The slot for [request], as the trade screen's [WalletPaymentBuilder]: nothing when the wallet has nothing to offer or say (no Instant payments wallet, the invoice past its end with no payment), so that « Pay with another wallet » opens at once.
   static WalletPaymentSlot? slotFor(
@@ -45,10 +55,14 @@ class BondPaymentPanel extends StatefulWidget {
     // A cubit wired to another step's use case offers nothing: the wallet is never offered for an invoice its use case does not pay.
     if (cubit.step != request.step) return null;
     final state = cubit.state;
+    // The bond's payment, read here where the page's cubit of the bond is the one provided: a maker seller's confirmation says whether the order's bond was paid with this wallet (#188).
+    final bondPaidHere = request.step == InvoiceStep.escrow
+        ? paidHereOf(context.watch<BondPaymentCubit>().state.step)
+        : WalletPaidHere.no;
     // The panel and its lines read the cubit of the request's step.
     final panel = BlocProvider<BondPaymentCubit>.value(
       value: cubit,
-      child: BondPaymentPanel(request: request),
+      child: BondPaymentPanel(request: request, bondPaidHere: bondPaidHere),
     );
     final step = state.step;
     final offering = switch (step) {
@@ -290,6 +304,22 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
           ),
           line(l10n.p2pPayQuoting),
         ],
+        // A maker seller's escrow (#188): its own confirmation, with the contract it states.
+        final BondPayConfirming confirming &&
+            BondPayConfirming(contract: final contract?) =>
+          [
+            _EscrowConfirmation(
+              confirming: confirming,
+              contract: contract,
+              bondPaidHere: widget.bondPaidHere,
+              onRetry: () => unawaited(cubit.retryRate()),
+              coordinator: coordinator,
+              request: widget.request,
+              payKey: _payKey,
+              onCancel: cubit.dismiss,
+              onPay: () => unawaited(cubit.confirm(shown: confirming)),
+            ),
+          ],
         BondPayConfirming(:final walletQuote, :final rate, :final retrying) => [
           _Confirmation(
             walletQuote: walletQuote,
@@ -478,6 +508,301 @@ class _Confirmation extends StatelessWidget {
   }
 }
 
+/// The confirmation of a maker seller's escrow (#188), one idea per block, from the top: the title (« Pay {amount} sats to lock the collateral? »); when asked again, why ([BondPayConfirmAgain]); when the order was taken again meanwhile, that this confirmation pays nothing; that this is a new contract, from the order's second take on; the sats, aligned (the invoice, the swap fees, the network fee, the total that leaves this wallet, what stays); the comparison with the Bull wallet's price (the owner's payment rule of 2026-11-17: the contract's amount at that price with the order's premium, the gap including the coordinator's fee, red beyond the threshold), and without a comparison the gap from the rate at the creation; the swap service's facts; the reference's sentence on the escrow's hold invoice; then, in red just above the buttons, the earlier escrows of the order not back yet with the total out, those the coordinator kept, and the order's bond when this wallet paid it (the owner's decision of 2026-11-19: an alert, never a lock); « Go back » and « Pay {total} sats », the only tap that pays, given the confirmation it was drawn for.
+///
+/// Everything stated is from the quote this « Pay » pays and the contract built from that very quote ([EscrowContract.escrow] is its total). Nothing blocks the payment but a stale confirmation, whose « Pay » would pay nothing ([BondPayContractNotConfirmed]).
+class _EscrowConfirmation extends StatelessWidget {
+  final BondPayConfirming confirming;
+  final EscrowContract contract;
+  final WalletPaidHere bondPaidHere;
+  final String coordinator;
+  final WalletPaymentRequest request;
+  final GlobalKey payKey;
+  final VoidCallback onCancel;
+  final VoidCallback onPay;
+  final VoidCallback onRetry;
+
+  const _EscrowConfirmation({
+    required this.confirming,
+    required this.contract,
+    required this.bondPaidHere,
+    required this.coordinator,
+    required this.request,
+    required this.payKey,
+    required this.onCancel,
+    required this.onPay,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    String sats(Sats amount) =>
+        l10n.p2pAmountSats(formats.bigSats(amount.value));
+    final walletQuote = confirming.walletQuote;
+    final body = text.bodyMedium?.copyWith(color: colors.text);
+    final currency = request.currency;
+    final seen = request.seen;
+    final rate = confirming.rate;
+    // The contract's amount as asked here, the trade screen's own rule (#183): none while the order read shows another; and no comparison either while the status shown carries an alert of the state machine (terms read otherwise, amounts that do not agree…): the alert above speaks alone (functional review of #188, C1; security review, C2).
+    final amount = _alerted(seen.status) ? null : seen.contractAmountShown;
+    // The comparison with the Bull wallet's price: in place, beside the amounts, within the threshold; beyond it, the line and its warning one red alert with the others above the buttons (functional review of #188, C2), never a neutral line beside it. A currency the Bull wallet does not price, or a price it could not read: its line alone, in the warning colour, with the alerts above the buttons (« Retry » for the latter), and no figure of the creation's price nor any gap from it (the owner's decisions of 2026-11-17; security review of #188, C1; R11).
+    Widget? rateLines;
+    final rateAlerts = <Widget>[];
+    if (amount != null) {
+      switch (rate) {
+        case null:
+          break;
+        case final WalletRateCompared compared:
+          final expected = formats.bigSats(compared.expected.value);
+          final line = l10n.p2pPayRateWalletEscrow(
+            formats.orderRate(compared.price),
+            compared.currency.code,
+            formats.amount(amount),
+            expected,
+            formats.gap(compared.gapHundredths),
+          );
+          if (compared.warns) {
+            final warning = l10n.p2pPayRateWarningEscrow(
+              formats.threshold(TradeTolerances.walletRateGap),
+              formats.bigSats(compared.asked.value),
+              expected,
+            );
+            rateAlerts.add(_AlertLine('$line $warning', color: colors.error));
+          } else {
+            rateLines = Text(line, style: body);
+          }
+        case WalletRateNotPriced() || WalletRateUnverified():
+          rateAlerts.add(
+            _RateLines(
+              rate: rate,
+              coordinator: coordinator,
+              retrying: confirming.retrying,
+              onRetry: onRetry,
+            ),
+          );
+      }
+    }
+    final alerts = <Widget>[
+      ...rateAlerts,
+      for (final alert in [
+        ...earlierEscrowAlerts(context, contract, coordinator: coordinator),
+        // The order's bond, which the alert's total leaves out (security review of #187, C5): beside the alert of the escrows not back.
+        if (contract.notBack.isNotEmpty)
+          ?switch (bondPaidHere) {
+            WalletPaidHere.yes => l10n.p2pPayEscrowBondHeldToo,
+            WalletPaidHere.cannotTell => l10n.p2pPayEscrowBondMaybeHeldToo,
+            WalletPaidHere.no => null,
+          },
+      ])
+        _AlertLine(alert, color: colors.error),
+    ];
+    final blocks = <Widget>[
+      Semantics(
+        container: true,
+        header: true,
+        liveRegion: true,
+        child: Text(
+          l10n.p2pPayEscrowConfirmTitle(
+            formats.sats(walletQuote.amount.value.toInt()),
+          ),
+          style: text.headlineMedium?.copyWith(color: colors.text),
+        ),
+      ),
+      if (confirming.stale)
+        _AlertLine(l10n.p2pPayConfirmStale, color: colors.error)
+      else if (confirming.again)
+        _AlertLine(l10n.p2pPayConfirmAgain, color: colors.warning),
+      if (contract.isNew)
+        _InfoLine(l10n.p2pPayEscrowNewContract('${contract.take + 1}')),
+      _AmountRows(
+        rows: [
+          (l10n.p2pPayRowCollateral, sats(walletQuote.amount), false),
+          (l10n.p2pPayRowSwapFees, sats(walletQuote.serviceFee), false),
+          (l10n.p2pPayRowNetworkFee, sats(walletQuote.networkFee), false),
+          (l10n.p2pPayRowTotal, sats(walletQuote.total), true),
+          (l10n.p2pPayRowLeft, sats(walletQuote.remaining), false),
+        ],
+      ),
+      ?rateLines,
+      Text(l10n.p2pPayEscrowHeld, style: body),
+      // The reference's sentence on the escrow's hold invoice, word for word (#135).
+      if (currency != null)
+        Text(
+          l10n.p2pTradeHoldInvoiceEscrow(currency.code),
+          style: text.bodySmall?.copyWith(color: colors.textMuted),
+        ),
+      // The alerts together, just above the buttons: the price's first (red beyond the threshold, or the warning colour of a rate not checked), then the earlier escrows', then the bond's, in red (the owner's decision of 2026-11-19; functional review of #188, C2; security review, R11).
+      if (alerts.isNotEmpty)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (index, alert) in alerts.indexed) ...[
+              if (index > 0) const Gap(BullSpacing.sm),
+              alert,
+            ],
+          ],
+        ),
+    ];
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(BullRadius.xxs),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(BullSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (index, block) in blocks.indexed) ...[
+              if (index > 0) const Gap(BullSpacing.md),
+              block,
+            ],
+            const Gap(BullSpacing.md),
+            TradeButton(
+              label: l10n.p2pCommonGoBack,
+              outlined: true,
+              onPressed: onCancel,
+            ),
+            const Gap(BullSpacing.sm),
+            KeyedSubtree(
+              key: payKey,
+              child: TradeButton(
+                label: l10n.p2pPayConfirm(
+                  formats.sats(walletQuote.total.value.toInt()),
+                ),
+                // A confirmation of a contract the order moved on from pays nothing: not offered.
+                onPressed: confirming.stale ? null : onPay,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Whether [status] carries an alert of the state machine, its invoice's included: terms read otherwise than kept, amounts that do not agree, a breach… (a next contract seen late is information, not an alert). Nothing is then compared beside it.
+  static bool _alerted(TradeStatus status) {
+    final invoice = status.invoice;
+    return [
+      ...status.warnings,
+      if (invoice case CheckedInvoice(:final warnings)) ...warnings,
+    ].any((warning) => warning is! ContractSeenLate);
+  }
+}
+
+/// Rows of a label and an amount, the amounts aligned at the right in tabular figures; the [bold] one stands out (the total).
+class _AmountRows extends StatelessWidget {
+  final List<(String, String, bool)> rows;
+
+  const _AmountRows({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (label, value, bold) in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
+            child: MergeSemantics(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: text.bodyMedium?.copyWith(
+                        color: bold ? colors.text : colors.textMuted,
+                        fontWeight: bold ? FontWeight.bold : null,
+                      ),
+                    ),
+                  ),
+                  const Gap(BullSpacing.sm),
+                  Text(
+                    value,
+                    textAlign: TextAlign.end,
+                    style: text.bodyMedium?.copyWith(
+                      color: colors.text,
+                      fontWeight: bold ? FontWeight.bold : null,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A line of the confirmation with its icon, in [color], bold, read out when it appears: an alert.
+class _AlertLine extends StatelessWidget {
+  final String text;
+  final Color color;
+
+  const _AlertLine(this.text, {required this.color});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    liveRegion: true,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExcludeSemantics(
+          child: Icon(Icons.warning_amber_rounded, size: 18, color: color),
+        ),
+        const Gap(BullSpacing.xs),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// A line of the confirmation with an information icon, in the text colour.
+class _InfoLine extends StatelessWidget {
+  final String text;
+
+  const _InfoLine(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExcludeSemantics(
+          child: Icon(Icons.info_outline, size: 18, color: colors.text),
+        ),
+        const Gap(BullSpacing.xs),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.text),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the wallet's price and the bond it gives with the gap of the invoice, and beyond the owner's threshold a red warning with both amounts. For a currency the wallet does not price, no figure at all: one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price, with no « Retry », since there is nothing to read again (the owner's decision of 2026-11-17 in the evening). When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
 class _RateLines extends StatelessWidget {
   final WalletRateCheck rate;
@@ -551,6 +876,8 @@ class _RateLines extends StatelessWidget {
         final code = currency.code;
         final expectedText = formats.bigSats(expected.value);
         final gap = formats.gap(gapHundredths);
+        final threshold = formats.threshold(TradeTolerances.walletRateGap);
+        final askedText = formats.bigSats(asked.value);
         final line = l10n.p2pPayRateWallet(price, code, expectedText, gap);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -559,11 +886,7 @@ class _RateLines extends StatelessWidget {
             if (rate.warns) ...[
               const Gap(BullSpacing.sm),
               alert(
-                l10n.p2pPayRateWarning(
-                  formats.threshold(TradeTolerances.walletRateGap),
-                  formats.bigSats(asked.value),
-                  expectedText,
-                ),
+                l10n.p2pPayRateWarning(threshold, askedText, expectedText),
                 colors.error,
               ),
             ],
@@ -764,10 +1087,10 @@ String bondPayRefusalText(
   final formats = P2pFormats.of(context);
   String sats(Sats amount) => formats.sats(amount.value.toInt());
   return switch (refusal) {
-    BondPayNotAtBondStep() ||
-    BondPayInvoiceChanged() ||
-    BondPayContractNotConfirmed() => l10n.p2pPayOrderMoved,
-    // A maker seller's escrow (#187): the minimal words of its own refusals, the panel's texts being #188's.
+    BondPayNotAtBondStep() || BondPayInvoiceChanged() => l10n.p2pPayOrderMoved,
+    // A maker seller's escrow (#187, #188): its confirmation always carries its contract, so a contract not confirmed is the order taken again since (security review of #187, R2).
+    BondPayContractNotConfirmed() => l10n.p2pPayContractMoved,
+    // Shown as the confirmation again by the cubit (#188); said so if ever left idle.
     BondPayConfirmAgain() => l10n.p2pPayConfirmAgain,
     BondPayEscrowSeenBefore() => l10n.p2pPayEscrowShownBefore,
     BondPayNotOffered(reason: WalletPaymentRefusal.tooLate) =>

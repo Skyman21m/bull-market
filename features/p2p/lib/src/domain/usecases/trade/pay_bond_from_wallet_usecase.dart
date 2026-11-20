@@ -390,6 +390,8 @@ final class PayBondFromWalletUsecase {
   }
 
   /// Where every escrow this wallet was asked to pay for [record] stands, contract by contract (#187): each recorded payment of step `escrow`, whatever its contract, followed as [followBond] follows the current one, the list given again at each change of any of them; whether or not the trade is still open, so that an escrow paid for a contract the trail moved on from, or for a trade that ended, is still said. Nothing for the bond's instance.
+  ///
+  /// The records are read once, when the stream is listened to: a payment recorded later (a new contract's escrow) is followed by listening again, as the escrow's cubit does at each contract and after each payment (#188). A payment whose recorded wallet id the wallet does not hold is given as unknown ([EscrowPaymentOfContract.unknownToWallet]), never as none.
   Stream<EscrowPaymentsWatch> followEscrows(TradeRecord record) {
     final follows = <StreamSubscription<BondPaymentWatch>>[];
     var cancelled = false;
@@ -425,10 +427,17 @@ final class PayBondFromWalletUsecase {
         out.add(
           EscrowPaymentsFollowed([
             for (final payment in escrows)
-              EscrowPaymentOfContract(
-                payment.take,
-                latest[payment.take] ?? const BondPaymentNone(),
-              ),
+              switch (latest[payment.take] ?? const BondPaymentNone()) {
+                // A wallet id recorded for the payment, and the wallet holds none for its invoice: where it stands cannot be told (#188, security review of #187, R6), never « none ».
+                final BondPaymentNone none
+                    when payment.walletPaymentId != null =>
+                  EscrowPaymentOfContract(
+                    payment.take,
+                    none,
+                    unknownToWallet: true,
+                  ),
+                final watch => EscrowPaymentOfContract(payment.take, watch),
+              },
           ]),
         );
       }

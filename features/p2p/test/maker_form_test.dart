@@ -459,10 +459,9 @@ void main() {
           MakerFormBlock.priceNotSynchronized,
         );
         expect(checkOf(type: null).block, MakerFormBlock.noSide);
-        expect(
-          checkOf(type: OrderType.sell).block,
-          MakerFormBlock.sellComingLater,
-        );
+        // « Sell » is no reason since #188: a sell order judged as a buy order.
+        expect(checkOf(type: OrderType.sell).block, isNull);
+        expect(checkOf(type: OrderType.sell).request?.type, OrderType.sell);
         expect(checkOf(amount: '5').block, MakerFormBlock.amountOutsideLimits);
         expect(checkOf(amount: '-5').block, MakerFormBlock.amountOutsideLimits);
         expect(
@@ -615,6 +614,43 @@ void main() {
       expect(check.warns, isTrue);
       expect(check.gapHundredths, BigInt.from(1001));
     });
+
+    test(
+      'a seller (#188): warned of a price too low only, the side that costs a seller; a buyer and no side both ways',
+      () {
+        final below = compared(89999.99, 100000);
+        final above = compared(110000.01, 100000);
+        final within = compared(100000, 100000);
+        // Selling too low: a larger bond, and more sats locked for the same amount at the take.
+        expect(below.warnsFor(OrderType.sell), isTrue);
+        // A higher price: fewer sats locked, which costs a seller nothing.
+        expect(above.warnsFor(OrderType.sell), isFalse);
+        expect(below.warnsFor(OrderType.buy), isTrue);
+        expect(above.warnsFor(OrderType.buy), isTrue);
+        expect(below.warnsFor(null), isTrue);
+        expect(above.warnsFor(null), isTrue);
+        for (final type in [OrderType.buy, OrderType.sell, null]) {
+          expect(within.warnsFor(type), isFalse, reason: '$type');
+          expect(
+            checkOf(9171.115, const P2pWalletRateNotPriced()).warnsFor(type),
+            isFalse,
+          );
+        }
+        // A press made while the Bull wallet's price was read stops at the line read as the line warns that maker.
+        expect(MakePriceVerdict.above.stopsPressFor(OrderType.sell), isFalse);
+        expect(MakePriceVerdict.above.stopsPressFor(OrderType.buy), isTrue);
+        expect(MakePriceVerdict.below.stopsPressFor(OrderType.sell), isTrue);
+        expect(MakePriceVerdict.within.stopsPressFor(OrderType.sell), isFalse);
+        for (final verdict in [
+          MakePriceVerdict.notRead,
+          MakePriceVerdict.notPriced,
+          MakePriceVerdict.unverified,
+        ]) {
+          expect(verdict.stopsPressFor(OrderType.sell), isTrue);
+          expect(verdict.stopsPressFor(OrderType.buy), isTrue);
+        }
+      },
+    );
 
     test(
       'a currency the Bull wallet does not price: no figure, no warning',

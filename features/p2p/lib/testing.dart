@@ -260,6 +260,9 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   /// The payments asked for, in order: the invoice and the quote accepted.
   final List<(CheckedBolt11Invoice, P2pWalletQuote)> paid = [];
 
+  /// While set, each payment asked for waits for it before it answers (#188: a payment still being sent when the order is read taken again).
+  Future<void>? holdPayments;
+
   /// The payment hashes looked for, in order.
   final List<String> found = [];
 
@@ -373,6 +376,7 @@ final class FakeP2pWalletPort implements P2pWalletPort {
     required P2pWalletQuote accepted,
   }) async {
     paid.add((invoice, accepted));
+    if (holdPayments case final hold?) await hold;
     if (!_usedQuotes.add(accepted)) return const Err(P2pWalletQuoteStale());
     if (_attempts[invoice.paymentHash] case final earlier?) {
       return Err(

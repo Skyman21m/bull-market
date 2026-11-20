@@ -52,7 +52,6 @@ extension MakerFormBlockL10n on MakerFormBlock {
         l10n.p2pMakeWhyPriceNotSynchronized,
       MakerFormBlock.limitsUnavailable => l10n.p2pMakeWhyLimitsUnavailable,
       MakerFormBlock.noSide => l10n.p2pMakeWhyNoSide,
-      MakerFormBlock.sellComingLater => l10n.p2pMakeSellComingLater,
       MakerFormBlock.amountOutsideLimits => l10n.p2pMakeWhyOutsideLimits,
       MakerFormBlock.badPaymentMethod => l10n.p2pMakeWhyBadPaymentMethod,
       MakerFormBlock.noAmount => l10n.p2pMakeWhyNoAmount,

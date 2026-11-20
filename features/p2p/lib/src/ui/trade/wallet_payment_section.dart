@@ -78,6 +78,14 @@ final class WalletBondState {
     this.escrowPaid = WalletPaidHere.no,
   });
 
+  /// This state with the bond said not paid with this wallet: what comes back at 8 of a maker seller's order whose buyer gives no payout is the collateral only, the bond staying locked with the order back in the book (#188).
+  WalletBondState get escrowOnly => WalletBondState(
+    sending: sending,
+    sent: sent,
+    escrowSent: escrowSent,
+    escrowPaid: escrowPaid,
+  );
+
   static const none = WalletBondState(sending: false, sent: false);
 }
 

@@ -1976,6 +1976,26 @@ class P2pLocalizationsAr extends P2pLocalizations {
   }
 
   @override
+  String p2pPayEscrowNewContract(String take) {
+    return 'New contract: this order was taken again after an earlier take. This collateral is for take $take.';
+  }
+
+  @override
+  String get p2pPayRowCollateral => 'Collateral invoice';
+
+  @override
+  String get p2pPayRowSwapFees => 'Swap fees';
+
+  @override
+  String get p2pPayRowNetworkFee => 'Network fee (estimate)';
+
+  @override
+  String get p2pPayRowTotal => 'Total out of this wallet';
+
+  @override
+  String get p2pPayRowLeft => 'Left in Instant payments';
+
+  @override
   String get p2pPayEscrowHeld =>
       'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.';
 
@@ -2017,6 +2037,26 @@ class P2pLocalizationsAr extends P2pLocalizations {
   @override
   String p2pPayRateWarning(String threshold, String asked, String expected) {
     return 'This bond is more than $threshold above that: $asked sats asked, $expected sats expected. Check it before you pay.';
+  }
+
+  @override
+  String p2pPayRateWalletEscrow(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String gap,
+  ) {
+    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, $amount $currency are worth $expected sats. Gap of the collateral: $gap, the coordinator\'s fee included.';
+  }
+
+  @override
+  String p2pPayRateWarningEscrow(
+    String threshold,
+    String asked,
+    String expected,
+  ) {
+    return 'This collateral is more than $threshold above that: $asked sats asked, $expected sats expected. Check it before you pay.';
   }
 
   @override
@@ -2131,7 +2171,15 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String get p2pPayConfirmAgain =>
-      'What will leave this wallet changed since you confirmed. Nothing was paid: check the amounts and confirm again.';
+      'Since you confirmed, what will leave this wallet, or the state of an earlier collateral, changed. Nothing was paid: check the figures below and confirm again.';
+
+  @override
+  String get p2pPayConfirmStale =>
+      'This order was taken again since this confirmation opened: it was for the earlier take, and its « Pay » pays nothing. Go back, then pay the new take\'s collateral.';
+
+  @override
+  String get p2pPayContractMoved =>
+      'The order was taken again before the payment: the confirmation was for the earlier take. Nothing was paid.';
 
   @override
   String p2pEscrowEarlierOut(String sats, String total, int count) {
@@ -2191,6 +2239,77 @@ class P2pLocalizationsAr extends P2pLocalizations {
   @override
   String p2pEscrowEarlierKeptUnknown(String coordinator) {
     return 'The collateral of an earlier take was kept by $coordinator: check this order in the official RoboSats app before paying another one.';
+  }
+
+  @override
+  String get p2pPayEscrowBondHeldToo =>
+      'Your order\'s bond was paid with this wallet: it is out of this wallet too until the order ends, and is not in this total.';
+
+  @override
+  String get p2pPayEscrowBondMaybeHeldToo =>
+      'If your order\'s bond was paid with this wallet, it is out of this wallet too until the order ends, and is not in this total.';
+
+  @override
+  String get p2pEscrowsEarlierTitle =>
+      'Collaterals of earlier takes of this order, paid or attempted with this wallet:';
+
+  @override
+  String p2pEscrowsEarlierLine(String take, String state) {
+    return 'Take $take: $state';
+  }
+
+  @override
+  String get p2pEscrowStateRefunded =>
+      'back, refunded to this wallet without the swap fees and the network fee';
+
+  @override
+  String get p2pEscrowStateNothingSent => 'back, nothing left this wallet';
+
+  @override
+  String get p2pEscrowStateRefundPending =>
+      'not back yet, the swap service is refunding it';
+
+  @override
+  String get p2pEscrowStatePreparing =>
+      'not back yet, its swap was being prepared and may never have been sent';
+
+  @override
+  String get p2pEscrowStateMaybeSent =>
+      'not back yet, the payment may have been sent';
+
+  @override
+  String get p2pEscrowStateWithService => 'not back yet, with the swap service';
+
+  @override
+  String get p2pEscrowStateUnderReview =>
+      'not back yet, under review at the swap service; contact Bull Bitcoin support if it lasts';
+
+  @override
+  String get p2pEscrowStateAskSupport =>
+      'not back yet, the swap failed and its sats may have left this wallet; contact Bull Bitcoin support';
+
+  @override
+  String get p2pEscrowStateUnknown =>
+      'state unknown, this device cannot tell where it stands';
+
+  @override
+  String p2pEscrowStateHeld(String coordinator) {
+    return 'not back yet, paid by the swap service and held by $coordinator';
+  }
+
+  @override
+  String p2pEscrowStateKept(String coordinator) {
+    return 'kept by $coordinator';
+  }
+
+  @override
+  String p2pEscrowRefundUndoneHeld(String take, String coordinator) {
+    return 'The collateral of take $take was being refunded, and is now held by $coordinator again: check this order in the official RoboSats app.';
+  }
+
+  @override
+  String p2pEscrowRefundUndoneKept(String take, String coordinator) {
+    return 'The collateral of take $take was being refunded, and was then kept by $coordinator: check this order in the official RoboSats app.';
   }
 
   @override
@@ -3030,10 +3149,6 @@ class P2pLocalizationsAr extends P2pLocalizations {
   String get p2pMakeSell => 'Sell';
 
   @override
-  String get p2pMakeSellComingLater =>
-      'Selling as maker is coming in a later version.';
-
-  @override
   String get p2pMakeAmount => 'Amount';
 
   @override
@@ -3108,6 +3223,9 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String get p2pMakeBuyBtcFor => 'Buy BTC for ';
+
+  @override
+  String get p2pMakeSellBtcFor => 'Sell BTC for ';
 
   @override
   String get p2pMakeAtMarketPrice => ' at market price';
@@ -3340,6 +3458,11 @@ class P2pLocalizationsAr extends P2pLocalizations {
   @override
   String p2pMakeRateBelow(String coordinator, String threshold) {
     return '$coordinator\'s price is more than $threshold below the Bull wallet\'s: your bond would be larger than it should be. Check it before creating the order.';
+  }
+
+  @override
+  String p2pMakeRateBelowSell(String coordinator, String threshold) {
+    return '$coordinator\'s price is more than $threshold below the Bull wallet\'s: your bond would be larger than it should be, and you would lock more sats for your amount when the order is taken. Check it before creating the order.';
   }
 
   @override
@@ -3683,6 +3806,10 @@ class P2pLocalizationsAr extends P2pLocalizations {
   @override
   String get p2pTradeEscrowWaitMaker =>
       'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.';
+
+  @override
+  String get p2pTradePayoutWaitMaker =>
+      'For an order you made: if the buyer does not cooperate, your collateral comes back, but your order goes back to the book and your bond stays locked.';
 
   @override
   String p2pPayoutRateToldMoved(String coordinator, String told, String asked) {

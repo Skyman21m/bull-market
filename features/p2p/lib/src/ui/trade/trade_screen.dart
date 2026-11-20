@@ -96,6 +96,9 @@ class TradeScreen extends StatefulWidget {
   final Widget Function(BuildContext context, bool escrowHeld)?
   walletEscrowLine;
 
+  /// Where the escrows of the order's other contracts, paid or attempted with this wallet, stand (#188, a maker seller's order taken more than once), and an alert when a refund pending turns held or kept again: shown whatever the view, the trade's end included; `null` without the wallet's port.
+  final WidgetBuilder? walletEarlierEscrows;
+
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
 
@@ -133,6 +136,7 @@ class TradeScreen extends StatefulWidget {
     this.walletBond,
     this.walletBondLine,
     this.walletEscrowLine,
+    this.walletEarlierEscrows,
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
@@ -431,6 +435,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       ),
                       const Gap(BullSpacing.sm),
                     ],
+                    // The escrows of the order's other contracts (#188), whatever the view, a wait included (security review of #188, R3): an escrow paid for a contract the order moved on from is said until it is back, after the trade's end too.
+                    if (widget.walletEarlierEscrows case final earlier?)
+                      earlier(context),
                     switch (view) {
                       TradeWaiting(:final warnings)
                           when warnings.isEmpty && waitNotice == null =>
@@ -1237,8 +1244,22 @@ class _Contract extends StatelessWidget {
           _Line(l10n.p2pTradePayoutWait),
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pTradePayoutWaitHangOn),
-          // « you will get back the trade collateral and your bond »: both come back the same way when paid with this wallet.
-          if (_backThroughSwap(l10n, paid, escrow: true) case final line?) ...[
+          // The reference's « you will get back the trade collateral and your bond automatically » is a taker's case: for a maker seller the collateral comes back, the order goes back to the book and its bond stays locked (`api/logics.py:445-458`, #188).
+          if (record.origin == TradeOrigin.madeHere) ...[
+            const Gap(BullSpacing.sm),
+            _Line(
+              l10n.p2pTradePayoutWaitMaker,
+              color: colors.warning,
+              icon: Icons.info_outline,
+            ),
+          ],
+          // « you will get back the trade collateral and your bond »: both come back the same way when paid with this wallet; for a maker seller the collateral only.
+          if (_backThroughSwap(
+                l10n,
+                record.origin == TradeOrigin.madeHere ? paid.escrowOnly : paid,
+                escrow: true,
+              )
+              case final line?) ...[
             const Gap(BullSpacing.sm),
             _Line(line, color: colors.textMuted, icon: Icons.info_outline),
           ],
@@ -1426,22 +1447,12 @@ class _Contract extends StatelessWidget {
     return state;
   }
 
-  /// The contract's amount of a trade made here at [seen], as asked here (a range's amount kept with the contract, or the terms' fixed amount), never a figure read alone; `null` while the order read does not agree with it, or none is known (security review of #183, C2, C4). Where nothing was asked here is known ([TradeSeen.asked] unset), the order's fixed amount, as before.
-  static FiatAmount? _contractAmountOf(TradeSeen seen) {
-    if (seen.contractAmountMoved) return null;
-    if (seen.contractAmount case final amount?) return amount;
-    return switch ((seen.asked, seen.order?.amount)) {
-      (null, FixedOrderAmount(:final amount)) => amount,
-      _ => null,
-    };
-  }
-
-  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([_contractAmountOf]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
+  /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([TradeSeen.contractAmountShown]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
   double? _payoutPromptAmount(CoordinatorOrder order) {
     if (!contract.maker) {
       return (order.takenAmount ?? order.amount.max).value;
     }
-    return _contractAmountOf(contract.seen)?.value;
+    return contract.seen.contractAmountShown?.value;
   }
 
   /// What the screen shows now, as the trade's cubit holds it (`TradeView.of` of its last state, the screen's own).
@@ -1552,7 +1563,7 @@ class _Contract extends StatelessWidget {
         rateGap,
         role,
         // The contract's amount the gap is computed with, as asked here (#183), never the read's alone.
-        _contractAmountOf(seen),
+        seen.contractAmountShown,
       ),
       Chatting(:final rateGap, :final role, fiatSent: false, :final amount) => (
         rateGap,

@@ -141,7 +141,17 @@ final class EscrowPaymentOfContract {
   final int take;
   final BondPaymentWatch watch;
 
-  const EscrowPaymentOfContract(this.take, this.watch);
+  /// Whether the trade's record of this payment names a wallet id the wallet's records do not hold (#188, security review of #187, R6): where it stands cannot be told, which [BondPaymentNone] alone would hide.
+  final bool unknownToWallet;
+
+  const EscrowPaymentOfContract(
+    this.take,
+    this.watch, {
+    this.unknownToWallet = false,
+  });
+
+  /// Whether where this escrow stands cannot be told: its records, or the wallet's, could not be read, or the wallet does not know the payment recorded ([unknownToWallet]).
+  bool get stateUnknown => unknownToWallet || watch is BondPaymentUnreadable;
 
   @override
   String toString() => 'EscrowPaymentOfContract($take, $watch)';

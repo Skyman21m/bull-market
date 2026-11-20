@@ -2002,6 +2002,26 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pPayEscrowNewContract(String take) {
+    return 'Nouveau contrat : cet ordre a été repris après une prise précédente. Cette garantie est celle de la prise $take.';
+  }
+
+  @override
+  String get p2pPayRowCollateral => 'Facture de la garantie';
+
+  @override
+  String get p2pPayRowSwapFees => 'Frais de swap';
+
+  @override
+  String get p2pPayRowNetworkFee => 'Frais de réseau (estimation)';
+
+  @override
+  String get p2pPayRowTotal => 'Total sorti de ce portefeuille';
+
+  @override
+  String get p2pPayRowLeft => 'Reste dans Paiements instantanés';
+
+  @override
   String get p2pPayEscrowHeld =>
       'Jusqu’à la fin de l’échange, ces sats sont chez le service de swap, pas dans ce portefeuille. Si l’échange est annulé, le swap est remboursé vers Paiements instantanés sans les frais de swap ni les frais de réseau, et le remboursement peut tarder.';
 
@@ -2043,6 +2063,26 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pPayRateWarning(String threshold, String asked, String expected) {
     return 'Cette caution dépasse ce montant de plus de $threshold : $asked sats demandés, $expected sats attendus. Vérifiez-la avant de payer.';
+  }
+
+  @override
+  String p2pPayRateWalletEscrow(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String gap,
+  ) {
+    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, $amount $currency valent $expected sats. Écart de la garantie : $gap, frais du coordinateur compris.';
+  }
+
+  @override
+  String p2pPayRateWarningEscrow(
+    String threshold,
+    String asked,
+    String expected,
+  ) {
+    return 'Cette garantie dépasse ce montant de plus de $threshold : $asked sats demandés, $expected sats attendus. Vérifiez-la avant de payer.';
   }
 
   @override
@@ -2159,7 +2199,15 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayConfirmAgain =>
-      'Ce qui sortira de ce portefeuille a changé depuis votre confirmation. Rien n’a été payé : vérifiez les montants et confirmez de nouveau.';
+      'Depuis votre confirmation, ce qui sortira de ce portefeuille, ou l’état d’une garantie précédente, a changé. Rien n’a été payé : vérifiez les chiffres ci-dessous et confirmez de nouveau.';
+
+  @override
+  String get p2pPayConfirmStale =>
+      'Cet ordre a été repris depuis l’ouverture de cette confirmation : elle valait pour la prise précédente, et son « Payer » ne paie rien. Revenez en arrière, puis payez la garantie de la nouvelle prise.';
+
+  @override
+  String get p2pPayContractMoved =>
+      'L’ordre a été repris avant le paiement : la confirmation valait pour la prise précédente. Rien n’a été payé.';
 
   @override
   String p2pEscrowEarlierOut(String sats, String total, int count) {
@@ -2219,6 +2267,79 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pEscrowEarlierKeptUnknown(String coordinator) {
     return 'La garantie d’une prise précédente a été encaissée par $coordinator : vérifiez cet ordre dans l’application officielle RoboSats avant d’en payer une autre.';
+  }
+
+  @override
+  String get p2pPayEscrowBondHeldToo =>
+      'La caution de votre ordre a été payée avec ce portefeuille : elle est aussi hors de ce portefeuille jusqu’à la fin de l’ordre, et n’est pas dans ce total.';
+
+  @override
+  String get p2pPayEscrowBondMaybeHeldToo =>
+      'Si la caution de votre ordre a été payée avec ce portefeuille, elle est aussi hors de ce portefeuille jusqu’à la fin de l’ordre, et n’est pas dans ce total.';
+
+  @override
+  String get p2pEscrowsEarlierTitle =>
+      'Garanties des prises précédentes de cet ordre, payées ou tentées avec ce portefeuille :';
+
+  @override
+  String p2pEscrowsEarlierLine(String take, String state) {
+    return 'Prise $take : $state';
+  }
+
+  @override
+  String get p2pEscrowStateRefunded =>
+      'revenue, remboursée sur ce portefeuille sans les frais de swap ni les frais de réseau';
+
+  @override
+  String get p2pEscrowStateNothingSent =>
+      'revenue, rien n’est sorti de ce portefeuille';
+
+  @override
+  String get p2pEscrowStateRefundPending =>
+      'pas encore revenue, le service de swap la rembourse';
+
+  @override
+  String get p2pEscrowStatePreparing =>
+      'pas encore revenue, son swap était en préparation et n’a peut-être jamais été envoyé';
+
+  @override
+  String get p2pEscrowStateMaybeSent =>
+      'pas encore revenue, le paiement a peut-être été envoyé';
+
+  @override
+  String get p2pEscrowStateWithService =>
+      'pas encore revenue, chez le service de swap';
+
+  @override
+  String get p2pEscrowStateUnderReview =>
+      'pas encore revenue, en vérification au service de swap ; contactez le support de Bull Bitcoin si cela dure';
+
+  @override
+  String get p2pEscrowStateAskSupport =>
+      'pas encore revenue, le swap a échoué et ses sats sont peut-être sortis de ce portefeuille ; contactez le support de Bull Bitcoin';
+
+  @override
+  String get p2pEscrowStateUnknown =>
+      'état inconnu, cet appareil ne peut pas dire où elle en est';
+
+  @override
+  String p2pEscrowStateHeld(String coordinator) {
+    return 'pas encore revenue, payée par le service de swap et retenue par $coordinator';
+  }
+
+  @override
+  String p2pEscrowStateKept(String coordinator) {
+    return 'encaissée par $coordinator';
+  }
+
+  @override
+  String p2pEscrowRefundUndoneHeld(String take, String coordinator) {
+    return 'La garantie de la prise $take était en cours de remboursement, et elle est de nouveau retenue par $coordinator : vérifiez cet ordre dans l’application officielle RoboSats.';
+  }
+
+  @override
+  String p2pEscrowRefundUndoneKept(String take, String coordinator) {
+    return 'La garantie de la prise $take était en cours de remboursement, puis elle a été encaissée par $coordinator : vérifiez cet ordre dans l’application officielle RoboSats.';
   }
 
   @override
@@ -3068,10 +3189,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pMakeSell => 'Vendre';
 
   @override
-  String get p2pMakeSellComingLater =>
-      'La vente comme créateur arrive dans une prochaine version.';
-
-  @override
   String get p2pMakeAmount => 'Montant';
 
   @override
@@ -3147,6 +3264,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakeBuyBtcFor => 'Acheter BTC pour ';
+
+  @override
+  String get p2pMakeSellBtcFor => 'Vendre BTC pour ';
 
   @override
   String get p2pMakeAtMarketPrice => ' au prix du marché';
@@ -3388,6 +3508,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pMakeRateBelow(String coordinator, String threshold) {
     return 'Le prix annoncé par $coordinator est inférieur de plus de $threshold à celui du portefeuille Bull : votre caution serait plus élevée que prévu. Vérifiez-le avant de créer l’ordre.';
+  }
+
+  @override
+  String p2pMakeRateBelowSell(String coordinator, String threshold) {
+    return 'Le prix annoncé par $coordinator est inférieur de plus de $threshold à celui du portefeuille Bull : votre caution serait plus élevée que prévu, et vous bloqueriez plus de sats pour votre montant quand l’ordre sera pris. Vérifiez-le avant de créer l’ordre.';
   }
 
   @override
@@ -3735,6 +3860,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pTradeEscrowWaitMaker =>
       'Pour un ordre que vous avez créé : si le vendeur ne bloque pas sa garantie, votre ordre retourne dans le carnet et votre caution reste bloquée.';
+
+  @override
+  String get p2pTradePayoutWaitMaker =>
+      'Pour un ordre que vous avez créé : si l’acheteur ne coopère pas, votre garantie revient, mais votre ordre retourne dans le carnet et votre caution reste bloquée.';
 
   @override
   String p2pPayoutRateToldMoved(String coordinator, String told, String asked) {

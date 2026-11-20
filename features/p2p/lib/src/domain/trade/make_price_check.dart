@@ -1,5 +1,5 @@
 import 'package:meta/meta.dart';
-import 'package:robosats/robosats.dart' show RobosatsCurrency;
+import 'package:robosats/robosats.dart' show OrderType, RobosatsCurrency;
 
 import '../../../public/p2p_wallet_port.dart';
 import 'exact_ratio.dart';
@@ -8,7 +8,7 @@ import 'trade_tolerances.dart';
 
 /// What the create form says of the chosen coordinator's price of a bitcoin (`/api/limits/`, the price the order's terms will keep as `MakerTerms.createdPrice`) against the wallet's own price ([P2pWalletPort.bitcoinRate]), before the order is made (#181; the owner's decision of 2026-11-17: « bonne idée », on the proposal of the security review of #180).
 ///
-/// Information, and a red warning beyond [TradeTolerances.walletRateGap] **either way**: a price too low makes the bond and the trade's sats too large, a price too high makes a buyer receive fewer sats at the take (that it warns both ways is the coordinator of the work's choice, not the owner's). **It never stops the make**: « Create order » stays offered whatever it says.
+/// Information, and a red warning beyond [TradeTolerances.walletRateGap] on the side that costs the maker ([warnsFor]): a price too low makes the bond and the trade's sats too large, which costs a buyer (a larger bond) and a seller (a larger bond, and more sats locked for the same amount at the take: selling too low); a price too high makes a buyer receive fewer sats at the take, and costs a seller nothing (fewer sats locked), so it warns a buyer, or a form with no side chosen, and not a seller (#188; that it warns a buyer both ways is the coordinator of the work's choice, not the owner's). **It never stops the make**: « Create order » stays offered whatever it says.
 ///
 /// Three cases, in the spirit of the payment rule (`WalletRateCheck`):
 /// - [MakePriceCompared]: both prices and how far the coordinator's is from the wallet's;
@@ -55,8 +55,11 @@ sealed class MakePriceCheck {
       ? ExactRatio.ofDouble(value)
       : null;
 
-  /// Whether the form shows the red warning: only a comparison beyond the threshold, either way.
-  bool get warns => false;
+  /// Whether the form shows the red warning when no side is chosen: only a comparison beyond the threshold, either way.
+  bool get warns => warnsFor(null);
+
+  /// Whether the form shows the red warning for a maker of [type] ([MakePriceVerdict.warnsFor]): only a comparison beyond the threshold on the side that costs that maker, either way when no side is chosen.
+  bool warnsFor(OrderType? type) => false;
 }
 
 /// Which way the coordinator's price is beyond the threshold, if it is.
@@ -95,7 +98,12 @@ final class MakePriceCompared extends MakePriceCheck {
        super._();
 
   @override
-  bool get warns => side != MakePriceSide.within;
+  bool warnsFor(OrderType? type) => switch (side) {
+    MakePriceSide.within => false,
+    MakePriceSide.below => true,
+    // Fewer sats for the same amount: less for a buyer to receive, less for a seller to lock (#188).
+    MakePriceSide.above => type != OrderType.sell,
+  };
 
   /// 1 plus or minus [TradeTolerances.walletRateGap], exactly.
   static final ExactRatio _gap =
@@ -157,7 +165,17 @@ enum MakePriceVerdict {
   notPriced,
 
   /// The Bull wallet's price could not be read.
-  unverified,
+  unverified;
+
+  /// Whether a press of « Create order » made while the Bull wallet's price was read stops at this line, once read, for a maker of [type] (second security review of #181, R8; third functional pass): a line that warns that maker ([MakePriceCheck.warnsFor]: a seller is not warned of a price above the Bull wallet's, #188), is not priced or could not be read, or no line at all; never a line within the margin.
+  bool stopsPressFor(OrderType? type) => switch (this) {
+    MakePriceVerdict.within => false,
+    MakePriceVerdict.above => type != OrderType.sell,
+    MakePriceVerdict.below ||
+    MakePriceVerdict.notRead ||
+    MakePriceVerdict.notPriced ||
+    MakePriceVerdict.unverified => true,
+  };
 }
 
 /// The price check as the user saw it at the press, handed to the make so that an order is never made on a coordinator's price whose comparison the user did not see (security review of #181, C1).

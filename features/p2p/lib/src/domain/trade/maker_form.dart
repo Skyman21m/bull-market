@@ -180,7 +180,7 @@ final class MakerFormLimitsRead extends MakerFormLimits {
 
 /// Why « Create order » is disabled, in the order the reference says it (`getDisabledMessage`, `MakerForm.tsx:517-565`): one reason, the first that applies.
 ///
-/// The reason of the reference's legacy mode cannot apply to this form and is left out; [sellComingLater] is the app's own.
+/// The reason of the reference's legacy mode cannot apply to this form and is left out.
 enum MakerFormBlock {
   /// « Loading coordinator list... »: the default coordinator is not drawn yet.
   loadingCoordinators,
@@ -193,9 +193,6 @@ enum MakerFormBlock {
 
   /// « Please select if you want to buy or sell. »
   noSide,
-
-  /// « Selling as maker is coming in a later version. » (the app's own): the side is « Sell », which the form never lets the user choose.
-  sellComingLater,
 
   /// « The amount is outside the allowed limits. »
   amountOutsideLimits,
@@ -1071,7 +1068,6 @@ final class MakerFormCheck {
     }
     final type = input.type;
     if (type == null) return blocked(MakerFormBlock.noSide);
-    if (type != OrderType.buy) return blocked(MakerFormBlock.sellComingLater);
     if (amountProblem != null) {
       return blocked(MakerFormBlock.amountOutsideLimits);
     }

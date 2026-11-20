@@ -3255,6 +3255,42 @@ abstract class P2pLocalizations {
   /// **'Pay {amount} sats to lock the collateral?'**
   String p2pPayEscrowConfirmTitle(String amount);
 
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral (#188), from the order's second take on (the trail's contract above 0): a collateral of a new contract, design note § 4.3. {take} counts the takes from 1.
+  ///
+  /// In en, this message translates to:
+  /// **'New contract: this order was taken again after an earlier take. This collateral is for take {take}.'**
+  String p2pPayEscrowNewContract(String take);
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): the invoice's sats, which the coordinator asks.
+  ///
+  /// In en, this message translates to:
+  /// **'Collateral invoice'**
+  String get p2pPayRowCollateral;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): the swap service's fee, as p2pPayServiceFee.
+  ///
+  /// In en, this message translates to:
+  /// **'Swap fees'**
+  String get p2pPayRowSwapFees;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): the wallet's estimate of the Liquid network fee, as p2pPayNetworkFee (« about »).
+  ///
+  /// In en, this message translates to:
+  /// **'Network fee (estimate)'**
+  String get p2pPayRowNetworkFee;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188), in bold: what « Pay » takes out of the wallet, the same sats as the button and as the alert's « this one ».
+  ///
+  /// In en, this message translates to:
+  /// **'Total out of this wallet'**
+  String get p2pPayRowTotal;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): what stays in the wallet's Instant payments, as p2pPayTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Left in Instant payments'**
+  String get p2pPayRowLeft;
+
   /// The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): in the confirmation, above the reference's line on the escrow's hold invoice: the facts of a whole trade paid through the swap service (the study of #97: the service holds the payin until the coordinator settles or cancels the hold invoice, and refunds it to the wallet without its fees when it is cancelled); informs, never stops; in French the wallet's sentence with the reference's word for the swap, « swap », as the bond's.
   ///
   /// In en, this message translates to:
@@ -3307,6 +3343,28 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This bond is more than {threshold} above that: {asked} sats asked, {expected} sats expected. Check it before you pay.'**
   String p2pPayRateWarning(String threshold, String asked, String expected);
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral (#188), the owner's payment rule of 2026-11-17: {amount} is the contract's amount (the fixed amount, or a range's amount its take chose), {expected} its sats at the Bull wallet's price with the order's premium, {gap} how far the collateral asked is from them; the coordinator adds its maker fee (0.025 % by default, at most 1 %) to the collateral, so the gap includes it, and the text says so (#187, R1).
+  ///
+  /// In en, this message translates to:
+  /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, {amount} {currency} are worth {expected} sats. Gap of the collateral: {gap}, the coordinator\'s fee included.'**
+  String p2pPayRateWalletEscrow(
+    String price,
+    String currency,
+    String amount,
+    String expected,
+    String gap,
+  );
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the red warning of the owner's payment rule in the confirmation of a maker seller's collateral (#188), after p2pPayRateWalletEscrow, both in red as one alert; « Pay » stays offered. {threshold} is the threshold, such as « 10% ».
+  ///
+  /// In en, this message translates to:
+  /// **'This collateral is more than {threshold} above that: {asked} sats asked, {expected} sats expected. Check it before you pay.'**
+  String p2pPayRateWarningEscrow(
+    String threshold,
+    String asked,
+    String expected,
+  );
 
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's button, the only tap that pays.
   ///
@@ -3464,25 +3522,37 @@ abstract class P2pLocalizations {
   /// **'This wallet cannot pay this bond now.'**
   String get p2pPayWalletUnavailable;
 
-  /// The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the collateral invoice shown has a payment hash this device already saw (an earlier take's collateral, another payment recorded for the order, or a payment of another trade), whether or not it was ever paid; « collateral » as the reference's title of the escrow, « garantie » in French as the project's (#96).
+  /// The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request): the collateral invoice shown has a payment hash this device already saw (an earlier take's collateral, another payment recorded for the order, or a payment of another trade), whether or not it was ever paid; « collateral » as the reference's title of the escrow, « garantie » in French as the project's (#96).
   ///
   /// In en, this message translates to:
   /// **'This collateral invoice was already presented to this device, for this order or another one. It is not paid from this wallet.'**
   String get p2pPayEscrowShownBefore;
 
-  /// The panel of « Pay with this wallet » at status 6 and 7 of an order made here whose user sells (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: just before the payment, under its lock, what will leave the wallet is more than the confirmation showed (this collateral's quote costing more, more sats of earlier collaterals not back, or one the coordinator kept since): nothing was paid, the next confirmation pays (the owner's decision of 2026-11-19: no lock).
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral shown again (#187, #188), at its top in the warning colour: just before the payment, under its lock, more was out than the confirmation showed (this collateral's quote costing more, more sats of earlier collaterals not back, or one the coordinator kept since): nothing was paid, the figures below are those now, and the next « Pay » pays (the owner's decision of 2026-11-19: no lock). Says « or the state of an earlier collateral », true when only an earlier collateral turned kept (security review of #187, R12).
   ///
   /// In en, this message translates to:
-  /// **'What will leave this wallet changed since you confirmed. Nothing was paid: check the amounts and confirm again.'**
+  /// **'Since you confirmed, what will leave this wallet, or the state of an earlier collateral, changed. Nothing was paid: check the figures below and confirm again.'**
   String get p2pPayConfirmAgain;
 
-  /// The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: the red alert of the owner's decision of 2026-11-19 (no lock, an alert), the user free to pay. {sats} the sats of the earlier collaterals not back yet (a refund pending included, which Bull's own code does not take as final), {total} those and this collateral's. {count} how many; the sats are what each took out of the wallet (the confirmed quote's total, fees included), so that the total and the confirmation's « Pay » button speak of the same sats. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral (#188), in red at its top, when a read shows the order taken again while it is open: the contract it states is no longer the trail's, so its payment would be refused (`BondPayContractNotConfirmed`); « Pay » is off.
+  ///
+  /// In en, this message translates to:
+  /// **'This order was taken again since this confirmation opened: it was for the earlier take, and its « Pay » pays nothing. Go back, then pay the new take\'s collateral.'**
+  String get p2pPayConfirmStale;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the panel of « Pay with this wallet » of a maker seller's collateral (#188, security review of #187, R2), when the payment is refused because the contract the confirmation stated is no longer the trail's (`BondPayContractNotConfirmed`): the confirmation always states its contract since #188, so this is the order taken again meanwhile.
+  ///
+  /// In en, this message translates to:
+  /// **'The order was taken again before the payment: the confirmation was for the earlier take. Nothing was paid.'**
+  String get p2pPayContractMoved;
+
+  /// The confirmation of a maker seller's collateral (#187, shown since #188), the project's own text (RoboSats has no such panel: the owner's request): the red alert of the owner's decision of 2026-11-19 (no lock, an alert), the user free to pay. {sats} the sats of the earlier collaterals not back yet (a refund pending included, which Bull's own code does not take as final), {total} those and this collateral's. {count} how many; the sats are what each took out of the wallet (the confirmed quote's total, fees included), so that the total and the confirmation's « Pay » button speak of the same sats. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet}}: {sats} sats. With this one, {total} sats will be out of this wallet for the collaterals of this order, bond not included.'**
   String p2pEscrowEarlierOut(String sats, String total, int count);
 
-  /// As p2pEscrowEarlierOut (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188, when some earlier collaterals not back were paid before the app started again: their sats are not kept on the device (schema 8). {count} how many. {known} how many have an amount this device knows. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
+  /// As p2pEscrowEarlierOut (#187), the project's own text (RoboSats has no such panel: the owner's request), when some earlier collaterals not back were paid before the app started again: their sats are not kept on the device (schema 8). {count} how many. {known} how many have an amount this device knows. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
   ///
   /// In en, this message translates to:
   /// **'{known, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: {sats} sats} other{{known} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet: {sats} sats}}, and {count, plural, =1{1 more whose amount this device no longer knows} other{{count} more whose amounts this device no longer knows}}. With this one, at least {total} sats will be out of this wallet for the collaterals of this order, bond not included.'**
@@ -3493,23 +3563,125 @@ abstract class P2pLocalizations {
     int known,
   );
 
-  /// As p2pEscrowEarlierOut (#187), the project's own text, minimal until the panel's texts of #188, when no earlier collateral not back has an amount this device knows (paid before the app started again; schema 8 keeps no amount). {count} how many, {total} this collateral's sats. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
+  /// As p2pEscrowEarlierOut (#187), the project's own text, when no earlier collateral not back has an amount this device knows (paid before the app started again; schema 8 keeps no amount). {count} how many, {total} this collateral's sats. The total counts the collaterals only: a maker bond paid from this wallet, held for the order's life, is not in it, and the text says so (security review of #187, C5).
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount.} other{{count} earlier collaterals of this order, paid or attempted with this wallet, have not come back yet; this device no longer knows their amounts.}} With this one, at least {total} sats will be out of this wallet for the collaterals of this order, bond not included.'**
   String p2pEscrowEarlierOutAllUnknown(String total, int count);
 
-  /// The confirmation of a maker seller's collateral (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188: an earlier collateral of the order paid with this wallet was settled, the coordinator kept it (a red alert, apart from those not back yet, the owner's decision of 2026-11-19). {coordinator} the coordinator's name of the federation list.
+  /// The confirmation of a maker seller's collateral (#187, shown since #188), the project's own text (RoboSats has no such panel: the owner's request): an earlier collateral of the order paid with this wallet was settled, the coordinator kept it (a red alert, apart from those not back yet, the owner's decision of 2026-11-19). {coordinator} the coordinator's name of the federation list.
   ///
   /// In en, this message translates to:
   /// **'The collateral of an earlier take ({sats} sats) was kept by {coordinator}: check this order in the official RoboSats app before paying another one.'**
   String p2pEscrowEarlierKept(String sats, String coordinator);
 
-  /// As p2pEscrowEarlierKept (#187), the project's own text (RoboSats has no such panel: the owner's request), minimal until the panel's texts of #188, for a collateral whose sats this device no longer knows (paid before the app started again).
+  /// As p2pEscrowEarlierKept (#187), the project's own text (RoboSats has no such panel: the owner's request), for a collateral whose sats this device no longer knows (paid before the app started again).
   ///
   /// In en, this message translates to:
   /// **'The collateral of an earlier take was kept by {coordinator}: check this order in the official RoboSats app before paying another one.'**
   String p2pEscrowEarlierKeptUnknown(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral (#188), in red beside p2pEscrowEarlierOut and its variants, whose total leaves the bond out (security review of #187, C5), when the trade's records say the maker bond was paid with this wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order\'s bond was paid with this wallet: it is out of this wallet too until the order ends, and is not in this total.'**
+  String get p2pPayEscrowBondHeldToo;
+
+  /// As p2pPayEscrowBondHeldToo (#188), the project's own, when the records cannot tell whether the maker bond was paid with this wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'If your order\'s bond was paid with this wallet, it is out of this wallet too until the order ends, and is not in this total.'**
+  String get p2pPayEscrowBondMaybeHeldToo;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the trade screen of a maker seller's order taken more than once (#188), above one line per earlier take, whatever the status, the trade's end included, until each is back (design note § 2.3, § 4.3).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaterals of earlier takes of this order, paid or attempted with this wallet:'**
+  String get p2pEscrowsEarlierTitle;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a line under p2pEscrowsEarlierTitle (#188): {take} counts the takes from 1, {state} one of the p2pEscrowState… texts.
+  ///
+  /// In en, this message translates to:
+  /// **'Take {take}: {state}'**
+  String p2pEscrowsEarlierLine(String take, String state);
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap was refunded (back).
+  ///
+  /// In en, this message translates to:
+  /// **'back, refunded to this wallet without the swap fees and the network fee'**
+  String get p2pEscrowStateRefunded;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): nothing was sent: an attempt that failed or expired with nothing sent, or no swap order of this feature for it (back).
+  ///
+  /// In en, this message translates to:
+  /// **'back, nothing left this wallet'**
+  String get p2pEscrowStateNothingSent;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a refund pending, which Bull's own code does not take as final (not back yet, security review of #187, C2).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, the swap service is refunding it'**
+  String get p2pEscrowStateRefundPending;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a swap order prepared or signed and never known as sent (counted not back, with no limit of time, security review of #187, R8).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, its swap was being prepared and may never have been sent'**
+  String get p2pEscrowStatePreparing;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a broadcast whose outcome is not known (not back yet).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, the payment may have been sent'**
+  String get p2pEscrowStateMaybeSent;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): sent to the swap service, not yet seen paying the invoice (not back yet).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, with the swap service'**
+  String get p2pEscrowStateWithService;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap service's manual review (not back yet).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, under review at the swap service; contact Bull Bitcoin support if it lasts'**
+  String get p2pEscrowStateUnderReview;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): a swap failed or expired whose funds may have left (not back yet).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, the swap failed and its sats may have left this wallet; contact Bull Bitcoin support'**
+  String get p2pEscrowStateAskSupport;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the records, or the wallet's, cannot be read, or the wallet does not hold the payment recorded (security review of #187, R6); counted not back.
+  ///
+  /// In en, this message translates to:
+  /// **'state unknown, this device cannot tell where it stands'**
+  String get p2pEscrowStateUnknown;
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): the swap service paid the hold invoice and the coordinator holds it (`P2pWalletPaymentPending`, not back yet).
+  ///
+  /// In en, this message translates to:
+  /// **'not back yet, paid by the swap service and held by {coordinator}'**
+  String p2pEscrowStateHeld(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a state of p2pEscrowsEarlierLine (#188): settled, the coordinator kept it (`P2pWalletPaymentPaid`), said in the colour of an error.
+  ///
+  /// In en, this message translates to:
+  /// **'kept by {coordinator}'**
+  String p2pEscrowStateKept(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the trade screen of a maker seller's order (#188, security review of #187, C2): in red, an escrow whose refund was pending and which the wallet's records now show paying the hold invoice again; a refund pending is not final in Bull's own code. {take} counts the takes from 1.
+  ///
+  /// In en, this message translates to:
+  /// **'The collateral of take {take} was being refunded, and is now held by {coordinator} again: check this order in the official RoboSats app.'**
+  String p2pEscrowRefundUndoneHeld(String take, String coordinator);
+
+  /// As p2pEscrowRefundUndoneHeld (#188), the project's own, when the wallet's records now show it settled (`P2pWalletPaymentPaid`).
+  ///
+  /// In en, this message translates to:
+  /// **'The collateral of take {take} was being refunded, and was then kept by {coordinator}: check this order in the official RoboSats app.'**
+  String p2pEscrowRefundUndoneKept(String take, String coordinator);
 
   /// The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): as the bond's `p2pPayWalletUnavailable`; « collateral » as the reference's title of the escrow (« Lock {{amountSats}} Sats as collateral »), « garantie » in French as the project's (#96).
   ///
@@ -4781,17 +4953,11 @@ abstract class P2pLocalizations {
   /// **'Buy'**
   String get p2pMakeBuy;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 131), with its French (`fr.json`, line 131). The button « Sell » of the create form (`MakerForm.tsx:821`), shown disabled in this version.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 131), with its French (`fr.json`, line 131). The button « Sell » of the create form (`MakerForm.tsx:821`), a choice as « Buy » since #188.
   ///
   /// In en, this message translates to:
   /// **'Sell'**
   String get p2pMakeSell;
-
-  /// Not in the RoboSats texts: the project's own: under « Sell », disabled, so that no maker locks a bond for an escrow the app cannot pay yet (design note § 2.1, § 3.10, #181).
-  ///
-  /// In en, this message translates to:
-  /// **'Selling as maker is coming in a later version.'**
-  String get p2pMakeSellComingLater;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 139), with its French (`fr.json`, line 139). The label of the amount field of the create form (`MakerForm.tsx:894`), followed by « * » as the reference marks a required field.
   ///
@@ -4912,6 +5078,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Buy BTC for '**
   String get p2pMakeBuyBtcFor;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 514), with its French (`fr.json`, line 514). The start of the create form's summary for « Sell » (`MakerForm.tsx:593-594`, #188), followed by the amount and the currency: the trailing space is the reference's.
+  ///
+  /// In en, this message translates to:
+  /// **'Sell BTC for '**
+  String get p2pMakeSellBtcFor;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 475), with its French (`fr.json`, line 475). The end of the create form's summary at a premium of 0 (`MakerForm.tsx:610-613`): the leading space is the reference's.
   ///
@@ -5273,7 +5445,13 @@ abstract class P2pLocalizations {
   /// **'{coordinator}\'s price is more than {threshold} below the Bull wallet\'s: your bond would be larger than it should be. Check it before creating the order.'**
   String p2pMakeRateBelow(String coordinator, String threshold);
 
-  /// Not in the RoboSats texts: the project's own: the red warning of the create form (#181) when the coordinator's price is more than the owner's threshold above the Bull wallet's, for a buy order (the only side this version makes); « Create order » stays offered.
+  /// Not in the RoboSats texts: the project's own: the red warning of the create form (#188) for a sell order when the coordinator's price is more than the owner's threshold below the Bull wallet's (the side that costs a seller: selling too low); « Create order » stays offered. {threshold} is the threshold, such as « 10% ».
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator}\'s price is more than {threshold} below the Bull wallet\'s: your bond would be larger than it should be, and you would lock more sats for your amount when the order is taken. Check it before creating the order.'**
+  String p2pMakeRateBelowSell(String coordinator, String threshold);
+
+  /// Not in the RoboSats texts: the project's own: the red warning of the create form (#181) when the coordinator's price is more than the owner's threshold above the Bull wallet's, for a buy order or a form with no side chosen (a seller locks fewer sats then, and is not warned of it, #188); « Create order » stays offered.
   ///
   /// In en, this message translates to:
   /// **'{coordinator}\'s price is more than {threshold} above the Bull wallet\'s: you would receive fewer sats when the order is taken. Check it before creating the order.'**
@@ -5748,6 +5926,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'For an order you made: if the seller does not lock the collateral, your order goes back to the book and your bond stays locked.'**
   String get p2pTradeEscrowWaitMaker;
+
+  /// Not in the RoboSats texts: the project's own: under the reference's « you will get back the trade collateral and your bond automatically » at 8 (`Prompts/PayoutWait.tsx`), a taker's case: for a maker seller whose buyer gives no payout, the collateral is returned and the order published again with its maker bond locked (`api/logics.py:445-458`, #188); in the warning colour, as p2pTradeEscrowWaitMaker.
+  ///
+  /// In en, this message translates to:
+  /// **'For an order you made: if the buyer does not cooperate, your collateral comes back, but your order goes back to the book and your bond stays locked.'**
+  String get p2pTradePayoutWaitMaker;
 
   /// Not in the RoboSats texts: the project's own: at 9, the coordinator's figure of now (`satoshis_now` less the maker fee) differs from the invoice's sats it asked at 6 or 8 for the same contract, which this app kept in memory (#182, security review C2): the smaller compared, said in the alert colour. {told} and {asked} are sats amounts as written by the app.
   ///
