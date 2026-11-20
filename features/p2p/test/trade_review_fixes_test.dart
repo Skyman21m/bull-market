@@ -991,7 +991,7 @@ void main() {
       () async {
         // No book lists a protected order (`api/views.py:788-790`): read by the robot that takes it, as `protected_take_test.dart` does it in detail (#245).
         final app = await TradeHarness.start(password: 'sesame');
-        final shown = switch (await app.take.readProtected(
+        final shown = switch (await app.take.readUnlisted(
           app.coordinator.coordinator,
           42,
           network: app.network,
@@ -1000,7 +1000,7 @@ void main() {
           Err(:final failure) => fail('not read: $failure'),
         };
         Future<PreparedTake> prepared() async =>
-            switch (await app.take.prepareProtected(shown)) {
+            switch (await app.take.prepareUnlisted(shown)) {
               Ok(:final value) => value,
               Err(:final failure) => fail('not prepared: $failure'),
             };

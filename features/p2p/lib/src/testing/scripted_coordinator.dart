@@ -207,6 +207,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
   String? description;
 
+  /// The order's payment method text (`payment_method`, in the book and every read, `ListOrderSerializer`): « Cash F2F » is what makes the reference show the place (`components/OrderDetails/index.tsx:409`, #245).
+  String paymentMethod = 'Revolut Instant SEPA';
+
   /// The order's meeting point, latitude then longitude (`latitude`, `longitude`, 6 decimals, `api/models/order.py:186-201`): in the book and in every read (`ListOrderSerializer`, `api/views.py:248`, `:320-321`), hidden from a robot that takes no part in a protected order (`:294-298`); `null` for none (#245).
   (double, double)? meetingPoint;
 
@@ -1150,7 +1153,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'has_range': range,
     'min_amount': range ? '50.00000000' : null,
     'max_amount': range ? '200.00000000' : null,
-    'payment_method': 'Revolut Instant SEPA',
+    'payment_method': paymentMethod,
     'is_explicit': explicitSatoshis != null,
     'premium': '2.00',
     'satoshis': explicitSatoshis,
@@ -1197,7 +1200,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'has_range': range,
       'min_amount': range ? '50.00000000' : null,
       'max_amount': range ? '200.00000000' : null,
-      'payment_method': 'Revolut Instant SEPA',
+      'payment_method': paymentMethod,
       'is_explicit': explicitSatoshis != null,
       'premium': explicitSatoshis != null ? null : '2.00',
       'satoshis': explicitSatoshis,

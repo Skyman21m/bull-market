@@ -55,7 +55,7 @@ import 'package:p2p/src/ui/garage/robot_history_dialog.dart';
 import 'package:p2p/src/ui/garage/select_host_sheet.dart';
 import 'package:p2p/src/ui/garage/send_robot_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
-import 'package:p2p/src/ui/protected_order_screen.dart';
+import 'package:p2p/src/ui/unlisted_order_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_field.dart';
@@ -629,7 +629,7 @@ void main() {
         // The dialog closed with no answer of its own: the order's page, its host and number, and why its robot cannot read it.
         expect(missDialog, findsNothing);
         expect(find.byType(NoRobotDialog), findsNothing);
-        expect(find.byType(ProtectedOrderScreen), findsOneWidget);
+        expect(find.byType(UnlistedOrderScreen), findsOneWidget);
         expect(find.text('# 1'), findsOneWidget);
         expect(
           find.text(
@@ -654,7 +654,7 @@ void main() {
         search: 'Rechercher',
       );
 
-      expect(find.byType(ProtectedOrderScreen), findsOneWidget);
+      expect(find.byType(UnlistedOrderScreen), findsOneWidget);
       expect(
         find.text(
           'Les robots d’une clé de garage collée ne peuvent pas prendre d’ordre ici. Générez une nouvelle clé de garage dans le Garage.',
@@ -4581,7 +4581,7 @@ void main() {
           await tester.tap(find.text('Search').last);
           await settle(tester);
           // The order's page opens for its robot to read it (#245): a pasted key's robots take no order.
-          expect(find.byType(ProtectedOrderScreen), findsOneWidget);
+          expect(find.byType(UnlistedOrderScreen), findsOneWidget);
           expect(
             find.text(
               'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.',

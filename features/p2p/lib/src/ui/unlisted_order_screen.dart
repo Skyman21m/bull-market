@@ -8,23 +8,23 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/trade/trade_take.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_text.dart';
-import '../presentation/protected_order_cubit.dart';
+import '../presentation/unlisted_order_cubit.dart';
 import '../presentation/take_order_cubit.dart';
 import '../presentation/trade_l10n.dart';
 import 'widgets/order_detail_row.dart';
 import 'widgets/testnet_banner.dart';
 import 'widgets/trade_button.dart';
 
-/// The page of an order that the public book does not list, such as a password-protected one, reached by its URL (« Search order », #245), as the reference's order page reads it with the user's robot (`basic/OrderPage/index.tsx:75-96`).
+/// The page of an order that no book received, a password-protected one or a public one the book in memory does not hold yet, reached by its URL (« Search order », #245), as the reference's order page reads it with the user's robot (`basic/OrderPage/index.tsx:75-96`).
 ///
 /// While the robot that will take the order reads it: the host and the number, a bar named « Take Order » and a line for each step (« Building your robot! », the reference's words for a robot made, then the order read), and after 30 s that it still waits.
-/// Once read, [details] builds the page of the order as its robot read it, the order details of an order of the book with « Password » and « Take Order » ([ProtectedOrderShown]).
+/// Once read, [details] builds the page of the order as its robot read it, the order details of an order of the book with « Password » and « Take Order » ([UnlistedOrderShown]).
 /// An order with an open trade here opens that trade ([onTraded]); a read refused says why under the host, in words of the app, with « Retry » when another read may give the order (never for an order gone: « This order is not available »).
-class ProtectedOrderScreen extends StatelessWidget {
-  final Widget Function(ProtectedOrder order) details;
+class UnlistedOrderScreen extends StatelessWidget {
+  final Widget Function(UnlistedOrder order) details;
   final ValueChanged<TradeRecord> onTraded;
 
-  const ProtectedOrderScreen({
+  const UnlistedOrderScreen({
     super.key,
     required this.details,
     required this.onTraded,
@@ -32,15 +32,15 @@ class ProtectedOrderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<ProtectedOrderCubit, ProtectedOrderState>(
-      listenWhen: (_, current) => current is ProtectedOrderTraded,
+    return BlocConsumer<UnlistedOrderCubit, UnlistedOrderState>(
+      listenWhen: (_, current) => current is UnlistedOrderTraded,
       listener: (_, state) {
-        if (state is ProtectedOrderTraded) onTraded(state.record);
+        if (state is UnlistedOrderTraded) onTraded(state.record);
       },
       buildWhen: (previous, current) =>
-          current is! ProtectedOrderShown || previous is! ProtectedOrderShown,
+          current is! UnlistedOrderShown || previous is! UnlistedOrderShown,
       builder: (context, state) => switch (state) {
-        ProtectedOrderShown(:final order) => details(order),
+        UnlistedOrderShown(:final order) => details(order),
         _ => _Reading(state: state),
       },
     );
@@ -49,7 +49,7 @@ class ProtectedOrderScreen extends StatelessWidget {
 
 /// The page before the order is shown: its host and number, the read in progress or why it failed.
 class _Reading extends StatelessWidget {
-  final ProtectedOrderState state;
+  final UnlistedOrderState state;
 
   const _Reading({required this.state});
 
@@ -58,7 +58,7 @@ class _Reading extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    final cubit = context.read<ProtectedOrderCubit>();
+    final cubit = context.read<UnlistedOrderCubit>();
     final coordinator = CoordinatorText.of(
       cubit.coordinator.longAlias,
       maxCodePoints: CoordinatorText.name,
@@ -97,7 +97,7 @@ class _Reading extends StatelessWidget {
                   ),
                   const Gap(BullSpacing.lg),
                   ...switch (state) {
-                    ProtectedOrderReading(:final step, :final slow) => [
+                    UnlistedOrderReading(:final step, :final slow) => [
                       Semantics(
                         container: true,
                         liveRegion: true,
@@ -115,7 +115,7 @@ class _Reading extends StatelessWidget {
                         line(l10n.p2pRobotStillWaiting(coordinator)),
                       ],
                     ],
-                    final ProtectedOrderRefused refused => [
+                    final UnlistedOrderRefused refused => [
                       line(
                         TakeWasRefused(
                           refused.refusal,
@@ -131,7 +131,7 @@ class _Reading extends StatelessWidget {
                         ),
                       ],
                     ],
-                    ProtectedOrderShown() || ProtectedOrderTraded() => [
+                    UnlistedOrderShown() || UnlistedOrderTraded() => [
                       const Center(child: CircularProgressIndicator()),
                     ],
                   },

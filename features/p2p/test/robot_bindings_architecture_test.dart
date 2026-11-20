@@ -593,8 +593,8 @@ void main() {
           'confirm',
           'abandon',
           'abandonOrder',
-          'readProtected',
-          'prepareProtected',
+          'readUnlisted',
+          'prepareUnlisted',
           'abandonRead',
         ]) {
           expect(referring((r) => r == 'TakeOrderUsecase.$step'), {
@@ -2530,8 +2530,8 @@ const _watched = {
       'confirm',
       'abandon',
       'abandonOrder',
-      'readProtected',
-      'prepareProtected',
+      'readUnlisted',
+      'prepareUnlisted',
       'abandonRead',
     },
   ),

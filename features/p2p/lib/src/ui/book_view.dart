@@ -210,7 +210,7 @@ class _BookViewState extends State<BookView> {
         switch (found) {
           case OrderSearchMissFound(:final order):
             widget.onOpenOrder(order);
-          case OrderSearchMissProtected(:final coordinator, :final orderId):
+          case OrderSearchMissUnlisted(:final coordinator, :final orderId):
             onOpenProtected?.call(coordinator, orderId);
           case _:
             break;

@@ -29,7 +29,7 @@ import 'presentation/payout_cubit.dart';
 import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
-import 'presentation/protected_order_cubit.dart';
+import 'presentation/unlisted_order_cubit.dart';
 import 'presentation/renewals_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
@@ -40,7 +40,7 @@ import 'ui/garage/garage_reauthentication.dart';
 import 'ui/garage/garage_view.dart';
 import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
-import 'ui/protected_order_screen.dart';
+import 'ui/unlisted_order_screen.dart';
 import 'ui/trade/active_trades_sheet.dart';
 import 'ui/trade/bond_payment_panel.dart';
 import 'ui/trade/earlier_escrow_lines.dart';
@@ -66,16 +66,12 @@ final class P2pOrderRouteArgs {
 }
 
 /// What the page of an order the books do not list needs (#245): its coordinator and number, from « Search order », and the network of the tab; its robot reads it there.
-final class P2pProtectedOrderRouteArgs {
+final class P2pUnlistedOrderRouteArgs {
   final Coordinator coordinator;
   final int orderId;
   final RobosatsNetwork network;
 
-  const P2pProtectedOrderRouteArgs(
-    this.coordinator,
-    this.orderId,
-    this.network,
-  );
+  const P2pUnlistedOrderRouteArgs(this.coordinator, this.orderId, this.network);
 }
 
 /// What the page of a trade needs: the trade's record, from a take, a make or the list of the active trades.
@@ -159,7 +155,7 @@ final class P2pRouter {
   static const path = '/p2p';
   static const name = 'p2p';
   static const orderName = 'p2pOrder';
-  static const protectedOrderName = 'p2pProtectedOrder';
+  static const unlistedOrderName = 'p2pProtectedOrder';
   static const tradeName = 'p2pTrade';
   static const createName = 'p2pCreate';
 
@@ -194,12 +190,12 @@ final class P2pRouter {
       ),
       // The page of an order the books do not list, reached by its URL (#245): only from « Search order », which hands it what it needs.
       GoRoute(
-        name: protectedOrderName,
-        path: 'protected',
+        name: unlistedOrderName,
+        path: 'unlisted',
         redirect: (context, state) =>
-            state.extra is P2pProtectedOrderRouteArgs ? null : path,
+            state.extra is P2pUnlistedOrderRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
-          final P2pProtectedOrderRouteArgs args => _protectedOrderPage(
+          final P2pUnlistedOrderRouteArgs args => _unlistedOrderPage(
             locator,
             args,
           ),
@@ -527,16 +523,16 @@ final class P2pRouter {
       : screen;
 
   /// The page of an order the books do not list (#245): its robot reads it, and once read the page is the order's ([_orderPage]'s, with « Password » for a protected order); an order with an open trade here opens that trade in its place, and so does a take sent.
-  static Widget _protectedOrderPage(
+  static Widget _unlistedOrderPage(
     GetIt locator,
-    P2pProtectedOrderRouteArgs args,
+    P2pUnlistedOrderRouteArgs args,
   ) => BlocProvider(
-    create: (_) => locator<ProtectedOrderCubit>(
+    create: (_) => locator<UnlistedOrderCubit>(
       param1: (args.coordinator, args.orderId),
       param2: args.network,
     )..load(),
     child: Builder(
-      builder: (context) => ProtectedOrderScreen(
+      builder: (context) => UnlistedOrderScreen(
         onTraded: (record) => context.pushReplacementNamed(
           tradeName,
           extra: P2pTradeRouteArgs(record),
@@ -544,18 +540,18 @@ final class P2pRouter {
         details: (order) => _orderPage(
           locator,
           P2pOrderRouteArgs(order.order, order.network),
-          protected: order,
+          unlisted: order,
         ),
       ),
     ),
   );
 
   /// The page of an order: « Take Order » takes it when the feature holds robots (the vault's handle was given), and a take that was sent replaces the page by its trade, as the official client's order page becomes the trade at the same address.
-  /// [protected], a password-protected order its robot read (#245): its take is that order's.
+  /// [unlisted], an order no book received, which its robot read (#245): its take is that order's.
   static Widget _orderPage(
     GetIt locator,
     P2pOrderRouteArgs args, {
-    ProtectedOrder? protected,
+    UnlistedOrder? unlisted,
   }) {
     final canTake = args.takeable && locator.isRegistered<TakeOrderCubit>();
     final details = Builder(
@@ -584,14 +580,14 @@ final class P2pRouter {
         ),
         if (canTake)
           BlocProvider(
-            create: (_) => protected == null
+            create: (_) => unlisted == null
                 ? locator<TakeOrderCubit>(
                     param1: args.order,
                     param2: args.network,
                   )
                 : locator<TakeOrderCubit>(
-                    param1: protected,
-                    instanceName: TakeOrderCubit.protectedOrder,
+                    param1: unlisted,
+                    instanceName: TakeOrderCubit.unlistedOrder,
                   ),
           ),
       ],
@@ -678,8 +674,8 @@ class _P2pPageState extends State<_P2pPage> {
     RobosatsNetwork network,
   ) async {
     final exit = await context.pushNamed<P2pOrderExit>(
-      P2pRouter.protectedOrderName,
-      extra: P2pProtectedOrderRouteArgs(coordinator, orderId, network),
+      P2pRouter.unlistedOrderName,
+      extra: P2pUnlistedOrderRouteArgs(coordinator, orderId, network),
     );
     if (exit == P2pOrderExit.garage && mounted) _show(P2pDestination.garage);
   }
@@ -765,7 +761,7 @@ class _P2pPageState extends State<_P2pPage> {
       shuffle: locator<P2pShuffle>(),
       onOpenOrder: (order) =>
           unawaited(_openOrder(context, order, current, active)),
-      onOpenProtected: hasTrades && locator.isRegistered<ProtectedOrderCubit>()
+      onOpenProtected: hasTrades && locator.isRegistered<UnlistedOrderCubit>()
           ? (coordinator, orderId) => unawaited(
               _openProtected(context, coordinator, orderId, current),
             )

@@ -81,7 +81,7 @@ class BookCubit extends Cubit<BookState> {
   /// What the screen says for [miss], an order URL that the books received do not hold.
   ///
   /// While the book of the coordinator the URL names is still awaited, it waits for it; then the order if that book holds it, or [OrderSearchMissOffline] if that book could not be had.
-  /// Otherwise it asks the vault whether a Garage Key is stored for the network of the book: [OrderSearchMissNoGarageKey] only when the vault said that the slot is empty, or when the feature has no vault's handle, the Garage being disabled then; a key stored is [OrderSearchMissProtected] when the URL names a coordinator of the book and an order number from 1 to 2^53, so that the order's page reads it with a robot (#245), and [OrderSearchMissNotAvailable] otherwise; a key that cannot be read (keystore locked, entry unreadable or unusable) is [OrderSearchMissNotAvailable], never « You do not have a Garage Key », since a failure is not an absence (`HasGarageKeyUsecase`), and no robot can read the order without the key.
+  /// Otherwise it asks the vault whether a Garage Key is stored for the network of the book: [OrderSearchMissNoGarageKey] only when the vault said that the slot is empty, or when the feature has no vault's handle, the Garage being disabled then; a key stored is [OrderSearchMissUnlisted] when the URL names a coordinator of the book and an order number from 1 to 2^53, so that the order's page reads it with a robot (#245), and [OrderSearchMissNotAvailable] otherwise; a key that cannot be read (keystore locked, entry unreadable or unusable) is [OrderSearchMissNotAvailable], never « You do not have a Garage Key », since a failure is not an absence (`HasGarageKeyUsecase`), and no robot can read the order without the key.
   /// `null`, the vault not read, once [asked] says that the screen no longer asks or the book is closed.
   /// It hands no key out, uses no robot, and sends nothing to any coordinator.
   Future<OrderSearchMiss?> settleSearchMiss(
@@ -118,7 +118,7 @@ class BookCubit extends Cubit<BookState> {
             .where((coordinator) => coordinator.shortAlias == miss.coordinator)
             .firstOrNull;
         return coordinator != null && id != null && id >= 1 && id <= 1 << 53
-            ? OrderSearchMissProtected(coordinator, id)
+            ? OrderSearchMissUnlisted(coordinator, id)
             : const OrderSearchMissNotAvailable();
     }
   }

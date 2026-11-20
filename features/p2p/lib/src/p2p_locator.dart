@@ -110,7 +110,7 @@ import 'presentation/payout_cubit.dart';
 import 'presentation/payout_rate_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/pending_makes_cubit.dart';
-import 'presentation/protected_order_cubit.dart';
+import 'presentation/unlisted_order_cubit.dart';
 import 'presentation/renewals_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
@@ -591,7 +591,7 @@ final class P2pLocator {
       final take = locator<TakeOrderUsecase>();
       return TakeCalls(
         prepare: take.prepare,
-        prepareProtected: take.prepareProtected,
+        prepareUnlisted: take.prepareUnlisted,
         confirm: take.confirm,
         abandon: take.abandon,
         abandonOrder: take.abandonOrder,
@@ -606,27 +606,27 @@ final class P2pLocator {
         locator<HasGarageKeyUsecase>().execute,
       ),
     );
-    // The take of a password-protected order its robot read, reached by its URL (#245), and the read itself.
-    locator.registerFactoryParam<TakeOrderCubit, ProtectedOrder, void>(
-      (order, _) => TakeOrderCubit.protected(
+    // The take of an order no book received, reached by its URL and read by its robot (#245): a password-protected one, or a public one the book in memory does not hold yet; and the read itself.
+    locator.registerFactoryParam<TakeOrderCubit, UnlistedOrder, void>(
+      (order, _) => TakeOrderCubit.unlisted(
         order,
         takeCalls(),
         locator<HasGarageKeyUsecase>().execute,
       ),
-      instanceName: TakeOrderCubit.protectedOrder,
+      instanceName: TakeOrderCubit.unlistedOrder,
     );
     locator.registerFactoryParam<
-      ProtectedOrderCubit,
+      UnlistedOrderCubit,
       (Coordinator, int),
       RobosatsNetwork
     >((order, network) {
       final take = locator<TakeOrderUsecase>();
       final (coordinator, orderId) = order;
-      return ProtectedOrderCubit(
+      return UnlistedOrderCubit(
         coordinator,
         orderId,
         network,
-        take.readProtected,
+        take.readUnlisted,
         take.abandonRead,
       );
     });

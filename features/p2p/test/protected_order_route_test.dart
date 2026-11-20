@@ -10,7 +10,7 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
-import 'package:p2p/src/ui/protected_order_screen.dart';
+import 'package:p2p/src/ui/unlisted_order_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/testing.dart';
@@ -38,14 +38,29 @@ final class _Coordinators implements CoordinatorTransport {
   final ScriptedCoordinator temple;
   final Map<String, ScriptedCoordinator> _others = {};
 
-  _Coordinators(this.temple);
+  /// Whether temple's book leaves the order out, as a book read before the order was made.
+  final bool bookWithout;
+
+  _Coordinators(this.temple, {this.bookWithout = false});
 
   @override
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
     CoordinatorRequest request,
   ) async {
     final alias = _aliasOf(request.url.host);
-    if (alias == temple.coordinator.shortAlias) return temple.send(request);
+    if (alias == temple.coordinator.shortAlias) {
+      // An order made after the book was read: its coordinator's book, read when the tab opened, did not hold it.
+      if (bookWithout && request.url.path.startsWith('/api/book')) {
+        return Ok(
+          CoordinatorResponse(
+            statusCode: 404,
+            headers: const {'content-type': 'application/json'},
+            body: utf8.encode(jsonEncode({'not_found': 'No orders found'})),
+          ),
+        );
+      }
+      return temple.send(request);
+    }
     if (request.url.path.startsWith('/api/book')) {
       return Ok(
         CoordinatorResponse(
@@ -116,7 +131,13 @@ final class _Journey {
     await tester.pump();
   }
 
-  static Future<_Journey> start(WidgetTester tester, Locale locale) async {
+  /// [password] `null`: a public order made after the book was read, which the book in memory does not hold; [taken]: an order already taken by another robot.
+  static Future<_Journey> start(
+    WidgetTester tester,
+    Locale locale, {
+    String? password = _password,
+    bool taken = false,
+  }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 3200 * 3)
       ..devicePixelRatio = 3;
@@ -128,17 +149,22 @@ final class _Journey {
             network: _net,
             robots: TradeHarness.robotsOf(_net),
             clock: () => clock,
-            password: _password,
+            password: password,
           )
           ..description = 'Cash in hand, near the station.'
-          ..meetingPoint = (45.76, 4.83);
+          ..meetingPoint = (45.76, 4.83)
+          // « Cash F2F » for the protected order, as the reference shows the place only for it (`OrderDetails/index.tsx:409`).
+          ..paymentMethod = password == null
+              ? 'Revolut Instant SEPA'
+              : 'Cash F2F';
+    if (taken) coordinator.takenByAnother();
     final locator = GetIt.asNewInstance();
     addTearDown(locator.reset);
     final tor = StreamController<P2pTorState>.broadcast();
     addTearDown(tor.close);
     setUpP2pForTesting(
       locator,
-      transport: _Coordinators(coordinator),
+      transport: _Coordinators(coordinator, bookWithout: password == null),
       torStates: () => tor.stream,
       clock: () => clock,
       garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
@@ -175,8 +201,8 @@ final class _Journey {
     return journey;
   }
 
-  /// « Search », the order's URL, « Search »: the order's page, read by its robot.
-  Future<void> searchOrder() async {
+  /// « Search », the order's URL, « Search »: the order's page, read by its robot, until [shown].
+  Future<void> searchOrder({Finder? shown}) async {
     await tap(find.text(l10n.p2pCommonSearch));
     await settle(tester);
     final dialog = find.byType(SearchOrderDialog);
@@ -190,7 +216,7 @@ final class _Journey {
     await tap(
       find.descendant(of: dialog, matching: find.text(l10n.p2pCommonSearch)),
     );
-    await waitFor(passwordField);
+    await waitFor(shown ?? passwordField);
     await settle(tester);
   }
 
@@ -229,7 +255,7 @@ void main() {
           await journey.searchOrder();
 
           // The page of the order, its robot's read: no book listed it.
-          expect(find.byType(ProtectedOrderScreen), findsOneWidget);
+          expect(find.byType(UnlistedOrderScreen), findsOneWidget);
           expect(find.text('# 42'), findsOneWidget);
           expect(find.text(l10n.p2pMakePassword), findsOneWidget);
           expect(find.text(l10n.p2pTakeProtectedHidden), findsOneWidget);
@@ -289,5 +315,68 @@ void main() {
         },
       );
     });
+
+    group(
+      'an order reached by its URL that the book in memory does not hold (#245), ${locale.languageCode}',
+      () {
+        testWidgets(
+          'a public order made after the book was read: its page with no « Password », taken with every comparison, its description on the « Order » tab, no place without « Cash F2F »',
+          (tester) async {
+            final journey = await _Journey.start(
+              tester,
+              locale,
+              password: null,
+            );
+            final l10n = journey.l10n;
+            await journey.searchOrder(shown: find.text(l10n.p2pTakeOrder));
+            expect(find.byType(UnlistedOrderScreen), findsOneWidget);
+            expect(journey.passwordField, findsNothing);
+            expect(find.text(l10n.p2pMakePassword), findsNothing);
+            expect(find.text(l10n.p2pTakeProtectedHidden), findsNothing);
+            expect(find.text(l10n.p2pOrderNotAvailable), findsNothing);
+            await journey.take();
+            await journey.waitFor(find.byType(TradeScreen));
+            expect(journey.takes, ['{"action":"take","amount":0}']);
+            await journey.tap(find.text(l10n.p2pNavOrder).last);
+            await settle(tester);
+            await journey.waitFor(find.text('Cash in hand, near the station.'));
+            expect(find.text(l10n.p2pTradeMeetingPoint), findsNothing);
+            await journey.close();
+          },
+        );
+
+        testWidgets(
+          'an order already taken: « This order is not available », nothing to take',
+          (tester) async {
+            final journey = await _Journey.start(
+              tester,
+              locale,
+              password: null,
+              taken: true,
+            );
+            final l10n = journey.l10n;
+            await journey.searchOrder(
+              shown: find.text(l10n.p2pOrderNotAvailable),
+            );
+            expect(find.byType(UnlistedOrderScreen), findsOneWidget);
+            // The page says it alone: no « Take Order », no « Retry » (the tab under it may show its own).
+            final page = find.byType(UnlistedOrderScreen);
+            expect(
+              find.descendant(of: page, matching: find.text(l10n.p2pTakeOrder)),
+              findsNothing,
+            );
+            expect(
+              find.descendant(
+                of: page,
+                matching: find.text(l10n.p2pCommonRetry),
+              ),
+              findsNothing,
+            );
+            expect(journey.takes, isEmpty);
+            await journey.close();
+          },
+        );
+      },
+    );
   }
 }

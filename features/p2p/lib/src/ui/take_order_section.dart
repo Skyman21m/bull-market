@@ -29,7 +29,7 @@ import 'widgets/trade_button.dart';
 /// - « The order changed. » says, from its start, that a confirmation found the order changed and reads it again: the read the user saw stays shown meanwhile, the rows that differ are marked when the new one arrives, and it waits for « Continue » and « Done » again, never confirmed by itself. When the take was sent, [onTaken] opens its trade, the read shown until then.
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
-/// - A password-protected order (#245, `TakeOrderCubit.protected`): « Password » above the button, as the reference puts it above its take button (`components/OrderDetails/index.tsx:546-571`), typed hidden, with a short line above it that its description and location come with the take; its text stays in this field, and « Done » hands the cubit its hash only ([OrderPassword]); « Take Order » or « Continue » pressed with the field empty starts nothing and says so under the button, where the reference would send the take and be refused (error 1045); a wrong password is said there with the coordinator's message (« Wrong password », `api/errors.py:52`), the field kept to be corrected.
+/// - A password-protected order reached by its URL (#245, `TakeOrderCubit.unlisted` with `UnlistedOrder.hasPassword`; an order without a password reached so has no field): « Password » above the button, as the reference puts it above its take button (`components/OrderDetails/index.tsx:546-571`), typed hidden, with a short line above it that its description and location come with the take; its text stays in this field, and « Done » hands the cubit its hash only ([OrderPassword]); « Take Order » or « Continue » pressed with the field empty starts nothing and says so under the button, where the reference would send the take and be refused (error 1045); a wrong password is said there with the coordinator's message (« Wrong password », `api/errors.py:52`), the field kept to be corrected.
 ///
 /// Without [canTake] (the feature was set up without the vault's handle, so it holds no robot) a press shows « You do not have a Garage Key », as the reference does without a robot.
 class TakeOrderSection extends StatefulWidget {
@@ -75,7 +75,8 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
 
   /// Whether the order is protected by a password (#245).
   bool get _protected =>
-      widget.canTake && context.read<TakeOrderCubit>().protected != null;
+      widget.canTake &&
+      (context.read<TakeOrderCubit>().unlisted?.hasPassword ?? false);
 
   /// For a protected order, whether « Password » holds a password; otherwise says so under the button and starts nothing.
   bool _passwordGiven() {
@@ -140,7 +141,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       final done = await StoreTokenDialog.show(context);
       if (!mounted) return;
       if (done) {
-        if (cubit.protected == null) {
+        if (!_protected) {
           unawaited(cubit.confirm());
         } else if (OrderPassword.tryCreate(_password.text)
             case final password?) {
@@ -167,7 +168,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         : const TakeAmountEmpty();
     final ready = !isRange || input is TakeAmountValid;
     final cubit = widget.canTake ? context.read<TakeOrderCubit>() : null;
-    final protected = cubit?.protected != null;
+    final protected = cubit?.unlisted?.hasPassword ?? false;
     final wrongPassword = switch (state) {
       TakeIdle(problem: TakeWasNotMade(refusal: OrderWrongPassword())) => true,
       _ => false,

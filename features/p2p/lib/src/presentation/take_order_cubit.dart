@@ -20,10 +20,10 @@ typedef PrepareTake =
       TakeProgress? onStep,
     });
 
-/// [TakeOrderUsecase.prepareProtected], which the locator gives the cubit (#245).
-typedef PrepareProtectedTake =
+/// [TakeOrderUsecase.prepareUnlisted], which the locator gives the cubit (#245).
+typedef PrepareUnlistedTake =
     Future<Result<PreparedTake, TakeRefusal>> Function(
-      ProtectedOrder shown, {
+      UnlistedOrder shown, {
       TakeAmount? amount,
       TakeProgress? onStep,
     });
@@ -52,15 +52,15 @@ typedef HasGarageKey =
 final class TakeCalls {
   final PrepareTake prepare;
 
-  /// The preparation of a password-protected order (#245), given by the locator; `null` where no protected order is taken.
-  final PrepareProtectedTake? prepareProtected;
+  /// The preparation of an order no book received, reached by its URL (#245), given by the locator; `null` where none is taken.
+  final PrepareUnlistedTake? prepareUnlisted;
   final ConfirmTake confirm;
   final AbandonTake abandon;
   final AbandonOrderTake abandonOrder;
 
   const TakeCalls({
     required this.prepare,
-    this.prepareProtected,
+    this.prepareUnlisted,
     required this.confirm,
     required this.abandon,
     required this.abandonOrder,
@@ -172,13 +172,13 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   /// The locator's name of the cubit that takes an order public again from the trade screen, given the trade shown ([shownTrade]).
   static const fromTrade = 'fromTrade';
 
-  /// The locator's name of the cubit that takes a password-protected order its robot read ([TakeOrderCubit.protected], #245).
-  static const protectedOrder = 'protectedOrder';
+  /// The locator's name of the cubit that takes an order no book received, which its robot read ([TakeOrderCubit.unlisted], #245).
+  static const unlistedOrder = 'unlistedOrder';
 
   final PublicOrder order;
 
-  /// The password-protected order the page shows, as its robot read it (#245), `null` for an order of the book: its take is prepared with [TakeCalls.prepareProtected] and confirmed with the password's hash.
-  final ProtectedOrder? protected;
+  /// The order no book received that the page shows, as its robot read it (#245), `null` for an order of the book: its take is prepared with [TakeCalls.prepareUnlisted], and confirmed with the password's hash when it has a password ([UnlistedOrder.hasPassword]).
+  final UnlistedOrder? unlisted;
 
   /// The trade the screen shows, when the take starts from it: a take refused because the order still has that very trade open here (its close could not be written) is said as a refusal, not opened again over itself.
   final TradeRecord? shownTrade;
@@ -201,16 +201,16 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     this._hasKey, {
     this._stillWaitingAfter = TakeOrderCubit.stillWaitingAfter,
     this.shownTrade,
-    this.protected,
+    this.unlisted,
   }) : super(const TakeIdle()) {
-    if (protected != null && _calls.prepareProtected == null) {
-      throw ArgumentError('A protected order without its preparation.');
+    if (unlisted != null && _calls.prepareUnlisted == null) {
+      throw ArgumentError('An order by its URL without its preparation.');
     }
   }
 
-  /// The take of the password-protected order [shown] (#245): [order] is the order as its robot read it.
-  TakeOrderCubit.protected(
-    ProtectedOrder shown,
+  /// The take of [shown], an order no book received (#245): [order] is the order as its robot read it.
+  TakeOrderCubit.unlisted(
+    UnlistedOrder shown,
     TakeCalls calls,
     HasGarageKey hasKey, {
     Duration stillWaitingAfter = TakeOrderCubit.stillWaitingAfter,
@@ -220,7 +220,7 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
          calls,
          hasKey,
          stillWaitingAfter: stillWaitingAfter,
-         protected: shown,
+         unlisted: shown,
        );
 
   /// Whether a Garage Key is stored for the network, which decides between preparing the take and « You do not have a Garage Key » (`Dialogs/Confirmation.tsx`): `false` only when the vault says there is none; a key that cannot be read goes on, and the take says why it fails.
@@ -315,10 +315,10 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       }
     }
 
-    final protected = this.protected;
-    final prepareProtected = _calls.prepareProtected;
-    final result = protected != null && prepareProtected != null
-        ? await prepareProtected(protected, amount: _amount, onStep: onStep)
+    final unlisted = this.unlisted;
+    final prepareUnlisted = _calls.prepareUnlisted;
+    final result = unlisted != null && prepareUnlisted != null
+        ? await prepareUnlisted(unlisted, amount: _amount, onStep: onStep)
         : await _calls.prepare(
             order,
             network: network,

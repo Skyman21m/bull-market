@@ -56,12 +56,12 @@ final class OrderSearchMissNoGarageKey extends OrderSearchMiss {
   const OrderSearchMissNoGarageKey();
 }
 
-/// A Garage Key is stored, and the URL names a coordinator of the federation and an order number: the order may be a password-protected one, which no book lists; its page opens, and the robot that would take it reads it there (#245), as the official client's order page reads it with the user's robot.
-final class OrderSearchMissProtected extends OrderSearchMiss {
+/// A Garage Key is stored, and the URL names a coordinator of the federation and an order number: the order may be a password-protected one, which no book lists, or a public one the book in memory does not hold yet; its page opens, and the robot that would take it reads it there (#245), as the official client's order page reads it with the user's robot.
+final class OrderSearchMissUnlisted extends OrderSearchMiss {
   final Coordinator coordinator;
   final int orderId;
 
-  const OrderSearchMissProtected(this.coordinator, this.orderId);
+  const OrderSearchMissUnlisted(this.coordinator, this.orderId);
 }
 
 /// A Garage Key is stored, or cannot be read, and the URL names no coordinator of the federation or no order number, or no protected order can be read here: the official client's « This order is not available ».

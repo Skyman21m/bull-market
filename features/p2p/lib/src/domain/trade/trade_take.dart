@@ -113,14 +113,18 @@ final class TakePasswordMissing extends TakeRefusal {
   const TakePasswordMissing();
 }
 
-/// A password-protected order, as the robot that will take it read it (#245): the order the page shows, in place of the public book, which never lists a protected order (`api/views.py:788-790`).
+/// An order that no book received, reached by its URL and read by the robot that will take it (#245): the order the page shows, in place of the public book.
 ///
-/// Only a public order with a password that the robot takes no part in, read whole as the book would list it ([PublicOrder.ofRead]): its description and location are hidden from such a robot (`api/views.py:294-298`), and come with the take, once the robot is a participant (`:248-252`, `:280`, `:320-321`).
+/// A password-protected order, which no book ever lists (`api/views.py:788-790`), or a public order without a password that the book in memory does not hold yet (the book is read again only on the user's gesture, and a coordinator caches its book for 10 s, `api/views.py:85`, `:824`), as the reference's order page shows either (`basic/OrderPage/index.tsx:75-96`).
+/// Only a public order that the robot takes no part in, read whole as the book would list it ([PublicOrder.ofRead]); a protected one's description and location are hidden from such a robot (`api/views.py:294-298`), and come with the take, once the robot is a participant (`:248-252`, `:280`, `:320-321`).
 /// It holds no robot: the robot that read it stays with the use case (`PreparedTakes`), kept for the take of that order.
 @immutable
-final class ProtectedOrder {
+final class UnlistedOrder {
   /// The order as the book would list it, what the order details show and the take is compared with.
   final PublicOrder order;
+
+  /// Whether a password protects the order (`has_password`): its take then asks for the password and sends its hash; otherwise it sends none.
+  final bool hasPassword;
 
   /// The network it was read on.
   final RobosatsNetwork network;
@@ -128,20 +132,28 @@ final class ProtectedOrder {
   /// When the robot read it.
   final DateTime readAt;
 
-  const ProtectedOrder._(this.order, this.network, this.readAt);
+  const UnlistedOrder._(
+    this.order,
+    this.hasPassword,
+    this.network,
+    this.readAt,
+  );
 
-  /// [read] as a protected order, or `null` when it is not a public order with a password that the robot reading it takes no part in.
-  static ProtectedOrder? ofRead(CoordinatorOrder read, {required DateTime at}) {
-    if (!read.hasPassword) return null;
-    return switch (PublicOrder.ofRead(read)) {
-      final order? => ProtectedOrder._(order, read.network, at),
-      null => null,
-    };
-  }
+  /// [read] as an order no book received, or `null` when it is not a public order that the robot reading it takes no part in.
+  static UnlistedOrder? ofRead(CoordinatorOrder read, {required DateTime at}) =>
+      switch (PublicOrder.ofRead(read)) {
+        final order? => UnlistedOrder._(
+          order,
+          read.hasPassword,
+          read.network,
+          at,
+        ),
+        null => null,
+      };
 
   @override
   String toString() =>
-      'ProtectedOrder(${order.coordinator.shortAlias}, ${order.id})';
+      'UnlistedOrder(${order.coordinator.shortAlias}, ${order.id})';
 }
 
 /// What a take in two steps is doing while it runs (#119), for the screen to say: a step, never anything of the robot or of its token.

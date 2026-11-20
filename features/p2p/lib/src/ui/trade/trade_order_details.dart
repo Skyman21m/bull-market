@@ -12,7 +12,7 @@ import '../widgets/reversible_payments_dialog.dart';
 
 /// The « Order » tab of the trade screen: the order as its coordinator describes it to the trade's robot, as the official client's order details on the order page (`components/OrderDetails/index.tsx` at commit ff1998c), read from the last read of the trade, nothing asked for it.
 ///
-/// For a password-protected order taken by this robot (#245), the maker's description and the order's place follow the payment methods once the coordinator gives them, from the take's own answer on (a participant's read, `api/views.py:248-252`, `:280`, `:320-321`): before the take they were hidden from this robot (`:294-298`), so this is where the user first sees them; « F2F location » with the point as numbers and, under the details, the reference's line that it is approximate (`components/OrderDetails/index.tsx:286-294`, `:411`). An order of the book shows neither here, its description having been shown before the take (#119).
+/// The maker's description and the order's place follow the payment methods, as the reference's order details show them to a participant (`components/OrderDetails/index.tsx:409-433`: the description when it is not empty, the place for an order whose method holds « Cash F2F »), the coordinator giving both to a participant at every read (`api/views.py:280`, `:320-321`), from the take's own answer on (`:248-252`; #245): the description as plain text, cleaned and bounded as on the order's page (`OrderDescriptionRow`), and « F2F location » with the point as numbers and, under the details, the reference's line that it is approximate (`:286-294`, `:411`), where the reference opens its map. For a password-protected order this is where the user first sees them, hidden before the take (`:294-298`).
 ///
 /// Host and number, the coordinator's fees, then « Order Details »: the amount (the amount taken once there is one), what this robot sends and receives (the sats once the coordinator gives them, `invoice_amount` or `trade_satoshis` for a buyer, `trade_satoshis` or `escrow_satoshis` for a seller, and until then the reference's estimate with the coordinator's fee of this robot's side, the taker's or, for an order made here, the maker's, `TakerEstimate.ofTrade` or `ofTradeAsSeller`), the payment methods, the price and premium, then, while the order's status expires (`:494`: not 4, 5, 12 to 18), « Expires in » with the countdown (orange under a quarter of the time, red under a tenth, bold under a quarter), « Deposit » and the bar of the time left; then the maker with how recently its coordinator saw it, as the order details of the book show them (`OrderFeeRow`, `OrderMakerRow`).
 class TradeOrderDetails extends StatelessWidget {
@@ -71,13 +71,14 @@ class TradeOrderDetails extends StatelessWidget {
         ? formats.estimate(estimate)
         : null;
     final methods = order.paymentMethods.text;
-    // A protected order taken here: its description and place, hidden before the take, given now (#245).
-    final protectedTaken = order.hasPassword && order.isTaker;
+    // The description and the place, as the reference shows them to a participant (#245).
     final description = switch (order.description) {
       final words? when words.trim().isNotEmpty => words,
       _ => null,
     };
-    final location = order.location;
+    final location = order.paymentMethods.text.contains('Cash F2F')
+        ? order.location
+        : null;
     final fiat = OrderSentence.split(
       seller
           ? l10n.p2pOrderYouReceiveVia(methods, OrderSentence.mark)
@@ -155,9 +156,8 @@ class TradeOrderDetails extends StatelessWidget {
                     )
                   : null,
             ),
-            if (protectedTaken && description != null)
-              OrderDescriptionRow(description),
-            if (protectedTaken && location != null)
+            if (description != null) OrderDescriptionRow(description),
+            if (location != null)
               OrderDetailRow(
                 l10n.p2pTradeMeetingPoint,
                 meetingPointText(location.latitude, location.longitude),
@@ -201,7 +201,7 @@ class TradeOrderDetails extends StatelessWidget {
             ],
           ],
         ),
-        if (protectedTaken && location != null) ...[
+        if (location != null) ...[
           const Gap(BullSpacing.xs),
           Text(
             l10n.p2pTradeMeetingPointApproximate,

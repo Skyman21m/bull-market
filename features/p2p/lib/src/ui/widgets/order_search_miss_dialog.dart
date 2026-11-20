@@ -10,7 +10,7 @@ import 'no_robot_dialog.dart';
 /// What « Search order » shows for an order URL that the books received do not hold, where the official client opens the page of the order, which asks its coordinator for it with the user's robot (`components/Dialogs/GoToOrder.tsx` at commit ff1998c).
 ///
 /// It opens at once and waits for [settle] (`BookCubit.settleSearchMiss`): for the book of the order's coordinator when it is still awaited, then for the vault, which takes a few seconds to believe that a slot is empty; an `Error` there is a bug, not caught, and leaves the wait.
-/// The order found meanwhile closes it with that order, for the book to open its page; so does an order its robot can read (#245, [OrderSearchMissProtected]), when [readsProtected], for the book to open the page that reads it: without, it says « This order is not available ».
+/// The order found meanwhile closes it with that order, for the book to open its page; so does an order its robot can read (#245, [OrderSearchMissUnlisted]), when [readsProtected], for the book to open the page that reads it: without, it says « This order is not available ».
 /// A book that could not be had: « Coordinator offline », the feature's text for a coordinator that does not answer, and « Acknowledged », which closes it.
 /// No Garage Key stored for the network: the official client's « You do not have a Garage Key » ([NoRobotDialog]).
 /// A Garage Key that cannot be read, since a failure is not an absence, or a URL that names no coordinator or number: the official client's « This order is not available », the text of a coordinator's refusal to show an order (error 1044 of `api/errors.py`), and « Acknowledged »; a Garage Key stored, the order's page, which the dialog closes for (#245).
@@ -33,7 +33,7 @@ class OrderSearchMissDialog extends StatefulWidget {
     this.readsProtected = false,
   });
 
-  /// Opens the dialog; completes with the order found meanwhile ([OrderSearchMissFound]), the order for its robot to read ([OrderSearchMissProtected]), or `null`.
+  /// Opens the dialog; completes with the order found meanwhile ([OrderSearchMissFound]), the order for its robot to read ([OrderSearchMissUnlisted]), or `null`.
   static Future<OrderSearchMiss?> show(
     BuildContext context, {
     required Future<OrderSearchMiss?> Function(bool Function() asked) settle,
@@ -66,7 +66,7 @@ class _OrderSearchMissDialogState extends State<OrderSearchMissDialog> {
     final miss = await widget.settle(() => mounted);
     if (!mounted || miss == null) return;
     if (miss is OrderSearchMissFound ||
-        (miss is OrderSearchMissProtected && widget.readsProtected)) {
+        (miss is OrderSearchMissUnlisted && widget.readsProtected)) {
       Navigator.of(context).pop(miss);
     } else {
       setState(() => _miss = miss);
@@ -100,7 +100,7 @@ class _OrderSearchMissDialogState extends State<OrderSearchMissDialog> {
         liveRegion: true,
         child: NoRobotDialog(onOpenGarage: widget.onOpenGarage),
       ),
-      OrderSearchMissNotAvailable() || OrderSearchMissProtected() => Semantics(
+      OrderSearchMissNotAvailable() || OrderSearchMissUnlisted() => Semantics(
         liveRegion: true,
         child: _message(context, l10n.p2pOrderNotAvailable),
       ),

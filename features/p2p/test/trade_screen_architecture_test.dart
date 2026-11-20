@@ -84,7 +84,7 @@ void main() {
         final cubits = {
           cubit,
           if (useCase == 'TakeOrderUsecase')
-            'lib/src/presentation/protected_order_cubit.dart',
+            'lib/src/presentation/unlisted_order_cubit.dart',
         };
         final outside = {
           for (final path in _whereNamed(sources, useCase))

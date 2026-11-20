@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:p2p/src/domain/trade/trade_take.dart';
-import 'package:p2p/src/presentation/protected_order_cubit.dart';
+import 'package:p2p/src/presentation/unlisted_order_cubit.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
-import 'package:p2p/testing.dart' show ScriptedRequest;
+import 'package:p2p/testing.dart' show ScriptedFault, ScriptedRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show CoordinatorHttpMethod;
 import 'package:test/test.dart';
@@ -16,7 +16,7 @@ void main() {
 
   TakeCalls calls(TradeHarness app) => TakeCalls(
     prepare: app.take.prepare,
-    prepareProtected: app.take.prepareProtected,
+    prepareUnlisted: app.take.prepareUnlisted,
     confirm: app.take.confirm,
     abandon: app.take.abandon,
     abandonOrder: app.take.abandonOrder,
@@ -25,24 +25,24 @@ void main() {
   int takes(TradeHarness app) =>
       app.coordinator.received.where((k) => k == ScriptedRequest.take).length;
 
-  ProtectedOrderCubit reader(TradeHarness app) => ProtectedOrderCubit(
+  UnlistedOrderCubit reader(TradeHarness app) => UnlistedOrderCubit(
     app.coordinator.coordinator,
     42,
     app.network,
-    app.take.readProtected,
+    app.take.readUnlisted,
     app.take.abandonRead,
   );
 
-  group('ProtectedOrderCubit', () {
+  group('UnlistedOrderCubit', () {
     test('reads the order with its robot, once, and shows it', () async {
       final app = await TradeHarness.start(password: password);
       final cubit = reader(app);
       final steps = <TakeStep?>[];
       final listening = cubit.stream.listen((state) {
-        if (state is ProtectedOrderReading) steps.add(state.step);
+        if (state is UnlistedOrderReading) steps.add(state.step);
       });
       await cubit.load();
-      expect(cubit.state, isA<ProtectedOrderShown>());
+      expect(cubit.state, isA<UnlistedOrderShown>());
       expect(
         steps,
         containsAllInOrder([TakeStep.creatingRobot, TakeStep.readingOrder]),
@@ -56,21 +56,22 @@ void main() {
     });
 
     test(
-      'an order that is not a protected public one: « This order is not available », no « Retry », and its robot forgotten',
+      'an order no longer takeable: « This order is not available », no « Retry », and its robot forgotten',
       () async {
         final app = await TradeHarness.start();
+        app.coordinator.takenByAnother();
         final cubit = reader(app);
         await cubit.load();
         final state = cubit.state;
         expect(
           state,
-          isA<ProtectedOrderRefused>().having(
+          isA<UnlistedOrderRefused>().having(
             (refused) => refused.refusal,
             'refusal',
             isA<TakeOrderGone>(),
           ),
         );
-        expect((state as ProtectedOrderRefused).canRetry, isFalse);
+        expect((state as UnlistedOrderRefused).canRetry, isFalse);
         await cubit.close();
       },
     );
@@ -86,7 +87,7 @@ void main() {
         // The robot of that read is never used again: a new read reserves another.
         final again = reader(app);
         await again.load();
-        expect(again.state, isA<ProtectedOrderShown>());
+        expect(again.state, isA<UnlistedOrderShown>());
         final bindings = await app.database
             .customSelect('SELECT * FROM robot_bindings')
             .get();
@@ -96,12 +97,56 @@ void main() {
     );
   });
 
-  group('TakeOrderCubit.protected', () {
+  group('UnlistedOrderCubit, a refusal that another read may change', () {
+    test(
+      'the page left after it: the robot kept for the order is forgotten, and a new read reserves another',
+      () async {
+        final app = await TradeHarness.start(password: password);
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        );
+        final cubit = reader(app);
+        await cubit.load();
+        final state = cubit.state;
+        expect(state, isA<UnlistedOrderRefused>());
+        expect((state as UnlistedOrderRefused).canRetry, isTrue);
+        await cubit.close();
+        final again = reader(app);
+        await again.load();
+        expect(again.state, isA<UnlistedOrderShown>());
+        final bindings = await app.database
+            .customSelect('SELECT * FROM robot_bindings')
+            .get();
+        expect(bindings, hasLength(2));
+        await again.close();
+      },
+    );
+
+    test('« Retry » reads again with the same robot', () async {
+      final app = await TradeHarness.start(password: password);
+      app.coordinator.failNext(
+        ScriptedRequest.order,
+        ScriptedFault.unreachable,
+      );
+      final cubit = reader(app);
+      await cubit.load();
+      await cubit.retry();
+      expect(cubit.state, isA<UnlistedOrderShown>());
+      final bindings = await app.database
+          .customSelect('SELECT * FROM robot_bindings')
+          .get();
+      expect(bindings, hasLength(1));
+      await cubit.close();
+    });
+  });
+
+  group('TakeOrderCubit.unlisted', () {
     test(
       'prepared as a protected order; « Done » without a password sends nothing; with it, the take carries its hash',
       () async {
         final app = await TradeHarness.start(password: password);
-        final shown = switch (await app.take.readProtected(
+        final shown = switch (await app.take.readUnlisted(
           app.coordinator.coordinator,
           42,
           network: app.network,
@@ -109,12 +154,12 @@ void main() {
           Ok(:final value) => value,
           Err(:final failure) => fail('not read: $failure'),
         };
-        final cubit = TakeOrderCubit.protected(
+        final cubit = TakeOrderCubit.unlisted(
           shown,
           calls(app),
           (network) async => const Ok(true),
         );
-        expect(cubit.protected, same(shown));
+        expect(cubit.unlisted, same(shown));
         expect(cubit.order, same(shown.order));
         await cubit.take();
         expect(cubit.state, isA<TakeReady>());
@@ -132,7 +177,7 @@ void main() {
       'a wrong password: the take not made, said as the coordinator says it',
       () async {
         final app = await TradeHarness.start(password: password);
-        final shown = switch (await app.take.readProtected(
+        final shown = switch (await app.take.readUnlisted(
           app.coordinator.coordinator,
           42,
           network: app.network,
@@ -140,7 +185,7 @@ void main() {
           Ok(:final value) => value,
           Err(:final failure) => fail('not read: $failure'),
         };
-        final cubit = TakeOrderCubit.protected(
+        final cubit = TakeOrderCubit.unlisted(
           shown,
           calls(app),
           (network) async => const Ok(true),
@@ -168,7 +213,7 @@ void main() {
       'a protected order without its preparation is a bug of the composition',
       () async {
         final app = await TradeHarness.start(password: password);
-        final shown = switch (await app.take.readProtected(
+        final shown = switch (await app.take.readUnlisted(
           app.coordinator.coordinator,
           42,
           network: app.network,
@@ -177,7 +222,7 @@ void main() {
           Err(:final failure) => fail('not read: $failure'),
         };
         expect(
-          () => TakeOrderCubit.protected(
+          () => TakeOrderCubit.unlisted(
             shown,
             TakeCalls(
               prepare: app.take.prepare,

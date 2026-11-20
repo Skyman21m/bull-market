@@ -1368,7 +1368,7 @@ void main() {
         // A key stored: the order's page opens for its robot to read it (#245).
         expect(
           await settling,
-          isA<OrderSearchMissProtected>()
+          isA<OrderSearchMissUnlisted>()
               .having(
                 (miss) => miss.coordinator.shortAlias,
                 'coordinator',

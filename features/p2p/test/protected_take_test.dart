@@ -37,7 +37,7 @@ void main() {
         const [],
   );
 
-  Future<(TradeHarness, ProtectedOrder)> readOne({
+  Future<(TradeHarness, UnlistedOrder)> readOne({
     bool range = false,
     double takerFee = 0.00175,
   }) async {
@@ -49,7 +49,7 @@ void main() {
     app.coordinator
       ..description = 'Cash in hand, near the station.'
       ..meetingPoint = (45.76, 4.83);
-    return switch (await app.take.readProtected(
+    return switch (await app.take.readUnlisted(
       app.coordinator.coordinator,
       42,
       network: app.network,
@@ -61,9 +61,9 @@ void main() {
 
   Future<PreparedTake> prepare(
     TradeHarness app,
-    ProtectedOrder shown, {
+    UnlistedOrder shown, {
     TakeAmount? amount,
-  }) async => switch (await app.take.prepareProtected(shown, amount: amount)) {
+  }) async => switch (await app.take.prepareUnlisted(shown, amount: amount)) {
     Ok(:final value) => value,
     Err(:final failure) => fail('not prepared: $failure'),
   };
@@ -217,7 +217,7 @@ void main() {
           final (app, shown) = await readOne();
           app.coordinator.robotView.addAll(change);
           expect(
-            await app.take.prepareProtected(shown),
+            await app.take.prepareUnlisted(shown),
             label == 'no longer protected'
                 ? refused<TakeOrderGone>()
                 : refused<TakeOrderChanged>(),
@@ -257,7 +257,7 @@ void main() {
         final (expensive, shown) = await readOne(takerFee: 0.02);
         final reads = count(expensive, ScriptedRequest.order);
         expect(
-          await expensive.take.prepareProtected(shown),
+          await expensive.take.prepareUnlisted(shown),
           isA<Err<PreparedTake, TakeRefusal>>().having(
             (err) => err.failure,
             'refusal',
@@ -271,11 +271,11 @@ void main() {
         expect(count(expensive, ScriptedRequest.order), reads);
         final (range, ranged) = await readOne(range: true);
         expect(
-          await range.take.prepareProtected(ranged),
+          await range.take.prepareUnlisted(ranged),
           refused<TakeAmountRefused>(),
         );
         expect(
-          await range.take.prepareProtected(
+          await range.take.prepareUnlisted(
             ranged,
             amount: TakeAmount.tryCreate(250),
           ),
@@ -301,28 +301,43 @@ void main() {
     );
 
     test(
-      'an order of the book is not read as protected, and its take never carries a password',
+      'a public order without a password reached by its URL: read, prepared and taken with every comparison of the take, never with a password',
       () async {
         final app = await TradeHarness.start();
-        expect(
-          await app.take.readProtected(
-            app.coordinator.coordinator,
-            42,
-            network: app.network,
-          ),
-          refused<TakeOrderGone>(),
-        );
-        final public = await TradeHarness.start();
-        final prepared = switch (await public.take.prepare(
-          await public.shownOrder(),
-          network: public.network,
+        final shown = switch (await app.take.readUnlisted(
+          app.coordinator.coordinator,
+          42,
+          network: app.network,
         )) {
           Ok(:final value) => value,
-          Err(:final failure) => fail('not prepared: $failure'),
+          Err(:final failure) => fail('not read: $failure'),
         };
+        expect(shown.hasPassword, isFalse);
+        // Read again otherwise than the page shows it: refused, nothing taken.
+        app.coordinator.robotView['bond_size'] = '4.00';
         expect(
-          await public.take.confirm(
+          await app.take.prepareUnlisted(shown),
+          refused<TakeOrderChanged>(),
+        );
+        app.coordinator.robotView.clear();
+        final prepared = await prepare(app, shown);
+        expect(prepared.order.hasPassword, isFalse);
+        // At the confirmation too.
+        app.coordinator.robotView['premium'] = '5.00';
+        app.coordinator.robotView['premium_now'] = 5.0;
+        expect(
+          await app.take.confirm(
             prepared,
+            password: OrderPassword.tryCreate(password),
+          ),
+          refused<TakeOrderChanged>(),
+        );
+        expect(count(app, ScriptedRequest.take), 0);
+        app.coordinator.robotView.clear();
+        final again = await prepare(app, shown);
+        expect(
+          await app.take.confirm(
+            again,
             password: OrderPassword.tryCreate(password),
           ),
           isA<Ok<TakeOutcome, TakeRefusal>>().having(
@@ -331,9 +346,49 @@ void main() {
             isA<TakeStarted>(),
           ),
         );
-        expect(takeBody(public), '{"action":"take","amount":0}');
+        // A password given for an order without one is never sent.
+        expect(takeBody(app), '{"action":"take","amount":0}');
       },
     );
+
+    test(
+      'an order no longer takeable reached by its URL: « not available », its robot forgotten',
+      () async {
+        final app = await TradeHarness.start();
+        app.coordinator.takenByAnother();
+        expect(
+          await app.take.readUnlisted(
+            app.coordinator.coordinator,
+            42,
+            network: app.network,
+          ),
+          refused<TakeOrderGone>(),
+        );
+      },
+    );
+
+    test('an order of the book: its take never carries a password', () async {
+      final public = await TradeHarness.start();
+      final prepared = switch (await public.take.prepare(
+        await public.shownOrder(),
+        network: public.network,
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('not prepared: $failure'),
+      };
+      expect(
+        await public.take.confirm(
+          prepared,
+          password: OrderPassword.tryCreate(password),
+        ),
+        isA<Ok<TakeOutcome, TakeRefusal>>().having(
+          (ok) => ok.value,
+          'outcome',
+          isA<TakeStarted>(),
+        ),
+      );
+      expect(takeBody(public), '{"action":"take","amount":0}');
+    });
 
     test(
       'a protected order is never prepared through the book, which does not list it',
