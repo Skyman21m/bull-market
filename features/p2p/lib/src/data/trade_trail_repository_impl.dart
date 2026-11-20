@@ -55,9 +55,9 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
       'bond_step_deadline, breached, history_unknown, take, take_deadline, '
       'taker_hash_id, taken_amount, earlier_escrows, seen_late, '
-      'terms_changed_at, terms_changed_premium) '
+      'terms_changed_at, terms_changed_premium_low, terms_changed_premium_high) '
       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?) '
+      '?, ?, ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING robot_index';
 
@@ -70,7 +70,7 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'bond_step_deadline = ?, breached = ?, history_unknown = ?, take = ?, '
       'take_deadline = ?, taker_hash_id = ?, taken_amount = ?, '
       'earlier_escrows = ?, seen_late = ?, terms_changed_at = ?, '
-      'terms_changed_premium = ? '
+      'terms_changed_premium_low = ?, terms_changed_premium_high = ? '
       'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
       'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
       'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
@@ -78,7 +78,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
       'AND take IS ? AND take_deadline IS ? AND taker_hash_id IS ? '
       'AND taken_amount IS ? AND earlier_escrows IS ? AND seen_late IS ? '
-      'AND terms_changed_at IS ? AND terms_changed_premium IS ? '
+      'AND terms_changed_at IS ? AND terms_changed_premium_low IS ? '
+      'AND terms_changed_premium_high IS ? '
       'RETURNING robot_index';
 
   /// The columns of the terms and of the trail, each named after its table.
@@ -122,7 +123,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'trade_trails.earlier_escrows AS trail_earlier_escrows, '
       'trade_trails.seen_late AS trail_seen_late, '
       'trade_trails.terms_changed_at AS trail_terms_changed_at, '
-      'trade_trails.terms_changed_premium AS trail_terms_changed_premium';
+      'trade_trails.terms_changed_premium_low AS trail_terms_changed_premium_low, '
+      'trade_trails.terms_changed_premium_high AS trail_terms_changed_premium_high';
 
   /// The terms and the trail of one robot's trade, in one statement that always gives one row: the columns of each absent when there is none.
   static const String _historySql =
@@ -186,7 +188,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'trade_trails.earlier_escrows AS trail_earlier_escrows, '
       'trade_trails.seen_late AS trail_seen_late, '
       'trade_trails.terms_changed_at AS trail_terms_changed_at, '
-      'trade_trails.terms_changed_premium AS trail_terms_changed_premium '
+      'trade_trails.terms_changed_premium_low AS trail_terms_changed_premium_low, '
+      'trade_trails.terms_changed_premium_high AS trail_terms_changed_premium_high '
       'FROM maker_terms LEFT JOIN trade_trails ON trade_trails.key_fingerprint = '
       'maker_terms.key_fingerprint AND trade_trails.robot_index = '
       'maker_terms.robot_index WHERE maker_terms.network = ? '
@@ -308,8 +311,6 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
     TradeTrailRecord trail,
   ) async {
     final TradeTrailRecord? stored;
-    // The premium of the trade's own terms kept here, which the trace of terms shown otherwise is compared with (schema 9, security review C1).
-    double? ownPremium;
     switch (await historyOf(trade)) {
       case Err(:final failure):
         return Err(failure);
@@ -317,24 +318,12 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
         return const Err(P2pStorageFailure());
       case Ok(:final value):
         stored = value.trail;
-        ownPremium = value.terms?.premiumPercent;
-    }
-    if (stored != null && trade.origin == TradeOrigin.madeHere) {
-      switch (await makerTermsOf(trade.robot)) {
-        case Ok(value: final terms?):
-          ownPremium = terms.premiumPercent;
-        case Ok(value: null):
-          break;
-        case Err(:final failure):
-          return Err(failure);
-      }
     }
     if (stored != null) {
       // Always asked first: a trail that may not replace the stored one is never sent to the database. A trade made here moves along a maker's edges and contracts (#178).
       if (trail.whyNotReplace(
             stored,
             madeHere: trade.origin == TradeOrigin.madeHere,
-            ownPremium: ownPremium,
           )
           case final reason?) {
         return Ok(TrailKept(stored, reason: reason));
@@ -526,7 +515,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
     Variable.withString(trail.earlierEscrows),
     Variable.withBool(trail.seenLate),
     Variable<int>(trail.termsChangedAtMicros),
-    Variable<double>(trail.termsChangedPremium),
+    Variable<double>(trail.termsChangedPremiumLow),
+    Variable<double>(trail.termsChangedPremiumHigh),
   ];
 
   /// What the columns of [data] hold of a trade's terms and trail, named `terms_` and `trail_` then their column.
@@ -626,7 +616,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
           column('earlier_escrows'),
           _boolFrom(column('seen_late')),
           column('terms_changed_at'),
-          column('terms_changed_premium'),
+          column('terms_changed_premium_low'),
+          column('terms_changed_premium_high'),
         )
         case (
           final int version,
@@ -650,7 +641,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
           final String earlierEscrows,
           final bool seenLate,
           final int? termsChangedAt,
-          final double? termsChangedPremium,
+          final double? termsChangedPremiumLow,
+          final double? termsChangedPremiumHigh,
         )) {
       return TradeTrailRecord(
         version: version,
@@ -674,7 +666,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
         earlierEscrows: earlierEscrows,
         seenLate: seenLate,
         termsChangedAtMicros: termsChangedAt,
-        termsChangedPremium: termsChangedPremium,
+        termsChangedPremiumLow: termsChangedPremiumLow,
+        termsChangedPremiumHigh: termsChangedPremiumHigh,
       );
     }
     return null;

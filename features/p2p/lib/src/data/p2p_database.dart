@@ -369,7 +369,7 @@ final class P2pDatabase extends _$P2pDatabase {
         await customStatement(_dropPaymentsOfSchema7);
       },
       from8To9: (m, schema) async {
-        // What each payment took out of the wallet (#233), where the payout of each contract came from (#204), and a trace of terms shown otherwise (#231): design note `docs/design/phase-3-making-an-order.md` § 3.5 bis. Schema 8 is frozen: no table is rebuilt, no trigger of it replaced, no row of it copied, changed or deleted; three columns are added in place, each with its constraints as its own, one table and five triggers are new.
+        // What each payment took out of the wallet (#233), where the payout of each contract came from (#204), and a trace of terms shown otherwise (#231): design note `docs/design/phase-3-making-an-order.md` § 3.5 bis. Schema 8 is frozen: no table is rebuilt, no trigger of it replaced, no row of it copied, changed or deleted; four columns are added in place, each with its constraints as its own, one table and five triggers are new.
         // No transaction (the feature opens none): each part is one statement, done only when the file needs it, so that a step that stopped after any of them runs again over the file it left. No table is dropped, so the foreign keys stay as they are.
         if (!await _hasColumn(_payments, 'confirmed_sats')) {
           await m.addColumn(
@@ -383,10 +383,16 @@ final class P2pDatabase extends _$P2pDatabase {
             schema.tradeTrails.termsChangedAt,
           );
         }
-        if (!await _hasColumn(_trails, 'terms_changed_premium')) {
+        if (!await _hasColumn(_trails, 'terms_changed_premium_low')) {
           await m.addColumn(
             schema.tradeTrails,
-            schema.tradeTrails.termsChangedPremium,
+            schema.tradeTrails.termsChangedPremiumLow,
+          );
+        }
+        if (!await _hasColumn(_trails, 'terms_changed_premium_high')) {
+          await m.addColumn(
+            schema.tradeTrails,
+            schema.tradeTrails.termsChangedPremiumHigh,
           );
         }
         await m.createTable(schema.tradePayouts);

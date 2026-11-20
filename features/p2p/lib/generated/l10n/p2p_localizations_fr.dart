@@ -4149,24 +4149,58 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Bull Market ne sait pas si la facture ou l’adresse de paiement de ce contrat vient de ce portefeuille.';
 
   @override
-  String p2pTermsShownPremium(
+  String p2pTermsShownAbove(
     String coordinator,
-    String premium,
-    String own,
     String day,
     String time,
+    String high,
+    String own,
   ) {
-    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, jusqu’à une prime de $premium au lieu de $own.';
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, jusqu’à une prime de $high au lieu de $own.';
+  }
+
+  @override
+  String p2pTermsShownBelow(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String own,
+  ) {
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, avec une prime descendue à $low au lieu de $own.';
+  }
+
+  @override
+  String p2pTermsShownBoth(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+    String own,
+  ) {
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, avec des primes de $low à $high au lieu de $own.';
+  }
+
+  @override
+  String p2pTermsShownPremiums(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+  ) {
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, avec des primes de $low à $high.';
   }
 
   @override
   String p2pTermsShownPremiumAlone(
     String coordinator,
-    String premium,
     String day,
     String time,
+    String premium,
   ) {
-    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, jusqu’à une prime de $premium.';
+    return '$coordinator a montré cet échange avec d’autres conditions à partir du $day à $time, avec une prime de $premium.';
   }
 
   @override

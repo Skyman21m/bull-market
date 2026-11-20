@@ -4093,24 +4093,58 @@ class P2pLocalizationsZh extends P2pLocalizations {
       'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.';
 
   @override
-  String p2pTermsShownPremium(
+  String p2pTermsShownAbove(
     String coordinator,
-    String premium,
-    String own,
     String day,
     String time,
+    String high,
+    String own,
   ) {
-    return '$coordinator showed this trade with other terms from $day at $time, up to a premium of $premium instead of $own.';
+    return '$coordinator showed this trade with other terms from $day at $time, up to a premium of $high instead of $own.';
+  }
+
+  @override
+  String p2pTermsShownBelow(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String own,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with a premium down to $low instead of $own.';
+  }
+
+  @override
+  String p2pTermsShownBoth(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+    String own,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with premiums from $low to $high instead of $own.';
+  }
+
+  @override
+  String p2pTermsShownPremiums(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+  ) {
+    return '$coordinator showed this trade with other terms from $day at $time, with premiums from $low to $high.';
   }
 
   @override
   String p2pTermsShownPremiumAlone(
     String coordinator,
-    String premium,
     String day,
     String time,
+    String premium,
   ) {
-    return '$coordinator showed this trade with other terms from $day at $time, up to a premium of $premium.';
+    return '$coordinator showed this trade with other terms from $day at $time, with a premium of $premium.';
   }
 
   @override

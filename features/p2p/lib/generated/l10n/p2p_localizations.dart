@@ -6353,27 +6353,64 @@ abstract class P2pLocalizations {
   /// **'Bull Market cannot tell whether this contract\'s payout invoice or address came from this wallet.'**
   String get p2pPayoutTraceUnknown;
 
-  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own ({day} and {time}, the device's), and the premium farthest from the order's that a read showed ({premium}) instead of the order's own ({own}, from its terms kept here): never less than was seen (security review of schema 9, C1). Said once the terms are back; nothing is blocked.
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the highest premium reads showed ({high}), every one above the order's own ({own}, from its terms kept here). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {premium} instead of {own}.'**
-  String p2pTermsShownPremium(
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {high} instead of {own}.'**
+  String p2pTermsShownAbove(
     String coordinator,
-    String premium,
-    String own,
     String day,
     String time,
+    String high,
+    String own,
   );
 
-  /// Not in the RoboSats texts: the project's own (#231, schema 9): as `p2pTermsShownPremium`, when the order's own premium is not at hand (its terms not read).
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the lowest premium reads showed ({low}), every one below the order's own ({own}, from its terms kept here). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} showed this trade with other terms from {day} at {time}, up to a premium of {premium}.'**
-  String p2pTermsShownPremiumAlone(
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, with a premium down to {low} instead of {own}.'**
+  String p2pTermsShownBelow(
     String coordinator,
-    String premium,
     String day,
     String time,
+    String low,
+    String own,
+  );
+
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the lowest and the highest premium reads showed ({low}, {high}), on both sides of the order's own ({own}, from its terms kept here). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, with premiums from {low} to {high} instead of {own}.'**
+  String p2pTermsShownBoth(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+    String own,
+  );
+
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the lowest and the highest premium reads showed ({low}, {high}), the order's own not at hand (its terms not read). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, with premiums from {low} to {high}.'**
+  String p2pTermsShownPremiums(
+    String coordinator,
+    String day,
+    String time,
+    String low,
+    String high,
+  );
+
+  /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms ({day} and {time}, the device's), and the one other premium reads showed ({premium}), the order's own not at hand (its terms not read). Said once the terms are back; never less than was seen (security reviews of schema 9, C1, R8); nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} showed this trade with other terms from {day} at {time}, with a premium of {premium}.'**
+  String p2pTermsShownPremiumAlone(
+    String coordinator,
+    String day,
+    String time,
+    String premium,
   );
 
   /// Not in the RoboSats texts: the project's own (#231, schema 9), in the alert colour, under the trade's warnings until its end and in the dialog of « Confirm … sent »: from when a read first showed this trade with other terms than its own (currency, amount, bond, durations, payment method…), no read having shown another premium. {day} and {time} are the device's. Said once the terms are back; nothing is blocked.

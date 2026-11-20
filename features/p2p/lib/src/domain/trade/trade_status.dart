@@ -68,8 +68,9 @@ final class TradeTrail {
   /// When a read kept for this trade first showed it with other terms than its own (`TradeTermsChanged`: for a taker the currency, the type, the bond size, the escrow duration, the sats of an order priced in sats, the premium or the amount; for a maker also the payment method, the password's presence, the meeting point, the description or the public duration), set in that read's write and kept to the end, whatever the coordinator shows later (schema 9, #231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis); `null` when none did since schema 9. Information, not a warning: a screen says it while the trade lasts.
   final DateTime? termsChangedAt;
 
-  /// The premium that read showed, in percent, when the premium was one of the terms it changed (an order not priced in sats, within -100 to 999, as `package:robosats` bounds it); `null` otherwise, and without [termsChangedAt].
-  final double? termsChangedPremium;
+  /// The lowest and the highest premium, in percent, that reads kept showed otherwise than the trade's own (an order not priced in sats, within -100 to 999, as `package:robosats` bounds it); both `null` while none did, and without [termsChangedAt]. The lowest only goes down, the highest only up: the trace never says less than was seen, on either side (security reviews of schema 9, C1, R8).
+  final double? termsChangedPremiumLow;
+  final double? termsChangedPremiumHigh;
 
   const TradeTrail._({
     required this.network,
@@ -93,7 +94,8 @@ final class TradeTrail {
     required this.earlierEscrows,
     required this.seenLate,
     required this.termsChangedAt,
-    required this.termsChangedPremium,
+    required this.termsChangedPremiumLow,
+    required this.termsChangedPremiumHigh,
   });
 
   /// A fresh trail of the trade [terms] at [at]: only [TradeStatus.afterTake], [TradeStatus.afterMake], [forPendingTake] and [recovered] make one.
@@ -123,7 +125,8 @@ final class TradeTrail {
     earlierEscrows: const [],
     seenLate: false,
     termsChangedAt: null,
-    termsChangedPremium: null,
+    termsChangedPremiumLow: null,
+    termsChangedPremiumHigh: null,
   );
 
   /// Whether [terms] are a maker's: every factory of [TradeTerms] instantiates the type of its side, so the side tells.
@@ -216,13 +219,20 @@ final class TradeTrail {
     }
     // The trace of terms shown otherwise (schema 9, #231): a time no later than the last read, and a premium only with it, finite, within the package's bounds.
     final changedAt = record.termsChangedAtMicros;
-    final changedPremium = record.termsChangedPremium;
+    final low = record.termsChangedPremiumLow;
+    final high = record.termsChangedPremiumHigh;
+    bool bounded(double premium) =>
+        premium.isFinite &&
+        premium >= Premium.minPercent &&
+        premium <= Premium.maxMarketPercent;
     if ((changedAt != null && changedAt > record.readAtMicros) ||
-        (changedPremium != null &&
+        (low == null) != (high == null) ||
+        (low != null &&
+            high != null &&
             (changedAt == null ||
-                !changedPremium.isFinite ||
-                changedPremium < Premium.minPercent ||
-                changedPremium > Premium.maxMarketPercent))) {
+                !bounded(low) ||
+                !bounded(high) ||
+                low > high))) {
       return refused;
     }
     DateTime? at(int? micros) => micros == null
@@ -254,7 +264,8 @@ final class TradeTrail {
         earlierEscrows: List.unmodifiable(earlier),
         seenLate: record.seenLate,
         termsChangedAt: at(changedAt),
-        termsChangedPremium: changedPremium,
+        termsChangedPremiumLow: low,
+        termsChangedPremiumHigh: high,
       ),
     );
   }
@@ -323,7 +334,8 @@ final class TradeTrail {
     earlierEscrows: earlierEscrows.map((hash) => '$hash;').join(),
     seenLate: seenLate,
     termsChangedAtMicros: termsChangedAt?.toUtc().microsecondsSinceEpoch,
-    termsChangedPremium: termsChangedPremium,
+    termsChangedPremiumLow: termsChangedPremiumLow,
+    termsChangedPremiumHigh: termsChangedPremiumHigh,
   );
 
   TradeTrail _next({
@@ -370,13 +382,24 @@ final class TradeTrail {
     seenLate: contract != null && contract.isNext
         ? contract.seenLate
         : seenLate,
-    // The first read kept that showed other terms sets the trace's time, which no later read changes; the premium kept is the farthest from the trade's own that a read kept showed, never cleared, so that the trace never says less than was seen (schema 9, #231; security review of schema 9, C1).
+    // The first read kept that showed other terms sets the trace's time, which no later read changes; the lowest and the highest premium reads kept showed otherwise, each only moving outward, never cleared, so that the trace never says less than was seen, on either side (schema 9, #231; security reviews of schema 9, C1, R8).
     termsChangedAt: termsChangedAt ?? termsChange?.at.toUtc(),
-    termsChangedPremium: _TermsChange.farther(
-      termsChangedPremium,
+    termsChangedPremiumLow: switch ((
+      termsChangedPremiumLow,
       termsChange?.premium,
-      own: termsChange?.own,
-    ),
+    )) {
+      (final kept?, final shown?) => shown < kept ? shown : kept,
+      (final kept, null) => kept,
+      (null, final shown?) => shown,
+    },
+    termsChangedPremiumHigh: switch ((
+      termsChangedPremiumHigh,
+      termsChange?.premium,
+    )) {
+      (final kept?, final shown?) => shown > kept ? shown : kept,
+      (final kept, null) => kept,
+      (null, final shown?) => shown,
+    },
   );
 
   /// The same trail after a refused answer read at [now]: the breach recorded, and the read too, so that a later write never looks older.
@@ -402,7 +425,8 @@ final class TradeTrail {
     earlierEscrows: earlierEscrows,
     seenLate: seenLate,
     termsChangedAt: termsChangedAt,
-    termsChangedPremium: termsChangedPremium,
+    termsChangedPremiumLow: termsChangedPremiumLow,
+    termsChangedPremiumHigh: termsChangedPremiumHigh,
   );
 
   @override
@@ -449,18 +473,7 @@ final class _TermsChange {
   final DateTime at;
   final double? premium;
 
-  /// The trade's own premium, from its terms kept here; `null` for an order priced in sats, whose premium is not compared.
-  final double? own;
-
-  const _TermsChange(this.at, this.premium, this.own);
-
-  /// The premium the trace keeps after a read that showed [shown], [kept] being the one it kept: [shown] when none was kept, or when it is farther from [own] than [kept]; [kept] otherwise, and when [own] is not known (as the trigger `trade_trails_terms_trace` refuses any other change).
-  static double? farther(double? kept, double? shown, {required double? own}) {
-    if (shown == null) return kept;
-    if (kept == null) return shown;
-    if (own == null) return kept;
-    return (shown - own).abs() > (kept - own).abs() ? shown : kept;
-  }
+  const _TermsChange(this.at, this.premium);
 
   /// The trace of [order], read at [now] with [readWarnings], against [ownPremium], the trade's premium (`null` for an order priced in sats, whose premium is not compared): `null` unless the read showed other terms ([TradeTermsChanged]); its premium only when it is one of them, an order not priced in sats, and within the package's bounds (a premium the records could not hold is never kept, its time is).
   static _TermsChange? of(
@@ -483,7 +496,7 @@ final class _TermsChange {
             (shown - ownPremium).abs() > TradeTolerances.percent
         ? shown
         : null;
-    return _TermsChange(now, premium, ownPremium);
+    return _TermsChange(now, premium);
   }
 }
 

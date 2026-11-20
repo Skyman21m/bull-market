@@ -288,9 +288,12 @@ class StoredTradeTrails extends Table {
     "NULL CHECK (terms_changed_at IS NULL OR (typeof(terms_changed_at) = 'integer' AND terms_changed_at BETWEEN 0 AND read_at))",
   )();
 
-  /// The premium farthest from the trade's own (its terms kept here) that a read kept showed otherwise, in percent (an order not priced in sats, within the package's bounds, -100 to 999); absent while no read showed another premium (schema 9, #231). Written as soon as a premium differs, then replaced only by a farther one, never cleared: the trigger `trade_trails_terms_trace` keeps it (security review of schema 9, C1).
-  RealColumn get termsChangedPremium => real().nullable().customConstraint(
-    "NULL CHECK (terms_changed_premium IS NULL OR (terms_changed_at IS NOT NULL AND typeof(terms_changed_premium) = 'real' AND terms_changed_premium BETWEEN -100 AND 999))",
+  /// The lowest and the highest premium, in percent, that reads kept showed otherwise than the trade's own (an order not priced in sats, within the package's bounds, -100 to 999); both absent while no read showed another premium (schema 9, #231). Both written as soon as a premium differs, even after another term changed first; then the lowest only goes down and the highest only up, neither is cleared: the trigger `trade_trails_terms_trace` keeps them, so that the trace never says less than was seen, on either side (security reviews of schema 9, C1 and R8).
+  RealColumn get termsChangedPremiumLow => real().nullable().customConstraint(
+    "NULL CHECK (terms_changed_premium_low IS NULL OR (terms_changed_at IS NOT NULL AND typeof(terms_changed_premium_low) = 'real' AND terms_changed_premium_low BETWEEN -100 AND 999))",
+  )();
+  RealColumn get termsChangedPremiumHigh => real().nullable().customConstraint(
+    "NULL CHECK ((terms_changed_premium_high IS NULL) = (terms_changed_premium_low IS NULL) AND (terms_changed_premium_high IS NULL OR (typeof(terms_changed_premium_high) = 'real' AND terms_changed_premium_high BETWEEN -100 AND 999 AND terms_changed_premium_high >= terms_changed_premium_low)))",
   )();
 
   @override

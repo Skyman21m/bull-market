@@ -1677,7 +1677,7 @@ class _Contract extends StatelessWidget {
   };
 }
 
-/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): from when (the first read that showed other terms), and up to which premium (the farthest from the trade's own a read showed, security review of schema 9, C1) instead of [own], the trade's own from its terms kept here (`TradeSeen.ownPremium`, R1; `null`, the premium shown alone); `null` without a trace, once the trade ended (an end is no longer a step to act on), or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
+/// The line of the trace a coordinator left by showing this trade with other terms than its own, then putting them back (#231; design note `docs/design/phase-3-making-an-order.md` § 3.5 bis): from when (the first read that showed other terms), and the premiums reads showed, never less than was seen (security reviews of schema 9, C1, R8): up to the highest when all were above [own], down to the lowest when all were below, both when on both sides, [own] being the trade's own from its terms kept here (`TradeSeen.ownPremium`, R1; `null`, the premiums shown alone); `null` without a trace, once the trade ended (an end is no longer a step to act on), or while the status shown carries `TradeTermsChanged` itself, whose own alert speaks.
 String? termsShownOtherwise(
   BuildContext context,
   TradeStatus status,
@@ -1692,24 +1692,51 @@ String? termsShownOtherwise(
   final formats = P2pFormats.of(context);
   final day = formats.day(at);
   final time = formats.time(at);
-  final premium = switch (status.trail.termsChangedPremium) {
-    final percent? => Premium.tryCreate(percent),
-    null => null,
+  // A premium the trail holds is bounded (`TradeTrail.restore`): never below the package's minimum.
+  String percent(double value) => switch (Premium.tryCreate(value)) {
+    final premium? => formats.premium(premium),
+    null => formats.number(value),
   };
-  return switch ((premium, own)) {
-    (null, _) => l10n.p2pTermsShownOther(coordinator, day, time),
-    (final shown?, final own?) => l10n.p2pTermsShownPremium(
+  final low = status.trail.termsChangedPremiumLow;
+  final high = status.trail.termsChangedPremiumHigh;
+  if (low == null || high == null) {
+    return l10n.p2pTermsShownOther(coordinator, day, time);
+  }
+  final ownPercent = own?.percent;
+  if (ownPercent == null) {
+    return low == high
+        ? l10n.p2pTermsShownPremiumAlone(coordinator, day, time, percent(low))
+        : l10n.p2pTermsShownPremiums(
+            coordinator,
+            day,
+            time,
+            percent(low),
+            percent(high),
+          );
+  }
+  final ownText = percent(ownPercent);
+  return switch ((low < ownPercent, high > ownPercent)) {
+    (true, true) => l10n.p2pTermsShownBoth(
       coordinator,
-      formats.premium(shown),
-      formats.premium(own),
       day,
       time,
+      percent(low),
+      percent(high),
+      ownText,
     ),
-    (final shown?, null) => l10n.p2pTermsShownPremiumAlone(
+    (true, false) => l10n.p2pTermsShownBelow(
       coordinator,
-      formats.premium(shown),
       day,
       time,
+      percent(low),
+      ownText,
+    ),
+    (false, _) => l10n.p2pTermsShownAbove(
+      coordinator,
+      day,
+      time,
+      percent(high),
+      ownText,
     ),
   };
 }

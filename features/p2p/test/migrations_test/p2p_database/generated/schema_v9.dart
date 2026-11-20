@@ -1630,14 +1630,24 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
         'NULL CHECK (terms_changed_at IS NULL OR(typeof(terms_changed_at) = \'integer\' AND terms_changed_at BETWEEN 0 AND read_at))',
   );
   late final GeneratedColumn<double>
-  termsChangedPremium = GeneratedColumn<double>(
-    'terms_changed_premium',
+  termsChangedPremiumLow = GeneratedColumn<double>(
+    'terms_changed_premium_low',
     aliasedName,
     true,
     type: DriftSqlType.double,
     requiredDuringInsert: false,
     $customConstraints:
-        'NULL CHECK (terms_changed_premium IS NULL OR(terms_changed_at IS NOT NULL AND typeof(terms_changed_premium) = \'real\' AND terms_changed_premium BETWEEN -100 AND 999))',
+        'NULL CHECK (terms_changed_premium_low IS NULL OR(terms_changed_at IS NOT NULL AND typeof(terms_changed_premium_low) = \'real\' AND terms_changed_premium_low BETWEEN -100 AND 999))',
+  );
+  late final GeneratedColumn<double>
+  termsChangedPremiumHigh = GeneratedColumn<double>(
+    'terms_changed_premium_high',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    $customConstraints:
+        'NULL CHECK ((terms_changed_premium_high IS NULL)=(terms_changed_premium_low IS NULL)AND(terms_changed_premium_high IS NULL OR(typeof(terms_changed_premium_high) = \'real\' AND terms_changed_premium_high BETWEEN -100 AND 999 AND terms_changed_premium_high >= terms_changed_premium_low)))',
   );
   @override
   List<GeneratedColumn> get $columns => [
@@ -1664,7 +1674,8 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
     earlierEscrows,
     seenLate,
     termsChangedAt,
-    termsChangedPremium,
+    termsChangedPremiumLow,
+    termsChangedPremiumHigh,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1769,9 +1780,13 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
         DriftSqlType.int,
         data['${effectivePrefix}terms_changed_at'],
       ),
-      termsChangedPremium: attachedDatabase.typeMapping.read(
+      termsChangedPremiumLow: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
-        data['${effectivePrefix}terms_changed_premium'],
+        data['${effectivePrefix}terms_changed_premium_low'],
+      ),
+      termsChangedPremiumHigh: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}terms_changed_premium_high'],
       ),
     );
   }
@@ -1837,7 +1852,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
   final String earlierEscrows;
   final int seenLate;
   final int? termsChangedAt;
-  final double? termsChangedPremium;
+  final double? termsChangedPremiumLow;
+  final double? termsChangedPremiumHigh;
   const TradeTrailsData({
     required this.keyFingerprint,
     required this.robotIndex,
@@ -1862,7 +1878,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     required this.earlierEscrows,
     required this.seenLate,
     this.termsChangedAt,
-    this.termsChangedPremium,
+    this.termsChangedPremiumLow,
+    this.termsChangedPremiumHigh,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1908,8 +1925,15 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     if (!nullToAbsent || termsChangedAt != null) {
       map['terms_changed_at'] = Variable<int>(termsChangedAt);
     }
-    if (!nullToAbsent || termsChangedPremium != null) {
-      map['terms_changed_premium'] = Variable<double>(termsChangedPremium);
+    if (!nullToAbsent || termsChangedPremiumLow != null) {
+      map['terms_changed_premium_low'] = Variable<double>(
+        termsChangedPremiumLow,
+      );
+    }
+    if (!nullToAbsent || termsChangedPremiumHigh != null) {
+      map['terms_changed_premium_high'] = Variable<double>(
+        termsChangedPremiumHigh,
+      );
     }
     return map;
   }
@@ -1957,9 +1981,12 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       termsChangedAt: termsChangedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(termsChangedAt),
-      termsChangedPremium: termsChangedPremium == null && nullToAbsent
+      termsChangedPremiumLow: termsChangedPremiumLow == null && nullToAbsent
           ? const Value.absent()
-          : Value(termsChangedPremium),
+          : Value(termsChangedPremiumLow),
+      termsChangedPremiumHigh: termsChangedPremiumHigh == null && nullToAbsent
+          ? const Value.absent()
+          : Value(termsChangedPremiumHigh),
     );
   }
 
@@ -1992,8 +2019,11 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       earlierEscrows: serializer.fromJson<String>(json['earlierEscrows']),
       seenLate: serializer.fromJson<int>(json['seenLate']),
       termsChangedAt: serializer.fromJson<int?>(json['termsChangedAt']),
-      termsChangedPremium: serializer.fromJson<double?>(
-        json['termsChangedPremium'],
+      termsChangedPremiumLow: serializer.fromJson<double?>(
+        json['termsChangedPremiumLow'],
+      ),
+      termsChangedPremiumHigh: serializer.fromJson<double?>(
+        json['termsChangedPremiumHigh'],
       ),
     );
   }
@@ -2024,7 +2054,12 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       'earlierEscrows': serializer.toJson<String>(earlierEscrows),
       'seenLate': serializer.toJson<int>(seenLate),
       'termsChangedAt': serializer.toJson<int?>(termsChangedAt),
-      'termsChangedPremium': serializer.toJson<double?>(termsChangedPremium),
+      'termsChangedPremiumLow': serializer.toJson<double?>(
+        termsChangedPremiumLow,
+      ),
+      'termsChangedPremiumHigh': serializer.toJson<double?>(
+        termsChangedPremiumHigh,
+      ),
     };
   }
 
@@ -2052,7 +2087,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     String? earlierEscrows,
     int? seenLate,
     Value<int?> termsChangedAt = const Value.absent(),
-    Value<double?> termsChangedPremium = const Value.absent(),
+    Value<double?> termsChangedPremiumLow = const Value.absent(),
+    Value<double?> termsChangedPremiumHigh = const Value.absent(),
   }) => TradeTrailsData(
     keyFingerprint: keyFingerprint ?? this.keyFingerprint,
     robotIndex: robotIndex ?? this.robotIndex,
@@ -2083,9 +2119,12 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     termsChangedAt: termsChangedAt.present
         ? termsChangedAt.value
         : this.termsChangedAt,
-    termsChangedPremium: termsChangedPremium.present
-        ? termsChangedPremium.value
-        : this.termsChangedPremium,
+    termsChangedPremiumLow: termsChangedPremiumLow.present
+        ? termsChangedPremiumLow.value
+        : this.termsChangedPremiumLow,
+    termsChangedPremiumHigh: termsChangedPremiumHigh.present
+        ? termsChangedPremiumHigh.value
+        : this.termsChangedPremiumHigh,
   );
   TradeTrailsData copyWithCompanion(TradeTrailsCompanion data) {
     return TradeTrailsData(
@@ -2136,9 +2175,12 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       termsChangedAt: data.termsChangedAt.present
           ? data.termsChangedAt.value
           : this.termsChangedAt,
-      termsChangedPremium: data.termsChangedPremium.present
-          ? data.termsChangedPremium.value
-          : this.termsChangedPremium,
+      termsChangedPremiumLow: data.termsChangedPremiumLow.present
+          ? data.termsChangedPremiumLow.value
+          : this.termsChangedPremiumLow,
+      termsChangedPremiumHigh: data.termsChangedPremiumHigh.present
+          ? data.termsChangedPremiumHigh.value
+          : this.termsChangedPremiumHigh,
     );
   }
 
@@ -2168,7 +2210,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
           ..write('earlierEscrows: $earlierEscrows, ')
           ..write('seenLate: $seenLate, ')
           ..write('termsChangedAt: $termsChangedAt, ')
-          ..write('termsChangedPremium: $termsChangedPremium')
+          ..write('termsChangedPremiumLow: $termsChangedPremiumLow, ')
+          ..write('termsChangedPremiumHigh: $termsChangedPremiumHigh')
           ..write(')'))
         .toString();
   }
@@ -2198,7 +2241,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     earlierEscrows,
     seenLate,
     termsChangedAt,
-    termsChangedPremium,
+    termsChangedPremiumLow,
+    termsChangedPremiumHigh,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -2227,7 +2271,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
           other.earlierEscrows == this.earlierEscrows &&
           other.seenLate == this.seenLate &&
           other.termsChangedAt == this.termsChangedAt &&
-          other.termsChangedPremium == this.termsChangedPremium);
+          other.termsChangedPremiumLow == this.termsChangedPremiumLow &&
+          other.termsChangedPremiumHigh == this.termsChangedPremiumHigh);
 }
 
 class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
@@ -2254,7 +2299,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
   final Value<String> earlierEscrows;
   final Value<int> seenLate;
   final Value<int?> termsChangedAt;
-  final Value<double?> termsChangedPremium;
+  final Value<double?> termsChangedPremiumLow;
+  final Value<double?> termsChangedPremiumHigh;
   final Value<int> rowid;
   const TradeTrailsCompanion({
     this.keyFingerprint = const Value.absent(),
@@ -2280,7 +2326,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     this.earlierEscrows = const Value.absent(),
     this.seenLate = const Value.absent(),
     this.termsChangedAt = const Value.absent(),
-    this.termsChangedPremium = const Value.absent(),
+    this.termsChangedPremiumLow = const Value.absent(),
+    this.termsChangedPremiumHigh = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TradeTrailsCompanion.insert({
@@ -2307,7 +2354,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     this.earlierEscrows = const Value.absent(),
     this.seenLate = const Value.absent(),
     this.termsChangedAt = const Value.absent(),
-    this.termsChangedPremium = const Value.absent(),
+    this.termsChangedPremiumLow = const Value.absent(),
+    this.termsChangedPremiumHigh = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : keyFingerprint = Value(keyFingerprint),
        robotIndex = Value(robotIndex),
@@ -2344,7 +2392,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     Expression<String>? earlierEscrows,
     Expression<int>? seenLate,
     Expression<int>? termsChangedAt,
-    Expression<double>? termsChangedPremium,
+    Expression<double>? termsChangedPremiumLow,
+    Expression<double>? termsChangedPremiumHigh,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2371,8 +2420,10 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
       if (earlierEscrows != null) 'earlier_escrows': earlierEscrows,
       if (seenLate != null) 'seen_late': seenLate,
       if (termsChangedAt != null) 'terms_changed_at': termsChangedAt,
-      if (termsChangedPremium != null)
-        'terms_changed_premium': termsChangedPremium,
+      if (termsChangedPremiumLow != null)
+        'terms_changed_premium_low': termsChangedPremiumLow,
+      if (termsChangedPremiumHigh != null)
+        'terms_changed_premium_high': termsChangedPremiumHigh,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2401,7 +2452,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     Value<String>? earlierEscrows,
     Value<int>? seenLate,
     Value<int?>? termsChangedAt,
-    Value<double?>? termsChangedPremium,
+    Value<double?>? termsChangedPremiumLow,
+    Value<double?>? termsChangedPremiumHigh,
     Value<int>? rowid,
   }) {
     return TradeTrailsCompanion(
@@ -2428,7 +2480,10 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
       earlierEscrows: earlierEscrows ?? this.earlierEscrows,
       seenLate: seenLate ?? this.seenLate,
       termsChangedAt: termsChangedAt ?? this.termsChangedAt,
-      termsChangedPremium: termsChangedPremium ?? this.termsChangedPremium,
+      termsChangedPremiumLow:
+          termsChangedPremiumLow ?? this.termsChangedPremiumLow,
+      termsChangedPremiumHigh:
+          termsChangedPremiumHigh ?? this.termsChangedPremiumHigh,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2505,9 +2560,14 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     if (termsChangedAt.present) {
       map['terms_changed_at'] = Variable<int>(termsChangedAt.value);
     }
-    if (termsChangedPremium.present) {
-      map['terms_changed_premium'] = Variable<double>(
-        termsChangedPremium.value,
+    if (termsChangedPremiumLow.present) {
+      map['terms_changed_premium_low'] = Variable<double>(
+        termsChangedPremiumLow.value,
+      );
+    }
+    if (termsChangedPremiumHigh.present) {
+      map['terms_changed_premium_high'] = Variable<double>(
+        termsChangedPremiumHigh.value,
       );
     }
     if (rowid.present) {
@@ -2542,7 +2602,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
           ..write('earlierEscrows: $earlierEscrows, ')
           ..write('seenLate: $seenLate, ')
           ..write('termsChangedAt: $termsChangedAt, ')
-          ..write('termsChangedPremium: $termsChangedPremium, ')
+          ..write('termsChangedPremiumLow: $termsChangedPremiumLow, ')
+          ..write('termsChangedPremiumHigh: $termsChangedPremiumHigh, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5867,7 +5928,7 @@ class DatabaseAtV9 extends GeneratedDatabase {
     'trade_trails_forward',
   );
   late final Trigger tradeTrailsTermsTrace = Trigger(
-    'CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0))BEGIN SELECT RAISE (ABORT, \'the trace of terms shown otherwise is kept\');END',
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium_low IS NOT NULL AND(NEW.terms_changed_premium_low IS NULL OR NEW.terms_changed_premium_low > OLD.terms_changed_premium_low))OR(OLD.terms_changed_premium_high IS NOT NULL AND(NEW.terms_changed_premium_high IS NULL OR NEW.terms_changed_premium_high < OLD.terms_changed_premium_high))BEGIN SELECT RAISE (ABORT, \'the trace of terms shown otherwise is kept\');END',
     'trade_trails_terms_trace',
   );
   late final Index robotBindingsNetwork = Index(

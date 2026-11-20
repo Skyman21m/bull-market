@@ -3045,6 +3045,7 @@ final class Schema9 extends i0.VersionedSchema {
         _column_62,
         _column_67,
         _column_68,
+        _column_69,
       ],
       attachedDatabase: database,
     ),
@@ -3153,7 +3154,7 @@ final class Schema9 extends i0.VersionedSchema {
         _column_38,
         _column_39,
         _column_57,
-        _column_69,
+        _column_70,
       ],
       attachedDatabase: database,
     ),
@@ -3375,7 +3376,7 @@ final class Schema9 extends i0.VersionedSchema {
     'trade_trails_forward',
   );
   final i1.Trigger tradeTrailsTermsTrace = i1.Trigger(
-    'CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NULL)OR(OLD.terms_changed_premium IS NOT NULL AND NEW.terms_changed_premium IS NOT OLD.terms_changed_premium AND NOT coalesce(abs(NEW.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)) > abs(OLD.terms_changed_premium - (SELECT premium_percent FROM trade_terms WHERE trade_terms.key_fingerprint = NEW.key_fingerprint AND trade_terms.robot_index = NEW.robot_index UNION ALL SELECT premium_percent FROM maker_terms WHERE maker_terms.key_fingerprint = NEW.key_fingerprint AND maker_terms.robot_index = NEW.robot_index LIMIT 1)), 0))BEGIN SELECT RAISE (ABORT, \'the trace of terms shown otherwise is kept\');END',
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium_low IS NOT NULL AND(NEW.terms_changed_premium_low IS NULL OR NEW.terms_changed_premium_low > OLD.terms_changed_premium_low))OR(OLD.terms_changed_premium_high IS NOT NULL AND(NEW.terms_changed_premium_high IS NULL OR NEW.terms_changed_premium_high < OLD.terms_changed_premium_high))BEGIN SELECT RAISE (ABORT, \'the trace of terms shown otherwise is kept\');END',
     'trade_trails_terms_trace',
   );
   final i1.Index robotBindingsNetwork = i1.Index(
@@ -3497,8 +3498,11 @@ class Shape12 extends i0.VersionedTable {
       columnsByName['seen_late']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get termsChangedAt =>
       columnsByName['terms_changed_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<double> get termsChangedPremium =>
-      columnsByName['terms_changed_premium']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<double> get termsChangedPremiumLow =>
+      columnsByName['terms_changed_premium_low']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<double> get termsChangedPremiumHigh =>
+      columnsByName['terms_changed_premium_high']!
+          as i1.GeneratedColumn<double>;
 }
 
 i1.GeneratedColumn<int> _column_67(
@@ -3514,12 +3518,22 @@ i1.GeneratedColumn<int> _column_67(
 i1.GeneratedColumn<double> _column_68(
   String aliasedName,
 ) => i1.GeneratedColumn<double>(
-  'terms_changed_premium',
+  'terms_changed_premium_low',
   aliasedName,
   true,
   type: i1.DriftSqlType.double,
   $customConstraints:
-      'NULL CHECK (terms_changed_premium IS NULL OR(terms_changed_at IS NOT NULL AND typeof(terms_changed_premium) = \'real\' AND terms_changed_premium BETWEEN -100 AND 999))',
+      'NULL CHECK (terms_changed_premium_low IS NULL OR(terms_changed_at IS NOT NULL AND typeof(terms_changed_premium_low) = \'real\' AND terms_changed_premium_low BETWEEN -100 AND 999))',
+);
+i1.GeneratedColumn<double> _column_69(
+  String aliasedName,
+) => i1.GeneratedColumn<double>(
+  'terms_changed_premium_high',
+  aliasedName,
+  true,
+  type: i1.DriftSqlType.double,
+  $customConstraints:
+      'NULL CHECK ((terms_changed_premium_high IS NULL)=(terms_changed_premium_low IS NULL)AND(terms_changed_premium_high IS NULL OR(typeof(terms_changed_premium_high) = \'real\' AND terms_changed_premium_high BETWEEN -100 AND 999 AND terms_changed_premium_high >= terms_changed_premium_low)))',
 );
 
 class Shape13 extends i0.VersionedTable {
@@ -3542,7 +3556,7 @@ class Shape13 extends i0.VersionedTable {
       columnsByName['confirmed_sats']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<int> _column_69(
+i1.GeneratedColumn<int> _column_70(
   String aliasedName,
 ) => i1.GeneratedColumn<int>(
   'confirmed_sats',
