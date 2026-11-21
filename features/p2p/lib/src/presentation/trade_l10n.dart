@@ -49,6 +49,8 @@ extension TakeProblemL10n on TakeProblem {
         TakeOrderAlreadyTraded() => l10n.p2pTakeNotMade,
         // The cubit never shows it: a preparation that gives it ends in silence, a confirmation that gives it prepares again (#119).
         TakePreparationGone() => l10n.p2pTakeNotMade,
+        // The screen asks for the password before sending; said should the use case refuse it all the same (#245).
+        TakePasswordMissing() => l10n.p2pTakePasswordMissing,
       },
       TakeWasNotMade(:final refusal) => switch (refusal) {
         null => l10n.p2pTakeNotMade,
@@ -63,6 +65,8 @@ extension TakeProblemL10n on TakeProblem {
         OrderTakePenalty() => l10n.p2pTakeWaitPenalty,
         OrderNotAvailable() || OrderNotPublic() => l10n.p2pOrderNotAvailable,
         OrderCancelled() => l10n.p2pOrderCancelled,
+        // Error 1045, the reference's message (`api/errors.py:52`), under the button as the reference shows it (`TakeButton.tsx:360-366`, #245).
+        OrderWrongPassword() => l10n.p2pTakeWrongPassword,
         final CoordinatorFailure failure => l10n.p2pTakeNotTakenAfter(
           failure.toRobotText(context, coordinator: coordinator),
         ),

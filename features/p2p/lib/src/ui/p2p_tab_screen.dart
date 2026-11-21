@@ -28,6 +28,9 @@ class P2pTabScreen extends StatelessWidget {
   final P2pShuffle shuffle;
   final ValueChanged<PublicOrder> onOpenOrder;
 
+  /// Opens the page of an order the books do not list, for its robot to read (#245); `null` when the feature holds no robot.
+  final void Function(Coordinator coordinator, int orderId)? onOpenProtected;
+
   /// The cubit of the dialog of a coordinator, which a tap on its image above the book opens.
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
@@ -59,6 +62,7 @@ class P2pTabScreen extends StatelessWidget {
     this.onOpenTrades,
     this.onCreate,
     this.waitingForTrades = false,
+    this.onOpenProtected,
   });
 
   @override
@@ -110,6 +114,7 @@ class P2pTabScreen extends StatelessWidget {
                         TorWait.ready => BookView(
                           now: now,
                           onOpenOrder: onOpenOrder,
+                          onOpenProtected: onOpenProtected,
                           coordinatorDetails: coordinatorDetails,
                           onOpenGarage: garage == null
                               ? null

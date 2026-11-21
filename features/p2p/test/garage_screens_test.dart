@@ -55,6 +55,7 @@ import 'package:p2p/src/ui/garage/robot_history_dialog.dart';
 import 'package:p2p/src/ui/garage/select_host_sheet.dart';
 import 'package:p2p/src/ui/garage/send_robot_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
+import 'package:p2p/src/ui/unlisted_order_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_field.dart';
@@ -618,50 +619,30 @@ void main() {
     );
 
     testWidgets(
-      'a Garage Key stored: « This order is not available », and nothing about a missing key',
+      'a Garage Key stored: the order\'s page opens for its robot to read it (#245), where the official client reads it with its robot; this key of unknown history gives no robot, and nothing is sent',
       (tester) async {
         network.switchTo(RobosatsNetwork.mainnet);
         keystoreHolding({_mainnetEntry: null});
         await searchMissingOrder(tester);
         final requests = List.of(transport.requested);
 
-        expect(wait, findsNothing);
+        // The dialog closed with no answer of its own: the order's page, its host and number, and why its robot cannot read it.
+        expect(missDialog, findsNothing);
+        expect(find.byType(NoRobotDialog), findsNothing);
+        expect(find.byType(UnlistedOrderScreen), findsOneWidget);
+        expect(find.text('# 1'), findsOneWidget);
         expect(
-          find.descendant(
-            of: missDialog,
-            matching: find.text('This order is not available'),
+          find.text(
+            'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.',
           ),
           findsOneWidget,
         );
-        expect(find.byType(NoRobotDialog), findsNothing);
-        expect(find.textContaining('Garage Key'), findsNothing);
-        expect(
-          [
-            for (final button in tester.widgetList<BullButton>(
-              find.descendant(
-                of: missDialog,
-                matching: find.byType(BullButton),
-              ),
-            ))
-              (button.label, button.disabled),
-          ],
-          [('Acknowledged', false)],
-        );
-        // Asked whether the key of the network of the book is stored: no key handed out, no robot, nothing sent, the keystore unchanged.
-        expect(storage.readKeys.toSet(), {_mainnetEntry});
+        // Asked whether the key of the network of the book is stored: no robot reserved, nothing sent, the keystore unchanged.
         expect(storage.entries, {
           _mainnetEntry: storedFixedKeys[_mainnetEntry],
         });
         expect(transport.requested, requests);
         expect(find.byType(GarageView), findsNothing);
-
-        await tester.tap(find.text('Acknowledged'));
-        await settle(tester);
-
-        expect(missDialog, findsNothing);
-        expect(find.byType(GarageView), findsNothing);
-        expect(find.text('Offers'), findsOneWidget);
-        expect(transport.requested, requests);
       },
     );
 
@@ -673,8 +654,13 @@ void main() {
         search: 'Rechercher',
       );
 
-      expect(find.text('Cet ordre n\'est pas disponible'), findsOneWidget);
-      expect(find.text('Compris'), findsOneWidget);
+      expect(find.byType(UnlistedOrderScreen), findsOneWidget);
+      expect(
+        find.text(
+          'Les robots d’une clé de garage collée ne peuvent pas prendre d’ordre ici. Générez une nouvelle clé de garage dans le Garage.',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Vous n\'avez pas de clé de garage'), findsNothing);
     });
 
@@ -4594,7 +4580,14 @@ void main() {
           );
           await tester.tap(find.text('Search').last);
           await settle(tester);
-          expect(find.text('This order is not available'), findsOneWidget);
+          // The order's page opens for its robot to read it (#245): a pasted key's robots take no order.
+          expect(find.byType(UnlistedOrderScreen), findsOneWidget);
+          expect(
+            find.text(
+              'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.',
+            ),
+            findsOneWidget,
+          );
         },
         zoneSpecification: ZoneSpecification(
           print: (self, parent, zone, line) => printed.add(line),

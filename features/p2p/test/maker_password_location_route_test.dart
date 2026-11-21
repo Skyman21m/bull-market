@@ -255,16 +255,14 @@ final class _Words {
 
 const _english = _Words(
   locale: Locale('en'),
-  protectedLine:
-      'Kept out of the book; to be taken with the official RoboSats app.',
+  protectedLine: 'Kept out of the book; taken with its link and the password.',
   pointSent: 'Point sent: 0.025, -0.025',
   passwordAgain: 'Enter a password again',
 );
 
 const _french = _Words(
   locale: Locale('fr'),
-  protectedLine:
-      'Hors du carnet ; à prendre avec l’application officielle RoboSats.',
+  protectedLine: 'Hors du carnet ; se prend avec son lien et le mot de passe.',
   pointSent: 'Point envoyé : 0.025, -0.025',
   passwordAgain: 'Saisissez à nouveau le mot de passe',
 );
@@ -294,10 +292,10 @@ void main() {
         await settle(tester);
         expect(find.text(words.protectedLine), findsOneWidget);
         // The details only on demand.
-        expect(find.text(l10n.p2pMakePasswordOfficialApp), findsNothing);
+        expect(find.text(l10n.p2pMakePasswordTakers), findsNothing);
         await journey.tap(journey.inForm(find.text(l10n.p2pMakeSeeDetails)));
         await settle(tester);
-        expect(find.text(l10n.p2pMakePasswordOfficialApp), findsOneWidget);
+        expect(find.text(l10n.p2pMakePasswordTakers), findsOneWidget);
         expect(find.text(l10n.p2pMakePasswordHint), findsWidgets);
         // A coordinator of version 0.8.8: no alert.
         expect(find.textContaining('0.8.7'), findsNothing);

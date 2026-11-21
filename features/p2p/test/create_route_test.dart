@@ -85,7 +85,7 @@ void main() {
     'the route `create` without what the tab hands it sends back to the tab, as the tab\'s other pages',
     (tester) async {
       final router = await open(tester, withGarage: true);
-      for (final path in ['order', 'trade', 'create']) {
+      for (final path in ['order', 'unlisted', 'trade', 'create']) {
         router.go('${P2pFeature.path}/$path');
         await settle(tester);
         expect(find.byType(CreateOrderScreen), findsNothing, reason: path);
@@ -101,7 +101,7 @@ void main() {
           for (final child in route.routes)
             if (child is GoRoute) child.path,
         ],
-        ['order', 'trade', 'create'],
+        ['order', 'unlisted', 'trade', 'create'],
       );
     },
   );

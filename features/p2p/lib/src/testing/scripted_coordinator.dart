@@ -207,6 +207,12 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
   String? description;
 
+  /// The order's payment method text (`payment_method`, in the book and every read, `ListOrderSerializer`): « Cash F2F » is what makes the reference show the place (`components/OrderDetails/index.tsx:409`, #245).
+  String paymentMethod = 'Revolut Instant SEPA';
+
+  /// The order's meeting point, latitude then longitude (`latitude`, `longitude`, 6 decimals, `api/models/order.py:186-201`): in the book and in every read (`ListOrderSerializer`, `api/views.py:248`, `:320-321`), hidden from a robot that takes no part in a protected order (`:294-298`); `null` for none (#245).
+  (double, double)? meetingPoint;
+
   /// What the coordinator also says, or says otherwise, to a robot that reads the public order without taking part in it: a coordinator that answers a robot otherwise than the book (#119).
   final Map<String, Object?> robotView = {};
 
@@ -504,7 +510,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedRequest.info:
         return _json(200, _info());
       case ScriptedRequest.book:
-        if (_status != 1 || _paused) {
+        // A protected order is left out of the book whatever the filter (`api/views.py:788-790`, #245).
+        if (_status != 1 || _paused || password != null) {
           return _json(404, {'not_found': 'No orders found'});
         }
         return _json(200, [_bookOrder()]);
@@ -548,8 +555,12 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         }
         if (password case final expected?) {
           final hashed = sha256.convert(utf8.encode(expected)).toString();
+          // Refused before anything is done, with the reference's status and message (`api/views.py:558-564`, `api/errors.py:52`, #245).
           if (fields['password'] != hashed) {
-            return _json(400, {'error_code': 1045, 'bad_request': 'wrong'});
+            return _json(403, {
+              'error_code': 1045,
+              'bad_request': 'Wrong password',
+            });
           }
         }
         final sent = fields['amount'];
@@ -1142,15 +1153,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'has_range': range,
     'min_amount': range ? '50.00000000' : null,
     'max_amount': range ? '200.00000000' : null,
-    'payment_method': 'Revolut Instant SEPA',
+    'payment_method': paymentMethod,
     'is_explicit': explicitSatoshis != null,
     'premium': '2.00',
     'satoshis': explicitSatoshis,
     'maker': 7,
     'escrow_duration': escrowSeconds,
     'bond_size': '3.00',
-    'latitude': null,
-    'longitude': null,
+    'latitude': meetingPoint?.$1.toStringAsFixed(6),
+    'longitude': meetingPoint?.$2.toStringAsFixed(6),
     'maker_hash_id': _maker.hex,
     'satoshis_now': _satsNow,
     'price': 93545.0,
@@ -1189,7 +1200,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'has_range': range,
       'min_amount': range ? '50.00000000' : null,
       'max_amount': range ? '200.00000000' : null,
-      'payment_method': 'Revolut Instant SEPA',
+      'payment_method': paymentMethod,
       'is_explicit': explicitSatoshis != null,
       'premium': explicitSatoshis != null ? null : '2.00',
       'satoshis': explicitSatoshis,
@@ -1197,8 +1208,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'taker': taken ? 8 : null,
       'escrow_duration': escrowSeconds,
       'bond_size': '3.00',
-      'latitude': null,
-      'longitude': null,
+      'latitude': meetingPoint?.$1.toStringAsFixed(6),
+      'longitude': meetingPoint?.$2.toStringAsFixed(6),
       'is_maker': false,
       'is_taker': participant,
       'is_participant': participant,
@@ -1217,8 +1228,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       data
         ..['price_now'] = 93545.0
         ..['premium_now'] = 2.0
-        ..['satoshis_now'] = _satsNow
-        ..addAll(robotView);
+        ..['satoshis_now'] = _satsNow;
+      // A protected order's description and place are hidden from a robot that takes no part in it (`api/views.py:294-298`, #245).
+      if (password != null) {
+        data
+          ..['latitude'] = null
+          ..['longitude'] = null
+          ..['description'] = null;
+      }
+      data.addAll(robotView);
       return data;
     }
     final payout = _last - _fee;

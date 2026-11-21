@@ -998,9 +998,9 @@
   "p2pMakeMatchesFound": "Des ordres existants correspondent au vôtre !",
   "p2pMakeSeeDetails": "Voir le détail",
   "p2pMakeHideDetails": "Masquer le détail",
-  "p2pMakePasswordLine": "Hors du carnet ; à prendre avec l’application officielle RoboSats.",
+  "p2pMakePasswordLine": "Hors du carnet ; se prend avec son lien et le mot de passe.",
   "p2pMakePasswordShare": "Partagez le lien de l’ordre (« Copier l'URL » sur sa page une fois créé) et le mot de passe avec les robots de votre choix.",
-  "p2pMakePasswordOfficialApp": "Bull Market ne sait pas encore prendre un ordre protégé : la personne qui le prend utilise l’application officielle RoboSats, avec le lien et le mot de passe.",
+  "p2pMakePasswordTakers": "Qui a le lien et le mot de passe peut le prendre, dans Bull Market (« Rechercher un ordre ») ou dans l’application officielle RoboSats.",
   "p2pMakePasswordReadable": "Qui demande l’ordre au coordinateur par son numéro peut quand même lire son sens, sa monnaie, son montant, sa prime, son mode de paiement, sa caution, ses délais et le nom de votre robot ; ni sa description ni son lieu.",
   "p2pMakePasswordHashOnly": "Seule l’empreinte SHA-256 du mot de passe quitte cet appareil, et elle n’est pas gardée : renouveler l’ordre redemande le mot de passe.",
   "p2pMakePasswordOldCoordinator": "{coordinator} ({version}) montre les ordres protégés à tous.",
@@ -1027,5 +1027,10 @@
   "p2pTermsShownBoth": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec des primes de {low} à {high} au lieu de {own}.",
   "p2pTermsShownPremiums": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec des primes de {low} à {high}.",
   "p2pTermsShownPremiumAlone": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}, avec une prime de {premium}.",
-  "p2pTermsShownOther": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}."
+  "p2pTermsShownOther": "{coordinator} a montré cet échange avec d’autres conditions à partir du {day} à {time}.",
+  "p2pTakeWrongPassword": "Mot de passe incorrect",
+  "p2pTakePasswordMissing": "Saisissez le mot de passe de l’ordre.",
+  "p2pTakeProtectedHidden": "Ordre protégé : sa description et son lieu s’affichent une fois que vous l’avez pris.",
+  "p2pTradeMeetingPoint": "Emplacement F2F",
+  "p2pTradeMeetingPointApproximate": "L'emplacement épinglé est approximatif. L'emplacement exact du lieu de rencontre doit être échangé dans le chat crypté."
 }

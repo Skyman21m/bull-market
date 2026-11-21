@@ -43,12 +43,16 @@ class BookView extends StatefulWidget {
   /// Opens the Garage from « You do not have a Garage Key », when the tab has one.
   final VoidCallback? onOpenGarage;
 
+  /// Opens the page of an order the books do not list, for its robot to read (#245): a password-protected order searched by its URL; `null` when the tab holds no robot.
+  final void Function(Coordinator coordinator, int orderId)? onOpenProtected;
+
   const BookView({
     super.key,
     required this.now,
     required this.onOpenOrder,
     required this.coordinatorDetails,
     this.onOpenGarage,
+    this.onOpenProtected,
   });
 
   @override
@@ -182,7 +186,7 @@ class _BookViewState extends State<BookView> {
     );
   }
 
-  /// « Search order »: opens the order the URL names when the book received it, or once the book of its coordinator, still awaited, brings it; otherwise says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored for the network, and « This order is not available » when one is, or cannot be read.
+  /// « Search order »: opens the order the URL names when the book received it, or once the book of its coordinator, still awaited, brings it; otherwise says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored for the network, and « This order is not available » when one cannot be read; with one stored, opens the order's page for its robot to read it (#245, [onOpenProtected]), « This order is not available » without that page.
   Future<void> _searchOrder() async {
     setState(() => _searches++);
     final outcome = await SearchOrderDialog.show(
@@ -195,12 +199,22 @@ class _BookViewState extends State<BookView> {
         widget.onOpenOrder(order);
       case final OrderSearchNeedsRobot miss:
         final cubit = context.read<BookCubit>();
+        final onOpenProtected = widget.onOpenProtected;
         final found = await OrderSearchMissDialog.show(
           context,
           settle: (asked) => cubit.settleSearchMiss(miss, asked: asked),
           onOpenGarage: widget.onOpenGarage,
+          readsProtected: onOpenProtected != null,
         );
-        if (found != null && mounted) widget.onOpenOrder(found);
+        if (!mounted) return;
+        switch (found) {
+          case OrderSearchMissFound(:final order):
+            widget.onOpenOrder(order);
+          case OrderSearchMissUnlisted(:final coordinator, :final orderId):
+            onOpenProtected?.call(coordinator, orderId);
+          case _:
+            break;
+        }
       case OrderSearchInvalidUrl() || null:
         break;
     }

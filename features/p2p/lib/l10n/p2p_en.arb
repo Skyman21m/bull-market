@@ -808,7 +808,7 @@
   },
   "p2pSearchOrderText": "Enter here an order URL to search for it, even if it's password protected",
   "@p2pSearchOrderText": {
-    "description": "Text of the « Search order » dialog; written in the RoboSats code only, absent from its translation files. Troc opens only an order of the public book until the Garage brings robots."
+    "description": "Text of the « Search order » dialog (`components/Dialogs/GoToOrder.tsx:52`); written in the RoboSats code only, absent from its translation files. Since #245 it holds here too: an order the books received do not hold, a password-protected one included, is read by the robot that would take it."
   },
   "p2pSearchOrderUrlLabel": "Order URL",
   "@p2pSearchOrderUrlLabel": {
@@ -5788,17 +5788,17 @@
   "@p2pMakeHideDetails": {
     "description": "Not in the RoboSats texts: the project's own: the same line once the explanation is unfolded, which folds it again (#189)."
   },
-  "p2pMakePasswordLine": "Kept out of the book; to be taken with the official RoboSats app.",
+  "p2pMakePasswordLine": "Kept out of the book; taken with its link and the password.",
   "@p2pMakePasswordLine": {
-    "description": "Not in the RoboSats texts: the project's own: the short line under « Password » once one is typed (#189): the coordinator leaves a protected order out of its book (`api/views.py:788-795`), and this app cannot take one (`take_order_usecase.dart`)."
+    "description": "Not in the RoboSats texts: the project's own: the short line under « Password » once one is typed (#189): the coordinator leaves a protected order out of its book (`api/views.py:788-790`); it is taken with its URL (« Search order ») and the password (#245)."
   },
   "p2pMakePasswordShare": "Share the order's link (« Copy URL » on its page once it is made) and the password with the robots you choose.",
   "@p2pMakePasswordShare": {
     "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189), how a protected order is shared, with the reference's « Copy URL » (`TradeBox/CancelButton.tsx:58`)."
   },
-  "p2pMakePasswordOfficialApp": "Bull Market cannot take a protected order yet: whoever takes it uses the official RoboSats app, with the link and the password.",
-  "@p2pMakePasswordOfficialApp": {
-    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; design note § 7, proposal 3)."
+  "p2pMakePasswordTakers": "Whoever has the link and the password can take it, in Bull Market (« Search order ») or in the official RoboSats app.",
+  "@p2pMakePasswordTakers": {
+    "description": "Not in the RoboSats texts: the project's own: in the detail of « Password » (#189; since #245 this app takes a protected order reached by its URL)."
   },
   "p2pMakePasswordReadable": "Whoever asks the coordinator for the order by its number can still read its side, currency, amount, premium, payment method, bond, timers and your robot's name; not its description nor its location.",
   "@p2pMakePasswordReadable": {
@@ -6026,5 +6026,25 @@
         "type": "String"
       }
     }
+  },
+  "p2pTakeWrongPassword": "Wrong password",
+  "@p2pTakeWrongPassword": {
+    "description": "The coordinator's message for error 1045 (`api/errors.py:52`, commit ff1998c), which the official client shows under its take button (`TakeButton.tsx:360-366`); not in its translations, so the French is the project's (#245)."
+  },
+  "p2pTakePasswordMissing": "Enter the order's password.",
+  "@p2pTakePasswordMissing": {
+    "description": "Not in the RoboSats texts: the project's own: under « Take Order » or « Continue » of a protected order pressed with « Password » empty: nothing is sent (the reference sends the take without a password and gets error 1045), #245."
+  },
+  "p2pTakeProtectedHidden": "Protected order: its description and location are shown once you take it.",
+  "@p2pTakeProtectedHidden": {
+    "description": "Not in the RoboSats texts: the project's own: above « Password » on the page of a protected order, whose description and location the coordinator hides from a robot that takes no part in it (`api/views.py:294-298`) and gives with the take (`:248-252`, `:280`, `:320-321`), #245."
+  },
+  "p2pTradeMeetingPoint": "F2F location",
+  "@p2pTradeMeetingPoint": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the tooltip of the map of an order's place (`components/OrderDetails/index.tsx:411`); on the « Order » tab of a trade of a protected order, once the coordinator gives the place to a participant (#245)."
+  },
+  "p2pTradeMeetingPointApproximate": "The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.",
+  "@p2pTradeMeetingPointApproximate": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), under the map of an order's place (`components/OrderDetails/index.tsx:292-294`), #245."
   }
 }

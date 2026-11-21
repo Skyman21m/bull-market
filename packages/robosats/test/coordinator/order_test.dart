@@ -53,6 +53,7 @@ void main() {
     int orderId = _orderId,
   }) => client.fetchOrder(temple, _testnet, identity: _us, orderId: orderId);
 
+  /// A take with the hash of [password] ([OrderPasswordHash.of], #245): the text never reaches the client.
   Future<Result<TakeOrderOutcome, OrderActionFailure>> takeAction({
     FiatAmount? amount,
     String? password,
@@ -62,7 +63,7 @@ void main() {
     identity: _us,
     orderId: _orderId,
     amount: amount,
-    password: password,
+    password: password == null ? null : OrderPasswordHash.of(password),
   );
 
   /// A take, its failure reduced to its cause: the split of [OrderActionFailure] has tests of its own.
@@ -603,6 +604,37 @@ void main() {
         expect(order.hasPassword, isTrue);
         expect(order.description, isNull);
         expect(order.location, isNull);
+      },
+    );
+
+    test(
+      'a read by a robot that takes no part is the order as the book would list it (#245)',
+      () async {
+        final order = await read(
+          _answer(1, role: _Role.outsider, password: true),
+        );
+        final listed = PublicOrder.ofRead(order);
+        expect(listed, isNotNull);
+        expect(listed?.coordinator, order.coordinator);
+        expect(listed?.id, order.id);
+        expect(listed?.type, order.type);
+        expect(listed?.currency, order.currency);
+        expect(listed?.amount, order.amount);
+        expect(listed?.paymentMethods, order.paymentMethods);
+        expect(listed?.maker, order.maker);
+        expect(listed?.bondSize, order.bondSize);
+        expect(listed?.escrowDuration, order.escrowDuration);
+        expect(listed?.satoshisNow, order.satoshisNow);
+        expect(listed?.premium, order.premiumNow);
+        expect(listed?.price, order.priceNow);
+        expect(listed?.expiresAt, order.expiresAt);
+        expect(listed?.location, isNull);
+        // A participant's read, or an order no longer public, is not an order of the book.
+        expect(
+          PublicOrder.ofRead(await read(_answer(1, role: _Role.preTaker))),
+          isNull,
+        );
+        expect(PublicOrder.ofRead(await read(_answer(6))), isNull);
       },
     );
 

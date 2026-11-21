@@ -1365,8 +1365,44 @@ void main() {
         expect(keys.calls, isEmpty);
         transport.release('temple');
 
-        expect(await settling, isA<OrderSearchMissNotAvailable>());
+        // A key stored: the order's page opens for its robot to read it (#245).
+        expect(
+          await settling,
+          isA<OrderSearchMissUnlisted>()
+              .having(
+                (miss) => miss.coordinator.shortAlias,
+                'coordinator',
+                'temple',
+              )
+              .having((miss) => miss.orderId, 'orderId', 2),
+        );
         expect(keys.calls, ['exists mainnet']);
+        await book.close();
+      },
+    );
+
+    test(
+      'a key stored and a URL whose number is no order number: « This order is not available » (#245)',
+      () async {
+        final keys = _KeyStore(const Ok(true));
+        final book = await heldBook(keys);
+        transport.release('temple');
+        await settle();
+        for (final url in [
+          'http://$temple/order/temple/0',
+          'http://$temple/order/temple/number',
+          'http://$temple/order/nowhere/2',
+        ]) {
+          final miss = OrderSearch.run(url, book.state.receivedOrders);
+          expect(
+            await book.settleSearchMiss(
+              miss as OrderSearchNeedsRobot,
+              asked: () => true,
+            ),
+            isA<OrderSearchMissNotAvailable>(),
+            reason: url,
+          );
+        }
         await book.close();
       },
     );

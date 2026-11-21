@@ -80,11 +80,17 @@ void main() {
           'lib/src/presentation/make_order_cubit.dart',
         ),
       ]) {
+        // The page of a password-protected order reads it through the take use case, with the cubit of that page (#245).
+        final cubits = {
+          cubit,
+          if (useCase == 'TakeOrderUsecase')
+            'lib/src/presentation/unlisted_order_cubit.dart',
+        };
         final outside = {
           for (final path in _whereNamed(sources, useCase))
             if (!path.startsWith('lib/src/domain/') &&
                 path != 'lib/src/p2p_locator.dart' &&
-                path != cubit)
+                !cubits.contains(path))
               path,
         };
         expect(outside, isEmpty, reason: useCase);

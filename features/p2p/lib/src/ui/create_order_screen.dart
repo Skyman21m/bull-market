@@ -2538,7 +2538,7 @@ class _Password extends StatelessWidget {
             if (needed || renewing) l10n.p2pRenewPasswordSame,
             l10n.p2pMakePasswordHint,
             l10n.p2pMakePasswordShare,
-            l10n.p2pMakePasswordOfficialApp,
+            l10n.p2pMakePasswordTakers,
             l10n.p2pMakePasswordReadable,
             l10n.p2pMakePasswordHashOnly,
             if (exposure != null) l10n.p2pMakePasswordOldDetail,

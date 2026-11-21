@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:convert/convert.dart' show hex;
-import 'package:crypto/crypto.dart' show sha256;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/chat.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
@@ -345,7 +343,7 @@ final class CoordinatorClient {
   /// The body is the reference client's (`frontend/src/models/Order.model.ts:233-243`, commit ff1998c): `{"action":"take","amount":…}`, with `"password"` before `"amount"` when there is one.
   /// [amount] is the amount chosen in a range order, in the order's currency, which for an order in bitcoin (currency 1000) is bitcoin, not sats; for a fixed order leave it `null`, and `0` is sent, as the reference client sends it and the coordinator ignores it.
   /// The coordinator refuses more than 8 decimals with an empty `400`, read as [OrderRequestRefused].
-  /// [password] is the text the user typed for a protected order: the SHA-256 of its UTF-8 bytes is sent, in lowercase hexadecimal, as the reference client sends it; an empty one is not sent.
+  /// [password] is the hash of the password the user typed for a protected order ([OrderPasswordHash.of], the SHA-256 of its UTF-8 bytes in lowercase hexadecimal, `OrderDetails/TakeButton.tsx:333`, the very hash a make sends, #189), sent as the reference client sends it; `null`, for an order without a password, sends no `password` field. The text never reaches this client (#245).
   ///
   /// A `200` answer is the order as the coordinator then describes it, read as a [TakeOrderOutcome]: [OrderTakeStarted] only when it shows this robot as the pre-taker with its bond, [OrderAlreadyTakenByThisRobot] when this robot was already the taker, [OrderNotTaken] otherwise (the reference coordinator answers a take on an order that is no longer public with the order as it is, and no error, `api/views.py:595-596`).
   /// A failure is an [OrderActionRefused] when nothing was done, and an [OrderActionOutcomeUnknown] when the take may have happened.
@@ -357,7 +355,7 @@ final class CoordinatorClient {
     required RobotIdentity identity,
     required int orderId,
     FiatAmount? amount,
-    String? password,
+    OrderPasswordHash? password,
   }) async {
     if (!_isOrderId(orderId)) {
       return const Err(OrderActionRefused(OrderNotFound()));
@@ -369,8 +367,7 @@ final class CoordinatorClient {
       orderId: orderId,
       body: {
         'action': 'take',
-        if (password != null && password.isNotEmpty)
-          'password': hex.encode(sha256.convert(utf8.encode(password)).bytes),
+        if (password != null) 'password': password.hex,
         'amount': amount == null ? 0 : jsonNumber(amount.value),
       },
     );

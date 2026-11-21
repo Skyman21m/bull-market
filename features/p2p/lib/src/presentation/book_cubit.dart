@@ -81,7 +81,7 @@ class BookCubit extends Cubit<BookState> {
   /// What the screen says for [miss], an order URL that the books received do not hold.
   ///
   /// While the book of the coordinator the URL names is still awaited, it waits for it; then the order if that book holds it, or [OrderSearchMissOffline] if that book could not be had.
-  /// Otherwise it asks the vault whether a Garage Key is stored for the network of the book: [OrderSearchMissNoGarageKey] only when the vault said that the slot is empty, or when the feature has no vault's handle, the Garage being disabled then; a key stored, or one that cannot be read (keystore locked, entry unreadable or unusable), is [OrderSearchMissNotAvailable], since a failure is not an absence (`HasGarageKeyUsecase`).
+  /// Otherwise it asks the vault whether a Garage Key is stored for the network of the book: [OrderSearchMissNoGarageKey] only when the vault said that the slot is empty, or when the feature has no vault's handle, the Garage being disabled then; a key stored is [OrderSearchMissUnlisted] when the URL names a coordinator of the book and an order number from 1 to 2^53, so that the order's page reads it with a robot (#245), and [OrderSearchMissNotAvailable] otherwise; a key that cannot be read (keystore locked, entry unreadable or unusable) is [OrderSearchMissNotAvailable], never « You do not have a Garage Key », since a failure is not an absence (`HasGarageKeyUsecase`), and no robot can read the order without the key.
   /// `null`, the vault not read, once [asked] says that the screen no longer asks or the book is closed.
   /// It hands no key out, uses no robot, and sends nothing to any coordinator.
   Future<OrderSearchMiss?> settleSearchMiss(
@@ -106,10 +106,21 @@ class BookCubit extends Cubit<BookState> {
     if (bookIs<CoordinatorBookFailed>(state)) {
       return const OrderSearchMissOffline();
     }
-    return switch (await _hasGarageKey?.execute(state.network)) {
-      null || Ok(value: false) => const OrderSearchMissNoGarageKey(),
-      Ok(value: true) || Err() => const OrderSearchMissNotAvailable(),
-    };
+    switch (await _hasGarageKey?.execute(state.network)) {
+      case null || Ok(value: false):
+        return const OrderSearchMissNoGarageKey();
+      // A key that cannot be read gives no robot to read the order with: said not available, as before #245.
+      case Err():
+        return const OrderSearchMissNotAvailable();
+      case Ok(value: true):
+        final id = miss.orderId;
+        final coordinator = state.coordinators.keys
+            .where((coordinator) => coordinator.shortAlias == miss.coordinator)
+            .firstOrNull;
+        return coordinator != null && id != null && id >= 1 && id <= 1 << 53
+            ? OrderSearchMissUnlisted(coordinator, id)
+            : const OrderSearchMissNotAvailable();
+    }
   }
 
   void _onTorState(P2pTorReport report) {

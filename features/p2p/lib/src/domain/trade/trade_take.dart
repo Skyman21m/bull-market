@@ -46,27 +46,28 @@ final class TakeAmount {
   String toString() => 'TakeAmount(${amount.value})';
 }
 
-/// The password the user typed for a protected order: the take sends its SHA-256 (the coordinator client hashes it), never the text.
+/// The password the user typed for a protected order, held only as its SHA-256 ([OrderPasswordHash.of]): the take sends that hash (`OrderDetails/TakeButton.tsx:333`, the very hash a make sends, #189), never the text, which this value does not keep (#245).
 ///
-/// Bounded as the coordinator bounds it (`max_length=2000`, `api/serializers.py:631-636`); never printed.
+/// Any text but the empty one, neither trimmed nor bounded, as the reference's field takes it (`components/OrderDetails/index.tsx:546-571`); never stored, never printed.
 @immutable
 final class OrderPassword {
-  static const int maxLength = 2000;
+  final OrderPasswordHash hash;
 
-  final String text;
+  const OrderPassword._(this.hash);
 
-  const OrderPassword._(this.text);
-
-  /// [text] as typed, or `null` when it is empty or longer than [maxLength].
+  /// The hash of [text] as typed, or `null` when it is empty, which the reference sends as no password.
   static OrderPassword? tryCreate(String text) =>
-      text.isEmpty || text.length > maxLength ? null : OrderPassword._(text);
+      switch (OrderPasswordHash.of(text)) {
+        final hash? => OrderPassword._(hash),
+        null => null,
+      };
 
   @override
   bool operator ==(Object other) =>
-      other is OrderPassword && other.text == text;
+      other is OrderPassword && other.hash == hash;
 
   @override
-  int get hashCode => text.hashCode;
+  int get hashCode => hash.hashCode;
 
   @override
   String toString() => 'OrderPassword(<redacted>)';
@@ -105,6 +106,54 @@ final class TakeOrderAlreadyTraded extends TakeRefusal {
 /// The prepared take given to `TakeOrderUsecase.confirm` is not, or no longer, one this app prepared: confirmed already, abandoned, replaced by a newer preparation of the same order, or prepared before the app restarted; nothing was sent: prepare again (#119).
 final class TakePreparationGone extends TakeRefusal {
   const TakePreparationGone();
+}
+
+/// The order has a password and none was given: nothing was read or sent, and the take stays prepared (#245); the screen asks for the password.
+final class TakePasswordMissing extends TakeRefusal {
+  const TakePasswordMissing();
+}
+
+/// An order that no book received, reached by its URL and read by the robot that will take it (#245): the order the page shows, in place of the public book.
+///
+/// A password-protected order, which no book ever lists (`api/views.py:788-790`), or a public order without a password that the book in memory does not hold yet (the book is read again only on the user's gesture, and a coordinator caches its book for 10 s, `api/views.py:85`, `:824`), as the reference's order page shows either (`basic/OrderPage/index.tsx:75-96`).
+/// Only a public order that the robot takes no part in, read whole as the book would list it ([PublicOrder.ofRead]); a protected one's description and location are hidden from such a robot (`api/views.py:294-298`), and come with the take, once the robot is a participant (`:248-252`, `:280`, `:320-321`).
+/// It holds no robot: the robot that read it stays with the use case (`PreparedTakes`), kept for the take of that order.
+@immutable
+final class UnlistedOrder {
+  /// The order as the book would list it, what the order details show and the take is compared with.
+  final PublicOrder order;
+
+  /// Whether a password protects the order (`has_password`): its take then asks for the password and sends its hash; otherwise it sends none.
+  final bool hasPassword;
+
+  /// The network it was read on.
+  final RobosatsNetwork network;
+
+  /// When the robot read it.
+  final DateTime readAt;
+
+  const UnlistedOrder._(
+    this.order,
+    this.hasPassword,
+    this.network,
+    this.readAt,
+  );
+
+  /// [read] as an order no book received, or `null` when it is not a public order that the robot reading it takes no part in.
+  static UnlistedOrder? ofRead(CoordinatorOrder read, {required DateTime at}) =>
+      switch (PublicOrder.ofRead(read)) {
+        final order? => UnlistedOrder._(
+          order,
+          read.hasPassword,
+          read.network,
+          at,
+        ),
+        null => null,
+      };
+
+  @override
+  String toString() =>
+      'UnlistedOrder(${order.coordinator.shortAlias}, ${order.id})';
 }
 
 /// What a take in two steps is doing while it runs (#119), for the screen to say: a step, never anything of the robot or of its token.

@@ -24,10 +24,13 @@ final class OrderSearchNeedsRobot extends OrderSearchOutcome {
   /// The URL searched, to search it again once the book of [coordinator] arrives.
   final String url;
 
+  /// The order number the URL names, `null` when it is none (#245).
+  final int? orderId;
+
   /// The short alias the URL names.
   final String coordinator;
 
-  const OrderSearchNeedsRobot(this.url, this.coordinator);
+  const OrderSearchNeedsRobot(this.url, this.coordinator, {this.orderId});
 }
 
 /// What the screen says for an [OrderSearchNeedsRobot], once the book of its coordinator is settled.
@@ -53,7 +56,15 @@ final class OrderSearchMissNoGarageKey extends OrderSearchMiss {
   const OrderSearchMissNoGarageKey();
 }
 
-/// A Garage Key is stored, or cannot be read: the official client's « This order is not available ».
+/// A Garage Key is stored, and the URL names a coordinator of the federation and an order number: the order may be a password-protected one, which no book lists, or a public one the book in memory does not hold yet; its page opens, and the robot that would take it reads it there (#245), as the official client's order page reads it with the user's robot.
+final class OrderSearchMissUnlisted extends OrderSearchMiss {
+  final Coordinator coordinator;
+  final int orderId;
+
+  const OrderSearchMissUnlisted(this.coordinator, this.orderId);
+}
+
+/// A Garage Key is stored, or cannot be read, and the URL names no coordinator of the federation or no order number, or no protected order can be read here: the official client's « This order is not available ».
 final class OrderSearchMissNotAvailable extends OrderSearchMiss {
   const OrderSearchMissNotAvailable();
 }
@@ -61,8 +72,8 @@ final class OrderSearchMissNotAvailable extends OrderSearchMiss {
 /// « Search order », the « Search » entry of the book of the official client (`components/Dialogs/GoToOrder.tsx` at commit ff1998c).
 ///
 /// The official client reads `http(s)://<host>/order/<coordinator>/<id>`, ignores the host, and opens the page of that order, which asks the coordinator for it with the robot of the user (`GET /api/order/`, authenticated).
-/// Troc does not read an order with a robot yet (#119): it opens the order only when it is in the public book received, waiting for the book of its coordinator when it is still awaited, and otherwise the screen says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored, « This order is not available » when one is.
-/// Nothing is requested from any coordinator.
+/// The order opens at once when it is in the public book received, after the book of its coordinator when it is still awaited; otherwise the screen says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored, and with a Garage Key the order's page opens, its robot reading it there (#245: a password-protected order, which no book lists).
+/// The search itself requests nothing from any coordinator.
 abstract final class OrderSearch {
   /// The pattern of the official client, unchanged.
   static final RegExp _orderUrl = RegExp(
@@ -84,6 +95,6 @@ abstract final class OrderSearch {
         return OrderSearchFound(order);
       }
     }
-    return OrderSearchNeedsRobot(text, coordinator);
+    return OrderSearchNeedsRobot(text, coordinator, orderId: id);
   }
 }

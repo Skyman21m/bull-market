@@ -140,7 +140,7 @@ void main() {
               onStep: onStep,
             );
           },
-          confirm: (prepared, {onStep}) {
+          confirm: (prepared, {password, onStep}) {
             confirms++;
             return take.confirm(prepared, onStep: onStep);
           },
