@@ -878,6 +878,61 @@ void main() {
     );
   }
 
+  testWidgets(
+    'the title and the axis choice share a line at text size 1.5 on a 390x844 screen, in fr',
+    (tester) async {
+      final l10n = lookupP2pLocalizations(const Locale('fr'));
+      await openChart(
+        tester,
+        locale: const Locale('fr'),
+        screen: const Size(390, 844),
+        textScale: 1.5,
+      );
+      await reveal(tester, chart);
+
+      // The header reserves no gap between its two words: as on the row it replaces, they share a line as soon as the sum of their widths fits in it, and here it does.
+      final title = find.descendant(
+        of: chart,
+        matching: find.text(l10n.p2pBookViewChart),
+      );
+      final axis = find.descendant(
+        of: chart,
+        matching: find.text(l10n.p2pBookColumnPremium),
+      );
+      expect(title, findsOneWidget);
+      expect(axis, findsOneWidget);
+      expect(
+        (tester.getCenter(title).dy - tester.getCenter(axis).dy).abs(),
+        lessThan(0.5),
+      );
+    },
+  );
+
+  testWidgets(
+    'the label of the axis choice stays on one line at text size 3 on a 320x568 screen, in en',
+    (tester) async {
+      final l10n = lookupP2pLocalizations(const Locale('en'));
+      await openChart(tester, screen: const Size(320, 568), textScale: 3);
+      await reveal(tester, chart);
+
+      // At this text size « Premium » is wider than its box: the FittedBox scales the paint down, so the box's text is one line, never cut letter by letter.
+      final label = find.descendant(
+        of: chart,
+        matching: find.text(l10n.p2pBookColumnPremium),
+      );
+      expect(label, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(label);
+      final oneLine = TextPainter(
+        text: paragraph.text,
+        textDirection: paragraph.textDirection,
+        textScaler: paragraph.textScaler,
+      )..layout();
+      addTearDown(oneLine.dispose);
+      // The rect of the text is its layout size times the scale of the FittedBox: a second line would double that height, a scaled single line stays under it.
+      expect(tester.getRect(label).height, lessThan(oneLine.height * 1.5));
+    },
+  );
+
   testWidgets('one coordinator offline among several: shown above the chart', (
     tester,
   ) async {

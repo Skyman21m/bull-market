@@ -157,11 +157,10 @@ class _DepthChartViewState extends State<DepthChartView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The title and the axis wrap onto two lines at a large text size; each is a word that cannot be cut, which shrinks just enough to stay whole rather than breaking letter by letter.
+          // The title and the axis wrap onto two lines at a large text size; each is a word that cannot be cut, which shrinks just enough to stay whole rather than breaking letter by letter. No gap is reserved between them, so that they share a line as soon as the sum of their widths fits, as they did in the row this replaces.
           Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: BullSpacing.sm,
             runSpacing: BullSpacing.xs,
             children: [
               WordFitText(
