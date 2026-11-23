@@ -384,30 +384,34 @@ void main() {
       },
     );
 
-    test('a connection that comes after its wait is let go at once, nothing sent on it', () async {
-      final session = OsmMapTileAdapter(
-        createClient: () => OsmMapTileAdapter.newClient()
-          ..connectionFactory = (uri, host, port) async {
-            await Future<void>.delayed(const Duration(milliseconds: 600));
-            return Socket.startConnect(
-              InternetAddress.loopbackIPv4,
-              provider.port,
-            );
-          },
-        connectTimeout: const Duration(milliseconds: 300),
-      ).open();
-      expect(await session.fetch(tile), isA<MapTileFailed>());
-      final watch = Stopwatch()..start();
-      while ((provider.accepted == 0 || provider.ended == 0) &&
-          watch.elapsed < const Duration(seconds: 2)) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      // The session still open: only the late connection's own release ends it.
-      expect(provider.accepted, 1);
-      expect(provider.ended, 1);
-      expect(provider.heads, isEmpty);
-      session.close();
-    });
+    test(
+      'a connection that comes after its wait is let go at once, nothing sent on it',
+      () async {
+        final session = OsmMapTileAdapter(
+          createClient: () =>
+              OsmMapTileAdapter.newClient()
+                ..connectionFactory = (uri, host, port) async {
+                  await Future<void>.delayed(const Duration(milliseconds: 600));
+                  return Socket.startConnect(
+                    InternetAddress.loopbackIPv4,
+                    provider.port,
+                  );
+                },
+          connectTimeout: const Duration(milliseconds: 300),
+        ).open();
+        expect(await session.fetch(tile), isA<MapTileFailed>());
+        final watch = Stopwatch()..start();
+        while ((provider.accepted == 0 || provider.ended == 0) &&
+            watch.elapsed < const Duration(seconds: 2)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        // The session still open: only the late connection's own release ends it.
+        expect(provider.accepted, 1);
+        expect(provider.ended, 1);
+        expect(provider.heads, isEmpty);
+        session.close();
+      },
+    );
 
     test('a direct connection, whatever proxy the environment names', () async {
       await HttpOverrides.runZoned(() async {
