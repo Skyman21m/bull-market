@@ -12,7 +12,7 @@ typedef CreateMapTileClient = HttpClient Function();
 
 /// The tiles of the maps, from OpenStreetMap, outside Tor (#246): the owner's decision of 2026-11-23, as the reference's Android app fetches them through its WebView, which has no proxy (design note `docs/design/phase-3-map-tiles.md` § 1 and § 3, option C).
 ///
-/// The only connection of the feature that does not go through the embedded Tor, and the only one to a third party (the wallet's price and swap service, outside Tor too, are reached through the wallet's port, `P2pWalletPort`): `robot_bindings_architecture_test.dart` pins that no other file opens one.
+/// The one connection the feature opens itself outside Tor, and its only one to a third party (the wallet's price and swap service, outside Tor too, are reached through the wallet's port, `P2pWalletPort`): `robot_bindings_architecture_test.dart` pins that no other file opens one.
 /// What the provider learns, for each tile asked: the phone's IP address, the tile's zoom, column and row, so the area looked at, the time, and the headers below; the phone's network sees the name `tile.openstreetmap.org` asked of its resolver in clear (design note § 5).
 ///
 /// Its rules (design note § 3), each with its test in `map_tiles_test.dart`:

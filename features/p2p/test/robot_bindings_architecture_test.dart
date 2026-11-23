@@ -796,7 +796,7 @@ void main() {
         ),
         {
           'lib/src/data/tor_coordinator_transport.dart',
-          // The tiles of the maps (#246): the one connection of the feature outside Tor, the owner's decision of 2026-11-23; the wallet's price and swap service, outside Tor too, are reached through the wallet's port (`wallet_port_architecture_test.dart`).
+          // The tiles of the maps (#246): the one connection the feature opens itself outside Tor, the owner's decision of 2026-11-23; the wallet's price and swap service, outside Tor too, are reached through the wallet's port (`wallet_port_architecture_test.dart`).
           'lib/src/data/osm_map_tile_adapter.dart',
         },
       );

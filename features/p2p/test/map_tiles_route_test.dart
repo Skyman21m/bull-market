@@ -341,6 +341,11 @@ void main() {
             : MapTileImage(testTilePng(tile));
       };
       await openMap(tester);
+      // At zoom 3, where a pan brings new tiles into view.
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
       await tester.tap(switchFinder);
       await settle(tester);
       await tester.tap(find.text('Acknowledged'));
@@ -386,13 +391,25 @@ void main() {
       expect(canvas.images, frame.images.length);
       expect(canvas.paths, greaterThan(0));
 
-      // The next pan asks it again; it comes this time.
+      // A pan within the same tiles asks nothing; the next pan that changes the tiles in view asks it again, and it comes this time.
       final askedBefore = tiles.asked.where((tile) => tile == failed).length;
+      final shown = inView(tester).toSet();
+      await drag(tester, const Offset(-2, 0));
+      await settleTiles(tester);
+      expect(inView(tester).toSet(), shown);
+      expect(
+        tiles.asked.where((tile) => tile == failed).length,
+        askedBefore,
+      );
       failing
         ..clear()
         ..add(MapTile.of(0, 0, 0) ?? failed);
-      await drag(tester, const Offset(-30, 0));
+      for (var i = 0; i < 8 && setEquals(inView(tester).toSet(), shown); i++) {
+        await drag(tester, const Offset(-40, 0));
+      }
       await settleTiles(tester);
+      expect(inView(tester).toSet(), isNot(shown));
+      expect(inView(tester), contains(failed));
       expect(
         tiles.asked.where((tile) => tile == failed).length,
         greaterThan(askedBefore),
@@ -487,7 +504,8 @@ void main() {
       expect(asked, isNotEmpty);
       final (_, tip) = painter(tester).layout.drawn.first;
       await tester.tapAt(
-        tester.getTopLeft(paint) + tip.translate(0, -MapChartPainter.pinHeight / 2),
+        tester.getTopLeft(paint) +
+            tip.translate(0, -MapChartPainter.pinHeight / 2),
       );
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsOneWidget);

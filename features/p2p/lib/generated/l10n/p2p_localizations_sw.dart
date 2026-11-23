@@ -4170,20 +4170,20 @@ class P2pLocalizationsSw extends P2pLocalizations {
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
 
   @override
-  String get p2pMapShowTiles => 'Onyesha vigae';
+  String get p2pMapShowTiles => 'Show tiles';
 
   @override
-  String get p2pMapTilesTitle => 'Pakua ramani ya ubora wa juu?';
+  String get p2pMapTilesTitle => 'Download high resolution map?';
 
   @override
   String get p2pMapTilesText =>
-      'Kwa kufanya hivyo, utakuwa unachukua vigae vya ramani kutoka kwa mtoa huduma wa tatu. Kulingana na usanidi wako, taarifa za siri zinaweza kuvuja kwa seva nje ya shirikisho la RoboSats.';
+      'By doing so, you will be fetching map tiles from a third-party provider. Depending on your setup, private information might be leaked to servers outside the RoboSats federation.';
 
   @override
-  String get p2pMapTilesClose => 'Funga';
+  String get p2pMapTilesClose => 'Close';
 
   @override
-  String get p2pMapTilesAcknowledged => 'Thibitisha';
+  String get p2pMapTilesAcknowledged => 'Acknowledged';
 
   @override
   String get p2pMapTilesCredit => '© OpenStreetMap contributors';

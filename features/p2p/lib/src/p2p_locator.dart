@@ -153,7 +153,7 @@ final class P2pLocator {
       lotteryDraws: Random().nextDouble,
       // The draws that move a meeting point pinned (#189): they hide the place pinned, so the secure source.
       locationDraws: Random.secure().nextDouble,
-      // The tiles of the maps (#246): OpenStreetMap's, outside Tor, the only connection of the feature that does not go through the embedded Tor; nothing is created before a map's « Show tiles » is on and acknowledged.
+      // The tiles of the maps (#246): OpenStreetMap's, outside Tor, the one connection the feature opens itself outside Tor (the wallet's price and swap service also leave outside Tor, through the wallet's port); nothing is created before a map's « Show tiles » is on and acknowledged.
       tiles: () => const OsmMapTileAdapter(),
     );
     if (garageKeys != null && databaseDirectory != null) {

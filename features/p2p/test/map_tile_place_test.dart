@@ -80,29 +80,35 @@ void main() {
     );
   }
 
-  test('a tile\'s picture is drawn exactly in its square, the whole picture', () async {
-    final image = await createTestImage(width: 256, height: 256);
-    final tile = MapTile.of(15, 16598, 11273);
-    if (tile == null) fail('no tile');
-    final camera = MapCamera.at(
-      zoom: 15,
-      x: WebMercator.xOf(2.3522),
-      y: WebMercator.yOf(48.8566),
-    );
-    final canvas = _RecordingCanvas();
-    MapChartPainter.paintGround(
-      canvas,
-      view,
-      camera,
-      null,
-      MapTileFrame([tile], {tile: image}),
-      MapColors.of(testBullTheme),
-    );
-    expect(canvas.drawn, [
-      (const Rect.fromLTWH(0, 0, 256, 256), MapChartPainter.tileRect(tile, camera, view)),
-    ]);
-    image.dispose();
-  });
+  test(
+    'a tile\'s picture is drawn exactly in its square, the whole picture',
+    () async {
+      final image = await createTestImage(width: 256, height: 256);
+      final tile = MapTile.of(15, 16598, 11273);
+      if (tile == null) fail('no tile');
+      final camera = MapCamera.at(
+        zoom: 15,
+        x: WebMercator.xOf(2.3522),
+        y: WebMercator.yOf(48.8566),
+      );
+      final canvas = _RecordingCanvas();
+      MapChartPainter.paintGround(
+        canvas,
+        view,
+        camera,
+        null,
+        MapTileFrame([tile], {tile: image}),
+        MapColors.of(testBullTheme),
+      );
+      expect(canvas.drawn, [
+        (
+          const Rect.fromLTWH(0, 0, 256, 256),
+          MapChartPainter.tileRect(tile, camera, view),
+        ),
+      ]);
+      image.dispose();
+    },
+  );
 }
 
 /// A canvas that records where each picture is drawn.

@@ -4170,20 +4170,20 @@ class P2pLocalizationsZh extends P2pLocalizations {
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
 
   @override
-  String get p2pMapShowTiles => '显示瓦片';
+  String get p2pMapShowTiles => 'Show tiles';
 
   @override
-  String get p2pMapTilesTitle => '下载高分辨率地图？';
+  String get p2pMapTilesTitle => 'Download high resolution map?';
 
   @override
   String get p2pMapTilesText =>
-      '通过这样做，您将从第三方提供商中获取地图块。根据您的设置，私密信息可能会泄露到RoboSats联邦之外的服务器。';
+      'By doing so, you will be fetching map tiles from a third-party provider. Depending on your setup, private information might be leaked to servers outside the RoboSats federation.';
 
   @override
-  String get p2pMapTilesClose => '关闭';
+  String get p2pMapTilesClose => 'Close';
 
   @override
-  String get p2pMapTilesAcknowledged => '确认';
+  String get p2pMapTilesAcknowledged => 'Acknowledged';
 
   @override
   String get p2pMapTilesCredit => '© OpenStreetMap contributors';

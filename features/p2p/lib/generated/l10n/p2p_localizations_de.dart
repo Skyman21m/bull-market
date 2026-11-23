@@ -4170,20 +4170,20 @@ class P2pLocalizationsDe extends P2pLocalizations {
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
 
   @override
-  String get p2pMapShowTiles => 'Kacheln anzeigen';
+  String get p2pMapShowTiles => 'Show tiles';
 
   @override
-  String get p2pMapTilesTitle => 'Hochauflösende Karte herunterladen?';
+  String get p2pMapTilesTitle => 'Download high resolution map?';
 
   @override
   String get p2pMapTilesText =>
-      'Indem du dies tust, wirst du Kartendaten von einem Drittanbieter abrufen. Abhängig von deiner Konfiguration könnten private Informationen an Server außerhalb der RoboSats-Föderation weitergegeben werden.';
+      'By doing so, you will be fetching map tiles from a third-party provider. Depending on your setup, private information might be leaked to servers outside the RoboSats federation.';
 
   @override
-  String get p2pMapTilesClose => 'Schließen';
+  String get p2pMapTilesClose => 'Close';
 
   @override
-  String get p2pMapTilesAcknowledged => 'Bestätigen';
+  String get p2pMapTilesAcknowledged => 'Acknowledged';
 
   @override
   String get p2pMapTilesCredit => '© OpenStreetMap contributors';
