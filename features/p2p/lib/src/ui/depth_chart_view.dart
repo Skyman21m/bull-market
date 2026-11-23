@@ -13,6 +13,7 @@ import '../presentation/p2p_formats.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/offer_row.dart';
 import 'widgets/maker_avatar.dart';
+import 'widgets/word_fit_text.dart';
 
 /// The « Chart » view of the book: the depth chart of the official client (`components/Charts/DepthChart/index.tsx`), drawn by the app.
 ///
@@ -156,18 +157,28 @@ class _DepthChartViewState extends State<DepthChartView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          // The title and the axis wrap onto two lines at a large text size; each is a word that cannot be cut, which shrinks just enough to stay whole rather than breaking letter by letter.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: BullSpacing.sm,
+            runSpacing: BullSpacing.xs,
             children: [
-              Expanded(
-                child: Text(
-                  l10n.p2pBookViewChart,
-                  style: text.bodyLarge?.copyWith(
-                    color: colors.text,
-                    fontWeight: FontWeight.w700,
-                  ),
+              WordFitText(
+                l10n.p2pBookViewChart,
+                style: text.bodyLarge?.copyWith(
+                  color: colors.text,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              FilterChoice(label: axisLabel(_axis, l10n), onTap: _pickAxis),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerStart,
+                child: FilterChoice(
+                  label: axisLabel(_axis, l10n),
+                  onTap: _pickAxis,
+                ),
+              ),
             ],
           ),
           Row(
@@ -183,7 +194,7 @@ class _DepthChartViewState extends State<DepthChartView> {
                 disabledColor: colors.outline,
               ),
               Flexible(
-                child: Text(
+                child: WordFitText(
                   center ?? '',
                   textAlign: TextAlign.center,
                   style: text.bodyLarge?.copyWith(

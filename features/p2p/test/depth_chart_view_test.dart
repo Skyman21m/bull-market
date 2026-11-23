@@ -4,6 +4,7 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:bull_ui/testing.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -726,6 +727,153 @@ void main() {
         expect(chart, findsOneWidget);
         expect(tester.getSize(chart).height, greaterThanOrEqualTo(320));
         expect(tester.getSize(plot).height, greaterThan(100));
+      },
+    );
+  }
+
+  /// Scrolls the book down to [target], so that the chart is laid out and an overflow would fail the test.
+  Future<void> reveal(WidgetTester tester, Finder target) async {
+    await tester.scrollUntilVisible(
+      target,
+      100,
+      scrollable: find
+          .descendant(
+            of: find.byType(CustomScrollView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await settle(tester);
+  }
+
+  /// The languages and text sizes of a phone of 320 points where the chart must open without an overflow.
+  const largeTexts = [
+    (Locale('en'), 2.0),
+    (Locale('en'), 3.0),
+    (Locale('fr'), 2.0),
+    (Locale('fr'), 3.0),
+  ];
+
+  for (final (locale, textScale) in largeTexts) {
+    testWidgets(
+      'the chart opens without an overflow on a 320x568 screen at text size $textScale, in ${locale.languageCode}',
+      (tester) async {
+        final l10n = lookupP2pLocalizations(locale);
+        await openChart(
+          tester,
+          locale: locale,
+          screen: const Size(320, 568),
+          textScale: textScale,
+        );
+        await reveal(tester, chart);
+
+        // An overflow would have failed the test already: the header of the chart and the label of its switch are both there.
+        expect(chart, findsOneWidget);
+        expect(find.text(l10n.p2pBookViewChart), findsNWidgets(2));
+        expect(find.text(l10n.p2pBookColumnPremium), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'five coordinators offline on a 320x568 screen at text size $textScale, in ${locale.languageCode}: the chart opens without an overflow',
+      (tester) async {
+        final l10n = lookupP2pLocalizations(locale);
+        transport = FakeTransport(
+          books: {'temple': books()['temple'] ?? []},
+          failures: {
+            for (final alias in everyCoordinator)
+              if (alias != 'temple') alias: const CoordinatorTimedOut(),
+          },
+        );
+        await openChart(
+          tester,
+          locale: locale,
+          screen: const Size(320, 568),
+          textScale: textScale,
+        );
+        await settleAttempts(tester);
+
+        expect(
+          rowStates(
+            tester,
+          ).values.where((state) => state == CoordinatorRowState.offline),
+          hasLength(5),
+        );
+        expect(shown(l10n.p2pBookCoordinatorsOffline(5)), findsOneWidget);
+        await reveal(tester, chart);
+        expect(chart, findsOneWidget);
+        expect(find.text(l10n.p2pBookViewChart), findsNWidgets(2));
+      },
+    );
+  }
+
+  /// A book in dollars, which « Any currency » prices in dollars too: the chart can open on the price axis without another filter.
+  Map<String, List<Map<String, Object?>>> dollarBooks() => {
+    'temple': [
+      pricedOrder(1, type: 1, premium: 0, sats: 1000000, currency: 1),
+      pricedOrder(2, type: 1, premium: 3.125, sats: 2000000, currency: 1),
+    ],
+    'lake': [
+      pricedOrder(3, type: 0, premium: -3.125, sats: 3000000, currency: 1),
+      pricedOrder(4, type: 0, premium: 1.5625, sats: 500000, currency: 1),
+    ],
+  };
+
+  for (final locale in const [Locale('en'), Locale('fr')]) {
+    testWidgets(
+      'the title of the chart stays on one line at text size 3, in ${locale.languageCode}',
+      (tester) async {
+        final l10n = lookupP2pLocalizations(locale);
+        await openChart(
+          tester,
+          locale: locale,
+          screen: const Size(320, 568),
+          textScale: 3,
+        );
+        await reveal(tester, chart);
+
+        // At three times the text size, « Graphique » is wider than the chart: the title wraps at its spaces only, so it is one line, shortened just enough, never cut letter by letter.
+        final title = find.descendant(
+          of: chart,
+          matching: find.text(l10n.p2pBookViewChart),
+        );
+        expect(title, findsOneWidget);
+        final paragraph = tester.renderObject<RenderParagraph>(title);
+        final oneLine = TextPainter(
+          text: paragraph.text,
+          textDirection: paragraph.textDirection,
+          textScaler: paragraph.textScaler,
+        )..layout();
+        addTearDown(oneLine.dispose);
+        expect(tester.getSize(title).height, lessThan(oneLine.height * 1.5));
+      },
+    );
+
+    testWidgets(
+      'the price axis opens without an overflow on a 320x568 screen at text size 3, in ${locale.languageCode}',
+      (tester) async {
+        final l10n = lookupP2pLocalizations(locale);
+        transport = FakeTransport(books: dollarBooks());
+        await openChart(
+          tester,
+          locale: locale,
+          screen: const Size(320, 568),
+          textScale: 3,
+        );
+        await reveal(tester, chart);
+
+        await tester.tap(find.text(l10n.p2pBookColumnPremium));
+        await settle(tester);
+        // At this text size the two options of the sheet may not both fit: bring « Price » into view before tapping it.
+        await tester.ensureVisible(find.text(l10n.p2pBookColumnPrice));
+        await settle(tester);
+        await tester.tap(find.text(l10n.p2pBookColumnPrice));
+        await settle(tester);
+        await reveal(tester, chart);
+
+        // An overflow would have failed the test already: the axis is « Price », and the value between the zoom buttons is drawn.
+        expect(find.text(l10n.p2pBookColumnPrice), findsOneWidget);
+        expect(find.textContaining('USD'), findsOneWidget);
       },
     );
   }
