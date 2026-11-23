@@ -423,6 +423,32 @@ void main() {
     );
 
     test(
+      'an answer that comes a byte now and then is given up after the tile\'s time',
+      () async {
+        provider.dribble = (head) async* {
+          yield latin1.encode(
+            'HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nConnection: close\r\n\r\n',
+          );
+          for (var i = 0; i < 100; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            yield const [0];
+          }
+        };
+        final session = provider
+            .adapter(
+              readTimeout: const Duration(milliseconds: 300),
+              tileTimeout: const Duration(milliseconds: 500),
+            )
+            .open();
+        final watch = Stopwatch()..start();
+        expect(await session.fetch(tile), isA<MapTileFailed>());
+        expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
+        expect(OsmMapTileAdapter.tileTimeout, const Duration(seconds: 30));
+        session.close();
+      },
+    );
+
+    test(
       'a connection that does not come is given up after its wait',
       () async {
         final session = OsmMapTileAdapter(
@@ -619,6 +645,9 @@ final class _Provider {
   var closedEarly = 0;
   late FutureOr<List<int>> Function(String head) answer;
 
+  /// An answer written bit by bit, in place of [answer], when set.
+  Stream<List<int>> Function(String head)? dribble;
+
   _Provider._(this._server) {
     answer = (head) {
       final path = head.split(' ')[1];
@@ -644,6 +673,7 @@ final class _Provider {
 
   OsmMapTileAdapter adapter({
     Duration readTimeout = const Duration(seconds: 5),
+    Duration tileTimeout = const Duration(seconds: 30),
     DateTime Function()? clock,
   }) => OsmMapTileAdapter(
     createClient: () {
@@ -655,6 +685,7 @@ final class _Provider {
         };
     },
     readTimeout: readTimeout,
+    tileTimeout: tileTimeout,
     clock: clock ?? DateTime.now,
   );
 
@@ -680,6 +711,17 @@ final class _Provider {
         running++;
         mostRunning = math.max(mostRunning, running);
         try {
+          final dribble = this.dribble;
+          if (dribble != null) {
+            written = true;
+            await for (final bytes in dribble(text.substring(0, end))) {
+              if (closed) return;
+              socket.add(bytes);
+              await socket.flush();
+            }
+            await socket.close();
+            return;
+          }
           final reply = await answer(text.substring(0, end));
           if (closed) return;
           written = true;
