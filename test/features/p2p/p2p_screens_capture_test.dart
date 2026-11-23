@@ -1216,7 +1216,7 @@ void main() {
       await settle();
       await capture('garage-profil-historique-non-enregistre');
 
-      // « Search order » with a Garage Key stored, for an order the book does not hold: « This order is not available », nothing about a key.
+      // « Search order » with a Garage Key stored, for an order the book does not hold, on the Garage whose records cannot be written: the order's page (#245) stops on the take's records before any robot asks the coordinator for the order.
       await tester.tap(find.text(l10n.p2pNavOffers));
       await settle();
       await tester.tap(find.text(l10n.p2pCommonSearch));
@@ -1225,10 +1225,19 @@ void main() {
       await tester.enterText(find.byType(TextField), '$temple/order/temple/1');
       await tester.tap(find.text(l10n.p2pCommonSearch).last);
       await settle();
-      if (find.text(l10n.p2pOrderNotAvailable).evaluate().isEmpty) {
-        throw StateError('the search does not say the order is not available');
+      for (
+        var i = 0;
+        i < 20 && find.text(l10n.p2pTakeNotRecorded).evaluate().isEmpty;
+        i++
+      ) {
+        await settle();
       }
-      await capture('ordre-indisponible');
+      if (find.text(l10n.p2pTakeNotRecorded).evaluate().isEmpty) {
+        throw StateError(
+          'the order page does not say its records stay unwritten',
+        );
+      }
+      await capture('ordre-registres-non-ecrits');
     });
   }
 
@@ -2675,9 +2684,15 @@ void main() {
         await waitFor(find.textContaining(l10n.p2pEndCollabPeerAlert('')));
         await settle();
         await capture('fin-annulation-pair');
+        // « … » opens « Order options », whose « Collaborative Cancel » opens the reference's dialog; the peer's ask turns its button into « Accept Cancelation » (chat_step_panel.dart:271-275, confirm_collab_cancel_dialog.dart:44-51), and each step is waited for rather than tapped blind.
+        await reveal(find.byIcon(Icons.more_horiz));
         await tester.tap(find.byIcon(Icons.more_horiz));
+        await waitFor(find.text(l10n.p2pEndCollabCancel));
+        await tester.ensureVisible(find.text(l10n.p2pEndCollabCancel));
         await settle();
         await tester.tap(find.text(l10n.p2pEndCollabCancel));
+        await waitFor(find.text(l10n.p2pEndCollabAccept));
+        await tester.ensureVisible(find.text(l10n.p2pEndCollabAccept));
         await settle();
         await capture('fin-annulation-accepter');
         await tester.tap(find.text(l10n.p2pEndCollabAccept));
@@ -2760,6 +2775,39 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pOrderNotAvailable));
         await capture('echange-indisponible');
+
+        // « Search order » for an order number no coordinator of this test knows, with a Garage Key stored and its records written: the order's page (#245) has its robot read the order, answered as a coordinator answers one it does not know, and the page says it is not available.
+        // Last, once no capture follows that a robot of the take could change: the search takes the next robot of the key, which nothing here uses again.
+        await backToTab();
+        await tester.tap(find.text(l10n.p2pNavOffers));
+        await settle();
+        final templeOnion = Federation.robosats
+            .byAlias('temple')
+            ?.mainnet
+            .onion;
+        transport.unknownOrder = 43;
+        await tester.tap(find.text(l10n.p2pCommonSearch));
+        await settle();
+        await tester.enterText(
+          find.byType(TextField),
+          '$templeOnion/order/temple/43',
+        );
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonSearch).last);
+        // The order's page, its host row first: the line under it comes once the read is refused.
+        await waitFor(find.text('# 43'));
+        // The refusal in the page's own list: the search's dialog keeps an invisible copy of that text while it waits (`order_search_miss_dialog.dart:85-92`), which finding the text alone would take for the page's answer before its robot's read is over.
+        final refusal = find.descendant(
+          of: find.ancestor(
+            of: find.text('# 43'),
+            matching: find.byType(ListView),
+          ),
+          matching: find.text(l10n.p2pOrderNotAvailable),
+        );
+        await waitFor(refusal);
+        await tester.ensureVisible(refusal);
+        await settle();
+        await capture('ordre-indisponible');
 
         // The screens gone, their cubits closed: the waits they leave (the release of the robots, 10 s at most) run out.
         await backToTab();
@@ -3012,6 +3060,9 @@ final class _TradeTransport implements CoordinatorTransport, Bolt11Decoder {
   final DateTime now;
   ScriptedCoordinator? temple;
 
+  /// The number of an order no coordinator of this test knows, answered as a coordinator answers one it does not know (`api/views.py`, 1042 on a `404`): the scripted coordinator would give its own order whatever the number asked.
+  int? unknownOrder;
+
   _TradeTransport(this.now);
 
   /// The maker of Lake's range order: a robot of no one, its hash id drawn from a fixed text.
@@ -3044,6 +3095,14 @@ final class _TradeTransport implements CoordinatorTransport, Bolt11Decoder {
       body: utf8.encode(jsonEncode(body)),
     );
     final temple = this.temple;
+    final unknown = unknownOrder;
+    if (unknown != null &&
+        request.url.path == '/api/order/' &&
+        request.url.queryParameters['order_id'] == '$unknown') {
+      return Ok(
+        json(404, {'error_code': 1042, 'bad_request': 'Invalid Order Id'}),
+      );
+    }
     if (alias == 'temple' && temple != null) return temple.send(request);
     if (alias == 'lake' && request.url.path.contains('book')) {
       return Ok(
