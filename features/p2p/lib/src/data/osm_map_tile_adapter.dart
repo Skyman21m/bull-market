@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:collection';
+import 'dart:collection' show Queue;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -30,14 +30,11 @@ final class OsmMapTileAdapter implements MapTilePort {
   final DateTime Function() _clock;
 
   const OsmMapTileAdapter({
-    CreateMapTileClient createClient = newClient,
-    Duration connectTimeout = OsmMapTileAdapter.connectTimeout,
-    Duration readTimeout = OsmMapTileAdapter.readTimeout,
-    DateTime Function() clock = DateTime.now,
-  }) : _createClient = createClient,
-       _connectTimeout = connectTimeout,
-       _readTimeout = readTimeout,
-       _clock = clock;
+    this._createClient = newClient,
+    this._connectTimeout = OsmMapTileAdapter.connectTimeout,
+    this._readTimeout = OsmMapTileAdapter.readTimeout,
+    this._clock = DateTime.now,
+  });
 
   /// The name the tile server is given, in `User-Agent` and `X-Requested-With`: an anagram of « Bull Market », fixed, without version, the same for every user (the owner's decision of 2026-11-23).
   static const name = 'TumbleLark';
@@ -139,7 +136,7 @@ final class _OsmMapTileSession implements MapTileSession {
   bool _closed = false;
 
   /// The tiles kept, the least recently used first.
-  final _kept = LinkedHashMap<MapTile, _KeptTile>();
+  final _kept = <MapTile, _KeptTile>{};
 
   /// The tiles asked, waiting or running.
   final _requests = <MapTile, _TileRequest>{};
@@ -258,9 +255,7 @@ final class _OsmMapTileSession implements MapTileSession {
       return await _read(request, response);
     } on Exception {
       // The exception is never logged nor kept: its text may hold the tile's address.
-      return _given(request)
-          ? const MapTileDropped()
-          : const MapTileFailed();
+      return _given(request) ? const MapTileDropped() : const MapTileFailed();
     }
   }
 
@@ -338,7 +333,10 @@ final class _OsmMapTileSession implements MapTileSession {
       );
       if (seconds != null) {
         return Duration(
-          seconds: seconds.clamp(0, OsmMapTileAdapter.defaultLifetime.inSeconds),
+          seconds: seconds.clamp(
+            0,
+            OsmMapTileAdapter.defaultLifetime.inSeconds,
+          ),
         );
       }
     }
@@ -364,4 +362,3 @@ final class _OsmMapTileSession implements MapTileSession {
     response.listen(null).cancel().ignore();
   }
 }
-

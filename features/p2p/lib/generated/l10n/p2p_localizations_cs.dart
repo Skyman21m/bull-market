@@ -4168,4 +4168,26 @@ class P2pLocalizationsCs extends P2pLocalizations {
   @override
   String get p2pTradeMeetingPointApproximate =>
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
+
+  @override
+  String get p2pMapShowTiles => 'Ukázat dlaždice';
+
+  @override
+  String get p2pMapTilesTitle => 'Stáhnout mapu ve vysokém rozlišení?';
+
+  @override
+  String get p2pMapTilesText =>
+      'Tímto se načtou mapové dlaždice od poskytovatele třetí strany. V závislosti na vašem nastavení mohou uniknout soukromé informace na servery mimo federaci RoboSats.';
+
+  @override
+  String get p2pMapTilesClose => 'Zavřít';
+
+  @override
+  String get p2pMapTilesAcknowledged => 'Rozumím';
+
+  @override
+  String get p2pMapTilesCredit => '© OpenStreetMap contributors';
+
+  @override
+  String get p2pMapTilesUnavailable => 'Map tiles unavailable';
 }

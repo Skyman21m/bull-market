@@ -6448,6 +6448,48 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.'**
   String get p2pTradeMeetingPointApproximate;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit babf62e, line 206), with its French (`fr.json`, line 206). The tooltip of the switch at the right of a map's title (`F2fMap.tsx:105`, `MapChart/index.tsx:109`), #246.
+  ///
+  /// In en, this message translates to:
+  /// **'Show tiles'**
+  String get p2pMapShowTiles;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit babf62e, line 205), with its French (`fr.json`, line 205). The title of the dialog « Show tiles » opens the first time on a map (`F2fMap.tsx:75`, `MapChart/index.tsx:61`), #246.
+  ///
+  /// In en, this message translates to:
+  /// **'Download high resolution map?'**
+  String get p2pMapTilesTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit babf62e, line 203), left in English in its French file (`fr.json`, line 203), so in English in French too. The body of the dialog of « Show tiles » (`F2fMap.tsx:77-79`, `MapChart/index.tsx:63-65`), word for word with no line added (the owner's decision of 2026-11-23, #246).
+  ///
+  /// In en, this message translates to:
+  /// **'By doing so, you will be fetching map tiles from a third-party provider. Depending on your setup, private information might be leaked to servers outside the RoboSats federation.'**
+  String get p2pMapTilesText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit babf62e, line 204), with its French (`fr.json`, line 204). The button of the dialog of « Show tiles » that leaves the tiles off (`F2fMap.tsx:87`, `MapChart/index.tsx:73`), #246.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get p2pMapTilesClose;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit babf62e, line 202), with its French (`fr.json`, line 202). The button of the dialog of « Show tiles » that turns the tiles on (`F2fMap.tsx:96`, `MapChart/index.tsx:82`), #246.
+  ///
+  /// In en, this message translates to:
+  /// **'Acknowledged'**
+  String get p2pMapTilesAcknowledged;
+
+  /// The tile provider's credit as the official client shows it on the map (`OSM_TILE_ATTRIBUTION`, `components/Map/osmTiles.ts:3-4` at commit babf62e), not in its translations, so the same in every language; shown while the tiles are, as the policy of OpenStreetMap's tiles asks (#246).
+  ///
+  /// In en, this message translates to:
+  /// **'© OpenStreetMap contributors'**
+  String get p2pMapTilesCredit;
+
+  /// Not in the RoboSats texts: the project's own: one line over a map whose tiles in view failed or were refused by the provider, the countries staying in their squares; the official client shows the provider's error picture (#246).
+  ///
+  /// In en, this message translates to:
+  /// **'Map tiles unavailable'**
+  String get p2pMapTilesUnavailable;
 }
 
 class _P2pLocalizationsDelegate

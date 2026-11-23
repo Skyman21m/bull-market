@@ -22,12 +22,12 @@ class MapTilesSwitch extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          BullSwitch(
-            value: tiles.shown,
-            onChanged: (_) => _toggle(context),
-          ),
+          BullSwitch(value: tiles.shown, onChanged: (_) => _toggle(context)),
           ExcludeSemantics(
-            child: Icon(Icons.photo_size_select_actual, color: colors.textMuted),
+            child: Icon(
+              Icons.photo_size_select_actual,
+              color: colors.textMuted,
+            ),
           ),
         ],
       ),

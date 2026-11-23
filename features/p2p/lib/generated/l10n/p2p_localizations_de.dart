@@ -4168,4 +4168,26 @@ class P2pLocalizationsDe extends P2pLocalizations {
   @override
   String get p2pTradeMeetingPointApproximate =>
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
+
+  @override
+  String get p2pMapShowTiles => 'Kacheln anzeigen';
+
+  @override
+  String get p2pMapTilesTitle => 'Hochauflösende Karte herunterladen?';
+
+  @override
+  String get p2pMapTilesText =>
+      'Indem du dies tust, wirst du Kartendaten von einem Drittanbieter abrufen. Abhängig von deiner Konfiguration könnten private Informationen an Server außerhalb der RoboSats-Föderation weitergegeben werden.';
+
+  @override
+  String get p2pMapTilesClose => 'Schließen';
+
+  @override
+  String get p2pMapTilesAcknowledged => 'Bestätigen';
+
+  @override
+  String get p2pMapTilesCredit => '© OpenStreetMap contributors';
+
+  @override
+  String get p2pMapTilesUnavailable => 'Map tiles unavailable';
 }

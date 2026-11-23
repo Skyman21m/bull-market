@@ -49,6 +49,7 @@ import 'support/harness.dart';
 import 'support/make_form.dart';
 import 'support/make_harness.dart';
 import 'support/maker_orders.dart';
+import 'support/map_tiles.dart';
 import 'support/trade_harness.dart' show tradeKey;
 import 'support/trade_orders.dart';
 import 'support/trade_screens.dart';
@@ -414,6 +415,7 @@ Future<List<TradeRecord>> _showRenewal(
                 coordinatorDetails: (_) => throw StateError('not opened'),
                 onMade: opened.add,
                 locationDraws: () => 0.5,
+                openTiles: FakeMapTiles().open,
               ),
             ),
           ),
@@ -1872,6 +1874,7 @@ final class _App {
                     coordinatorDetails: (_) => throw StateError('not opened'),
                     onMade: (made) => P2pRouter.openMade(context, args, made),
                     locationDraws: () => 0.5,
+                    openTiles: FakeMapTiles().open,
                     // A book to search, which a renewal never searches (#186).
                     book: book,
                     activeTrades: const ActiveTradesListed([]),

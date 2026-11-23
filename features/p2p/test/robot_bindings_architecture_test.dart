@@ -788,13 +788,24 @@ void main() {
       });
     });
 
-    test('only the transport holds a raw network client', () {
+    test('only the transport and the tile client hold a raw network client', () {
       expect(
         referring(
           (r) =>
               r.startsWith('network ') && r != 'network TorHttpClientFactory',
         ),
-        {'lib/src/data/tor_coordinator_transport.dart'},
+        {
+          'lib/src/data/tor_coordinator_transport.dart',
+          // The tiles of the maps (#246): the one connection of the feature outside Tor, the owner's decision of 2026-11-23; the wallet's price and swap service, outside Tor too, are reached through the wallet's port (`wallet_port_architecture_test.dart`).
+          'lib/src/data/osm_map_tile_adapter.dart',
+        },
+      );
+      // The tile client holds `dart:io`'s HTTP client and nothing else: no Tor session, no Tor client factory, no `dio`, no socket of its own.
+      expect(
+        references['lib/src/data/osm_map_tile_adapter.dart']
+            ?.where((r) => r.startsWith('network '))
+            .toSet(),
+        {'network HttpClient'},
       );
       // The locator reads the factory from the shell's container and hands it to the transport.
       expect(referring((r) => r == 'network TorHttpClientFactory'), {

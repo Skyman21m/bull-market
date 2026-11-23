@@ -4168,4 +4168,26 @@ class P2pLocalizationsSw extends P2pLocalizations {
   @override
   String get p2pTradeMeetingPointApproximate =>
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
+
+  @override
+  String get p2pMapShowTiles => 'Onyesha vigae';
+
+  @override
+  String get p2pMapTilesTitle => 'Pakua ramani ya ubora wa juu?';
+
+  @override
+  String get p2pMapTilesText =>
+      'Kwa kufanya hivyo, utakuwa unachukua vigae vya ramani kutoka kwa mtoa huduma wa tatu. Kulingana na usanidi wako, taarifa za siri zinaweza kuvuja kwa seva nje ya shirikisho la RoboSats.';
+
+  @override
+  String get p2pMapTilesClose => 'Funga';
+
+  @override
+  String get p2pMapTilesAcknowledged => 'Thibitisha';
+
+  @override
+  String get p2pMapTilesCredit => '© OpenStreetMap contributors';
+
+  @override
+  String get p2pMapTilesUnavailable => 'Map tiles unavailable';
 }

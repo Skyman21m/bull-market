@@ -12,6 +12,7 @@ import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/location_map_dialog.dart';
+import 'package:p2p/src/ui/widgets/map_tiles_controls.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -19,6 +20,7 @@ import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/harness.dart';
+import 'support/map_tiles.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// A protected order, an order with a meeting point and the renewal of a protected order, made on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`) by the user's gestures (#189), in English and in French.
@@ -147,6 +149,7 @@ final class _Journey {
     WidgetTester tester,
     Locale locale, {
     double Function()? draws,
+    MapTilePort? tiles,
   }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 3200 * 3)
@@ -173,6 +176,7 @@ final class _Journey {
       robotKeys: HarnessKeys(),
       bolt11Decoder: coordinator.decoder,
       locationDraws: draws ?? () => 0.5,
+      tiles: tiles ?? FakeMapTiles(),
     );
     final router = GoRouter(
       initialLocation: P2pFeature.path,
@@ -456,4 +460,106 @@ void main() {
       await journey.close();
     },
   );
+
+  // « Show tiles » on the meeting point's map (#246), in both languages, with a tile provider of the test: never a request, never a real tile.
+  for (final words in const [_english, _french]) {
+    testWidgets(
+      '${words.locale}: « Show tiles » on the meeting point\'s map is off each time it opens, asks the reference\'s dialog, and the point sent is moved exactly as without tiles',
+      (tester) async {
+        final tiles = FakeMapTiles();
+        final draws = [0.75, 0.25];
+        var drawn = 0;
+        final journey = await _Journey.start(
+          tester,
+          words.locale,
+          draws: () => draws[drawn++ % draws.length],
+          tiles: tiles,
+        );
+        final l10n = journey.l10n;
+        await journey.fillForm(method: 'Meet F2F');
+        await journey.waitFor(find.byType(LocationMapDialog), seconds: 5);
+        final toggle = find.descendant(
+          of: find.byType(MapTilesSwitch),
+          matching: find.byType(Switch),
+        );
+        expect(find.byTooltip(l10n.p2pMapShowTiles), findsOneWidget);
+        expect(tester.widget<Switch>(toggle).value, isFalse);
+        // Zoomed in and out, the switch off: nothing asked.
+        await tester.tap(find.byTooltip(l10n.p2pChartZoomIn));
+        await tester.pump();
+        await tester.tap(find.byTooltip(l10n.p2pChartZoomOut));
+        await settle(tester);
+        expect(tiles.sessions, isEmpty);
+        // The reference's dialog; « Close » leaves the tiles off.
+        await tester.tap(toggle);
+        await settle(tester);
+        expect(find.text(l10n.p2pMapTilesTitle), findsOneWidget);
+        expect(
+          find.text(
+            'By doing so, you will be fetching map tiles from a third-party provider. Depending on your setup, private information might be leaked to servers outside the RoboSats federation.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.text(l10n.p2pMapTilesClose));
+        await settle(tester);
+        expect(tiles.sessions, isEmpty);
+        expect(tester.widget<Switch>(toggle).value, isFalse);
+        // « Acknowledged »: the tiles of the view, at the zoom the map opens at without a point.
+        await tester.tap(toggle);
+        await settle(tester);
+        await tester.tap(find.text(l10n.p2pMapTilesAcknowledged));
+        await _settleTiles(tester);
+        expect(tester.widget<Switch>(toggle).value, isTrue);
+        expect(tiles.sessions, hasLength(1));
+        expect(tiles.asked, isNotEmpty);
+        expect(
+          tiles.asked.map((tile) => tile.z).toSet(),
+          {LocationMapDialog.worldZoom.round()},
+        );
+        expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
+        // A tap at the centre, opened on 0°, 0°, then « Save »: the point moved by the same draws as without tiles.
+        await tester.tap(find.byKey(LocationMapDialog.mapKey));
+        await settle(tester);
+        await tester.tap(find.widgetWithText(TradeButton, l10n.p2pMapSave));
+        await settle(tester);
+        expect(find.byType(LocationMapDialog), findsNothing);
+        expect(tiles.sessions.single.closed, isTrue);
+        expect(drawn, 2);
+        expect(find.text(words.pointSent), findsOneWidget);
+        // Opened again: off, nothing asked, the dialog asked again.
+        final asked = tiles.asked.length;
+        await journey.tap(journey.inForm(find.text(l10n.p2pMakeLocation)));
+        await settle(tester);
+        await _settleTiles(tester);
+        expect(tester.widget<Switch>(toggle).value, isFalse);
+        expect(tiles.asked, hasLength(asked));
+        expect(tiles.sessions, hasLength(1));
+        await tester.tap(toggle);
+        await settle(tester);
+        expect(find.text(l10n.p2pMapTilesTitle), findsOneWidget);
+        await tester.tap(find.text(l10n.p2pMapTilesClose));
+        await settle(tester);
+        await tester.tap(
+          find.byTooltip(
+            MaterialLocalizations.of(
+              tester.element(find.byType(LocationMapDialog)),
+            ).closeButtonTooltip,
+          ),
+        );
+        await settle(tester);
+        expect(tiles.sessions, hasLength(1));
+        await journey.close();
+      },
+    );
+  }
+}
+
+/// Lets the tiles that came be decoded: the pictures are decoded out of the test's fake time.
+Future<void> _settleTiles(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  }
 }

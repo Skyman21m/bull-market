@@ -193,7 +193,8 @@ void main() {
       // The view replaces the list and its filter sentence, as the chart does.
       expect(find.text('I want'), findsNothing);
       expect(find.text('Map'), findsNWidgets(2));
-      expect(find.text('Show tiles'), findsNothing);
+      // « Show tiles » at the right of the title, off (#246).
+      expect(find.byTooltip('Show tiles'), findsOneWidget);
       expect(
         tester.getRect(find.byType(CoordinatorsRow)).bottom,
         lessThanOrEqualTo(tester.getRect(map).top),

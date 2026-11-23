@@ -4168,6 +4168,28 @@ class P2pLocalizationsPt extends P2pLocalizations {
   @override
   String get p2pTradeMeetingPointApproximate =>
       'The pinned location is approximate. The exact location for the meeting place must be exchanged in the encrypted chat.';
+
+  @override
+  String get p2pMapShowTiles => 'Mostrar blocos';
+
+  @override
+  String get p2pMapTilesTitle => 'Baixar mapa em alta resolução?';
+
+  @override
+  String get p2pMapTilesText =>
+      'Ao fazer isso, você estará buscando blocos de mapa de um fornecedor terceirizado. Dependendo da sua configuração, informações privadas podem ser vazadas para servidores fora da federação RoboSats.';
+
+  @override
+  String get p2pMapTilesClose => 'Fechar';
+
+  @override
+  String get p2pMapTilesAcknowledged => 'Confirmar';
+
+  @override
+  String get p2pMapTilesCredit => '© OpenStreetMap contributors';
+
+  @override
+  String get p2pMapTilesUnavailable => 'Map tiles unavailable';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
