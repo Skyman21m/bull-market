@@ -288,6 +288,7 @@ void main() {
         final nodes = MapChartPainter(
           layout: layout,
           world: null,
+          tiles: null,
           colors: MapColors.of(testBullTheme),
           countStyle: const TextStyle(fontSize: 12),
           direction: TextDirection.ltr,

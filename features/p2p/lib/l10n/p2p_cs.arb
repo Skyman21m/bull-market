@@ -1,3 +1,8 @@
 {
-  "@@locale": "cs"
+  "@@locale": "cs",
+  "p2pMapShowTiles": "Ukázat dlaždice",
+  "p2pMapTilesTitle": "Stáhnout mapu ve vysokém rozlišení?",
+  "p2pMapTilesText": "Tímto se načtou mapové dlaždice od poskytovatele třetí strany. V závislosti na vašem nastavení mohou uniknout soukromé informace na servery mimo federaci RoboSats.",
+  "p2pMapTilesClose": "Zavřít",
+  "p2pMapTilesAcknowledged": "Rozumím"
 }

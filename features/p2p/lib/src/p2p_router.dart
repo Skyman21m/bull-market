@@ -13,6 +13,7 @@ import 'domain/trade/trade_take.dart';
 import 'domain/trade/trade_watch.dart';
 import 'domain/trade_record.dart';
 import 'domain/meeting_point.dart';
+import 'domain/usecases/open_map_tiles_usecase.dart';
 import 'p2p_locator.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
@@ -427,6 +428,8 @@ final class P2pRouter {
           now: locator<P2pClock>().now,
           // The draws that move a meeting point pinned (#189).
           locationDraws: locator<MeetingPointDraws>().next,
+          // The tiles of the meeting point's map (#246), opened only once its « Show tiles » is on and acknowledged.
+          openTiles: locator<OpenMapTilesUsecase>().execute,
         );
         return _searchesBook(locator, args)
             ? BlocProvider(
@@ -768,6 +771,8 @@ class _P2pPageState extends State<_P2pPage> {
           : null,
       coordinatorDetails: (request) =>
           locator<CoordinatorDetailsCubit>(param1: request),
+      // The tiles of the book's map (#246), opened only once its « Show tiles » is on and acknowledged.
+      openTiles: locator<OpenMapTilesUsecase>().execute,
       destination: _destination,
       onDestination: _show,
       onOpenTrades: onOpenTrades,

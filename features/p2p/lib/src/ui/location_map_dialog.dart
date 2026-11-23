@@ -7,12 +7,15 @@ import 'package:flutter/material.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/map_tiles.dart';
 import '../domain/meeting_point.dart';
 import '../domain/web_mercator.dart';
 import 'map_chart_view.dart';
+import 'map_tile_layer.dart';
+import 'widgets/map_tiles_controls.dart';
 import 'widgets/trade_button.dart';
 
-/// « Choose a location »: the map where the maker pins the meeting point of a face-to-face order (#189), the official client's `F2fMapDialog` in its interactive mode (`components/Dialogs/F2fMap.tsx`, opened by `MakerForm.tsx:651-665`, commit ff1998c), drawn as the book's map is drawn (`MapChartView`): the bundled world, no tile and no request, so nothing of a third party is asked and the official client's « Show tiles » is left out, as for the book's map (#30).
+/// « Choose a location »: the map where the maker pins the meeting point of a face-to-face order (#189), the official client's `F2fMapDialog` in its interactive mode (`components/Dialogs/F2fMap.tsx`, opened by `MakerForm.tsx:651-665`, commit ff1998c), drawn as the book's map is drawn (`MapChartView`): the bundled world, with no request; « Show tiles » at the right of the title shows OpenStreetMap's tiles in place of the countries, off each time the map opens and after the reference's dialog, fetched outside Tor (#246, [MapTilesSwitch]). The real map shown to aim at a place undoes much of the point's randomization for whoever holds the tile provider's logs (design note `docs/design/phase-3-map-tiles.md` § 5).
 ///
 /// A drag moves the map and a pinch zooms it, « + » and « − » zoom too; a tap pins the place it reaches (`click`, `components/Map/index.tsx`). « Save » keeps the place pinned moved and rounded as the reference does ([MeetingPoint.randomized]), the place a tap reached never leaving the dialog; closing it keeps nothing. Under the map, the reference's line « To protect your privacy, the exact location you pin will be slightly randomized. », and the app's that the point is sent to the coordinator and published with the order.
 ///
@@ -35,11 +38,15 @@ class LocationMapDialog extends StatefulWidget {
   /// The draws that move the place pinned, `Math.random()`'s ([MeetingPoint.randomized]).
   final double Function() draw;
 
+  /// Opens the tiles of this map once « Show tiles » is on and its dialog acknowledged (#246): nothing is asked before.
+  final MapTileSession Function() openTiles;
+
   const LocationMapDialog({
     super.key,
     required this.initial,
     required this.primary,
     required this.draw,
+    required this.openTiles,
   });
 
   /// Opens the map over the whole screen: the meeting point saved, or `null` when it is closed without « Save ».
@@ -48,10 +55,16 @@ class LocationMapDialog extends StatefulWidget {
     required OrderLocation? initial,
     required bool primary,
     required double Function() draw,
+    required MapTileSession Function() openTiles,
   }) => showDialog<OrderLocation>(
     context: context,
     builder: (_) => Dialog.fullscreen(
-      child: LocationMapDialog(initial: initial, primary: primary, draw: draw),
+      child: LocationMapDialog(
+        initial: initial,
+        primary: primary,
+        draw: draw,
+        openTiles: openTiles,
+      ),
     ),
   );
 
@@ -88,6 +101,20 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
   /// The camera and the point under the fingers when a drag or a pinch started.
   MapCamera? _gestureCamera;
   Offset? _gestureFocal;
+
+  /// « Show tiles » of this map, off each time it opens (#246).
+  late final MapTileLayer _tiles = MapTileLayer(widget.openTiles)
+    ..addListener(_tilesChanged);
+
+  void _tilesChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _tiles
+      ..removeListener(_tilesChanged)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -197,6 +224,7 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
                       ),
                     ),
                   ),
+                  MapTilesSwitch(tiles: _tiles),
                   IconButton(
                     tooltip: MaterialLocalizations.of(
                       context,
@@ -216,6 +244,12 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
                     if (!size.isFinite || size.isEmpty) {
                       return const SizedBox.shrink();
                     }
+                    _tiles.view(
+                      zoom: _camera.zoom,
+                      x: _camera.x,
+                      y: _camera.y,
+                      size: size,
+                    );
                     final pin = switch (pinned) {
                       final place? => switch (WebMercator.project(
                         place.latitude,
@@ -251,6 +285,7 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
                                 painter: _LocationPainter(
                                   camera: _camera,
                                   world: _world,
+                                  tiles: _tiles.frame,
                                   colors: mapColors,
                                   pin: pin,
                                   fill: widget.primary
@@ -273,6 +308,14 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
                                 view: size,
                               ),
                             ),
+                          ),
+                        ),
+                        Positioned(
+                          left: BullSpacing.xs,
+                          right: BullSpacing.xs,
+                          bottom: BullSpacing.xs,
+                          child: IgnorePointer(
+                            child: MapTilesNotes(tiles: _tiles),
                           ),
                         ),
                       ],
@@ -314,10 +357,11 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
 String meetingPointText(double latitude, double longitude) =>
     '$latitude, $longitude';
 
-/// Paints the world and the pin of the place pinned, as the book's map paints its countries and its pins ([MapChartPainter]).
+/// Paints the world, or its tiles while « Show tiles » is on, and the pin of the place pinned, as the book's map paints its ground and its pins ([MapChartPainter]).
 final class _LocationPainter extends CustomPainter {
   final MapCamera camera;
   final Path? world;
+  final MapTileFrame? tiles;
   final MapColors colors;
 
   /// Where the tip of the pin stands in the view, or `null` for none.
@@ -327,6 +371,7 @@ final class _LocationPainter extends CustomPainter {
   const _LocationPainter({
     required this.camera,
     required this.world,
+    required this.tiles,
     required this.colors,
     required this.pin,
     required this.fill,
@@ -334,9 +379,7 @@ final class _LocationPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (world case final world?) {
-      MapChartPainter.paintWorld(canvas, size, camera, world, colors);
-    }
+    MapChartPainter.paintGround(canvas, size, camera, world, tiles, colors);
     if (pin case final at?) {
       MapChartPainter.paintPin(canvas, at, fill, colors);
     }
@@ -346,6 +389,7 @@ final class _LocationPainter extends CustomPainter {
   bool shouldRepaint(_LocationPainter oldDelegate) =>
       oldDelegate.camera != camera ||
       oldDelegate.world != world ||
+      !identical(oldDelegate.tiles, tiles) ||
       oldDelegate.colors != colors ||
       oldDelegate.pin != pin ||
       oldDelegate.fill != fill;

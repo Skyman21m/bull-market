@@ -1,3 +1,8 @@
 {
-  "@@locale": "sw"
+  "@@locale": "sw",
+  "p2pMapShowTiles": "Onyesha vigae",
+  "p2pMapTilesTitle": "Pakua ramani ya ubora wa juu?",
+  "p2pMapTilesText": "Kwa kufanya hivyo, utakuwa unachukua vigae vya ramani kutoka kwa mtoa huduma wa tatu. Kulingana na usanidi wako, taarifa za siri zinaweza kuvuja kwa seva nje ya shirikisho la RoboSats.",
+  "p2pMapTilesClose": "Funga",
+  "p2pMapTilesAcknowledged": "Thibitisha"
 }

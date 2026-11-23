@@ -10,17 +10,20 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/map_marks.dart';
+import '../domain/map_tiles.dart';
 import '../domain/web_mercator.dart';
 import '../domain/world_map.dart';
 import '../presentation/book_state.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
 import 'depth_chart_view.dart';
+import 'map_tile_layer.dart';
+import 'widgets/map_tiles_controls.dart';
 import 'widgets/offer_row.dart';
 
 /// The « Map » view of the book: the map chart of the official client (`components/Charts/MapChart`, `components/Map/index.tsx`), drawn by the app.
 ///
-/// The world is the bundled outline of the countries (`WorldMap`), in Web Mercator as Leaflet draws it, with no tile and no request: the official client's « Show tiles », which fetches tiles from a third party outside Tor, is left out.
+/// The world is the bundled outline of the countries (`WorldMap`), in Web Mercator as Leaflet draws it, with no request; « Show tiles » at the right of the title shows OpenStreetMap's tiles in place of the countries, off at first and after the reference's dialog, fetched outside Tor (#246, [MapTilesSwitch], [MapTileLayer]); nothing of it is remembered beyond this map.
 /// Each order of the book with a position has a pin, red for a seller and in the secondary colour for a buyer, as the official client colours them; pins that would overlap are grouped with their count (`MapMarks`).
 /// A drag moves the map and a pinch zooms it, within the official client's zooms, and the « + » and « − » buttons zoom too, as Leaflet's zoom control does.
 /// A tap on a pin opens its order, as a tap on the chart does; a tap on a group zooms in on it, or lists its orders when zooming cannot part them; a long press, or a pointer that hovers, shows the order of a pin.
@@ -32,11 +35,15 @@ class MapChartView extends StatefulWidget {
   final DateTime now;
   final ValueChanged<PublicOrder> onOpenOrder;
 
+  /// Opens the tiles of this map once « Show tiles » is on and its dialog acknowledged (#246): nothing is asked before.
+  final MapTileSession Function() openTiles;
+
   const MapChartView({
     super.key,
     required this.state,
     required this.now,
     required this.onOpenOrder,
+    required this.openTiles,
   });
 
   /// The key of the world map in the app's bundle.
@@ -105,8 +112,22 @@ class _MapChartViewState extends State<MapChartView> {
   /// The pin whose order the tooltip shows, while a finger presses or a pointer hovers.
   MapPin? _selected;
 
+  /// « Show tiles » of this map, off at first (#246).
+  late final MapTileLayer _tiles = MapTileLayer(widget.openTiles)
+    ..addListener(_tilesChanged);
+
   MapMarks get _currentMarks =>
       _marks ??= MapMarks.of(widget.state.receivedOrders);
+
+  void _tilesChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    _tiles
+      ..removeListener(_tilesChanged)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -220,12 +241,19 @@ class _MapChartViewState extends State<MapChartView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            l10n.p2pBookViewMap,
-            style: text.bodyLarge?.copyWith(
-              color: colors.text,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l10n.p2pBookViewMap,
+                  style: text.bodyLarge?.copyWith(
+                    color: colors.text,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              MapTilesSwitch(tiles: _tiles),
+            ],
           ),
           const Gap(BullSpacing.sm),
           Expanded(child: ClipRect(child: _map(context))),
@@ -338,6 +366,7 @@ class _MapChartViewState extends State<MapChartView> {
         final size = constraints.biggest;
         if (!size.isFinite || size.isEmpty) return const SizedBox.shrink();
         final layout = MapLayout.of(marks, _camera, size);
+        _tiles.view(zoom: _camera.zoom, x: _camera.x, y: _camera.y, size: size);
         final selected = _selected;
         final shown = selected == null ? null : layout.offsetOf(selected);
         return Stack(
@@ -365,6 +394,7 @@ class _MapChartViewState extends State<MapChartView> {
                       painter: MapChartPainter(
                         layout: layout,
                         world: _worldPath,
+                        tiles: _tiles.frame,
                         colors: MapColors.of(colors),
                         countStyle: countStyle,
                         direction: direction,
@@ -415,6 +445,12 @@ class _MapChartViewState extends State<MapChartView> {
                   ),
                 ),
               ),
+            ),
+            Positioned(
+              left: BullSpacing.xs,
+              right: BullSpacing.xs,
+              bottom: BullSpacing.xs,
+              child: IgnorePointer(child: MapTilesNotes(tiles: _tiles)),
             ),
             if ((selected, shown) case (final pin?, final at?))
               Positioned.fill(
@@ -817,12 +853,15 @@ final class MapColors {
   );
 }
 
-/// Paints the map as the official client's Leaflet map lays it: the countries, then the pins and groups, a mark further south over one further north.
+/// Paints the map as the official client's Leaflet map lays it: the countries, or the tiles in their place while « Show tiles » is on (#246), then the pins and groups, a mark further south over one further north.
 final class MapChartPainter extends CustomPainter {
   final MapLayout layout;
 
   /// The outline of the countries at zoom 0 ([outline]), or `null` while the world map is read or when it could not be.
   final Path? world;
+
+  /// The tiles in view and their pictures while « Show tiles » is on, else `null`.
+  final MapTileFrame? tiles;
   final MapColors colors;
   final TextStyle countStyle;
   final TextDirection direction;
@@ -838,6 +877,7 @@ final class MapChartPainter extends CustomPainter {
   const MapChartPainter({
     required this.layout,
     required this.world,
+    required this.tiles,
     required this.colors,
     required this.countStyle,
     required this.direction,
@@ -887,9 +927,7 @@ final class MapChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (world case final world?) {
-      paintWorld(canvas, size, layout.camera, world, colors);
-    }
+    paintGround(canvas, size, layout.camera, world, tiles, colors);
     for (final (mark, at) in layout.drawn) {
       switch (mark) {
         case MapPin(:final order):
@@ -903,6 +941,61 @@ final class MapChartPainter extends CustomPainter {
           _group(canvas, at, count);
       }
     }
+  }
+
+  /// What lies under the pins in a view of [size] seen by [camera]: the countries of [world], or, while [tiles] are shown, the tiles in view in their place, as the reference draws its tiles instead of its countries (`components/Map/index.tsx`), the countries staying only in the square of a tile that has not come, so that the map stays readable.
+  ///
+  /// Also the map where the meeting point of an order is chosen (#189).
+  static void paintGround(
+    Canvas canvas,
+    Size size,
+    MapCamera camera,
+    Path? world,
+    MapTileFrame? tiles,
+    MapColors colors,
+  ) {
+    if (tiles == null) {
+      if (world != null) paintWorld(canvas, size, camera, world, colors);
+      return;
+    }
+    final missing = Path();
+    final paint = Paint()..filterQuality = FilterQuality.medium;
+    for (final tile in tiles.wanted) {
+      final square = tileRect(tile, camera, size);
+      if (tiles.images[tile] case final image?) {
+        canvas.drawImageRect(
+          image,
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+          square,
+          paint,
+        );
+      } else {
+        missing.addRect(square);
+      }
+    }
+    if (world == null) return;
+    canvas
+      ..save()
+      ..clipPath(missing);
+    paintWorld(canvas, size, camera, world, colors);
+    canvas.restore();
+  }
+
+  /// Where [tile] lies in a view of [size] seen by [camera], its edges on whole points, so that two tiles side by side share theirs.
+  static Rect tileRect(MapTile tile, MapCamera camera, Size size) {
+    final count = 1 << tile.z;
+    final topLeft = camera.toView(tile.x / count, tile.y / count, size);
+    final bottomRight = camera.toView(
+      (tile.x + 1) / count,
+      (tile.y + 1) / count,
+      size,
+    );
+    return Rect.fromLTRB(
+      topLeft.dx.roundToDouble(),
+      topLeft.dy.roundToDouble(),
+      bottomRight.dx.roundToDouble(),
+      bottomRight.dy.roundToDouble(),
+    );
   }
 
   /// The countries of [world] (the outline at zoom 0, [outline]) in a view of [size] seen by [camera]: filled, then outlined.
@@ -1081,6 +1174,7 @@ final class MapChartPainter extends CustomPainter {
       oldDelegate.layout.camera != layout.camera ||
       oldDelegate.layout.size != layout.size ||
       oldDelegate.world != world ||
+      !identical(oldDelegate.tiles, tiles) ||
       oldDelegate.colors != colors ||
       oldDelegate.countStyle != countStyle ||
       oldDelegate.direction != direction ||

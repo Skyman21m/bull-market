@@ -21,6 +21,7 @@ import 'src/data/p2p_database.dart';
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/checked_bolt11_invoice.dart';
 import 'src/domain/coordinator_sessions_port.dart';
+import 'src/domain/map_tiles.dart';
 import 'src/domain/p2p_shuffle.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/p2p_waits.dart';
@@ -80,6 +81,17 @@ export 'src/domain/map_marks.dart' show MapGroup, MapMark, MapPin;
 // The world map of the « Map » view and its pinned source, which the app's tests load through the app's own asset bundle.
 export 'src/domain/world_map.dart' show WorldMap, WorldMapSource;
 export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
+// The tiles of the maps (#246), for a test that gives its own provider: tests never ask a real one.
+export 'src/domain/map_tiles.dart'
+    show
+        MapTile,
+        MapTileDropped,
+        MapTileFailed,
+        MapTileImage,
+        MapTileOutcome,
+        MapTilePort,
+        MapTileRefused,
+        MapTileSession;
 // « Don't trust, verify » over an export the test gives, for the app's captures (#93): test values, never a robot's.
 export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 
@@ -93,6 +105,7 @@ export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 /// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
 /// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
 /// A meeting point pinned in the create form is moved by [locationDraws] (#189), each from 0 included to 1 excluded; by default 0.5, which leaves it where it was pinned.
+/// The maps' tiles come from [tiles], a provider the test wrote (#246), never OpenStreetMap; by default from none, every tile failing at once without any request.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 /// With [databaseOpener], the database is opened over the executor it gives instead of one in memory (a file of the test's): a new composition over the same file is the app started again, its records kept and nothing of the earlier run's memory (schema 9, #204, #231, #233).
 @visibleForTesting
@@ -111,6 +124,7 @@ void setUpP2pForTesting(
   RobotKeyComputePort? robotKeys,
   NostrRelayTransport? relays,
   double Function() locationDraws = _middle,
+  MapTilePort tiles = const _NoTiles(),
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -136,6 +150,7 @@ void setUpP2pForTesting(
     lotteryDraws: _middle,
     // The draws that move a meeting point pinned (#189): the test's, the middle by default, which leaves the place where it was pinned.
     locationDraws: locationDraws,
+    tiles: () => tiles,
     shuffle: shuffle,
   );
   if (garageKeys != null) {
@@ -480,6 +495,24 @@ final class _NoRelays implements NostrRelayTransport {
     NostrRelayPublication message, {
     required RobotSessionKey robot,
   }) async => const NostrRelayFailed();
+}
+
+final class _NoTiles implements MapTilePort {
+  const _NoTiles();
+
+  @override
+  MapTileSession open() => _NoTileSession();
+}
+
+final class _NoTileSession implements MapTileSession {
+  @override
+  Future<MapTileOutcome> fetch(MapTile tile) async => const MapTileFailed();
+
+  @override
+  void drop(MapTile tile) {}
+
+  @override
+  void close() {}
 }
 
 final class _NoSessions implements CoordinatorSessionsPort {

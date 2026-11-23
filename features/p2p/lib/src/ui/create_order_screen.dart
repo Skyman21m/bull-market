@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/map_tiles.dart';
 import '../domain/matching_orders.dart';
 import '../domain/meeting_point.dart';
 import '../domain/option_search.dart';
@@ -82,11 +83,15 @@ class CreateOrderScreen extends StatefulWidget {
   /// The draws that move a meeting point pinned (#189, [MeetingPoint.randomized]).
   final double Function() locationDraws;
 
+  /// Opens the tiles of the meeting point's map, once its « Show tiles » is on and its dialog acknowledged (#246).
+  final MapTileSession Function() openTiles;
+
   const CreateOrderScreen({
     super.key,
     required this.coordinatorDetails,
     required this.onMade,
     required this.locationDraws,
+    required this.openTiles,
     this.initialType,
     this.offline = const {},
     this.onOpenGarage,
@@ -528,6 +533,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       initial: _location,
       primary: _type == OrderType.buy,
       draw: widget.locationDraws,
+      openTiles: widget.openTiles,
     );
     if (point == null || !mounted) return;
     setState(() {
