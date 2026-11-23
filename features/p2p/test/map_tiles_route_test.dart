@@ -397,10 +397,7 @@ void main() {
       await drag(tester, const Offset(-2, 0));
       await settleTiles(tester);
       expect(inView(tester).toSet(), shown);
-      expect(
-        tiles.asked.where((tile) => tile == failed).length,
-        askedBefore,
-      );
+      expect(tiles.asked.where((tile) => tile == failed).length, askedBefore);
       failing
         ..clear()
         ..add(MapTile.of(0, 0, 0) ?? failed);
