@@ -3,6 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('formatAppVersion', () {
+    test('keeps the version alone when the commit is not given', () {
+      expect(formatAppVersion('6.13.0+228'), '6.13.0+228');
+    });
+
     test('keeps the version alone when no commit is known', () {
       expect(formatAppVersion('6.13.0+228', commit: ''), '6.13.0+228');
     });
