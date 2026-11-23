@@ -64,9 +64,8 @@ final class MapTileLayer extends ChangeNotifier {
   final _failed = <MapTile>{};
   MapTileFrame? _frame;
 
-  MapTileLayer(this._open, {MapTilesChoice? choice, MapTileGuard? guard})
-    : _choice = choice ?? MapTilesChoice(),
-      _guard = guard {
+  MapTileLayer(this._open, {MapTilesChoice? choice, this._guard})
+    : _choice = choice ?? MapTilesChoice() {
     if (_choice.acknowledged && _choice.shown) unawaited(_start());
   }
 

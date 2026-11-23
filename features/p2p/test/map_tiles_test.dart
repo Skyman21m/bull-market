@@ -174,7 +174,7 @@ void main() {
         expect(own, isNot(contains('http://')));
         expect(own, isNot(contains('Uri.http(')));
         // The only proxy rule is a direct connection.
-        expect('findProxy'.allMatches(own), hasLength(1));
+        expect(RegExp(r'findProxy\s*=').allMatches(own), hasLength(1));
         expect(own, contains('..findProxy = _direct'));
         expect(own, contains("static String _direct(Uri url) => 'DIRECT';"));
         expect(own, isNot(contains('connectionFactory')));
@@ -361,95 +361,103 @@ void main() {
       },
     );
 
-    test('at most six requests at once, by the client\'s own queue, whatever its connections allow', () async {
-      final release = Completer<void>();
-      provider.answer = (head) async {
-        await release.future;
-        return _ok(testTilePng(tile));
-      };
-      final session = provider.adapter(connections: 20).open();
-      final outcomes = [
-        for (var x = 0; x < 10; x++)
-          session.fetch(MapTile.of(13, x, 0) ?? tile),
-      ];
-      await _until(() => provider.running == 6);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      expect(provider.running, 6);
-      release.complete();
-      await Future.wait(outcomes);
-      expect(provider.mostRunning, 6);
-      session.close();
-    });
+    test(
+      'at most six requests at once, by the client\'s own queue, whatever its connections allow',
+      () async {
+        final release = Completer<void>();
+        provider.answer = (head) async {
+          await release.future;
+          return _ok(testTilePng(tile));
+        };
+        final session = provider.adapter(connections: 20).open();
+        final outcomes = [
+          for (var x = 0; x < 10; x++)
+            session.fetch(MapTile.of(13, x, 0) ?? tile),
+        ];
+        await _until(() => provider.running == 6);
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(provider.running, 6);
+        release.complete();
+        await Future.wait(outcomes);
+        expect(provider.mostRunning, 6);
+        session.close();
+      },
+    );
 
     test('a direct connection, whatever proxy the environment names', () async {
-      await HttpOverrides.runZoned(
-        () async {
-          final session = provider.adapter().open();
-          expect(await session.fetch(tile), isA<MapTileImage>());
-          session.close();
-        },
-        findProxyFromEnvironment: (url, environment) =>
-            'PROXY 127.0.0.1:9',
-      );
+      await HttpOverrides.runZoned(() async {
+        final session = provider.adapter().open();
+        expect(await session.fetch(tile), isA<MapTileImage>());
+        session.close();
+      }, findProxyFromEnvironment: (url, environment) => 'PROXY 127.0.0.1:9');
       expect(provider.proxies, [null]);
     });
 
-    test('closing the session closes a connection whose answer is still coming', () async {
-      provider.dribble = (head) async* {
-        yield latin1.encode(
-          'HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nConnection: close\r\n\r\n',
-        );
-        for (var i = 0; i < 10; i++) {
-          await Future<void>.delayed(const Duration(seconds: 2));
-          yield const [0];
+    test(
+      'closing the session closes a connection whose answer is still coming',
+      () async {
+        provider.dribble = (head) async* {
+          yield latin1.encode(
+            'HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nConnection: close\r\n\r\n',
+          );
+          for (var i = 0; i < 10; i++) {
+            await Future<void>.delayed(const Duration(seconds: 2));
+            yield const [0];
+          }
+        };
+        final session = provider.adapter().open();
+        final outcome = session.fetch(tile);
+        await _until(() => provider.running == 1);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        session.close();
+        expect(await outcome, isA<MapTileDropped>());
+        final watch = Stopwatch()..start();
+        while (provider.ended == 0 &&
+            watch.elapsed < const Duration(seconds: 1)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
         }
-      };
-      final session = provider.adapter().open();
-      final outcome = session.fetch(tile);
-      await _until(() => provider.running == 1);
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      session.close();
-      expect(await outcome, isA<MapTileDropped>());
-      final watch = Stopwatch()..start();
-      while (provider.ended == 0 && watch.elapsed < const Duration(seconds: 1)) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      expect(provider.ended, 1);
-      expect(watch.elapsed, lessThan(const Duration(milliseconds: 900)));
-    });
+        expect(provider.ended, 1);
+        expect(watch.elapsed, lessThan(const Duration(milliseconds: 900)));
+      },
+    );
 
-    test('a session keeps at most 16 MiB of tiles, the least recently used forgotten first', () async {
-      const size = 400 * 1024;
-      Uint8List padded(MapTile one) {
-        final png = testTilePng(one);
-        return Uint8List(size)..setAll(0, png);
-      }
+    test(
+      'a session keeps at most 16 MiB of tiles, the least recently used forgotten first',
+      () async {
+        const size = 400 * 1024;
+        Uint8List padded(MapTile one) {
+          final png = testTilePng(one);
+          return Uint8List(size)..setAll(0, png);
+        }
 
-      provider.answer = (head) {
-        final path = head.split(' ')[1];
-        final [z, x, y] = path
-            .substring(1, path.length - 4)
-            .split('/')
-            .map(int.parse)
-            .toList();
-        return _ok(padded(MapTile.of(z, x, y) ?? tile));
-      };
-      expect(OsmMapTileAdapter.maxKeptBytes, 16 * 1024 * 1024);
-      final session = provider.adapter().open();
-      // Forty tiles of 400 KiB fit; the forty-first puts the first out.
-      final kept = [for (var x = 0; x <= 40; x++) MapTile.of(13, x, 2) ?? tile];
-      for (final one in kept) {
-        expect(await session.fetch(one), isA<MapTileImage>());
-      }
-      expect(provider.heads, hasLength(41));
-      for (final one in kept.skip(1)) {
-        await session.fetch(one);
-      }
-      expect(provider.heads, hasLength(41));
-      await session.fetch(kept.first);
-      expect(provider.heads, hasLength(42));
-      session.close();
-    });
+        provider.answer = (head) {
+          final path = head.split(' ')[1];
+          final [z, x, y] = path
+              .substring(1, path.length - 4)
+              .split('/')
+              .map(int.parse)
+              .toList();
+          return _ok(padded(MapTile.of(z, x, y) ?? tile));
+        };
+        expect(OsmMapTileAdapter.maxKeptBytes, 16 * 1024 * 1024);
+        final session = provider.adapter().open();
+        // Forty tiles of 400 KiB fit; the forty-first puts the first out.
+        final kept = [
+          for (var x = 0; x <= 40; x++) MapTile.of(13, x, 2) ?? tile,
+        ];
+        for (final one in kept) {
+          expect(await session.fetch(one), isA<MapTileImage>());
+        }
+        expect(provider.heads, hasLength(41));
+        for (final one in kept.skip(1)) {
+          await session.fetch(one);
+        }
+        expect(provider.heads, hasLength(41));
+        await session.fetch(kept.first);
+        expect(provider.heads, hasLength(42));
+        session.close();
+      },
+    );
 
     test('« Too Many Requests » is a refusal, as x-blocked', () async {
       provider.answer = (head) => _status(429, 'Too Many Requests');

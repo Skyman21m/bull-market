@@ -614,28 +614,29 @@ void main() {
     },
   );
 
-  testWidgets('the book\'s map is never protected from capture, tiles on or off', (
-    tester,
-  ) async {
-    final calls = <String>[];
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
-    messenger.setMockMethodCallHandler(privacy, (call) async {
-      calls.add(call.method);
-      return true;
-    });
-    addTearDown(() => messenger.setMockMethodCallHandler(privacy, null));
-    await openMap(tester);
-    await tester.tap(switchFinder);
-    await settle(tester);
-    await tester.tap(find.text('Acknowledged'));
-    await settleTiles(tester);
-    expect(switchOn(tester), isTrue);
-    await tester.tap(switchFinder);
-    await settle(tester);
-    expect(calls, isEmpty);
-  });
+  testWidgets(
+    'the book\'s map is never protected from capture, tiles on or off',
+    (tester) async {
+      final calls = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
+      messenger.setMockMethodCallHandler(privacy, (call) async {
+        calls.add(call.method);
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(privacy, null));
+      await openMap(tester);
+      await tester.tap(switchFinder);
+      await settle(tester);
+      await tester.tap(find.text('Acknowledged'));
+      await settleTiles(tester);
+      expect(switchOn(tester), isTrue);
+      await tester.tap(switchFinder);
+      await settle(tester);
+      expect(calls, isEmpty);
+    },
+  );
 
   test(
     'the layer opens nothing before « Acknowledged », and closes its session when disposed',

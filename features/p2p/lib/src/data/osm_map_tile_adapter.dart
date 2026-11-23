@@ -246,7 +246,9 @@ final class _OsmMapTileSession implements MapTileSession {
         _adapter._connectTimeout,
         onTimeout: () {
           // A connection that comes after its wait is let go at once, never kept unused until the session closes.
-          connecting.then((late) => late.abort(), onError: (Object _) {}).ignore();
+          connecting
+              .then((late) => late.abort(), onError: (Object _) {})
+              .ignore();
           throw TimeoutException(null);
         },
       );
