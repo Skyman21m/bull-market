@@ -217,6 +217,11 @@ MODE ?= debug
 FORMAT ?= apk
 FLAVOR ?= production
 
+# Short commit of the build, empty for a local build: CI passes it so the
+# installed debug APK can be traced back to its commit from the settings screen.
+# Ignored outside debug mode (see DART_DEFINES below).
+BUILD_COMMIT ?=
+
 # Allow "make android release", "make android debug" or "make android beta".
 # release/debug build the production flavor; beta is the tester channel — the
 # beta flavor (.beta applicationId, its own signing) in release mode, for direct
@@ -258,14 +263,20 @@ else
 endif
 
 # Flutter writes APK and AAB to different, flavor-namespaced paths
+# The define carries its own leading space and expands to nothing when
+# BUILD_COMMIT is empty, so a local build keeps the exact same command line.
+# Only debug builds carry it: release and beta must stay byte-for-byte
+# reproducible (reproducibility/verify_build.sh rebuilds without it), so
+# BUILD_COMMIT is ignored outside debug even when provided.
+DART_DEFINES := $(if $(filter debug,$(MODE)),$(if $(BUILD_COMMIT), --dart-define=BUILD_COMMIT=$(BUILD_COMMIT)))
 ifeq ($(FORMAT),aab)
   CONTAINER_OUTPUT := /app/build/app/outputs/bundle/$(FLAVOR)$(MODE_CAP)/app-$(FLAVOR)-$(MODE).aab
   HOST_OUTPUT := ./BULL-$(HOST_NAME).aab
-  FLUTTER_BUILD := fvm flutter build appbundle --$(MODE) --flavor $(FLAVOR)
+  FLUTTER_BUILD := fvm flutter build appbundle --$(MODE) --flavor $(FLAVOR)$(DART_DEFINES)
 else
   CONTAINER_OUTPUT := /app/build/app/outputs/flutter-apk/app-$(FLAVOR)-$(MODE).apk
   HOST_OUTPUT := ./BULL-$(HOST_NAME).apk
-  FLUTTER_BUILD := fvm flutter build apk --$(MODE) --flavor $(FLAVOR)
+  FLUTTER_BUILD := fvm flutter build apk --$(MODE) --flavor $(FLAVOR)$(DART_DEFINES)
 endif
 
 android: container-app
