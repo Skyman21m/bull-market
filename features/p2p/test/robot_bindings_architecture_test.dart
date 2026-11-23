@@ -256,6 +256,15 @@ void main() {
             'rawWebSocket': {'network WebSocket'},
             'rawSocket': {'network Socket'},
             'rawProcess': {'network Process'},
+            'networkImage': {'network NetworkImage'},
+            'imageNetwork': {'network Image.network'},
+            'fadeInNetwork': {
+              'network FadeInImage.assetNetwork',
+              'network FadeInImage.memoryNetwork',
+            },
+            'networkBundle': {'network NetworkAssetBundle'},
+            'lookUp': {'network InternetAddress'},
+            'rawSynchronousSocket': {'network RawSynchronousSocket'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
             'acknowledgeByTearOff': {
@@ -2637,6 +2646,9 @@ const _networkLibraries = [
 ];
 const _networkClasses = {
   'package:bull_tor/': {'TorHttpClientFactory', 'TorSessions', 'TorSession'},
+  // Flutter's own ways to an image or a file over the network, each with `dart:io`'s client and its default user agent (security review of #246).
+  'package:flutter/src/painting/': {'NetworkImage'},
+  'package:flutter/src/services/': {'NetworkAssetBundle'},
   'dart:_http': {
     'HttpClient',
     'HttpServer',
@@ -2656,6 +2668,17 @@ const _networkClasses = {
     'RawSecureServerSocket',
     'ConnectionTask',
     'Process',
+    // A name resolved by the device's resolver, and a socket that blocks (security review of #246).
+    'InternetAddress',
+    'RawSynchronousSocket',
+  },
+};
+
+/// The constructors that fetch over the network, by the library and the class that declare them: their class is no client of its own (`Image` also draws a bundled asset).
+const _networkConstructors = {
+  'package:flutter/src/widgets/': {
+    'Image': {'network'},
+    'FadeInImage': {'assetNetwork', 'memoryNetwork'},
   },
 };
 
@@ -2824,6 +2847,23 @@ final class _ReferenceVisitor extends RecursiveAstVisitor<void> {
   void visitNamedType(NamedType node) {
     _check(node.element);
     super.visitNamedType(node);
+  }
+
+  /// A constructor named, invoked or torn off, of [_networkConstructors].
+  @override
+  void visitConstructorName(ConstructorName node) {
+    final constructor = node.element;
+    if (constructor != null) {
+      final owner = constructor.enclosingElement;
+      for (final MapEntry(key: library, value: classes)
+          in _networkConstructors.entries) {
+        if (_in(owner, library) &&
+            (classes[owner.name]?.contains(constructor.name) ?? false)) {
+          _add('network ${owner.name}.${constructor.name}');
+        }
+      }
+    }
+    super.visitConstructorName(node);
   }
 
   @override

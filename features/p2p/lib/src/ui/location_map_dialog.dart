@@ -5,6 +5,7 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:robosats/robosats.dart';
+import 'package:screen_privacy/screen_privacy.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/map_tiles.dart';
@@ -78,7 +79,8 @@ class LocationMapDialog extends StatefulWidget {
   State<LocationMapDialog> createState() => _LocationMapDialogState();
 }
 
-class _LocationMapDialogState extends State<LocationMapDialog> {
+class _LocationMapDialogState extends State<LocationMapDialog>
+    with PrivacyScreen {
   late MapCamera _camera = switch (widget.initial) {
     final point? => switch (WebMercator.project(
       point.latitude,
@@ -109,9 +111,15 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
   Offset? _gestureFocal;
 
   /// « Show tiles » of this map, as the create form left it (#246): on again without the dialog when it was on, its tiles asked again.
+  ///
+  /// While the tiles show, the map is protected from screen capture (`PrivacyScreen`, as the Garage and the chat are): with tiles, the pin stands on the real street before « Save » moves it, and a capture or the recent apps' preview would keep that exact place; the tiles show only once the protection says it is on, or that the user turned it off in the wallet's settings (« Screen Privacy », which `ScreenCaptureProtection.enabledByUser` follows). Without tiles, nothing is protected, as before.
   late final MapTileLayer _tiles = MapTileLayer(
     widget.openTiles,
     choice: widget.tiles,
+    guard: MapTileGuard(
+      hold: enableScreenPrivacy,
+      release: () => unawaited(disableScreenPrivacy()),
+    ),
   )..addListener(_tilesChanged);
 
   void _tilesChanged() => setState(() {});

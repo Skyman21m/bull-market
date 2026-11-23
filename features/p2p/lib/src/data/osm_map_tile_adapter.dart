@@ -16,12 +16,12 @@ typedef CreateMapTileClient = HttpClient Function();
 /// What the provider learns, for each tile asked: the phone's IP address, the tile's zoom, column and row, so the area looked at, the time, and the headers below; the phone's network sees the name `tile.openstreetmap.org` asked of its resolver in clear (design note § 5).
 ///
 /// Its rules (design note § 3), each with its test in `map_tiles_test.dart`:
-/// - its own `dart:io` client, made for the tiles only, created at a session's first tile and closed with it, never the transport's nor the wallet's; it keeps no cookie and shares no header with the transport;
+/// - its own `dart:io` client, made for the tiles only, created at a session's first tile and closed with it, never the transport's nor the wallet's; it keeps no cookie and shares no header with the transport; it connects directly, never through a proxy the process's environment would name (`findProxy`);
 /// - the one source `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, the reference's (`components/Map/osmTiles.ts:1`), with [MapTile]'s whole zooms 0 to 15; HTTPS only, the certificate always checked as `dart:io` checks it, never set aside, no redirect followed;
-/// - the headers, exactly: `User-Agent` and `X-Requested-With` at [name], the name the owner chose on 2026-11-23 for the tile server, in place of the reference's `RoboSats` and `AndroidRobosats` (sending another app's name would impersonate it, which the provider's policy forbids); `If-None-Match` for a tile kept whose time is over; `Accept-Encoding: identity`, in place of `dart:io`'s `gzip`, which marks a Dart client and would be decompressed in memory; and the `Host` HTTP requires: no `Referer`, no cookie, no contact, no address, no version, as the reference sends none (`osmTiles.ts:8-12`);
+/// - the headers, exactly: `User-Agent` and `X-Requested-With` at [name], the name the owner chose on 2026-11-23 for the tile server, in place of the reference's `RoboSats` and `AndroidRobosats` (sending another app's name would impersonate it, which the provider's policy forbids); `If-None-Match` for a tile kept whose time is over; `Accept-Encoding: identity`, in place of `dart:io`'s `gzip`, which would be decompressed in memory (the client is known as a Dart client anyway: its TLS greeting has no ALPN nor GREASE, and `dart:io` writes header names in lower case); and the `Host` HTTP requires: no `Referer`, no cookie, no contact, no address, no version, as the reference sends none (`osmTiles.ts:8-12`);
 /// - at most [maxRequests] requests at once, the others waiting; a wait for the connection bounded by [connectTimeout], each wait for data by [readTimeout], and the reading of one answer by [tileTimeout], so that a server that sends a byte now and then holds no place for long;
 /// - an answer of at most [maxBytes], read as a tile only when it is a PNG of 256 × 256 pixels ([isTilePng], before any decoding: a small PNG can inflate into a huge picture); an answer with an `x-blocked` header, or « Too Many Requests » (429), is [MapTileRefused], where the reference shows the provider's error picture or a failed tile;
-/// - the tiles kept in memory only, at most [maxKept], for the session's life, with their `ETag` and time (`Cache-Control` and `Expires` honoured, 7 days without them, as the provider's policy asks); nothing written to disk; the session closed when the switch goes off or the map closes, which forgets them: the code does not see the phone's network change, so the `ETag`s, which could tie two successive addresses of the phone together, last no longer than one map (design note § 3);
+/// - the tiles kept in memory only, at most [maxKept] and [maxKeptBytes] together, the least recently used forgotten first, for the session's life, with their `ETag` and time (`Cache-Control` and `Expires` honoured, 7 days without them, as the provider's policy asks); nothing written to disk; the session closed when the switch goes off or the map closes, which forgets them: the code does not see the phone's network change, so the `ETag`s, which could tie two successive addresses of the phone together, last no longer than one map (design note § 3);
 /// - nothing logged but a fixed label for a tile refused or failed, never its address, zoom, column or row, nor the error, whose text may hold the address.
 final class OsmMapTileAdapter implements MapTilePort {
   final CreateMapTileClient _createClient;
@@ -50,8 +50,11 @@ final class OsmMapTileAdapter implements MapTilePort {
   /// The most bytes of one answer: a tile takes a few tens of KB.
   static const maxBytes = 512 * 1024;
 
-  /// The most tiles a session keeps: a few MB.
+  /// The most tiles a session keeps: a few MB for real tiles, which take a few tens of KB.
   static const maxKept = 256;
+
+  /// The most bytes a session keeps, whatever the tiles' sizes: [maxKept] tiles of 64 KiB, more than real tiles take, where [maxKept] answers of [maxBytes] would take 128 MiB; past it, the least recently used are forgotten first.
+  static const maxKeptBytes = 16 * 1024 * 1024;
 
   /// The longest wait for a connection, and for each part of an answer.
   static const connectTimeout = Duration(seconds: 10);
@@ -70,13 +73,16 @@ final class OsmMapTileAdapter implements MapTilePort {
   static Uri urlOf(MapTile tile) =>
       Uri.https(host, '/${tile.z}/${tile.x}/${tile.y}.png');
 
-  /// The client of one session: [name] as its user agent, no decompression, its connection's wait bounded, at most [maxRequests] connections.
+  /// The client of one session: [name] as its user agent, a direct connection whatever the environment says of a proxy, no decompression, its connection's wait bounded, at most [maxRequests] connections.
   static HttpClient newClient() => HttpClient()
+    ..findProxy = _direct
     ..userAgent = name
     ..autoUncompress = false
     ..connectionTimeout = connectTimeout
     ..idleTimeout = readTimeout
     ..maxConnectionsPerHost = maxRequests;
+
+  static String _direct(Uri url) => 'DIRECT';
 
   /// Whether [bytes] are a PNG whose header (`IHDR`, its first chunk) gives 256 × 256 pixels: read before the picture is decoded.
   static bool isTilePng(Uint8List bytes) {
@@ -142,6 +148,7 @@ final class _OsmMapTileSession implements MapTileSession {
 
   /// The tiles kept, the least recently used first.
   final _kept = <MapTile, _KeptTile>{};
+  var _keptBytes = 0;
 
   /// The tiles asked, waiting or running.
   final _requests = <MapTile, _TileRequest>{};
@@ -194,6 +201,7 @@ final class _OsmMapTileSession implements MapTileSession {
     _client?.close(force: true);
     _client = null;
     _kept.clear();
+    _keptBytes = 0;
   }
 
   void _start() {
@@ -233,9 +241,15 @@ final class _OsmMapTileSession implements MapTileSession {
     final started = Stopwatch()..start();
     try {
       final client = _client ??= _adapter._createClient();
-      final http = await client
-          .getUrl(OsmMapTileAdapter.urlOf(request.tile))
-          .timeout(_adapter._connectTimeout);
+      final connecting = client.getUrl(OsmMapTileAdapter.urlOf(request.tile));
+      final http = await connecting.timeout(
+        _adapter._connectTimeout,
+        onTimeout: () {
+          // A connection that comes after its wait is let go at once, never kept unused until the session closes.
+          connecting.then((late) => late.abort(), onError: (Object _) {}).ignore();
+          throw TimeoutException(null);
+        },
+      );
       if (_given(request)) {
         http.abort();
         return const MapTileDropped();
@@ -317,7 +331,7 @@ final class _OsmMapTileSession implements MapTileSession {
     if (_closed) return;
     final lifetime = _lifetimeOf(headers);
     if (lifetime == null) {
-      _kept.remove(tile);
+      _forget(tile);
       return;
     }
     final given = headers[HttpHeaders.etagHeader];
@@ -326,12 +340,19 @@ final class _OsmMapTileSession implements MapTileSession {
         : (given.length == 1 && _etagPattern.hasMatch(given.single)
               ? given.single
               : null);
-    _kept
-      ..remove(tile)
-      ..[tile] = _KeptTile(png, tag, _adapter._clock().add(lifetime));
-    while (_kept.length > OsmMapTileAdapter.maxKept) {
-      _kept.remove(_kept.keys.first);
+    _forget(tile);
+    _kept[tile] = _KeptTile(png, tag, _adapter._clock().add(lifetime));
+    _keptBytes += png.length;
+    while (_kept.length > 1 &&
+        (_kept.length > OsmMapTileAdapter.maxKept ||
+            _keptBytes > OsmMapTileAdapter.maxKeptBytes)) {
+      _forget(_kept.keys.first);
     }
+  }
+
+  void _forget(MapTile tile) {
+    final kept = _kept.remove(tile);
+    if (kept != null) _keptBytes -= kept.png.length;
   }
 
   /// How long a tile is fresh: `Cache-Control`'s `max-age`, else `Expires`, else [OsmMapTileAdapter.defaultLifetime]; `null` for `no-store`.

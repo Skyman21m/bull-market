@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:bull_ui/bull_ui.dart' show BullTopBar;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -93,6 +94,12 @@ final class _Journey {
   final Locale locale;
 
   _Journey(this.tester, this.coordinator, this.advance, this.locale);
+
+  /// The calls of the protection from screen capture (`PrivacyScreen`), on the channel of its plugin, which the test plays.
+  final privacy = <String>[];
+
+  /// Whether the platform sets the protection when asked.
+  bool protects = true;
 
   P2pLocalizations get l10n => lookupP2pLocalizations(locale);
 
@@ -189,6 +196,14 @@ final class _Journey {
       (by) => clock = clock.add(by),
       locale,
     );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const channel = MethodChannel('com.flutterplaza.no_screenshot_methods');
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      journey.privacy.add(call.method);
+      return call.method == 'screenshotOff' ? journey.protects : true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
@@ -517,6 +532,8 @@ void main() {
           LocationMapDialog.worldZoom.round(),
         });
         expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
+        // Protected from capture while the tiles show, and only then (#246, security review).
+        expect(journey.privacy, ['screenshotOff']);
         // A tap at the centre, opened on 0°, 0°, then « Save »: the point moved by the same draws as without tiles.
         await tester.tap(find.byKey(LocationMapDialog.mapKey));
         await settle(tester);
@@ -524,6 +541,7 @@ void main() {
         await settle(tester);
         expect(find.byType(LocationMapDialog), findsNothing);
         expect(tiles.sessions.single.closed, isTrue);
+        expect(journey.privacy, ['screenshotOff', 'screenshotOn']);
         expect(drawn, 2);
         expect(find.text(words.pointSent), findsOneWidget);
         // Opened again from the same form: on, without the dialog, as the reference's dialog stays mounted in its form; its tiles asked again in a new session, nothing having been kept.
@@ -536,10 +554,12 @@ void main() {
         expect(tiles.sessions, hasLength(2));
         expect(tiles.sessions.last.asked, isNotEmpty);
         expect(tiles.asked.length, greaterThan(asked));
+        expect(journey.privacy.last, 'screenshotOff');
         // Turned off, then the map closed and opened again: off, nothing asked.
         await tester.tap(toggle);
         await settle(tester);
         expect(tiles.sessions.last.closed, isTrue);
+        expect(journey.privacy.last, 'screenshotOn');
         final closeMap = find.byTooltip(
           MaterialLocalizations.of(
             tester.element(find.byType(LocationMapDialog)),
@@ -599,6 +619,34 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'when the platform cannot protect the meeting point\'s map from capture, its tiles stay off',
+    (tester) async {
+      final tiles = FakeMapTiles();
+      final journey = await _Journey.start(
+        tester,
+        const Locale('en'),
+        tiles: tiles,
+      );
+      journey.protects = false;
+      final l10n = journey.l10n;
+      await journey.fillForm(method: 'Meet F2F');
+      await journey.waitFor(find.byType(LocationMapDialog), seconds: 5);
+      final toggle = find.descendant(
+        of: find.byType(MapTilesSwitch),
+        matching: find.byType(Switch),
+      );
+      await tester.tap(toggle);
+      await settle(tester);
+      await tester.tap(find.text(l10n.p2pMapTilesAcknowledged));
+      await _settleTiles(tester);
+      expect(journey.privacy, ['screenshotOff', 'screenshotOn']);
+      expect(tester.widget<Switch>(toggle).value, isFalse);
+      expect(tiles.sessions, isEmpty);
+      await journey.close();
+    },
+  );
 }
 
 /// Lets the tiles that came be decoded: the pictures are decoded out of the test's fake time.

@@ -552,6 +552,91 @@ void main() {
     },
   );
 
+  test('paused, the layer asks nothing, even when the view changes', () {
+    final layer = MapTileLayer(tiles.open)
+      ..acknowledge()
+      ..show()
+      ..view(zoom: 2, x: 0.5, y: 0.5, size: const Size(300, 300));
+    final asked = tiles.asked.length;
+    expect(asked, greaterThan(0));
+    layer
+      ..pause()
+      ..view(zoom: 4, x: 0.3, y: 0.3, size: const Size(300, 600));
+    expect(tiles.asked, hasLength(asked));
+    layer
+      ..resume()
+      ..view(zoom: 4, x: 0.3, y: 0.3, size: const Size(300, 600));
+    expect(tiles.asked.length, greaterThan(asked));
+    layer.dispose();
+  });
+
+  test(
+    'with a guard, the session opens only once it is held, and the guard is let go when the tiles stop',
+    () async {
+      final calls = <String>[];
+      var may = true;
+      final layer = MapTileLayer(
+        tiles.open,
+        guard: MapTileGuard(
+          hold: () async {
+            calls.add('hold');
+            return may;
+          },
+          release: () => calls.add('release'),
+        ),
+      )..acknowledge();
+      layer.show();
+      expect(layer.shown, isFalse);
+      expect(tiles.sessions, isEmpty);
+      await Future<void>.delayed(Duration.zero);
+      expect(layer.shown, isTrue);
+      expect(calls, ['hold']);
+      layer.hide();
+      expect(calls, ['hold', 'release']);
+      expect(tiles.sessions.single.closed, isTrue);
+      // A guard that cannot be held keeps the tiles off.
+      may = false;
+      layer.show();
+      await Future<void>.delayed(Duration.zero);
+      expect(layer.shown, isFalse);
+      expect(tiles.sessions, hasLength(1));
+      expect(calls, ['hold', 'release', 'hold', 'release']);
+      // Turned off before the guard answers: nothing opens.
+      may = true;
+      layer
+        ..show()
+        ..hide();
+      await Future<void>.delayed(Duration.zero);
+      expect(layer.shown, isFalse);
+      expect(tiles.sessions, hasLength(1));
+      layer.dispose();
+      expect(calls.last, 'release');
+    },
+  );
+
+  testWidgets('the book\'s map is never protected from capture, tiles on or off', (
+    tester,
+  ) async {
+    final calls = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
+    messenger.setMockMethodCallHandler(privacy, (call) async {
+      calls.add(call.method);
+      return true;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(privacy, null));
+    await openMap(tester);
+    await tester.tap(switchFinder);
+    await settle(tester);
+    await tester.tap(find.text('Acknowledged'));
+    await settleTiles(tester);
+    expect(switchOn(tester), isTrue);
+    await tester.tap(switchFinder);
+    await settle(tester);
+    expect(calls, isEmpty);
+  });
+
   test(
     'the layer opens nothing before « Acknowledged », and closes its session when disposed',
     () {

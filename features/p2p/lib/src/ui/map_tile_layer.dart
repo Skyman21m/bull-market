@@ -23,16 +23,32 @@ final class MapTilesChoice {
   bool refused = false;
 }
 
+/// What a map holds while its tiles show, and lets go when they stop: the meeting point's map holds the protection from screen capture (`PrivacyScreen`), so that a capture or the recent apps' preview never keeps the exact place pinned on a real street (#246).
+final class MapTileGuard {
+  /// Takes the protection; whether the tiles may show: `false` keeps them off.
+  final Future<bool> Function() hold;
+
+  /// Lets it go.
+  final void Function() release;
+
+  const MapTileGuard({required this.hold, required this.release});
+}
+
 /// The tiles of one map while it is open (#246), from its [MapTilesChoice].
 ///
-/// Nothing is asked before [show], which needs [acknowledge] first; a layer made from a choice already shown opens its session at once, the user having acknowledged the dialog in that form. The session, and so the client, is opened only then; [hide] and [dispose] close it, which forgets its tiles and their `ETag`s.
+/// Nothing is asked before [show], which needs [acknowledge] first; a layer made from a choice already shown opens its session at once, the user having acknowledged the dialog in that form. With a [MapTileGuard], the session opens only once the guard is held, and the guard is let go when the tiles stop. The session, and so the client, is opened only then; [hide] and [dispose] close it, which forgets its tiles and their `ETag`s.
 /// [view] asks the tiles in view and gives up those that left it, as the reference's tile layer aborts them (`AbortController`, `components/Map/index.tsx`), where Leaflet keeps them up to two tiles beyond the view (`keepBuffer`); a tile that failed is asked again only once the set of tiles in view changes, at the next pan or zoom that brings or takes a tile, never on a mere redraw; once the provider refused one (`x-blocked`, or too many requests), nothing more is asked until the switch is turned off and on again.
 /// While the map is covered by another page ([pause]), the tiles asked are given up, those waiting their turn included, and nothing is asked until it is shown again ([resume]).
 /// The pictures are decoded here and kept only while their tile is in view; their bytes stay in the session, in memory.
 final class MapTileLayer extends ChangeNotifier {
   final MapTileSession Function() _open;
   final MapTilesChoice _choice;
+  final MapTileGuard? _guard;
   MapTileSession? _session;
+
+  /// Whether the guard is held, and the turn of the last start: a start that a [hide] or a later start overtook opens nothing.
+  bool _held = false;
+  var _turn = 0;
   bool _disposed = false;
   bool _paused = false;
 
@@ -48,9 +64,10 @@ final class MapTileLayer extends ChangeNotifier {
   final _failed = <MapTile>{};
   MapTileFrame? _frame;
 
-  MapTileLayer(this._open, {MapTilesChoice? choice})
-    : _choice = choice ?? MapTilesChoice() {
-    if (_choice.acknowledged && _choice.shown) _session = _open();
+  MapTileLayer(this._open, {MapTilesChoice? choice, MapTileGuard? guard})
+    : _choice = choice ?? MapTilesChoice(),
+      _guard = guard {
+    if (_choice.acknowledged && _choice.shown) unawaited(_start());
   }
 
   /// Whether « Acknowledged » was pressed for this map.
@@ -80,13 +97,37 @@ final class MapTileLayer extends ChangeNotifier {
     _choice
       ..shown = true
       ..refused = false;
+    unawaited(_start());
+  }
+
+  /// Opens the session, once the guard, if any, is held; without a guard, at once.
+  Future<void> _start() async {
+    final turn = ++_turn;
+    if (_guard case final guard?) {
+      _held = true;
+      final may = await guard.hold();
+      if (_disposed || turn != _turn) return;
+      if (!may) {
+        _choice.shown = false;
+        _release();
+        _changed();
+        return;
+      }
+    }
+    if (_session != null || _disposed) return;
     _session = _open();
     _changed();
   }
 
+  void _release() {
+    if (!_held) return;
+    _held = false;
+    _guard?.release();
+  }
+
   /// Turns the tiles off: the session is closed, the tiles it kept forgotten, the pictures let go.
   void hide() {
-    if (_session == null) return;
+    _turn++;
     _choice
       ..shown = false
       ..refused = false;
@@ -205,6 +246,7 @@ final class MapTileLayer extends ChangeNotifier {
     final session = _session;
     _session = null;
     session?.close();
+    _release();
     for (final image in _images.values) {
       image.dispose();
     }
@@ -223,6 +265,7 @@ final class MapTileLayer extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _turn++;
     _close();
     super.dispose();
   }
