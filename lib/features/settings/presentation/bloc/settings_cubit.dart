@@ -24,6 +24,7 @@ import 'package:bb_mobile/features/settings/domain/usecases/set_screen_capture_p
 import 'package:bb_mobile/features/settings/domain/usecases/set_theme_mode_usecase.dart';
 import 'package:bb_mobile/features/settings/domain/usecases/sync_exchange_currency_usecase.dart';
 import 'package:bb_mobile/features/settings/domain/usecases/watch_payjoin_policy_usecase.dart';
+import 'package:bb_mobile/features/settings/presentation/app_version.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -99,7 +100,9 @@ class SettingsCubit extends Cubit<SettingsState> {
       _getSettingsUsecase.execute(),
       PackageInfo.fromPlatform(),
     ).wait;
-    final appVersion = '${appInfo.version}+${appInfo.buildNumber}';
+    final appVersion = formatAppVersion(
+      '${appInfo.version}+${appInfo.buildNumber}',
+    );
 
     // Mirror the persisted preference into the process-wide capture controller
     // so protected screens honour the user's choice from the first frame.

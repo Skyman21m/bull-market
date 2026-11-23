@@ -105,7 +105,9 @@ jobs:
           EOF
 
       - name: Build
-        run: make android "$MODE" FORMAT="$FORMAT"
+        env:
+          BUILD_COMMIT: ${{ steps.meta.outputs.sha_short }}
+        run: make android "$MODE" FORMAT="$FORMAT" BUILD_COMMIT="$BUILD_COMMIT"
 
       # Publishes the sha256 of the exact bytes uploaded below, so anyone
       # comparing this run's artifact against a locally reproduced build has a
