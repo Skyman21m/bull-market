@@ -1,5 +1,5 @@
 name: p2p
-description: Troc peer-to-peer trading on the RoboSats federation, read over the embedded Tor.
+description: Troc peer-to-peer trading on the RoboSats federation, read over the embedded Tor; the maps' tiles, once « Show tiles » is on, from OpenStreetMap outside Tor.
 publish_to: "none"
 version: 0.0.1
 resolution: workspace

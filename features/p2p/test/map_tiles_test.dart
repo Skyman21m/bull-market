@@ -103,62 +103,90 @@ void main() {
   group('the tile client stands apart', () {
     // Tests run with the package directory as working directory.
     final sources = {
-      for (final file
-          in Directory('lib').listSync(recursive: true).whereType<File>())
+      for (final file in Directory(
+        'lib',
+      ).listSync(recursive: true).whereType<File>())
         if (file.path.endsWith('.dart'))
           file.path.replaceAll(r'\', '/'): file.readAsStringSync(),
     };
     const adapter = 'lib/src/data/osm_map_tile_adapter.dart';
     const transport = 'lib/src/data/tor_coordinator_transport.dart';
 
-    test('only the composition builds it; it takes nothing of Tor nor of the transport', () {
-      expect(sources.keys, containsAll([adapter, transport]));
-      expect(
-        {
-          for (final MapEntry(key: path, value: source) in sources.entries)
-            if (source.contains('OsmMapTileAdapter')) path,
-        },
-        {adapter, 'lib/src/p2p_locator.dart'},
-      );
-      final own = sources[adapter] ?? '';
-      for (final word in const [
-        'bull_tor',
-        'tor_coordinator_transport',
-        'package:dio',
-        'robosats',
-        'secrets',
-        'p2p_wallet_port',
-      ]) {
-        expect(own, isNot(contains(word)), reason: word);
-      }
-    });
+    test(
+      'only the composition builds it; it takes nothing of Tor nor of the transport',
+      () {
+        expect(sources.keys, containsAll([adapter, transport]));
+        expect(
+          {
+            for (final MapEntry(key: path, value: source) in sources.entries)
+              if (source.contains('OsmMapTileAdapter')) path,
+          },
+          {adapter, 'lib/src/p2p_locator.dart'},
+        );
+        final own = sources[adapter] ?? '';
+        for (final word in const [
+          'bull_tor',
+          'tor_coordinator_transport',
+          'package:dio',
+          'robosats',
+          'secrets',
+          'p2p_wallet_port',
+        ]) {
+          expect(own, isNot(contains(word)), reason: word);
+        }
+      },
+    );
 
-    test('no header of the tiles in the transport, nor of the transport in the tiles', () {
-      final coordinators = sources[transport] ?? '';
-      for (final word in const ['TumbleLark', 'X-Requested-With', 'map_tile']) {
-        expect(coordinators, isNot(contains(word)), reason: word);
-      }
-      // The transport's own fields of a request: none in the tile client.
-      final own = sources[adapter] ?? '';
-      for (final word in const ['Authorization', 'Content-Type', 'sessionKey']) {
-        expect(own, isNot(contains(word)), reason: word);
-      }
-    });
+    test(
+      'no header of the tiles in the transport, nor of the transport in the tiles',
+      () {
+        final coordinators = sources[transport] ?? '';
+        for (final word in const [
+          'TumbleLark',
+          'X-Requested-With',
+          'map_tile',
+        ]) {
+          expect(coordinators, isNot(contains(word)), reason: word);
+        }
+        // The transport's own fields of a request: none in the tile client.
+        final own = sources[adapter] ?? '';
+        for (final word in const [
+          'Authorization',
+          'Content-Type',
+          'sessionKey',
+        ]) {
+          expect(own, isNot(contains(word)), reason: word);
+        }
+      },
+    );
 
-    test('the certificate is never set aside, and nothing but HTTPS to the one host', () {
-      for (final MapEntry(key: path, value: source) in sources.entries) {
-        expect(source, isNot(contains('badCertificateCallback')), reason: path);
-      }
-      final own = sources[adapter] ?? '';
-      expect(own, isNot(contains('http://')));
-      expect(own, isNot(contains('Uri.http(')));
-      expect(own, isNot(contains('findProxy')));
-      expect(own, isNot(contains('connectionFactory')));
-      // Nothing that writes: no file, no folder, no stored preference.
-      for (final word in const ['File', 'Directory', 'path_provider', 'SharedPreferences', 'drift']) {
-        expect(own, isNot(contains(word)), reason: word);
-      }
-    });
+    test(
+      'the certificate is never set aside, and nothing but HTTPS to the one host',
+      () {
+        for (final MapEntry(key: path, value: source) in sources.entries) {
+          expect(
+            source,
+            isNot(contains('badCertificateCallback')),
+            reason: path,
+          );
+        }
+        final own = sources[adapter] ?? '';
+        expect(own, isNot(contains('http://')));
+        expect(own, isNot(contains('Uri.http(')));
+        expect(own, isNot(contains('findProxy')));
+        expect(own, isNot(contains('connectionFactory')));
+        // Nothing that writes: no file, no folder, no stored preference.
+        for (final word in const [
+          'File',
+          'Directory',
+          'path_provider',
+          'SharedPreferences',
+          'drift',
+        ]) {
+          expect(own, isNot(contains(word)), reason: word);
+        }
+      },
+    );
   });
 
   group('isTilePng', () {

@@ -5,7 +5,7 @@
 
 > The app was called "Troc" until November 13, 2026, when it was renamed Bull Market ([#105](https://github.com/Skyman21m/bull-market/issues/105)); the repository was renamed the same day, and some documents and internal names still carry the old name. With that change ([#107](https://github.com/Skyman21m/bull-market/pull/107)), the Android application id went from `io.github.skyman21m.troc` to `io.github.skyman21m.bullmarket`, so a newer build installs next to an earlier one instead of replacing it, and starts empty. To keep a wallet, restore it from its recovery phrase. The Garage Key is not part of that backup: copy it from the earlier build's Garage before uninstalling that build.
 
-Bull Market is a fork of the [Bull Bitcoin Mobile](https://github.com/SatoshiPortal/bullbitcoin-mobile) wallet (Flutter) that aims to embed a [RoboSats](https://github.com/RoboSats/robosats) client in it: peer-to-peer bitcoin exchange, with no account, over Tor, straight from a self-custodial wallet.
+Bull Market is a fork of the [Bull Bitcoin Mobile](https://github.com/SatoshiPortal/bullbitcoin-mobile) wallet (Flutter) that aims to embed a [RoboSats](https://github.com/RoboSats/robosats) client in it: peer-to-peer bitcoin exchange, with no account, over Tor (outside Tor only the wallet's own price and swap services and, once the user turns on « Show tiles » on a map, OpenStreetMap's map tiles), straight from a self-custodial wallet.
 
 ## The idea
 

@@ -512,10 +512,9 @@ void main() {
         expect(tester.widget<Switch>(toggle).value, isTrue);
         expect(tiles.sessions, hasLength(1));
         expect(tiles.asked, isNotEmpty);
-        expect(
-          tiles.asked.map((tile) => tile.z).toSet(),
-          {LocationMapDialog.worldZoom.round()},
-        );
+        expect(tiles.asked.map((tile) => tile.z).toSet(), {
+          LocationMapDialog.worldZoom.round(),
+        });
         expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
         // A tap at the centre, opened on 0°, 0°, then « Save »: the point moved by the same draws as without tiles.
         await tester.tap(find.byKey(LocationMapDialog.mapKey));
