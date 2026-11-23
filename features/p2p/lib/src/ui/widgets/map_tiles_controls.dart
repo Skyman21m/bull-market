@@ -72,7 +72,7 @@ class MapTilesDialog extends StatelessWidget {
   }
 }
 
-/// What a map shows over its tiles while they are shown (#246): at the bottom, the provider's credit « © OpenStreetMap contributors » in its right corner, as Leaflet's attribution control shows the reference's (`components/Map/index.tsx`, `osmTiles.ts:3-4`), and, when tiles in view failed or were refused, the app's one line « Map tiles unavailable » above it.
+/// What a map shows over its tiles while they are shown (#246): at the bottom, the provider's credit « © OpenStreetMap contributors » in its right corner, as Leaflet's attribution control shows the reference's (`components/Map/index.tsx`, `osmTiles.ts:3-4`), and, when tiles in view failed or were refused, the app's one line « Map tiles unavailable » above it; that line alone, the switch off, when the meeting point's map could not be protected from capture.
 class MapTilesNotes extends StatelessWidget {
   final MapTileLayer tiles;
 
@@ -80,7 +80,7 @@ class MapTilesNotes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!tiles.shown) return const SizedBox.shrink();
+    if (!tiles.shown && !tiles.unavailable) return const SizedBox.shrink();
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
@@ -113,7 +113,7 @@ class MapTilesNotes extends StatelessWidget {
           ),
           const Gap(BullSpacing.xxs),
         ],
-        note(l10n.p2pMapTilesCredit, colors.text),
+        if (tiles.shown) note(l10n.p2pMapTilesCredit, colors.text),
       ],
     );
   }

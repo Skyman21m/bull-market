@@ -49,6 +49,9 @@ final class MapTileLayer extends ChangeNotifier {
   /// Whether the guard is held, and the turn of the last start: a start that a [hide] or a later start overtook opens nothing.
   bool _held = false;
   var _turn = 0;
+
+  /// Whether the last start found the guard refused, as when the platform cannot protect the screen: said by « Map tiles unavailable », the switch off.
+  bool _guardRefused = false;
   bool _disposed = false;
   bool _paused = false;
 
@@ -75,9 +78,10 @@ final class MapTileLayer extends ChangeNotifier {
   /// Whether the tiles are shown: the switch is on.
   bool get shown => _session != null;
 
-  /// Whether a tile in view failed, or the provider refused one: « Map tiles unavailable ».
+  /// Whether a tile in view failed, the provider refused one, or the guard could not be held: « Map tiles unavailable ».
   bool get unavailable =>
-      _session != null && (_choice.refused || _wanted.any(_failed.contains));
+      _guardRefused ||
+      (_session != null && (_choice.refused || _wanted.any(_failed.contains)));
 
   /// What the map draws of its tiles, or `null` while they are not shown.
   MapTileFrame? get frame => _session == null
@@ -96,6 +100,7 @@ final class MapTileLayer extends ChangeNotifier {
     _choice
       ..shown = true
       ..refused = false;
+    _guardRefused = false;
     unawaited(_start());
   }
 
@@ -108,6 +113,7 @@ final class MapTileLayer extends ChangeNotifier {
       if (_disposed || turn != _turn) return;
       if (!may) {
         _choice.shown = false;
+        _guardRefused = true;
         _release();
         _changed();
         return;
@@ -127,6 +133,7 @@ final class MapTileLayer extends ChangeNotifier {
   /// Turns the tiles off: the session is closed, the tiles it kept forgotten, the pictures let go.
   void hide() {
     _turn++;
+    _guardRefused = false;
     _choice
       ..shown = false
       ..refused = false;

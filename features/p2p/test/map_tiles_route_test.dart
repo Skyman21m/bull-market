@@ -599,6 +599,7 @@ void main() {
       layer.show();
       await Future<void>.delayed(Duration.zero);
       expect(layer.shown, isFalse);
+      expect(layer.unavailable, isTrue);
       expect(tiles.sessions, hasLength(1));
       expect(calls, ['hold', 'release', 'hold', 'release']);
       // Turned off before the guard answers: nothing opens.

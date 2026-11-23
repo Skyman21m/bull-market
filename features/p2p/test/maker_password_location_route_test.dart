@@ -621,7 +621,7 @@ void main() {
   }
 
   testWidgets(
-    'when the platform cannot protect the meeting point\'s map from capture, its tiles stay off',
+    'when the platform cannot protect the meeting point\'s map from capture, its tiles stay off and « Map tiles unavailable » says it',
     (tester) async {
       final tiles = FakeMapTiles();
       final journey = await _Journey.start(
@@ -644,6 +644,16 @@ void main() {
       expect(journey.privacy, ['screenshotOff', 'screenshotOn']);
       expect(tester.widget<Switch>(toggle).value, isFalse);
       expect(tiles.sessions, isEmpty);
+      expect(tiles.asked, isEmpty);
+      expect(find.text(l10n.p2pMapTilesUnavailable), findsOneWidget);
+      expect(find.text(l10n.p2pMapTilesCredit), findsNothing);
+      // Turned on again, the platform protecting this time: the line goes, the tiles come.
+      journey.protects = true;
+      await tester.tap(toggle);
+      await settle(tester);
+      await _settleTiles(tester);
+      expect(find.text(l10n.p2pMapTilesUnavailable), findsNothing);
+      expect(tiles.sessions, hasLength(1));
       await journey.close();
     },
   );
