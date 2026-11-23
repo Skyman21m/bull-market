@@ -1,8 +1,3 @@
 {
-  "@@locale": "de",
-  "p2pMapShowTiles": "Kacheln anzeigen",
-  "p2pMapTilesTitle": "Hochauflösende Karte herunterladen?",
-  "p2pMapTilesText": "Indem du dies tust, wirst du Kartendaten von einem Drittanbieter abrufen. Abhängig von deiner Konfiguration könnten private Informationen an Server außerhalb der RoboSats-Föderation weitergegeben werden.",
-  "p2pMapTilesClose": "Schließen",
-  "p2pMapTilesAcknowledged": "Bestätigen"
+  "@@locale": "de"
 }

@@ -93,7 +93,7 @@ final class MapTileImage extends MapTileOutcome {
   const MapTileImage(this.png);
 }
 
-/// The provider refused the tile: an answer with its `x-blocked` header, which comes with an error picture and HTTP 200 (the « Blocked tiles » page of OpenStreetMap's wiki).
+/// The provider refused the tile: an answer with its `x-blocked` header, which comes with an error picture and HTTP 200 (the « Blocked tiles » page of OpenStreetMap's wiki), or « Too Many Requests » (429): nothing more is asked until the switch is turned off and on again.
 final class MapTileRefused extends MapTileOutcome {
   const MapTileRefused();
 }

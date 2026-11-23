@@ -1,8 +1,3 @@
 {
-  "@@locale": "pt",
-  "p2pMapShowTiles": "Mostrar blocos",
-  "p2pMapTilesTitle": "Baixar mapa em alta resolução?",
-  "p2pMapTilesText": "Ao fazer isso, você estará buscando blocos de mapa de um fornecedor terceirizado. Dependendo da sua configuração, informações privadas podem ser vazadas para servidores fora da federação RoboSats.",
-  "p2pMapTilesClose": "Fechar",
-  "p2pMapTilesAcknowledged": "Confirmar"
+  "@@locale": "pt"
 }

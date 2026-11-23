@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:bull_ui/testing.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +13,7 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/web_mercator.dart';
 import 'package:p2p/src/ui/map_chart_view.dart';
 import 'package:p2p/src/ui/map_tile_layer.dart';
+import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/widgets/map_tiles_controls.dart';
 import 'package:p2p/testing.dart';
 
@@ -413,6 +415,125 @@ void main() {
       await settleTiles(tester);
       expect(tiles.asked, hasLength(asked));
       expect(find.text('Map tiles unavailable'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a tile that failed is asked again only when the tiles in view change, never on a mere redraw of the same tiles',
+    (tester) async {
+      tiles.answer = (tile) => const MapTileFailed();
+      await openMap(tester);
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      await tester.tap(switchFinder);
+      await settle(tester);
+      await tester.tap(find.text('Acknowledged'));
+      await settleTiles(tester);
+      expect(tiles.asked.toSet(), inView(tester).toSet());
+      expect(tiles.asked, hasLength(inView(tester).length));
+      expect(find.text('Map tiles unavailable'), findsOneWidget);
+      // A slow drag, two points at a time: the asks are counted at each step.
+      var unchanged = 0;
+      var changes = 0;
+      final gesture = await tester.startGesture(tester.getCenter(paint));
+      for (var step = 0; step < 60; step++) {
+        final before = tiles.asked.length;
+        final shownBefore = inView(tester).toSet();
+        await gesture.moveBy(const Offset(-2, 0));
+        await tester.pump();
+        final shownAfter = inView(tester).toSet();
+        final more = tiles.asked.length - before;
+        if (setEquals(shownBefore, shownAfter)) {
+          unchanged++;
+          expect(more, 0, reason: 'step $step: the same tiles, nothing asked');
+        } else {
+          changes++;
+          expect(more, lessThanOrEqualTo(shownAfter.length));
+        }
+      }
+      await gesture.up();
+      await tester.pump();
+      expect(unchanged, greaterThan(changes));
+      // No tile asked more than once per change of the tiles in view, plus its first time.
+      final counts = <MapTile, int>{};
+      for (final tile in tiles.asked) {
+        counts[tile] = (counts[tile] ?? 0) + 1;
+      }
+      expect(
+        counts.values.reduce((a, b) => a > b ? a : b),
+        lessThanOrEqualTo(1 + changes),
+      );
+    },
+  );
+
+  testWidgets(
+    'covered by an order\'s details, the map gives up the tiles asked and asks nothing; shown again, it asks what is missing',
+    (tester) async {
+      await openMap(tester);
+      await tester.tap(switchFinder);
+      await settle(tester);
+      await tester.tap(find.text('Acknowledged'));
+      await settle(tester);
+      // The answers held: the tiles stay asked while the order opens.
+      tiles.held = true;
+      await tester.tap(switchFinder);
+      await settle(tester);
+      await tester.tap(switchFinder);
+      await settle(tester);
+      final session = tiles.sessions.last;
+      final asked = session.asked.toSet();
+      expect(asked, isNotEmpty);
+      final (_, tip) = painter(tester).layout.drawn.first;
+      await tester.tapAt(
+        tester.getTopLeft(paint) + tip.translate(0, -MapChartPainter.pinHeight / 2),
+      );
+      await settle(tester);
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(session.dropped.toSet(), asked);
+      final whileCovered = session.asked.length;
+      tiles.release();
+      await settleTiles(tester);
+      expect(session.asked, hasLength(whileCovered));
+      // Back on the map: the switch still on, the missing tiles asked again.
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await settleTiles(tester);
+      expect(switchOn(tester), isTrue);
+      expect(session.asked.length, greaterThan(whileCovered));
+      final frame = painter(tester).tiles;
+      if (frame == null) fail('no tiles drawn');
+      expect(frame.images.keys.toSet(), inView(tester).toSet());
+    },
+  );
+
+  test(
+    'a refusal is kept with the choice: the map opened again asks nothing until the switch is turned off and on',
+    () async {
+      final choice = MapTilesChoice();
+      tiles.answer = (tile) => const MapTileRefused();
+      final first = MapTileLayer(tiles.open, choice: choice)
+        ..acknowledge()
+        ..show()
+        ..view(zoom: 2, x: 0.5, y: 0.5, size: const Size(300, 300));
+      await Future<void>.delayed(Duration.zero);
+      expect(choice.refused, isTrue);
+      first.dispose();
+      final asked = tiles.asked.length;
+      final again = MapTileLayer(tiles.open, choice: choice)
+        ..view(zoom: 2, x: 0.5, y: 0.5, size: const Size(300, 300));
+      expect(again.shown, isTrue);
+      expect(again.unavailable, isTrue);
+      expect(tiles.asked, hasLength(asked));
+      tiles.answer = (tile) => MapTileImage(testTilePng(tile));
+      again
+        ..hide()
+        ..show()
+        ..view(zoom: 2, x: 0.5, y: 0.5, size: const Size(300, 300));
+      expect(tiles.asked.length, greaterThan(asked));
+      again.dispose();
     },
   );
 

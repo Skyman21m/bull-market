@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:bull_ui/bull_ui.dart' show BullTopBar;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -464,7 +465,7 @@ void main() {
   // « Show tiles » on the meeting point's map (#246), in both languages, with a tile provider of the test: never a request, never a real tile.
   for (final words in const [_english, _french]) {
     testWidgets(
-      '${words.locale}: « Show tiles » on the meeting point\'s map is off each time it opens, asks the reference\'s dialog, and the point sent is moved exactly as without tiles',
+      '${words.locale}: « Show tiles » on the meeting point\'s map is off in a new form, asks the reference\'s dialog, stays as left while the form is, and the point sent is moved exactly as without tiles',
       (tester) async {
         final tiles = FakeMapTiles();
         final draws = [0.75, 0.25];
@@ -525,19 +526,40 @@ void main() {
         expect(tiles.sessions.single.closed, isTrue);
         expect(drawn, 2);
         expect(find.text(words.pointSent), findsOneWidget);
-        // Opened again: off, nothing asked, the dialog asked again.
+        // Opened again from the same form: on, without the dialog, as the reference's dialog stays mounted in its form; its tiles asked again in a new session, nothing having been kept.
         final asked = tiles.asked.length;
         await journey.tap(journey.inForm(find.text(l10n.p2pMakeLocation)));
         await settle(tester);
         await _settleTiles(tester);
-        expect(tester.widget<Switch>(toggle).value, isFalse);
-        expect(tiles.asked, hasLength(asked));
-        expect(tiles.sessions, hasLength(1));
+        expect(find.text(l10n.p2pMapTilesTitle), findsNothing);
+        expect(tester.widget<Switch>(toggle).value, isTrue);
+        expect(tiles.sessions, hasLength(2));
+        expect(tiles.sessions.last.asked, isNotEmpty);
+        expect(tiles.asked.length, greaterThan(asked));
+        // Turned off, then the map closed and opened again: off, nothing asked.
         await tester.tap(toggle);
         await settle(tester);
-        expect(find.text(l10n.p2pMapTilesTitle), findsOneWidget);
-        await tester.tap(find.text(l10n.p2pMapTilesClose));
+        expect(tiles.sessions.last.closed, isTrue);
+        final closeMap = find.byTooltip(
+          MaterialLocalizations.of(
+            tester.element(find.byType(LocationMapDialog)),
+          ).closeButtonTooltip,
+        );
+        await tester.tap(closeMap);
         await settle(tester);
+        final afterOff = tiles.asked.length;
+        await journey.tap(journey.inForm(find.text(l10n.p2pMakeLocation)));
+        await settle(tester);
+        await _settleTiles(tester);
+        expect(tester.widget<Switch>(toggle).value, isFalse);
+        expect(tiles.asked, hasLength(afterOff));
+        expect(tiles.sessions, hasLength(2));
+        // On again: no dialog, it was acknowledged in this form.
+        await tester.tap(toggle);
+        await settle(tester);
+        expect(find.text(l10n.p2pMapTilesTitle), findsNothing);
+        await _settleTiles(tester);
+        expect(tiles.sessions, hasLength(3));
         await tester.tap(
           find.byTooltip(
             MaterialLocalizations.of(
@@ -546,7 +568,33 @@ void main() {
           ),
         );
         await settle(tester);
-        expect(tiles.sessions, hasLength(1));
+        expect(tiles.sessions.last.closed, isTrue);
+        // A new form starts off and asks the dialog again.
+        await journey.tap(
+          find
+              .descendant(
+                of: find.byType(BullTopBar),
+                matching: find.byType(IconButton),
+              )
+              .first,
+        );
+        await settle(tester);
+        expect(find.byType(CreateOrderScreen), findsNothing);
+        await journey.tap(find.text(l10n.p2pNavCreate));
+        await settle(tester);
+        final beforeNewForm = tiles.asked.length;
+        await journey.tap(journey.inForm(find.text(l10n.p2pMakeLocation)));
+        await settle(tester);
+        await _settleTiles(tester);
+        expect(tester.widget<Switch>(toggle).value, isFalse);
+        expect(tiles.asked, hasLength(beforeNewForm));
+        expect(tiles.sessions, hasLength(3));
+        await tester.tap(toggle);
+        await settle(tester);
+        expect(find.text(l10n.p2pMapTilesTitle), findsOneWidget);
+        await tester.tap(find.text(l10n.p2pMapTilesClose));
+        await settle(tester);
+        expect(tiles.sessions, hasLength(3));
         await journey.close();
       },
     );

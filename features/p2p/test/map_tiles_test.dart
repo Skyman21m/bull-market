@@ -358,6 +358,67 @@ void main() {
       },
     );
 
+    test('« Too Many Requests » is a refusal, as x-blocked', () async {
+      provider.answer = (head) => _status(429, 'Too Many Requests');
+      final session = provider.adapter().open();
+      expect(await session.fetch(tile), isA<MapTileRefused>());
+      session.close();
+    });
+
+    test('a tile given up while it waits its turn is never sent', () async {
+      final release = Completer<void>();
+      provider.answer = (head) async {
+        await release.future;
+        return _ok(testTilePng(tile));
+      };
+      final session = provider.adapter().open();
+      final running = [
+        for (var x = 0; x < 6; x++) session.fetch(MapTile.of(13, x, 0) ?? tile),
+      ];
+      final waiting = [
+        for (var x = 6; x < 8; x++) MapTile.of(13, x, 0) ?? tile,
+      ];
+      final dropped = [for (final other in waiting) session.fetch(other)];
+      await _until(() => provider.running == 6);
+      for (final other in waiting) {
+        session.drop(other);
+      }
+      expect(
+        await Future.wait(dropped),
+        everyElement(isA<MapTileDropped>()),
+      );
+      release.complete();
+      await Future.wait(running);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(provider.heads, hasLength(6));
+      for (final head in provider.heads) {
+        expect(head, isNot(contains('/13/6/0.png')));
+        expect(head, isNot(contains('/13/7/0.png')));
+      }
+      session.close();
+    });
+
+    test('a session keeps at most 256 tiles, the least recently used forgotten first', () async {
+      final session = provider.adapter().open();
+      final kept = [
+        for (var x = 0; x <= OsmMapTileAdapter.maxKept; x++)
+          MapTile.of(13, x, 1) ?? tile,
+      ];
+      for (final one in kept) {
+        expect(await session.fetch(one), isA<MapTileImage>());
+      }
+      expect(provider.heads, hasLength(OsmMapTileAdapter.maxKept + 1));
+      // The last 256 are kept: asked again, they are not sent again.
+      for (final one in kept.skip(1)) {
+        await session.fetch(one);
+      }
+      expect(provider.heads, hasLength(OsmMapTileAdapter.maxKept + 1));
+      // The first was forgotten: asked again, it is sent again.
+      await session.fetch(kept.first);
+      expect(provider.heads, hasLength(OsmMapTileAdapter.maxKept + 2));
+      session.close();
+    });
+
     test('an answer larger than the bound is no tile, said or not', () async {
       final big = Uint8List(OsmMapTileAdapter.maxBytes + 1);
       big.setAll(0, testTilePng(tile).take(64));

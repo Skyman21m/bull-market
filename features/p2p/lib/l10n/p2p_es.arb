@@ -1,8 +1,3 @@
 {
-  "@@locale": "es",
-  "p2pMapShowTiles": "Mostrar mosaicos",
-  "p2pMapTilesTitle": "¿Descargar mapa de alta resolución?",
-  "p2pMapTilesText": "Al hacer esto, estarás obteniendo mapas de terceros. Dependiendo de tu configuración, información privada podría ser filtrada a servidores fuera de la federación RoboSats.",
-  "p2pMapTilesClose": "Cerrar",
-  "p2pMapTilesAcknowledged": "Confirmar"
+  "@@locale": "es"
 }

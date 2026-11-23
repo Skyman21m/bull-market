@@ -20,7 +20,7 @@ typedef CreateMapTileClient = HttpClient Function();
 /// - the one source `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, the reference's (`components/Map/osmTiles.ts:1`), with [MapTile]'s whole zooms 0 to 15; HTTPS only, the certificate always checked as `dart:io` checks it, never set aside, no redirect followed;
 /// - the headers, exactly: `User-Agent` and `X-Requested-With` at [name], the name the owner chose on 2026-11-23 for the tile server, in place of the reference's `RoboSats` and `AndroidRobosats` (sending another app's name would impersonate it, which the provider's policy forbids); `If-None-Match` for a tile kept whose time is over; `Accept-Encoding: identity`, in place of `dart:io`'s `gzip`, which marks a Dart client and would be decompressed in memory; and the `Host` HTTP requires: no `Referer`, no cookie, no contact, no address, no version, as the reference sends none (`osmTiles.ts:8-12`);
 /// - at most [maxRequests] requests at once, the others waiting; a wait for the connection bounded by [connectTimeout], each wait for data by [readTimeout], and the reading of one answer by [tileTimeout], so that a server that sends a byte now and then holds no place for long;
-/// - an answer of at most [maxBytes], read as a tile only when it is a PNG of 256 × 256 pixels ([isTilePng], before any decoding: a small PNG can inflate into a huge picture); an answer with an `x-blocked` header is [MapTileRefused], where the reference shows the provider's error picture;
+/// - an answer of at most [maxBytes], read as a tile only when it is a PNG of 256 × 256 pixels ([isTilePng], before any decoding: a small PNG can inflate into a huge picture); an answer with an `x-blocked` header, or « Too Many Requests » (429), is [MapTileRefused], where the reference shows the provider's error picture or a failed tile;
 /// - the tiles kept in memory only, at most [maxKept], for the session's life, with their `ETag` and time (`Cache-Control` and `Expires` honoured, 7 days without them, as the provider's policy asks); nothing written to disk; the session closed when the switch goes off or the map closes, which forgets them: the code does not see the phone's network change, so the `ETag`s, which could tie two successive addresses of the phone together, last no longer than one map (design note § 3);
 /// - nothing logged but a fixed label for a tile refused or failed, never its address, zoom, column or row, nor the error, whose text may hold the address.
 final class OsmMapTileAdapter implements MapTilePort {
@@ -277,6 +277,11 @@ final class _OsmMapTileSession implements MapTileSession {
       final png = kept.png;
       _keep(request.tile, png, response.headers, kept.etag);
       return MapTileImage(png);
+    }
+    // Too many requests: a refusal, as `x-blocked`, so that nothing more is asked.
+    if (status == HttpStatus.tooManyRequests) {
+      _discard(response);
+      return const MapTileRefused();
     }
     if (status != HttpStatus.ok) {
       _discard(response);

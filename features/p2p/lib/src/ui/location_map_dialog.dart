@@ -15,7 +15,7 @@ import 'map_tile_layer.dart';
 import 'widgets/map_tiles_controls.dart';
 import 'widgets/trade_button.dart';
 
-/// « Choose a location »: the map where the maker pins the meeting point of a face-to-face order (#189), the official client's `F2fMapDialog` in its interactive mode (`components/Dialogs/F2fMap.tsx`, opened by `MakerForm.tsx:651-665`, commit ff1998c), drawn as the book's map is drawn (`MapChartView`): the bundled world, with no request; « Show tiles » at the right of the title shows OpenStreetMap's tiles in place of the countries, off each time the map opens and after the reference's dialog, fetched outside Tor (#246, [MapTilesSwitch]). The real map shown to aim at a place undoes much of the point's randomization for whoever holds the tile provider's logs (design note `docs/design/phase-3-map-tiles.md` § 5).
+/// « Choose a location »: the map where the maker pins the meeting point of a face-to-face order (#189), the official client's `F2fMapDialog` in its interactive mode (`components/Dialogs/F2fMap.tsx`, opened by `MakerForm.tsx:651-665`, commit ff1998c), drawn as the book's map is drawn (`MapChartView`): the bundled world, with no request; « Show tiles » at the right of the title shows OpenStreetMap's tiles in place of the countries, off in a new create form and after the reference's dialog, then kept on or off while the form is, as the reference's dialog stays mounted in its form; fetched outside Tor (#246, [MapTilesSwitch]), asked again each time the map opens. The real map shown to aim at a place undoes much of the point's randomization for whoever holds the tile provider's logs (design note `docs/design/phase-3-map-tiles.md` § 5).
 ///
 /// A drag moves the map and a pinch zooms it, « + » and « − » zoom too; a tap pins the place it reaches (`click`, `components/Map/index.tsx`). « Save » keeps the place pinned moved and rounded as the reference does ([MeetingPoint.randomized]), the place a tap reached never leaving the dialog; closing it keeps nothing. Under the map, the reference's line « To protect your privacy, the exact location you pin will be slightly randomized. », and the app's that the point is sent to the coordinator and published with the order.
 ///
@@ -41,12 +41,16 @@ class LocationMapDialog extends StatefulWidget {
   /// Opens the tiles of this map once « Show tiles » is on and its dialog acknowledged (#246): nothing is asked before.
   final MapTileSession Function() openTiles;
 
+  /// « Show tiles » and its acknowledgment, the create form's: kept while the form is, as the reference's `F2fMapDialog` stays mounted in `MakerForm` (#246).
+  final MapTilesChoice tiles;
+
   const LocationMapDialog({
     super.key,
     required this.initial,
     required this.primary,
     required this.draw,
     required this.openTiles,
+    required this.tiles,
   });
 
   /// Opens the map over the whole screen: the meeting point saved, or `null` when it is closed without « Save ».
@@ -56,6 +60,7 @@ class LocationMapDialog extends StatefulWidget {
     required bool primary,
     required double Function() draw,
     required MapTileSession Function() openTiles,
+    required MapTilesChoice tiles,
   }) => showDialog<OrderLocation>(
     context: context,
     builder: (_) => Dialog.fullscreen(
@@ -64,6 +69,7 @@ class LocationMapDialog extends StatefulWidget {
         primary: primary,
         draw: draw,
         openTiles: openTiles,
+        tiles: tiles,
       ),
     ),
   );
@@ -102,9 +108,11 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
   MapCamera? _gestureCamera;
   Offset? _gestureFocal;
 
-  /// « Show tiles » of this map, off each time it opens (#246).
-  late final MapTileLayer _tiles = MapTileLayer(widget.openTiles)
-    ..addListener(_tilesChanged);
+  /// « Show tiles » of this map, as the create form left it (#246): on again without the dialog when it was on, its tiles asked again.
+  late final MapTileLayer _tiles = MapTileLayer(
+    widget.openTiles,
+    choice: widget.tiles,
+  )..addListener(_tilesChanged);
 
   void _tilesChanged() => setState(() {});
 
@@ -244,6 +252,10 @@ class _LocationMapDialogState extends State<LocationMapDialog> {
                     if (!size.isFinite || size.isEmpty) {
                       return const SizedBox.shrink();
                     }
+                    // Covered by the dialog of « Show tiles », nothing is asked.
+                    (ModalRoute.isCurrentOf(context) ?? true)
+                        ? _tiles.resume()
+                        : _tiles.pause();
                     _tiles.view(
                       zoom: _camera.zoom,
                       x: _camera.x,

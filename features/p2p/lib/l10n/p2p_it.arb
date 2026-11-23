@@ -1,8 +1,3 @@
 {
-  "@@locale": "it",
-  "p2pMapShowTiles": "Mostra riquadri",
-  "p2pMapTilesTitle": "Scarica la mappa in alta risoluzione?",
-  "p2pMapTilesText": "In questo modo, recupererai i riquadri della mappa da un fornitore di terze parti. A seconda della tua configurazione, le informazioni private potrebbero essere divulgate a server esterni a RoboSats.",
-  "p2pMapTilesClose": "Chiudi",
-  "p2pMapTilesAcknowledged": "Confermare"
+  "@@locale": "it"
 }

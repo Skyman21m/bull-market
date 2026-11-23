@@ -27,6 +27,7 @@ import '../presentation/p2p_formats.dart';
 import '../presentation/pending_makes_cubit.dart';
 import 'garage/select_host_sheet.dart';
 import 'location_map_dialog.dart';
+import 'map_tile_layer.dart';
 import 'trade/pending_make_lines.dart';
 import 'widgets/add_payment_method_dialog.dart';
 import 'widgets/coordinator_avatar.dart';
@@ -106,6 +107,9 @@ class CreateOrderScreen extends StatefulWidget {
 }
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
+  /// « Show tiles » of the meeting point's map and its acknowledgment, for the life of this form, as the reference's `F2fMapDialog` stays mounted in `MakerForm` (#246): a new form starts off.
+  final _locationTiles = MapTilesChoice();
+
   final _amount = TextEditingController();
   final _premium = TextEditingController();
 
@@ -534,6 +538,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       primary: _type == OrderType.buy,
       draw: widget.locationDraws,
       openTiles: widget.openTiles,
+      tiles: _locationTiles,
     );
     if (point == null || !mounted) return;
     setState(() {

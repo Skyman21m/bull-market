@@ -366,6 +366,10 @@ class _MapChartViewState extends State<MapChartView> {
         final size = constraints.biggest;
         if (!size.isFinite || size.isEmpty) return const SizedBox.shrink();
         final layout = MapLayout.of(marks, _camera, size);
+        // Covered by another page, an order's details or a sheet, nothing is asked; shown again, what is missing is asked.
+        (ModalRoute.isCurrentOf(context) ?? true)
+            ? _tiles.resume()
+            : _tiles.pause();
         _tiles.view(zoom: _camera.zoom, x: _camera.x, y: _camera.y, size: size);
         final selected = _selected;
         final shown = selected == null ? null : layout.offsetOf(selected);
