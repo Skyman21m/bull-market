@@ -1966,22 +1966,18 @@ class P2pLocalizationsEn extends P2pLocalizations {
   String get p2pPayQuoting => 'Getting the swap fees…';
 
   @override
-  String p2pPayConfirmTitle(String amount) {
-    return 'Pay $amount sats to lock your bond?';
-  }
+  String get p2pPayRowCollateral => 'Collateral';
 
   @override
-  String p2pPayEscrowConfirmTitle(String amount) {
-    return 'Pay $amount sats to lock the collateral?';
-  }
+  String get p2pPayRowBond => 'Bond';
 
   @override
-  String p2pPayEscrowNewContract(String take) {
-    return 'New contract: this order was taken again after an earlier take. This collateral is for take $take.';
-  }
+  String get p2pPayRowFees => 'Swap and network fees';
 
   @override
-  String get p2pPayRowCollateral => 'Collateral invoice';
+  String p2pPayAmountSats(String amount) {
+    return '$amount sats';
+  }
 
   @override
   String get p2pPayRowSwapFees => 'Swap fees';
@@ -1990,29 +1986,14 @@ class P2pLocalizationsEn extends P2pLocalizations {
   String get p2pPayRowNetworkFee => 'Network fee (estimate)';
 
   @override
-  String get p2pPayRowTotal => 'Total out of this wallet';
+  String get p2pPayRowTotal => 'Total to pay';
 
   @override
-  String get p2pPayRowLeft => 'Left in Instant payments';
+  String get p2pPayRowLeft => 'Balance after payment';
 
   @override
   String get p2pPayEscrowHeld =>
-      'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.';
-
-  @override
-  String p2pPayServiceFee(String serviceFee) {
-    return 'Swap fees: $serviceFee sats';
-  }
-
-  @override
-  String p2pPayNetworkFee(String networkFee) {
-    return 'Network fee: about $networkFee sats';
-  }
-
-  @override
-  String p2pPayTotal(String total, String left) {
-    return 'Total: $total sats. Left in Instant payments: $left sats.';
-  }
+      'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, they come back to Instant payments, less the swap and network fees, sometimes with a delay.';
 
   @override
   String p2pPayRateWallet(
@@ -2022,21 +2003,6 @@ class P2pLocalizationsEn extends P2pLocalizations {
     String gap,
   ) {
     return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
-  }
-
-  @override
-  String p2pPayRateNotPriced(String currency, String coordinator) {
-    return 'The Bull wallet has no price for $currency: rate not checked. You are trusting $coordinator\'s price: check it yourself before paying.';
-  }
-
-  @override
-  String p2pPayRateUnverified(String currency) {
-    return 'The Bull wallet\'s price of a bitcoin in $currency could not be read: rate not checked. You can try again, or pay without the check.';
-  }
-
-  @override
-  String p2pPayRateWarning(String threshold, String asked, String expected) {
-    return 'This bond is more than $threshold above that: $asked sats asked, $expected sats expected. Check it before you pay.';
   }
 
   @override
@@ -2051,13 +2017,62 @@ class P2pLocalizationsEn extends P2pLocalizations {
   }
 
   @override
-  String p2pPayRateWarningEscrow(
-    String threshold,
-    String asked,
+  String p2pPayRateDetail(
+    String amount,
+    String currency,
+    String price,
     String expected,
+    String gap,
   ) {
-    return 'This collateral is more than $threshold above that: $asked sats asked, $expected sats expected. Check it before you pay.';
+    return 'Bull Wallet redoes the calculation with its own price: $amount $currency at $price $currency/BTC, premium included, come to $expected sats. The coordinator asks $gap more, its fees included.';
   }
+
+  @override
+  String p2pPayAgainstFigures(String expected, String asked) {
+    return 'Bull Wallet expected $expected sats, the coordinator asks $asked.';
+  }
+
+  @override
+  String p2pPayAgainstDetail(String price, String currency, String threshold) {
+    return 'Bull Wallet redoes the calculation with its own price ($price $currency/BTC, premium included) and warns you beyond a $threshold gap. Check the order before paying.';
+  }
+
+  @override
+  String get p2pPayUnverifiedDetail =>
+      'Without this price, it cannot compare the coordinator\'s amount. You can try again, or pay without this check.';
+
+  @override
+  String get p2pPayEarlierNotBack => 'A previous collateral has not come back';
+
+  @override
+  String p2pPayEarlierOutTotal(String total) {
+    return 'With this one, $total sats will be out of this wallet.';
+  }
+
+  @override
+  String p2pPayEarlierNotBackDetail(String sats) {
+    return 'You already paid, or tried to pay, a collateral of $sats sats for this order with this wallet. It has not come back to it yet.';
+  }
+
+  @override
+  String get p2pPayNewContractTitle => 'New contract';
+
+  @override
+  String get p2pPayNewContractLine =>
+      'The previous take of this order did not go through. This collateral is for the new contract.';
+
+  @override
+  String get p2pPayConfirmAgainTitle => 'The amounts have changed';
+
+  @override
+  String get p2pPayConfirmAgainLine => 'Check them, then confirm again.';
+
+  @override
+  String get p2pPayConfirmStaleTitle => 'The order was taken again meanwhile';
+
+  @override
+  String get p2pPayConfirmStaleLine =>
+      'This confirmation is no longer valid. Go back.';
 
   @override
   String p2pPayConfirm(String total) {
@@ -2172,10 +2187,6 @@ class P2pLocalizationsEn extends P2pLocalizations {
   @override
   String get p2pPayConfirmAgain =>
       'Since you confirmed, what will leave this wallet, or the state of an earlier collateral, changed. Nothing was paid: check the figures below and confirm again.';
-
-  @override
-  String get p2pPayConfirmStale =>
-      'This order was taken again since this confirmation opened: it was for the earlier take, and its « Pay » pays nothing. Go back, then pay the new take\'s collateral.';
 
   @override
   String get p2pPayContractMoved =>

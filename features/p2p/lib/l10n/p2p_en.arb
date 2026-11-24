@@ -2762,86 +2762,46 @@
   "@p2pPayQuoting": {
     "description": "The panel of « Pay with this wallet » (#100, #135): ours, with the wallet's label « Swap fees » (`transactionDetailLabelSwapFees`); the wallet has no text for asking them; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
-  "p2pPayConfirmTitle": "Pay {amount} sats to lock your bond?",
-  "@p2pPayConfirmTitle": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's title; {amount} is the invoice's own decoded amount.",
-    "placeholders": {
-      "amount": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayEscrowConfirmTitle": "Pay {amount} sats to lock the collateral?",
-  "@p2pPayEscrowConfirmTitle": {
-    "description": "The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): the confirmation's title, as the bond's `p2pPayConfirmTitle`; {amount} is the invoice's own decoded amount; « collateral » as the reference's title of the escrow (« Lock {{amountSats}} Sats as collateral »), « garantie » in French as the project's (#96).",
-    "placeholders": {
-      "amount": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayEscrowNewContract": "New contract: this order was taken again after an earlier take. This collateral is for take {take}.",
-  "@p2pPayEscrowNewContract": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral (#188), from the order's second take on (the trail's contract above 0): a collateral of a new contract, design note § 4.3. {take} counts the takes from 1.",
-    "placeholders": {
-      "take": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayRowCollateral": "Collateral invoice",
+  "p2pPayRowCollateral": "Collateral",
   "@p2pPayRowCollateral": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): the invoice's sats, which the coordinator asks."
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the first row of the lean confirmation of « Pay with this wallet » for a collateral (a maker seller's, #188, and a taker seller's, #249): the invoice's sats, which the coordinator asks."
+  },
+  "p2pPayRowBond": "Bond",
+  "@p2pPayRowBond": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the first row of the lean confirmation of « Pay with this wallet » for a bond (a maker's, #180, and a taker's, #249), in place of p2pPayRowCollateral: the invoice's sats, which the coordinator asks; « bond » / « caution » as the reference's words for it."
+  },
+  "p2pPayRowFees": "Swap and network fees",
+  "@p2pPayRowFees": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the second row of the lean confirmation: the swap fees and the network fee together, the sum of the two rows of its detail (p2pPayRowSwapFees, p2pPayRowNetworkFee), so that the row, the total and the invoice add up."
+  },
+  "p2pPayAmountSats": "{amount} sats",
+  "@p2pPayAmountSats": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): an amount of the lean confirmation's rows, « sats » in lower case as the owner's vocabulary of 2026-11-24 writes it (p2pAmountSats, « Sats », stays for the other screens). {amount} is a number of sats written in the conventions of the language.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
   },
   "p2pPayRowSwapFees": "Swap fees",
   "@p2pPayRowSwapFees": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): the swap service's fee, as p2pPayServiceFee."
+    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): in the detail of the lean confirmation of a bond or a collateral (#250), the swap service's fee, the wallet's label (`transactionDetailLabelSwapFees`), in French with the reference's word « swap »."
   },
   "p2pPayRowNetworkFee": "Network fee (estimate)",
   "@p2pPayRowNetworkFee": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): the wallet's estimate of the Liquid network fee, as p2pPayNetworkFee (« about »)."
+    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): in the detail of the lean confirmation of a bond or a collateral (#250), the wallet's estimate of the Liquid network fee, kept by the wording the owner validated on 2026-11-24."
   },
-  "p2pPayRowTotal": "Total out of this wallet",
+  "p2pPayRowTotal": "Total to pay",
   "@p2pPayRowTotal": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188), in bold: what « Pay » takes out of the wallet, the same sats as the button and as the alert's « this one »."
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): in bold under a rule, the lean confirmation's total: what « Pay » takes out of the wallet (the invoice, the swap fees and the network fee), the same sats as the button and as the alert's « this one »."
   },
-  "p2pPayRowLeft": "Left in Instant payments",
+  "p2pPayRowLeft": "Balance after payment",
   "@p2pPayRowLeft": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): a row of the amounts of the confirmation of a maker seller's collateral (#188): what stays in the wallet's Instant payments, as p2pPayTotal."
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): in the confirmation's detail: what stays in the wallet's Instant payments once the total has left it."
   },
-  "p2pPayEscrowHeld": "Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.",
+  "p2pPayEscrowHeld": "Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, they come back to Instant payments, less the swap and network fees, sometimes with a delay.",
   "@p2pPayEscrowHeld": {
-    "description": "The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): in the confirmation, above the reference's line on the escrow's hold invoice: the facts of a whole trade paid through the swap service (the study of #97: the service holds the payin until the coordinator settles or cancels the hold invoice, and refunds it to the wallet without its fees when it is cancelled); informs, never stops; in French the wallet's sentence with the reference's word for the swap, « swap », as the bond's."
-  },
-  "p2pPayServiceFee": "Swap fees: {serviceFee} sats",
-  "@p2pPayServiceFee": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's label for the same fee (`transactionDetailLabelSwapFees`, « Swap fees » / « Frais d'échange »); in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade.",
-    "placeholders": {
-      "serviceFee": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayNetworkFee": "Network fee: about {networkFee} sats",
-  "@p2pPayNetworkFee": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the wallet's estimate of the Liquid network fee in the confirmation.",
-    "placeholders": {
-      "networkFee": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayTotal": "Total: {total} sats. Left in Instant payments: {left} sats.",
-  "@p2pPayTotal": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: what leaves the wallet and what stays, in the confirmation.",
-    "placeholders": {
-      "total": {
-        "type": "String"
-      },
-      "left": {
-        "type": "String"
-      }
-    }
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): in the detail of a collateral's confirmation only (#97): the facts of a whole trade paid through the swap service (the service holds the payin until the coordinator settles or cancels the hold invoice, and refunds it to the wallet without its fees when it is cancelled); informs, never stops; never for a bond."
   },
   "p2pPayRateWallet": "At the Bull wallet's price, {price} {currency}/BTC, with the order's premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.",
   "@p2pPayRateWallet": {
@@ -2857,42 +2817,6 @@
         "type": "String"
       },
       "gap": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayRateNotPriced": "The Bull wallet has no price for {currency}: rate not checked. You are trusting {coordinator}'s price: check it yourself before paying.",
-  "@p2pPayRateNotPriced": {
-    "description": "Not in the RoboSats texts: the project's own. The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180): the order's currency is one the wallet's price service does not quote, so nothing is compared and no figure is shown (the owner's decision of 2026-11-17 in the evening, his words, which replaces the comparison with the coordinator's price of the creation); shown alone, in the warning colour, with no « Retry »; the user may still pay. {currency} is the order's currency code, {coordinator} the coordinator's name.",
-    "placeholders": {
-      "currency": {
-        "type": "String"
-      },
-      "coordinator": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayRateUnverified": "The Bull wallet's price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or pay without the check.",
-  "@p2pPayRateUnverified": {
-    "description": "The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text: the wallet prices the order's currency, but its price of a bitcoin could not be read at the moment of paying (no connection, the price service down, an answer that is no price), so nothing is compared and the coordinator's price of the creation is never cited (the owner's decision of 2026-11-17, with the words « rate not checked ») (functional review of #180, C1: a price announced ten times too low would make a bond ten times too large look right); shown in the warning colour with « Retry », which reads the price again; the user may still pay. {currency} is the order's currency code.",
-    "placeholders": {
-      "currency": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pPayRateWarning": "This bond is more than {threshold} above that: {asked} sats asked, {expected} sats expected. Check it before you pay.",
-  "@p2pPayRateWarning": {
-    "description": "The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (design note § 3.3): the red warning when the invoice asks more than the owner's threshold above the bond expected; the user may still pay. {threshold} is the threshold with its percent sign, {asked} the sats the invoice asks, {expected} the sats expected.",
-    "placeholders": {
-      "threshold": {
-        "type": "String"
-      },
-      "asked": {
-        "type": "String"
-      },
-      "expected": {
         "type": "String"
       }
     }
@@ -2918,20 +2842,103 @@
       }
     }
   },
-  "p2pPayRateWarningEscrow": "This collateral is more than {threshold} above that: {asked} sats asked, {expected} sats expected. Check it before you pay.",
-  "@p2pPayRateWarningEscrow": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the red warning of the owner's payment rule in the confirmation of a maker seller's collateral (#188), after p2pPayRateWalletEscrow, both in red as one alert; « Pay » stays offered. {threshold} is the threshold, such as « 10% ».",
+  "p2pPayRateDetail": "Bull Wallet redoes the calculation with its own price: {amount} {currency} at {price} {currency}/BTC, premium included, come to {expected} sats. The coordinator asks {gap} more, its fees included.",
+  "@p2pPayRateDetail": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): in the detail of a collateral's confirmation, within the owner's threshold, when the coordinator asks more than Bull Wallet expects: {amount} the contract's amount or the amount taken, {price} the Bull wallet's price, {expected} the sats expected at it with the order's premium, rounded down, {gap} how much more is asked, in percent without its sign (the collateral includes the coordinator's fee). For a bond, or a collateral asked at or below the sats expected, the detail keeps p2pPayRateWallet or p2pPayRateWalletEscrow.",
     "placeholders": {
-      "threshold": {
+      "amount": {
         "type": "String"
       },
-      "asked": {
+      "currency": {
+        "type": "String"
+      },
+      "price": {
         "type": "String"
       },
       "expected": {
         "type": "String"
+      },
+      "gap": {
+        "type": "String"
       }
     }
+  },
+  "p2pPayAgainstFigures": "Bull Wallet expected {expected} sats, the coordinator asks {asked}.",
+  "@p2pPayAgainstFigures": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the red alert's second line in the confirmation of a bond or a collateral, under p2pPayoutBreakdownAgainst, always shown with it above the buttons. {expected} the sats Bull Wallet expects at its own price with the order's premium (for a bond, its bond size of them), rounded down; {asked} the invoice's sats, the figure compared.",
+    "placeholders": {
+      "expected": {
+        "type": "String"
+      },
+      "asked": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayAgainstDetail": "Bull Wallet redoes the calculation with its own price ({price} {currency}/BTC, premium included) and warns you beyond a {threshold} gap. Check the order before paying.",
+  "@p2pPayAgainstDetail": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the red alert's explanation, in the confirmation's detail, in place of the comparison's paragraph. {price} the Bull wallet's price of a bitcoin, {threshold} the owner's threshold, such as « 10% ».",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      },
+      "threshold": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayUnverifiedDetail": "Without this price, it cannot compare the coordinator's amount. You can try again, or pay without this check.",
+  "@p2pPayUnverifiedDetail": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the explanation of « Amount not checked » (p2pPayoutBreakdownUnverified), in the confirmation's detail; « Pay » stays offered."
+  },
+  "p2pPayEarlierNotBack": "A previous collateral has not come back",
+  "@p2pPayEarlierNotBack": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the bold line of the red alert of a maker seller's confirmation (#187, #188, the owner's decision of 2026-11-19: an alert, never a lock) when one earlier collateral of the order, of a known amount, paid or attempted with this wallet, has not come back; several, or an amount not known, keep p2pEscrowEarlierOut and its variants."
+  },
+  "p2pPayEarlierOutTotal": "With this one, {total} sats will be out of this wallet.",
+  "@p2pPayEarlierOutTotal": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the second line of p2pPayEarlierNotBack: {total} the earlier collateral's sats and this one's, each with its fees, the same sats as « Pay » for this one. The order's bond is not in it: p2pPayEscrowBondHeldToo says so beside it when this wallet paid the bond.",
+    "placeholders": {
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayEarlierNotBackDetail": "You already paid, or tried to pay, a collateral of {sats} sats for this order with this wallet. It has not come back to it yet.",
+  "@p2pPayEarlierNotBackDetail": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the explanation of p2pPayEarlierNotBack, in the confirmation's detail: {sats} the earlier collateral's sats with its fees.",
+    "placeholders": {
+      "sats": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayNewContractTitle": "New contract",
+  "@p2pPayNewContractTitle": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the bold line of a neutral block (no alert colour) of a maker seller's confirmation from the order's second take on (#188, design note § 4.3)."
+  },
+  "p2pPayNewContractLine": "The previous take of this order did not go through. This collateral is for the new contract.",
+  "@p2pPayNewContractLine": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the second line of p2pPayNewContractTitle."
+  },
+  "p2pPayConfirmAgainTitle": "The amounts have changed",
+  "@p2pPayConfirmAgainTitle": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the bold line of an orange block of a maker seller's confirmation shown again (#187, #188): just before the payment, under its lock, more was out than the confirmation before showed, or an earlier collateral's state changed; nothing was paid."
+  },
+  "p2pPayConfirmAgainLine": "Check them, then confirm again.",
+  "@p2pPayConfirmAgainLine": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the second line of p2pPayConfirmAgainTitle."
+  },
+  "p2pPayConfirmStaleTitle": "The order was taken again meanwhile",
+  "@p2pPayConfirmStaleTitle": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the bold line of a red block of a maker seller's confirmation (#188) when a read shows the order taken again while it is open: its « Pay » would pay nothing and is not offered; never shown with p2pPayConfirmAgainTitle."
+  },
+  "p2pPayConfirmStaleLine": "This confirmation is no longer valid. Go back.",
+  "@p2pPayConfirmStaleLine": {
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 1, the payment of the collateral, and of the bond in the same form); the English is composed on the model of the French, as #250 gives its examples): the second line of p2pPayConfirmStaleTitle."
   },
   "p2pPayConfirm": "Pay {total} sats",
   "@p2pPayConfirm": {
@@ -3087,10 +3094,6 @@
   "p2pPayConfirmAgain": "Since you confirmed, what will leave this wallet, or the state of an earlier collateral, changed. Nothing was paid: check the figures below and confirm again.",
   "@p2pPayConfirmAgain": {
     "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral shown again (#187, #188), at its top in the warning colour: just before the payment, under its lock, more was out than the confirmation showed (this collateral's quote costing more, more sats of earlier collaterals not back, or one the coordinator kept since): nothing was paid, the figures below are those now, and the next « Pay » pays (the owner's decision of 2026-11-19: no lock). Says « or the state of an earlier collateral », true when only an earlier collateral turned kept (security review of #187, R12)."
-  },
-  "p2pPayConfirmStale": "This order was taken again since this confirmation opened: it was for the earlier take, and its « Pay » pays nothing. Go back, then pay the new take's collateral.",
-  "@p2pPayConfirmStale": {
-    "description": "Not in the RoboSats texts: the project's own (RoboSats has no « Pay with this wallet »: the owner's request): the confirmation of a maker seller's collateral (#188), in red at its top, when a read shows the order taken again while it is open: the contract it states is no longer the trail's, so its payment would be refused (`BondPayContractNotConfirmed`); « Pay » is off."
   },
   "p2pPayContractMoved": "The order was taken again before the payment: the confirmation was for the earlier take. Nothing was paid.",
   "@p2pPayContractMoved": {
@@ -5426,7 +5429,7 @@
   },
   "p2pPayoutBreakdownGap": "Gap to the Bull price (indicative)",
   "@p2pPayoutBreakdownGap": {
-    "description": "Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): the gap of the sats paid by the coordinator from the sats Bull Wallet expects, in percent with its sign, as the rule computes it (`WalletRateCompared.gapHundredths`); « (indicative) » is not said once the line is the red alert."
+    "description": "Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): the gap of the sats paid by the coordinator from the sats Bull Wallet expects, in percent with its sign, as the rule computes it (`WalletRateCompared.gapHundredths`); « (indicative) » is not said once the line is the red alert. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutBreakdownCoordinatorFee": "Coordinator's fee, already deducted",
   "@p2pPayoutBreakdownCoordinatorFee": {
@@ -5458,15 +5461,15 @@
   },
   "p2pPayoutBreakdownGapNotPriced": "Gap to the Bull price",
   "@p2pPayoutBreakdownGapNotPriced": {
-    "description": "Not in the RoboSats texts: the project's own (#250; the owner's « not priced » line validated on 2026-11-24, « Textes à valider », a currency the wallet does not price; the English is composed on the model of the French, as #250 gives its examples): the grey line's label, with p2pPayoutBreakdownNotPriced as its value, nothing else."
+    "description": "Not in the RoboSats texts: the project's own (#250; the owner's « not priced » line validated on 2026-11-24, « Textes à valider », a currency the wallet does not price; the English is composed on the model of the French, as #250 gives its examples): the grey line's label, with p2pPayoutBreakdownNotPriced as its value, nothing else. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutBreakdownNotPriced": "not quoted",
   "@p2pPayoutBreakdownNotPriced": {
-    "description": "Not in the RoboSats texts: the project's own (#250; the owner's « not priced » line validated on 2026-11-24; the English is composed on the model of the French, as #250 gives its examples): the value of p2pPayoutBreakdownGapNotPriced, in grey: the Bull wallet has no price for the order's currency, so no figure is compared."
+    "description": "Not in the RoboSats texts: the project's own (#250; the owner's « not priced » line validated on 2026-11-24; the English is composed on the model of the French, as #250 gives its examples): the value of p2pPayoutBreakdownGapNotPriced, in grey: the Bull wallet has no price for the order's currency, so no figure is compared. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutBreakdownAgainst": "Gap against you",
   "@p2pPayoutBreakdownAgainst": {
-    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): the red alert's bold line, which takes the place of p2pPayoutBreakdownGap beyond the owner's threshold, with a warning icon before it and the gap on the right."
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): the red alert's bold line, which takes the place of p2pPayoutBreakdownGap beyond the owner's threshold, with a warning icon before it and the gap on the right. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutBreakdownAgainstFigures": "Bull Wallet expected {expected} sats, the coordinator pays {received}.",
   "@p2pPayoutBreakdownAgainstFigures": {
@@ -5491,11 +5494,11 @@
   },
   "p2pPayoutBreakdownUnverified": "Amount not checked",
   "@p2pPayoutBreakdownUnverified": {
-    "description": "Not in the RoboSats texts: the project's own (#250; the owner's « Bull price unavailable » alert validated on 2026-11-24, « Textes à valider », screen 1, the same rule; the English is composed on the model of the French, as #250 gives its examples): the orange line in the place of the gap when the Bull wallet's price could not be read, with « Retry »."
+    "description": "Not in the RoboSats texts: the project's own (#250; the owner's « Bull price unavailable » alert validated on 2026-11-24, « Textes à valider », screen 1, the same rule; the English is composed on the model of the French, as #250 gives its examples): the orange line in the place of the gap when the Bull wallet's price could not be read, with « Retry ». Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutBreakdownUnverifiedLine": "Bull Wallet could not get its bitcoin price.",
   "@p2pPayoutBreakdownUnverifiedLine": {
-    "description": "Not in the RoboSats texts: the project's own (#250; validated on 2026-11-24 with p2pPayoutBreakdownUnverified; the English is composed on the model of the French, as #250 gives its examples): its second line, always shown with it."
+    "description": "Not in the RoboSats texts: the project's own (#250; validated on 2026-11-24 with p2pPayoutBreakdownUnverified; the English is composed on the model of the French, as #250 gives its examples): its second line, always shown with it. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutBreakdownUnverifiedDetail": "Without this price, it cannot compare the coordinator's amount.",
   "@p2pPayoutBreakdownUnverifiedDetail": {
@@ -5503,15 +5506,15 @@
   },
   "p2pPayoutBreakdownSmallGap": "A small gap is normal: the coordinator has its own price source.",
   "@p2pPayoutBreakdownSmallGap": {
-    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): last in the detail, only beside a comparison within the owner's threshold, never beside an alert."
+    "description": "Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): last in the detail, only beside a comparison within the owner's threshold, never beside an alert. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pDetailShow": "Show details",
   "@p2pDetailShow": {
-    "description": "Not in the RoboSats texts: the project's own (#250; the lean layout validated by the owner on 2026-11-24, « Voir le détail ⌄ », the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): in the payout breakdown's card under the gap's line, opens the detail in the card under it (the validated mock-up, the owner's decision of 2026-11-24)."
+    "description": "Not in the RoboSats texts: the project's own (#250; the lean layout validated by the owner on 2026-11-24, « Voir le détail ⌄ », the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): in the payout breakdown's card under the gap's line, opens the detail in the card under it (the validated mock-up, the owner's decision of 2026-11-24). Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pDetailHide": "Hide details",
   "@p2pDetailHide": {
-    "description": "Not in the RoboSats texts: the project's own (#250; « Masquer le détail ⌃ », validated on 2026-11-24, the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): closes the detail opened by p2pDetailShow."
+    "description": "Not in the RoboSats texts: the project's own (#250; « Masquer le détail ⌃ », validated on 2026-11-24, the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): closes the detail opened by p2pDetailShow. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words."
   },
   "p2pPayoutRateAgainst": "Gap against you {gap}",
   "@p2pPayoutRateAgainst": {

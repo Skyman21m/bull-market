@@ -5,6 +5,9 @@ import 'package:primitives/primitives.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/payout_breakdown.dart';
 import '../../presentation/p2p_formats.dart';
+import '../widgets/amount_row.dart';
+import '../widgets/detail_toggle.dart';
+import '../widgets/price_check_lines.dart';
 import '../widgets/word_fit_text.dart';
 
 /// What the owner's payment rule said at the payout step (6 and 8) of the sats [given] by the coordinator (#182, #249), as the breakdown draws it (#228, #250): a comparison with the Bull wallet's price ([PayoutCheckCompared]), a price that could not be read ([PayoutCheckUnverified]) or a currency the Bull wallet does not price ([PayoutCheckNotPriced]).
@@ -153,7 +156,7 @@ class PayoutBreakdownView extends StatelessWidget {
     final warns = drawn is PayoutCheckCompared && drawn.warns;
     final fees = breakdown.fees;
     final received = breakdown.received;
-    return _Card(
+    return AmountCard(
       children: [
         WordFitText(
           l10n.p2pPayoutBreakdownTitle,
@@ -167,14 +170,14 @@ class PayoutBreakdownView extends StatelessWidget {
           ),
         const Gap(BullSpacing.xxs),
         // Beyond the rule's threshold the figure at fault in the alert colour, beside the gap's alert (the owner's choice of 2026-11-20, #250).
-        PayoutRow(
+        AmountRow(
           key: givenRow,
           label: l10n.p2pPayoutBreakdownGiven,
           amount: sats(breakdown.given),
-          tone: warns ? PayoutRowTone.alert : PayoutRowTone.plain,
+          tone: warns ? AmountRowTone.alert : AmountRowTone.plain,
         ),
         if (lightning && fees != null && received != null) ...[
-          PayoutRow(
+          AmountRow(
             key: feesRow,
             label: breakdown.swap == null
                 ? l10n.p2pPayoutBreakdownRoutingFees
@@ -186,21 +189,17 @@ class PayoutBreakdownView extends StatelessWidget {
             thickness: 1,
             color: colors.outlineVariant,
           ),
-          PayoutRow(
+          AmountRow(
             key: receivedRow,
             label: l10n.p2pPayoutBreakdownReceived,
             amount: sats(received),
-            tone: PayoutRowTone.total,
+            tone: AmountRowTone.total,
           ),
         ],
         if (drawn != null) PayoutCheckLines(check: drawn, onRetry: onRetry),
         // In the card, under the gap's line (or the alert's two lines, or « not quoted »), as the validated mock-up draws it (the owner's decision of 2026-11-24).
         if (onToggleDetail case final toggle?) ...[
-          PayoutDetailToggle(
-            key: detailToggle,
-            open: detailOpen,
-            onPressed: toggle,
-          ),
+          DetailToggle(key: detailToggle, open: detailOpen, onPressed: toggle),
           if (detailOpen)
             PayoutBreakdownDetail(
               key: detail,
@@ -216,7 +215,7 @@ class PayoutBreakdownView extends StatelessWidget {
   }
 }
 
-/// What the rule said of the sats paid, in the breakdown or, when no breakdown can draw it, alone above the payout panel's form (an alert is never left out): the gap to the Bull price as information; beyond the threshold the red alert in two lines, its bold line in the gap's place and the two figures under it; « Amount not checked » in orange with « Retry » and its second line; the grey « not quoted » line. Always visible without a tap; the explanations are in the detail ([PayoutBreakdownDetail]).
+/// What the rule said of the sats paid, in the breakdown or, when no breakdown can draw it, alone above the payout panel's form (an alert is never left out), drawn by [PriceCheckLines]: the gap to the Bull price as information; beyond the threshold the red alert in two lines, its bold line in the gap's place and the two figures under it (« the coordinator pays »); « Amount not checked » in orange with « Retry » and its second line; the grey « not quoted » line. Always visible without a tap; the explanations are in the detail ([PayoutBreakdownDetail]).
 class PayoutCheckLines extends StatelessWidget {
   final PayoutCheck check;
   final VoidCallback? onRetry;
@@ -231,112 +230,44 @@ class PayoutCheckLines extends StatelessWidget {
     this.explained = false,
   });
 
-  static const explanation = ValueKey('payout-check-explanation');
+  static const explanation = PriceCheckLines.explanationLine;
 
-  static const gapRow = ValueKey('payout-breakdown-gap');
-  static const alertRow = ValueKey('payout-breakdown-alert');
-  static const alertFigures = ValueKey('payout-breakdown-alert-figures');
-  static const unverifiedRow = ValueKey('payout-breakdown-unverified');
-  static const unverifiedLine = ValueKey('payout-breakdown-unverified-line');
-  static const notPricedRow = ValueKey('payout-breakdown-not-priced');
+  static const gapRow = PriceCheckLines.gapRow;
+  static const alertRow = PriceCheckLines.alertRow;
+  static const alertFigures = PriceCheckLines.alertFigures;
+  static const unverifiedRow = PriceCheckLines.unverifiedRow;
+  static const unverifiedLine = PriceCheckLines.unverifiedLine;
+  static const notPricedRow = PriceCheckLines.notPricedRow;
 
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
     final formats = P2pFormats.of(context);
-    final onRetry = this.onRetry;
-    Widget second(Key key, String line, Color color) => Padding(
-      padding: const EdgeInsets.only(bottom: BullSpacing.xxs / 2),
-      child: WordFitText(
-        line,
-        key: key,
-        style: text.bodyMedium?.copyWith(color: color),
+    return switch (check) {
+      PayoutCheckCompared(:final warns, :final gap) when !warns =>
+        PriceCheckLines.gap(gap),
+      PayoutCheckCompared(
+        :final gap,
+        :final expected,
+        :final given,
+        :final threshold,
+      ) =>
+        PriceCheckLines.against(
+          gap,
+          figures: l10n.p2pPayoutBreakdownAgainstFigures(
+            formats.bigSats(expected.value),
+            formats.bigSats(given.value),
+          ),
+          explanation: explained
+              ? l10n.p2pPayoutBreakdownAgainstDetail(threshold)
+              : null,
+        ),
+      PayoutCheckUnverified() => PriceCheckLines.unverified(
+        onRetry: onRetry,
+        explanation: explained ? l10n.p2pPayoutBreakdownUnverifiedDetail : null,
       ),
-    );
-    // One node for a screen reader, announced when it changes: an alert is read with its figures.
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: switch (check) {
-          PayoutCheckCompared(:final warns, :final gap) when !warns => [
-            PayoutRow(
-              key: gapRow,
-              label: l10n.p2pPayoutBreakdownGap,
-              amount: gap,
-            ),
-          ],
-          PayoutCheckCompared(:final gap, :final expected, :final given) => [
-            PayoutRow(
-              key: alertRow,
-              label: l10n.p2pPayoutBreakdownAgainst,
-              amount: gap,
-              tone: PayoutRowTone.alert,
-              icon: Icons.warning_amber_rounded,
-            ),
-            second(
-              alertFigures,
-              l10n.p2pPayoutBreakdownAgainstFigures(
-                formats.bigSats(expected.value),
-                formats.bigSats(given.value),
-              ),
-              colors.error,
-            ),
-            if (explained)
-              if (check case PayoutCheckCompared(:final threshold))
-                second(
-                  explanation,
-                  l10n.p2pPayoutBreakdownAgainstDetail(threshold),
-                  colors.error,
-                ),
-          ],
-          PayoutCheckUnverified() => [
-            PayoutRow(
-              key: unverifiedRow,
-              label: l10n.p2pPayoutBreakdownUnverified,
-              tone: PayoutRowTone.warning,
-              icon: Icons.warning_amber_rounded,
-              trailing: onRetry == null
-                  ? null
-                  : TextButton.icon(
-                      onPressed: onRetry,
-                      icon: Icon(
-                        Icons.refresh,
-                        size: 18,
-                        color: colors.primary,
-                      ),
-                      label: Text(
-                        l10n.p2pCommonRetry,
-                        style: text.labelLarge?.copyWith(color: colors.primary),
-                      ),
-                    ),
-            ),
-            second(
-              unverifiedLine,
-              l10n.p2pPayoutBreakdownUnverifiedLine,
-              colors.warning,
-            ),
-            if (explained)
-              second(
-                explanation,
-                l10n.p2pPayoutBreakdownUnverifiedDetail,
-                colors.warning,
-              ),
-          ],
-          PayoutCheckNotPriced() => [
-            PayoutRow(
-              key: notPricedRow,
-              label: l10n.p2pPayoutBreakdownGapNotPriced,
-              amount: l10n.p2pPayoutBreakdownNotPriced,
-              tone: PayoutRowTone.muted,
-            ),
-          ],
-        },
-      ),
-    );
+      PayoutCheckNotPriced() => const PriceCheckLines.notPriced(),
+    };
   }
 }
 
@@ -403,26 +334,26 @@ class PayoutBreakdownDetail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (check case PayoutCheckCompared(:final expected, :final price)) ...[
-          PayoutRow(
+          AmountRow(
             key: valueRow,
             label: l10n.p2pPayoutBreakdownValue,
             amount: sats(expected),
           ),
-          PayoutRow(key: priceLine, label: price, tone: PayoutRowTone.detail),
+          AmountRow(key: priceLine, label: price, tone: AmountRowTone.detail),
         ],
         if (fee != null)
-          PayoutRow(
+          AmountRow(
             key: feeRow,
             label: l10n.p2pPayoutBreakdownCoordinatorFee,
             amount: sats(fee),
           ),
         if (lightning && budget != null && invoice != null) ...[
-          PayoutRow(
+          AmountRow(
             key: budgetRow,
             label: l10n.p2pPayoutBreakdownRoutingBudget,
             amount: less(budget),
           ),
-          PayoutRow(
+          AmountRow(
             key: invoiceRow,
             label: l10n.p2pPayoutBreakdownInvoice,
             amount: sats(invoice),
@@ -443,7 +374,7 @@ class PayoutBreakdownDetail extends StatelessWidget {
             },
           ),
           if (swap != null)
-            PayoutRow(
+            AmountRow(
               key: swapRow,
               label: l10n.p2pPayoutBreakdownSwapFee,
               amount: less(swap.fee),
@@ -458,198 +389,6 @@ class PayoutBreakdownDetail extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// « Show details » / « Hide details » with its chevron, in the breakdown's card under the gap's line: the detail opens under it, in the card; what is under the card moves down.
-class PayoutDetailToggle extends StatelessWidget {
-  final bool open;
-  final VoidCallback onPressed;
-
-  const PayoutDetailToggle({
-    super.key,
-    required this.open,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = P2pLocalizations.of(context);
-    final colors = context.bull;
-    return Center(
-      child: TextButton(
-        onPressed: onPressed,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: WordFitText(
-                open ? l10n.p2pDetailHide : l10n.p2pDetailShow,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(color: colors.primary),
-              ),
-            ),
-            const Gap(BullSpacing.xxs),
-            ExcludeSemantics(
-              child: Icon(
-                open ? Icons.expand_less : Icons.expand_more,
-                size: 20,
-                color: colors.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The frame of the breakdown and of its detail.
-class _Card extends StatelessWidget {
-  final List<Widget> children;
-
-  const _Card({required this.children});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(BullSpacing.sm),
-    decoration: BoxDecoration(
-      border: Border.all(color: context.bull.outlineVariant),
-      borderRadius: BorderRadius.circular(BullRadius.sm),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
-    ),
-  );
-}
-
-/// How a [PayoutRow] is drawn.
-enum PayoutRowTone {
-  /// The text's colour and size.
-  plain,
-
-  /// Smaller, muted and indented: the price's line under « Expected by Bull Wallet ».
-  detail,
-
-  /// Bold: « You will receive ».
-  total,
-
-  /// The alert colour, bold: the red alert and the figure at fault.
-  alert,
-
-  /// The warning colour, bold: « Amount not checked ».
-  warning,
-
-  /// Muted: the « not quoted » line.
-  muted,
-}
-
-/// One line: an optional icon, its label, which wraps, and its amount on the right in tabular figures, or [trailing] beside the label.
-class PayoutRow extends StatelessWidget {
-  final String label;
-  final String? amount;
-  final PayoutRowTone tone;
-  final IconData? icon;
-  final Widget? trailing;
-
-  const PayoutRow({
-    super.key,
-    required this.label,
-    this.amount,
-    this.tone = PayoutRowTone.plain,
-    this.icon,
-    this.trailing,
-  });
-
-  /// The text size past which an amount goes under its label.
-  static const double stackedFrom = 1.3;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
-    final base = switch (tone) {
-      PayoutRowTone.detail => text.bodySmall?.copyWith(color: colors.textMuted),
-      PayoutRowTone.total => text.bodyMedium?.copyWith(
-        color: colors.text,
-        fontWeight: FontWeight.bold,
-      ),
-      PayoutRowTone.alert => text.bodyMedium?.copyWith(
-        color: colors.error,
-        fontWeight: FontWeight.bold,
-      ),
-      PayoutRowTone.warning => text.bodyMedium?.copyWith(
-        color: colors.warning,
-        fontWeight: FontWeight.bold,
-      ),
-      PayoutRowTone.muted => text.bodyMedium?.copyWith(color: colors.textMuted),
-      PayoutRowTone.plain => text.bodyMedium?.copyWith(color: colors.text),
-    };
-    final icon = this.icon;
-    final trailing = this.trailing;
-    final amount = this.amount;
-    final stacked = MediaQuery.textScalerOf(context).scale(1) > stackedFrom;
-    final words = Row(
-      children: [
-        if (icon != null) ...[
-          ExcludeSemantics(child: Icon(icon, size: 18, color: base?.color)),
-          const Gap(BullSpacing.xxs),
-        ],
-        Flexible(child: WordFitText(this.label, style: base)),
-        if (!stacked) ?trailing,
-      ],
-    );
-    // Under a large text the button goes under its label, on the right, so that neither is cut on a narrow phone.
-    final label = stacked && trailing != null
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              words,
-              Align(alignment: AlignmentDirectional.centerEnd, child: trailing),
-            ],
-          )
-        : words;
-    final Widget line;
-    if (amount == null) {
-      line = label;
-    } else {
-      final figure = Text(
-        amount,
-        textAlign: TextAlign.right,
-        style: base?.copyWith(
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      );
-      line = stacked
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                label,
-                Align(alignment: AlignmentDirectional.centerEnd, child: figure),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(child: label),
-                const Gap(BullSpacing.xs),
-                figure,
-              ],
-            );
-    }
-    // One node for a screen reader: the label, its amount and its button, read together.
-    return MergeSemantics(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: tone == PayoutRowTone.detail ? BullSpacing.sm : 0,
-          top: BullSpacing.xxs / 2,
-          bottom: BullSpacing.xxs / 2,
-        ),
-        child: line,
-      ),
     );
   }
 }

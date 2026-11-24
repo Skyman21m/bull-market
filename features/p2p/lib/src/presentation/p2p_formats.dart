@@ -61,6 +61,13 @@ final class P2pFormats {
     return hundredths > BigInt.zero ? '+$text' : text;
   }
 
+  /// The size of a gap (#250), from the same hundredths of a percent, without its sign, for a sentence that says « more » itself: `0.34%` for `+0.34%`.
+  String gapSize(BigInt hundredths) => _percent(
+    hundredths.abs().toDouble() / 100,
+    minDecimals: 2,
+    maxDecimals: 2,
+  );
+
   /// A price of a bitcoin, as the reference writes « Order current rate »: 5 significant digits (`toPrecision(5)`, `components/MakerForm/MakerForm.tsx:168`), then the language's number format, which keeps at most 3 decimals (`new Intl.NumberFormat(settings.language)`, `:515`, `:1349`): `71,657`, `110,000`, `33.457`.
   String orderRate(double price) =>
       (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 3).format(
