@@ -411,14 +411,23 @@ void main() {
           ))
             text.data ?? '',
         ].last;
-        // 106,900 sats fixed at the take, the taker fee of 0.175 % (187), 1,000 ppm of routing budget (107).
-        expect(find.byKey(PayoutBreakdownView.valueRow), findsNothing);
-        expect(find.byKey(PayoutBreakdownView.gapRow), findsNothing);
+        // 106,900 sats fixed at the take, the taker fee of 0.175 % (187), 1,000 ppm of routing budget (107): on arrival the sats paid, the routing fees and what will be received, the invoice's amount (#250); no gap, the rule not on this page.
+        expect(find.byKey(PayoutCheckLines.gapRow), findsNothing);
         expect(row(PayoutBreakdownView.givenRow), sats(106713));
-        expect(row(PayoutBreakdownView.feeRow), sats(187));
-        expect(row(PayoutBreakdownView.budgetRow), sats(-107));
-        expect(row(PayoutBreakdownView.invoiceRow), sats(106606));
-        expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
+        expect(row(PayoutBreakdownView.feesRow), sats(-107));
+        expect(row(PayoutBreakdownView.receivedRow), sats(106606));
+        expect(find.byKey(PayoutPanel.detail), findsNothing);
+        // The detail: the coordinator's fee, the routing budget, « Your invoice ».
+        final toggle = find.byKey(PayoutPanel.detailToggle);
+        await tester.ensureVisible(toggle);
+        await tester.pump();
+        await tester.tap(toggle);
+        await tester.pump();
+        expect(find.byKey(PayoutBreakdownDetail.valueRow), findsNothing);
+        expect(row(PayoutBreakdownDetail.feeRow), sats(187));
+        expect(row(PayoutBreakdownDetail.budgetRow), sats(-107));
+        expect(row(PayoutBreakdownDetail.invoiceRow), sats(106606));
+        expect(find.byKey(PayoutBreakdownDetail.swapRow), findsNothing);
         port.scriptInvoice(
           Ok(
             P2pWalletInvoice(
@@ -437,8 +446,9 @@ void main() {
         await tester.tap(generate);
         await tester.pump();
         await tester.pump();
-        expect(row(PayoutBreakdownView.swapRow), sats(-206));
+        expect(row(PayoutBreakdownView.feesRow), sats(-313));
         expect(row(PayoutBreakdownView.receivedRow), sats(106400));
+        expect(row(PayoutBreakdownDetail.swapRow), sats(-206));
         // The copy of « Your invoice » writes the amount asked, as the reference's copy.
         String? copied;
         tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -458,7 +468,7 @@ void main() {
         );
         await tester.tap(
           find.descendant(
-            of: find.byKey(PayoutBreakdownView.invoiceRow),
+            of: find.byKey(PayoutBreakdownDetail.invoiceRow),
             matching: find.byType(IconButton),
           ),
         );
@@ -470,14 +480,13 @@ void main() {
         watch.add(TradeScreenStatuses.watched(disagree));
         await tester.pump();
         await tester.pump();
-        // ignore: avoid_print
         await tester.pump();
         expect(find.byType(PayoutBreakdownView), findsNothing);
         expect(
           find.text(
             english
-                ? 'Submit invoice for 106,606 Sats'
-                : 'Soumettre la facture pour ${sats(106606)} Sats',
+                ? 'Submit invoice for 106,606 sats'
+                : 'Soumettre la facture pour ${sats(106606)} sats',
           ),
           findsOneWidget,
         );

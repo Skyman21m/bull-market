@@ -180,16 +180,26 @@ class TradeDialogBody extends StatelessWidget {
         color: switch (line.tone) {
           TradeDialogTone.plain => colors.text,
           TradeDialogTone.warning => colors.warning,
-          TradeDialogTone.alert => colors.error,
+          TradeDialogTone.alert || TradeDialogTone.alertFigures => colors.error,
         },
-        fontWeight: line.tone == TradeDialogTone.plain ? null : FontWeight.bold,
+        fontWeight: switch (line.tone) {
+          TradeDialogTone.warning || TradeDialogTone.alert => FontWeight.bold,
+          TradeDialogTone.plain || TradeDialogTone.alertFigures => null,
+        },
       ),
     );
   }
 }
 
 /// How a line of the app in a dialog is drawn: in the text colour, in the warning colour (a gap against the user, a check that could not be made), or in the error colour (the red warning of the owner's rule).
-enum TradeDialogTone { plain, warning, alert }
+enum TradeDialogTone {
+  plain,
+  warning,
+  alert,
+
+  /// The second line of a red alert, its two figures (the owner's two-line alerts, validated on 2026-11-24, #250): the alert's colour, not bold.
+  alertFigures,
+}
 
 /// A line of the app in a dialog, and its tone.
 typedef TradeDialogLine = ({String text, TradeDialogTone tone});

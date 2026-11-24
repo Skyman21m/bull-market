@@ -1190,7 +1190,6 @@ class _Contract extends StatelessWidget {
   ) {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
-    final formats = P2pFormats.of(context);
     final order = contract.order;
     final chat = this.chat;
     final chatOptions = this.chatOptions;
@@ -1283,33 +1282,7 @@ class _Contract extends StatelessWidget {
           ],
         ],
       ),
-      (TradePrompt.payout, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (order != null) ...[
-            _Line(switch (_payoutPromptAmount(order)) {
-              final amount? => l10n.p2pTradePayoutPrompt(
-                formats.payoutAmount(
-                  amount,
-                  inBitcoin: order.currency.isBitcoin,
-                ),
-                order.currency.isBitcoin
-                    ? l10n.p2pSatsUnit
-                    : order.currency.code,
-              ),
-              null => l10n.p2pTradePayoutPromptNoAmount,
-            }),
-            const Gap(BullSpacing.sm),
-          ],
-          // The owner's payment rule on a maker buyer's side, before « Submit » (#182); the gap from the creation's rate under it, only without a comparison with the Bull wallet's price.
-          ?_rateLines(context),
-          if (_gapLine(context) case final gap?) ...[
-            gap,
-            const Gap(BullSpacing.sm),
-          ],
-          ?_payoutPanel(context),
-        ],
-      ),
+      (TradePrompt.payout, _) => _payoutPrompt(context, order),
       (TradePrompt.routingFailed, _) =>
         _payoutPanel(context) ?? const SizedBox.shrink(),
       (TradePrompt.escrowWait, _) => Column(
@@ -1476,6 +1449,34 @@ class _Contract extends StatelessWidget {
     return state;
   }
 
+  /// The payout's prompt at 6 and 8 (`Prompts/Payout.tsx`): its text, the owner's payment rule before « Submit » (#182) where the payout panel does not say it, the gap from the creation's rate only without a comparison with the Bull wallet's price, then the payout panel. Where the panel is drawn, the rule's check at 6 and 8 is the panel's breakdown's (its gap line, its alert, its detail, #228, #250): not said above it, no banner.
+  Widget _payoutPrompt(BuildContext context, CoordinatorOrder? order) {
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final panel = _payoutPanel(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (order != null) ...[
+          _Line(switch (_payoutPromptAmount(order)) {
+            final amount? => l10n.p2pTradePayoutPrompt(
+              formats.payoutAmount(amount, inBitcoin: order.currency.isBitcoin),
+              order.currency.isBitcoin ? l10n.p2pSatsUnit : order.currency.code,
+            ),
+            null => l10n.p2pTradePayoutPromptNoAmount,
+          }),
+          const Gap(BullSpacing.sm),
+        ],
+        ?_rateLines(context, inPanel: panel != null),
+        if (_gapLine(context) case final gap?) ...[
+          gap,
+          const Gap(BullSpacing.sm),
+        ],
+        ?panel,
+      ],
+    );
+  }
+
   /// The amount « Before letting you send … » names (`Prompts/Payout.tsx`): for an order made here, the contract's amount as asked here ([TradeSeen.contractAmountShown]); none, and the prompt without a figure, when it is not known or the order read shows another (security review of #183, C2, C4). A taker's as before: the amount its take chose, or the order's.
   double? _payoutPromptAmount(CoordinatorOrder order) {
     if (!contract.maker) {
@@ -1571,8 +1572,8 @@ class _Contract extends StatelessWidget {
     ];
   }
 
-  /// The lines of the owner's payment rule for the step shown, with their « Retry » (#182); `null` where there are none.
-  Widget? _rateLines(BuildContext context) {
+  /// The lines of the owner's payment rule for the step shown, with their « Retry » (#182); `null` where there are none. With [inPanel] (the payout panel drawn under them at 6 and 8), the rule's check of the sats paid is the panel's breakdown's (#250).
+  Widget? _rateLines(BuildContext context, {bool inPanel = false}) {
     final state = _ruleShown;
     if (state == null || state is PayoutRateNone) return null;
     return Padding(
@@ -1582,8 +1583,8 @@ class _Contract extends StatelessWidget {
         coordinator: coordinator,
         amount: PayoutRateLines.amountOf(context, contract.seen),
         onRetry: onRetryRate,
-        // At 6 and 8 the payout panel's breakdown says the comparison (#228), wherever the screen draws the panel.
-        comparisonInBreakdown: payout != null,
+        // At 6 and 8 the payout panel's breakdown says the rule's check (#228, #250), only where the panel is drawn.
+        comparisonInBreakdown: inPanel,
       ),
     );
   }
@@ -1671,12 +1672,13 @@ class _Contract extends StatelessWidget {
       now: now,
       cancelling: cancel is CancelRunning,
       beforeSubmit: beforeAct,
-      // The rule's comparison of the step shown, for the breakdown's first line and gap (#228): only a comparison with the Bull wallet's price at 6 and 8.
-      valuation: PayoutRateLines.valuationOf(
+      // The rule's check of the step shown, for the breakdown's gap line, its alert and its detail (#228, #250): only at 6 and 8.
+      check: PayoutRateLines.checkOf(
         context,
         _ruleShown,
         amount: PayoutRateLines.amountOf(context, contract.seen),
       ),
+      onRetry: onRetryRate,
     ),
   )) {
     final panel? => KeyedSubtree(

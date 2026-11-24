@@ -364,17 +364,11 @@ void main() {
       await tester.runAsync(() => harness.elapse(const Duration(minutes: 4)));
       await backToApp(tester);
       await settleBoth(tester, harness);
-      expect(
-        anyContains(dialogTexts(tester), 'fewer sats than the value'),
-        isFalse,
-      );
+      expect(anyContains(dialogTexts(tester), 'the coordinator pays'), isFalse);
       // The Bull wallet's price now half: twice the sats expected, the red warning.
       hold.complete(P2pWalletRateRead(45000));
       await settleBoth(tester, harness);
-      expect(
-        anyContains(dialogTexts(tester), 'fewer sats than the value'),
-        isTrue,
-      );
+      expect(anyContains(dialogTexts(tester), 'the coordinator pays'), isTrue);
       await close(tester, trade, rate);
     },
   );

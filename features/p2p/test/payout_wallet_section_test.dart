@@ -358,9 +358,10 @@ void main() {
           payout.state.invoice,
           isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
         );
-        // What arrives, as the breakdown's last two lines (#228).
-        expect(row(PayoutBreakdownView.swapRow, '-206'), findsOneWidget);
+        // What arrives, as the lean breakdown's fees and total (#228, #250): the routing budget and the swap fee together, then what reaches the wallet.
+        expect(row(PayoutBreakdownView.feesRow, '-313'), findsOneWidget);
         expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsOneWidget);
+        expect(find.text('Routing and swap fees'), findsOneWidget);
         // Nothing submitted: « Submit » is the user's tap.
         expect(sender.sent, isEmpty);
         expect(tester.widget<TradeButton>(submit()).onPressed, isNotNull);
@@ -379,10 +380,11 @@ void main() {
       expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsOneWidget);
       payout.editInvoice(secondInvoice.text);
       await tester.pump();
-      expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
-      expect(find.byKey(PayoutBreakdownView.swapRow), findsNothing);
-      // The invoice to give stays.
-      expect(find.byKey(PayoutBreakdownView.invoiceRow), findsOneWidget);
+      // The swap fee goes: the routing fees alone, and the invoice to give as what will be received.
+      expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsNothing);
+      expect(row(PayoutBreakdownView.feesRow, '-107'), findsOneWidget);
+      expect(find.text('Routing fees'), findsOneWidget);
+      expect(row(PayoutBreakdownView.receivedRow, '106,606'), findsOneWidget);
     });
 
     testWidgets(
@@ -532,7 +534,10 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(payout.state.form.invoice, secondInvoice.text);
-        expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
+        // No swap fee of the dropped invoice: the routing fees alone, the invoice's amount as what will be received (#250).
+        expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsNothing);
+        expect(row(PayoutBreakdownView.receivedRow, '106,606'), findsOneWidget);
+        expect(row(PayoutBreakdownView.feesRow, '-107'), findsOneWidget);
       },
     );
 
@@ -569,10 +574,7 @@ void main() {
       (tester) async {
         await show(tester, fifteenExpired);
         expect(find.byKey(PayoutBreakdownView.notComparedLine), findsOneWidget);
-        expect(
-          find.text('Not compared with the Bull wallet\'s price at this step'),
-          findsOneWidget,
-        );
+        expect(find.text('No Bull Wallet check at this step'), findsOneWidget);
         await show(tester, six);
         expect(find.byKey(PayoutBreakdownView.notComparedLine), findsNothing);
       },
@@ -586,8 +588,19 @@ void main() {
       await tester.tap(button);
       await tester.pump();
       await tester.pump();
-      expect(find.text('À recevoir dans votre portefeuille'), findsOneWidget);
+      // On arrival the lean words (#250), then the detail's.
+      expect(find.text('Vous recevrez'), findsOneWidget);
+      expect(find.text('Frais de routage et de swap'), findsOneWidget);
+      expect(find.text('Écart au prix Bull (indicatif)'), findsNothing);
+      final toggle = find.text('Voir le détail');
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(find.text('Masquer le détail'), findsOneWidget);
       expect(find.text('Frais de swap'), findsOneWidget);
+      expect(find.text('Frais de routage Lightning'), findsOneWidget);
+      expect(find.text('Votre facture'), findsOneWidget);
+      expect(find.text('Frais du coordinateur, déjà déduits'), findsOneWidget);
     });
   });
 }

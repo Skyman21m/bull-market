@@ -1632,7 +1632,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutSubmitInvoiceFor(String amountSats) {
-    return 'Soumettre la facture pour $amountSats Sats';
+    return 'Soumettre la facture pour $amountSats sats';
   }
 
   @override
@@ -3801,51 +3801,32 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayoutRateWarning(
-    String threshold,
-    String received,
-    String expected,
-  ) {
-    return 'Plus de $threshold de sats en moins que la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
-  }
-
-  @override
-  String p2pPayoutRateWarningAsked(
-    String coordinator,
-    String threshold,
-    String received,
-    String expected,
-  ) {
-    return 'Les sats que $coordinator donnait pour ce contrat à l\'étape du paiement, gardés par cette app, sont de plus de $threshold en dessous de la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
-  }
-
-  @override
-  String get p2pPayoutBreakdownTitle => 'Ce que vous allez recevoir, en sats';
+  String get p2pPayoutBreakdownTitle => 'Décompte, en sats';
 
   @override
   String get p2pPayoutBreakdownNotCompared =>
-      'Non comparé au prix du portefeuille Bull à cette étape';
+      'Pas de vérification Bull Wallet à cette étape';
 
   @override
-  String get p2pPayoutBreakdownValue => 'Valeur au prix du portefeuille Bull';
+  String get p2pPayoutBreakdownValue => 'Attendu par Bull Wallet';
 
   @override
   String p2pPayoutBreakdownPrice(String amount, String currency, String price) {
-    return '$amount $currency à $price $currency/BTC, avec la prime de l’ordre';
+    return '$amount $currency à $price $currency/BTC, prime comprise';
   }
 
   @override
-  String get p2pPayoutBreakdownGiven => 'Donné par le coordinateur';
+  String get p2pPayoutBreakdownGiven => 'Versé par le coordinateur';
 
   @override
-  String get p2pPayoutBreakdownGap => 'Écart avec la valeur ci-dessus';
+  String get p2pPayoutBreakdownGap => 'Écart au prix Bull (indicatif)';
 
   @override
   String get p2pPayoutBreakdownCoordinatorFee =>
       'Frais du coordinateur, déjà déduits';
 
   @override
-  String get p2pPayoutBreakdownRoutingBudget => 'Budget de routage Lightning';
+  String get p2pPayoutBreakdownRoutingBudget => 'Frais de routage Lightning';
 
   @override
   String get p2pPayoutBreakdownInvoice => 'Votre facture';
@@ -3854,7 +3835,58 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pPayoutBreakdownSwapFee => 'Frais de swap';
 
   @override
-  String get p2pPayoutBreakdownReceived => 'À recevoir dans votre portefeuille';
+  String get p2pPayoutBreakdownReceived => 'Vous recevrez';
+
+  @override
+  String get p2pPayoutBreakdownFees => 'Frais de routage et de swap';
+
+  @override
+  String get p2pPayoutBreakdownRoutingFees => 'Frais de routage';
+
+  @override
+  String get p2pPayoutBreakdownGapNotPriced => 'Écart au prix Bull';
+
+  @override
+  String get p2pPayoutBreakdownNotPriced => 'non coté';
+
+  @override
+  String get p2pPayoutBreakdownAgainst => 'Écart en votre défaveur';
+
+  @override
+  String p2pPayoutBreakdownAgainstFigures(String expected, String received) {
+    return 'Bull Wallet attendait $expected sats, le coordinateur en verse $received.';
+  }
+
+  @override
+  String p2pPayoutBreakdownAgainstDetail(String threshold) {
+    return 'Bull Wallet refait le calcul avec son propre prix, prime comprise, et vous prévient au-delà de $threshold d’écart. Vérifiez l’ordre avant de continuer.';
+  }
+
+  @override
+  String get p2pPayoutBreakdownUnverified => 'Montant non vérifié';
+
+  @override
+  String get p2pPayoutBreakdownUnverifiedLine =>
+      'Bull Wallet n’a pas pu obtenir son prix du bitcoin.';
+
+  @override
+  String get p2pPayoutBreakdownUnverifiedDetail =>
+      'Sans ce prix, il ne peut pas comparer le montant du coordinateur.';
+
+  @override
+  String get p2pPayoutBreakdownSmallGap =>
+      'Un petit écart est normal : le coordinateur a sa propre source de prix.';
+
+  @override
+  String get p2pDetailShow => 'Voir le détail';
+
+  @override
+  String get p2pDetailHide => 'Masquer le détail';
+
+  @override
+  String p2pPayoutRateAgainst(String gap) {
+    return 'Écart en votre défaveur $gap';
+  }
 
   @override
   String p2pPayoutRateNotPriced(String currency, String coordinator) {

@@ -6,7 +6,7 @@ import 'trade_payout.dart';
 import 'trade_status.dart';
 import 'trade_warning.dart';
 
-/// The sats of the buyer's payout from top to bottom, each line explaining the next (#228, the owner's request after the trial of 2026-11-18): what the coordinator gives the contract, its fee already taken out, the Lightning routing budget, the invoice to give, the swap service's fee and what reaches the wallet.
+/// The sats of the buyer's payout from top to bottom, each line explaining the next (#228, the owner's request after the trial of 2026-11-18): what the coordinator gives the contract, its fee already taken out, the Lightning routing budget, the invoice to give, the swap service's fee and what reaches the wallet; drawn lean since #250 ([fees] and [received] on arrival, the rest in the detail).
 ///
 /// Built only from one [PayoutAsk] (one read of the order), the routing budget of the form and, for the last two lines, the invoice this wallet made for exactly the invoice's amount: nothing new is read from the coordinator, and every line below the first is a difference of whole sats already kept, so the breakdown adds up to the sat by construction (`given − routingBudget = invoice`, `invoice − swapFee = received`). The roundings are the reference's own, never computed again here: the coordinator's `round` of the payout (`api/logics.py:650-669`) is in `trade_satoshis`, and the budget's truncation (`api/logics.py:869-872`) is [RoutingBudgetPpm.invoiceSats], the very amount the invoice is checked against.
 ///
@@ -68,6 +68,15 @@ final class PayoutBreakdown {
   /// The routing budget the invoice leaves to the coordinator: [given] less [invoice]; `null` without an invoice.
   Sats? get routingBudget => switch (invoice) {
     final invoice? => Sats(given.value - invoice.value),
+    null => null,
+  };
+
+  /// What the user will receive, the lean breakdown's total (#250): what reaches the wallet once this wallet's invoice is paid ([PayoutSwapReceipt.received]), or the invoice's amount while no invoice of this wallet is known (none made yet, one pasted from another wallet); `null` without an invoice.
+  Sats? get received => swap?.received ?? invoice;
+
+  /// The fees between [given] and [received], said in one line on arrival (#250): the routing budget and, once known, the swap service's fee; `null` without an invoice. [given] less [fees] is [received], to the sat, by construction.
+  Sats? get fees => switch (received) {
+    final received? => Sats(given.value - received.value),
     null => null,
   };
 

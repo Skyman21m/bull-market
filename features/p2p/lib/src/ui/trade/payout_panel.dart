@@ -44,8 +44,11 @@ final class PayoutPanelRequest {
   /// A check the screen runs when « Submit » is pressed, before the payout is given, « Submit » busy meanwhile: `false` stops the press (the screen then shows what changed, and a second press goes on); `null` gives it at once.
   final Future<bool> Function()? beforeSubmit;
 
-  /// The comparison with the Bull wallet's price the owner's payment rule made of the sats given, for the breakdown's first line and gap (#228); `null` when it made none (a taker, « rate not checked », a currency the Bull wallet does not price, a price being read, no wallet's port).
-  final PayoutValuation? valuation;
+  /// What the owner's payment rule said of the sats paid at 6 and 8, for the breakdown's gap line, its alert and its detail (#228, #250): a comparison with the Bull wallet's price, a price that could not be read, a currency the Bull wallet does not price; `null` when it said none of these (a price being read, amounts that do not agree, a comparison within the threshold beside an alert of the screen, 15, no wallet's port). An alert is drawn above the form when no breakdown can draw it ([PayoutCheck.alert]).
+  final PayoutCheck? check;
+
+  /// « Retry » of « Amount not checked » ([PayoutCheckUnverified]); `null` draws none.
+  final VoidCallback? onRetry;
 
   const PayoutPanelRequest({
     required this.record,
@@ -54,7 +57,8 @@ final class PayoutPanelRequest {
     required this.now,
     this.cancelling = false,
     this.beforeSubmit,
-    this.valuation,
+    this.check,
+    this.onRetry,
   });
 }
 
@@ -125,7 +129,7 @@ class PayoutTold extends StatelessWidget {
 /// « Submit » gives the cubit the payout shown, once; while it is given, each wait says what it waits for, and after 30 s that it still waits; what it gave is said under « Submit », a refusal of the coordinator under the field, as the reference's helper text.
 /// The robot's key is held while the panel is shown with the app in the foreground and its tab visible, and let go otherwise.
 /// [wallet] fills the slot of the wallet's invoice and address (#90), « Generate Invoice » and « Generate New Address » (`PayoutWalletSection`), where the wallet's port was lent; with `null`, the slot draws nothing.
-/// Above the tabs, one breakdown of the sats from top to bottom (#228, [PayoutBreakdownView]) in place of the figures said apart before (the rule's « You receive », « Submit invoice for … Sats », the wallet's « Receive Amount » and its swap fees): what the coordinator gives and its fee, and on the Lightning tab the routing budget, « Your invoice » with the reference's copy, and, from [walletReceipt], the swap service's fee and what reaches the wallet; none while the amounts do not agree ([PayoutBreakdown.of]).
+/// Above the tabs, one breakdown of the sats (#228), lean since #250 ([PayoutBreakdownView]), in place of the figures said apart before (the rule's « You receive », « Submit invoice for … sats », the wallet's « Receive Amount » and its swap fees): the sats paid by the coordinator, the fees and what the user will receive, the gap to the Bull price or the rule's alert in two lines; its detail ([PayoutBreakdownDetail]: what Bull Wallet expected, the coordinator's fee, the routing budget, « Your invoice » with the reference's copy, the swap service's fee from [walletReceipt], one explanation) opens with « Show details » under the form's buttons, which never move. None while the amounts do not agree ([PayoutBreakdown.of]); the rule's alert is then drawn alone above the form, never left out.
 class PayoutPanel extends StatefulWidget {
   final PayoutPanelRequest request;
   final PayoutWalletBuilder? wallet;
@@ -144,6 +148,11 @@ class PayoutPanel extends StatefulWidget {
   static const feeField = ValueKey('payout-mining-fee');
   static const budgetField = ValueKey('payout-routing-budget');
 
+  /// The keys of « Show details », of the detail and of the rule's check said alone, for the tests.
+  static const detailToggle = ValueKey('payout-detail-toggle');
+  static const detail = ValueKey('payout-detail');
+  static const looseCheck = ValueKey('payout-loose-check');
+
   @override
   State<PayoutPanel> createState() => _PayoutPanelState();
 }
@@ -160,6 +169,9 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
   bool _tickerEnabled = true;
 
   bool _copied = false;
+
+  /// Whether the breakdown's detail is open (« Show details », #250): closed when the panel is first shown.
+  bool _detailOpen = false;
 
   /// Whether « Submit » waits for [PayoutPanelRequest.beforeSubmit].
   bool _checking = false;
@@ -318,6 +330,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             coordinator: request.coordinator,
           );
         }
+        final form = state.shownAsk;
         final newInvoice =
             status is RoutingFailed || (state.shownAsk?.isNewInvoice ?? false);
         return Column(
@@ -334,7 +347,9 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
               const Gap(BullSpacing.md),
             ],
             // Under a payout received or that may have been, its form and what it told stay, whatever a later read says is asked (review of #132).
-            switch ((state.shownAsk, state.ask)) {
+            // No form, so no breakdown: the rule's alert said alone, never left out (#250).
+            if (form == null) ...?_looseCheck(null),
+            switch ((form, state.ask)) {
               (final ask?, _) => _form(context, state, ask, newInvoice),
               (null, Err(:final failure)) => _Text(
                 failure.toText(context, coordinator: request.coordinator),
@@ -384,25 +399,23 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
       wallet: widget.walletReceipt?.call(context, walletRequest),
     );
     final lightning = kind == PayoutKind.lightning;
+    final check = widget.request.check;
+    final drawn = PayoutBreakdownView.drawnOf(breakdown, check);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The sats from top to bottom, above the tabs: the rule's alert, said just above the panel, stays next to it (#228).
+        // The rule's alert the breakdown cannot draw (no breakdown, or a breakdown of other sats than those compared): said alone, never left out (#250).
+        if (drawn == null) ...?_looseCheck(breakdown),
+        // The sats on arrival, above the tabs, with the rule's gap or its alert (#228, #250); the detail under the buttons, below.
         if (breakdown != null) ...[
           PayoutBreakdownView(
             breakdown: breakdown,
-            valuation: widget.request.valuation,
+            check: drawn,
             lightning: lightning,
-            onCopy: switch ((lightning, breakdown.invoice)) {
-              (true, final invoice?) => () => _copyAmount(invoice),
-              _ => null,
-            },
-            copied: _copied,
+            onRetry: widget.request.onRetry,
             // At 15 the owner's rule does not run: said, so that the figures do not look checked (security review of #228, C2).
             notCompared: ask.isNewInvoice,
           ),
-          if (_copied && lightning)
-            _Text(l10n.p2pCommonCopied, center: true, live: true),
           const Gap(BullSpacing.md),
         ],
         if (!newInvoice) ...[
@@ -447,8 +460,50 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             breakdownShown: breakdown != null,
           ),
         },
+        // Under every button of the tab, so that opening the detail moves none of them (variant C, #250).
+        if (breakdown != null) ...[
+          const Gap(BullSpacing.sm),
+          PayoutDetailToggle(
+            key: PayoutPanel.detailToggle,
+            open: _detailOpen,
+            onPressed: () => setState(() => _detailOpen = !_detailOpen),
+          ),
+          if (_detailOpen) ...[
+            PayoutBreakdownDetail(
+              key: PayoutPanel.detail,
+              breakdown: breakdown,
+              check: drawn,
+              lightning: lightning,
+              onCopy: switch ((lightning, breakdown.invoice)) {
+                (true, final invoice?) => () => _copyAmount(invoice),
+                _ => null,
+              },
+              copied: _copied,
+            ),
+            if (_copied && lightning)
+              _Text(l10n.p2pCommonCopied, center: true, live: true),
+          ],
+        ],
       ],
     );
+  }
+
+  /// The rule's check when no breakdown draws it ([PayoutBreakdownView.drawnOf] `null` for [breakdown]): an alert (red or orange) or the « not quoted » line, alone above the form; nothing for a comparison within the threshold, which would compare other sats than those shown.
+  List<Widget>? _looseCheck(PayoutBreakdown? breakdown) {
+    final check = widget.request.check;
+    if (check == null ||
+        PayoutBreakdownView.drawnOf(breakdown, check) != null) {
+      return null;
+    }
+    if (!check.alert && check is! PayoutCheckNotPriced) return null;
+    return [
+      PayoutCheckLines(
+        key: PayoutPanel.looseCheck,
+        check: check,
+        onRetry: widget.request.onRetry,
+      ),
+      const Gap(BullSpacing.md),
+    ];
   }
 
   Widget _lightning(
@@ -520,7 +575,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             ),
         ],
         const Gap(BullSpacing.md),
-        // « Submit invoice for … Sats » and its copy are the breakdown's « Your invoice » above the tabs (#228); without a breakdown (amounts that do not agree, the alert said alone), the reference's line as before, so that the amount to ask stays given: nothing is stopped.
+        // « Submit invoice for … sats » and its copy are the breakdown's « Your invoice » (#228), in its detail (#250); without a breakdown (amounts that do not agree, the alert said alone), the reference's line as before, so that the amount to ask stays given: nothing is stopped. One figure of the invoice only, never beside « You will receive » (#249's functional review).
         if (asked != null && !breakdownShown) ...[
           Row(
             children: [

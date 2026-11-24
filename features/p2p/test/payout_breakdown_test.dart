@@ -206,43 +206,114 @@ void main() {
     );
   });
 
-  group('the comparison drawn', () {
-    PayoutValuation valuation(int given, {bool warns = false}) =>
-        PayoutValuation(
+  test(
+    'the lean figures (#250): the fees and what is received are the sats paid less one another, to the sat, with or without this wallet\'s invoice',
+    () {
+      final made = breakdownOf(
+        six,
+        wallet: (amount: sats(106606), received: sats(106400)),
+      );
+      expect(made.fees, sats(313));
+      expect(made.received, sats(106400));
+      expect(
+        made.given.value - (made.fees?.value ?? BigInt.zero),
+        made.received?.value,
+      );
+      expect(
+        made.fees?.value,
+        (made.routingBudget?.value ?? BigInt.zero) +
+            (made.swap?.fee.value ?? BigInt.zero),
+      );
+      final pasted = breakdownOf(six);
+      expect(pasted.fees, sats(107));
+      expect(pasted.received, sats(106606));
+    },
+  );
+
+  group('the check drawn (#250)', () {
+    PayoutCheck compared(int given, {bool warns = false}) =>
+        PayoutCheckCompared(
           given: Sats.fromInt(given),
-          value: Sats.fromInt(107000),
-          price: '100 EUR at 91,711 EUR/BTC, with the order\'s premium',
-          gap: '-0.27%',
+          expected: Sats.fromInt(107000),
+          price: '100 EUR at 91,711 EUR/BTC, premium included',
+          gap: warns ? '-15.83%' : '-0.27%',
           warns: warns,
+          threshold: '10%',
         );
 
-    Future<void> draw(WidgetTester tester, PayoutValuation? valuation) =>
-        tester.pumpWidget(
-          harness(
-            SingleChildScrollView(
-              child: PayoutBreakdownView(
+    Future<void> draw(
+      WidgetTester tester,
+      PayoutCheck? check, {
+      bool detail = false,
+    }) => tester.pumpWidget(
+      harness(
+        SingleChildScrollView(
+          child: Column(
+            children: [
+              PayoutBreakdownView(
                 breakdown: breakdownOf(six),
-                valuation: valuation,
+                check: PayoutBreakdownView.drawnOf(breakdownOf(six), check),
               ),
-            ),
+              if (detail)
+                PayoutBreakdownDetail(
+                  breakdown: breakdownOf(six),
+                  check: PayoutBreakdownView.drawnOf(breakdownOf(six), check),
+                ),
+            ],
           ),
-        );
+        ),
+      ),
+    );
 
     testWidgets(
-      'for the very sats given: the first line and the gap; for other sats (a figure that changed since the rule compared): neither, never a comparison of another figure',
+      'for the very sats paid: the gap line, and in the detail what Bull Wallet expected; for other sats (a figure that changed since the rule compared): neither, never a comparison of another figure',
       (tester) async {
-        await draw(tester, valuation(106713));
-        expect(find.byKey(PayoutBreakdownView.valueRow), findsOneWidget);
-        expect(find.byKey(PayoutBreakdownView.gapRow), findsOneWidget);
+        await draw(tester, compared(106713), detail: true);
+        expect(find.byKey(PayoutCheckLines.gapRow), findsOneWidget);
+        expect(find.text('Gap to the Bull price (indicative)'), findsOneWidget);
         expect(find.text('-0.27%'), findsOneWidget);
-        await draw(tester, valuation(106714));
-        expect(find.byKey(PayoutBreakdownView.valueRow), findsNothing);
-        expect(find.byKey(PayoutBreakdownView.gapRow), findsNothing);
+        expect(find.byKey(PayoutBreakdownDetail.valueRow), findsOneWidget);
+        expect(
+          find.text(
+            'A small gap is normal: the coordinator has its own price source.',
+          ),
+          findsOneWidget,
+        );
+        await draw(tester, compared(106714), detail: true);
+        expect(find.byKey(PayoutCheckLines.gapRow), findsNothing);
+        expect(find.byKey(PayoutBreakdownDetail.valueRow), findsNothing);
+        expect(find.byKey(PayoutBreakdownDetail.explanation), findsNothing);
         expect(find.byKey(PayoutBreakdownView.givenRow), findsOneWidget);
-        await draw(tester, null);
-        expect(find.byKey(PayoutBreakdownView.valueRow), findsNothing);
-        expect(find.text('Given by the coordinator'), findsOneWidget);
+        await draw(tester, null, detail: true);
+        expect(find.byKey(PayoutBreakdownDetail.valueRow), findsNothing);
+        expect(find.text('Paid by the coordinator'), findsOneWidget);
+        expect(find.text('Routing fees'), findsOneWidget);
+        expect(find.text('You will receive'), findsOneWidget);
         expect(find.text('Your invoice'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the red alert: its bold line in the gap\'s place, without « (indicative) », the two figures under it each named by whom it comes from, the figure paid in red; never « A small gap is normal » beside it',
+      (tester) async {
+        await draw(tester, compared(106713, warns: true), detail: true);
+        expect(find.byKey(PayoutCheckLines.gapRow), findsNothing);
+        expect(find.textContaining('(indicative)'), findsNothing);
+        expect(find.text('Gap against you'), findsOneWidget);
+        expect(find.text('-15.83%'), findsOneWidget);
+        expect(
+          find.text(
+            'Bull Wallet expected 107,000 sats, the coordinator pays 106,713.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('A small gap is normal'), findsNothing);
+        expect(
+          find.text(
+            'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
+          ),
+          findsOneWidget,
+        );
       },
     );
 
@@ -253,29 +324,47 @@ void main() {
         ..physicalSize = const Size(320, 2400) * 3
         ..devicePixelRatio = 3;
       addTearDown(tester.view.reset);
-      for (final scale in const [1.0, 2.0, 3.0]) {
-        await tester.pumpWidget(
-          harness(
-            MediaQuery(
-              data: MediaQueryData(
-                size: const Size(320, 2400),
-                textScaler: TextScaler.linear(scale),
-              ),
-              child: SingleChildScrollView(
-                child: PayoutBreakdownView(
-                  breakdown: breakdownOf(
-                    six,
-                    wallet: (amount: sats(106606), received: sats(106400)),
+      final breakdown = breakdownOf(
+        six,
+        wallet: (amount: sats(106606), received: sats(106400)),
+      );
+      for (final check in [
+        compared(106713, warns: true),
+        compared(106713),
+        PayoutCheckUnverified(Sats.fromInt(106713)),
+        PayoutCheckNotPriced(Sats.fromInt(106713)),
+      ]) {
+        for (final scale in const [1.0, 2.0, 3.0]) {
+          await tester.pumpWidget(
+            harness(
+              MediaQuery(
+                data: MediaQueryData(
+                  size: const Size(320, 2400),
+                  textScaler: TextScaler.linear(scale),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      PayoutBreakdownView(
+                        breakdown: breakdown,
+                        check: check,
+                        onRetry: () {},
+                      ),
+                      PayoutDetailToggle(open: true, onPressed: () {}),
+                      PayoutBreakdownDetail(
+                        breakdown: breakdown,
+                        check: check,
+                        onCopy: () {},
+                      ),
+                    ],
                   ),
-                  valuation: valuation(106713, warns: true),
-                  onCopy: () {},
                 ),
               ),
+              locale: const Locale('fr'),
             ),
-            locale: const Locale('fr'),
-          ),
-        );
-        expect(tester.takeException(), isNull, reason: '$scale');
+          );
+          expect(tester.takeException(), isNull, reason: '$check $scale');
+        }
       }
     });
   });

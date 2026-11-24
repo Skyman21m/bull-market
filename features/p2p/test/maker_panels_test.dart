@@ -1295,9 +1295,11 @@ void main() {
             ),
             findsOneWidget,
           );
+          // The red alert in the owner's two lines (#250).
+          expect(find.text('Gap against you -15.83%'), findsOneWidget);
           expect(
             find.text(
-              'More than 10% fewer sats than the value at the Bull wallet\'s price: 89,978 sats instead of 106,899. Check it before going on.',
+              'Bull Wallet expected 106,899 sats, the coordinator pays 89,978.',
             ),
             findsOneWidget,
           );
@@ -1360,10 +1362,7 @@ void main() {
             find.textContaining('You receive 106,873 sats'),
             findsOneWidget,
           );
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsNothing,
-          );
+          expect(find.textContaining('the coordinator pays'), findsNothing);
           watch.add(TradeScreenStatuses.watched(chain[3], of: _record));
           await tester.pump();
           await tester.pump();
@@ -1372,10 +1371,7 @@ void main() {
             find.textContaining('You receive 49,988 sats'),
             findsOneWidget,
           );
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('the coordinator pays'), findsOneWidget);
           // The price read at 6, less than 3 minutes old: not read again.
           expect(reads, hasLength(1));
         },
@@ -1447,10 +1443,7 @@ void main() {
             find.textContaining('You receive 49,988 sats'),
             findsOneWidget,
           );
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('the coordinator pays'), findsOneWidget);
           expect(
             find.textContaining('from the rate when you made it'),
             findsNothing,
@@ -1471,7 +1464,7 @@ void main() {
           expect(
             find.descendant(
               of: find.byType(ConfirmFiatSentDialog),
-              matching: find.textContaining('fewer sats than the value'),
+              matching: find.textContaining('the coordinator pays'),
             ),
             findsOneWidget,
           );
@@ -1580,13 +1573,13 @@ void main() {
           await tester.pump();
           expect(find.textContaining('do not add up'), findsOneWidget);
           // The kept invoice is still compared (R8): its red warning is an alert of its own; the neutral line that recalled it and its gap is not said beside the amounts' alert (#228).
-          // Its red warning names the sats as what the coordinator gave at the payout step, kept by this app (before the routing budget: not the invoice), beside the coordinator's alert (#228, functional review C1, security review C1).
-          const keptWarning =
-              'The sats Temple of Sats gave for this contract at the payout step, kept by this app, are more than 10% below the value at the Bull wallet\'s price: 49,988 sats instead of 106,899. Check it before going on.';
-          expect(find.text(keptWarning), findsOneWidget);
+          // Its red alert in the owner's two lines (#250): the gap, then the two figures, the kept sats as those the coordinator pays the contract.
+          expect(find.text('Gap against you -53.24%'), findsOneWidget);
           expect(
-            find.textContaining('fewer sats than the value'),
-            findsNothing,
+            find.text(
+              'Bull Wallet expected 106,899 sats, the coordinator pays 49,988.',
+            ),
+            findsOneWidget,
           );
           expect(
             find.textContaining('At the Bull wallet\'s price'),
@@ -1602,8 +1595,11 @@ void main() {
             matching: find.textContaining(words),
           );
           expect(inDialog('do not add up'), findsOneWidget);
+          expect(inDialog('Gap against you -53.24%'), findsOneWidget);
           expect(
-            inDialog('kept by this app, are more than 10% below'),
+            inDialog(
+              'Bull Wallet expected 106,899 sats, the coordinator pays 49,988.',
+            ),
             findsOneWidget,
           );
           expect(inDialog('At the Bull wallet\'s price'), findsNothing);
@@ -1649,10 +1645,7 @@ void main() {
             find.textContaining('At the Bull wallet\'s price'),
             findsNothing,
           );
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsNothing,
-          );
+          expect(find.textContaining('the coordinator pays'), findsNothing);
           final confirm = find.textContaining('Confirm 100 EUR sent');
           await _reveal(tester, confirm);
           await tester.tap(confirm);
@@ -1663,17 +1656,22 @@ void main() {
           );
           expect(inDialog('do not add up'), findsOneWidget);
           expect(inDialog('At the Bull wallet\'s price'), findsNothing);
-          // The dialog follows the screen: the coordinator's figures agree again, the alert goes and the comparison comes back, in the dialog as on the screen.
+          // The dialog follows the screen: the coordinator's figures agree again and the amounts' alert goes; the trace of a payout this page did not see given from this wallet (#204) is still an alert of the screen, so the comparison within the threshold stays silent beside it, in the dialog as on the screen (#249's rule, `ShownAlerts`, written after #228's first draft).
           watch.add(TradeScreenStatuses.watched(honest[4], of: _record));
           await tester.pump();
           await tester.pump();
           expect(inDialog('do not add up'), findsNothing);
-          expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
+          expect(inDialog('payout invoice or address'), findsOneWidget);
+          expect(inDialog('At the Bull wallet\'s price'), findsNothing);
           // On the screen under the dialog too.
           expect(find.textContaining('do not add up'), findsNothing);
           expect(
-            find.textContaining('At the Bull wallet\'s price'),
+            find.textContaining('payout invoice or address'),
             findsNWidgets(2),
+          );
+          expect(
+            find.textContaining('At the Bull wallet\'s price'),
+            findsNothing,
           );
         },
       );
@@ -1874,7 +1872,7 @@ void main() {
           find.textContaining('At the Bull wallet\'s price'),
           findsOneWidget,
         );
-        expect(find.textContaining('fewer sats than the value'), findsNothing);
+        expect(find.textContaining('the coordinator pays'), findsNothing);
         // With a comparison at the Bull wallet's price, the gap from the creation's rate is not shown: one figure (decided after the functional review of #182).
         expect(
           find.textContaining('from the rate when you made it'),
@@ -2114,10 +2112,7 @@ void main() {
           await tester.pump();
           await tester.pump();
           expect(reads, hasLength(2));
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('the coordinator pays'), findsOneWidget);
         },
       );
 
@@ -2139,17 +2134,14 @@ void main() {
           await tester.pump();
           await tester.pump();
           // Before the chat step too, with its « Retry » when it has one.
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('the coordinator pays'), findsOneWidget);
           final confirm = find.textContaining('Confirm 100 EUR sent');
           await _reveal(tester, confirm);
           await tester.tap(confirm);
           await tester.pumpAndSettle();
           final warning = find.descendant(
             of: find.byType(ConfirmFiatSentDialog),
-            matching: find.textContaining('fewer sats than the value'),
+            matching: find.textContaining('the coordinator pays'),
           );
           expect(warning, findsOneWidget);
           expect(
@@ -2322,10 +2314,7 @@ void main() {
               if (status == 8) makerOrderJson(8, last: 90000),
             ]);
             final sent = await page(tester, seen);
-            expect(
-              find.textContaining('fewer sats than the value'),
-              findsOneWidget,
-            );
+            expect(find.textContaining('the coordinator pays'), findsOneWidget);
             expect(find.text('Generate Invoice'), findsOneWidget);
             final submit = find.widgetWithText(TradeButton, 'Submit');
             expect(submit, findsOneWidget);
@@ -2342,10 +2331,7 @@ void main() {
             await tester.pump();
             expect(sent, hasLength(1));
             // The red warning still there: nothing was stopped by it.
-            expect(
-              find.textContaining('fewer sats than the value'),
-              findsOneWidget,
-            );
+            expect(find.textContaining('the coordinator pays'), findsOneWidget);
             await tester.pump(const Duration(seconds: 31));
           },
         );
@@ -2379,7 +2365,7 @@ void main() {
             expect(find.textContaining('Submit invoice for'), findsOneWidget);
             expect(find.textContaining('are worth'), findsNothing);
             expect(
-              find.textContaining('Given by the coordinator'),
+              find.textContaining('Paid by the coordinator'),
               findsNothing,
             );
             await tester.pump(const Duration(seconds: 31));
@@ -2406,10 +2392,7 @@ void main() {
             reads: reads,
           );
           expect(reads, hasLength(1));
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('the coordinator pays'), findsOneWidget);
           await tester.enterText(
             find.byKey(PayoutPanel.invoiceField),
             _payoutInvoice(seen).text,
@@ -2425,7 +2408,10 @@ void main() {
           await tester.pump();
           expect(reads, hasLength(2));
           expect(sent, isEmpty);
-          expect(find.textContaining('has no price for EUR'), findsOneWidget);
+          // The line that changed, in the breakdown: the grey « not quoted » line in place of the red alert (#250).
+          expect(find.text('not quoted'), findsOneWidget);
+          expect(find.textContaining('the coordinator pays'), findsNothing);
+          expect(find.textContaining('has no price for EUR'), findsNothing);
           await tester.ensureVisible(submit);
           await tester.pump();
           await tester.tap(submit);
@@ -3016,13 +3002,10 @@ void main() {
           ]);
           await _show(tester, seen, rate: cubit);
           await tester.pump();
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('the coordinator pays'), findsOneWidget);
           clock = clock.add(const Duration(minutes: 3));
           await pressAfterHeldRead(tester, answers, atWallet);
-          expect(inDialog('fewer sats than the value'), findsOneWidget);
+          expect(inDialog('the coordinator pays'), findsOneWidget);
           expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
         },
       );
@@ -3084,14 +3067,11 @@ void main() {
             );
           await tester.pump();
           await tester.pump();
-          expect(
-            find.textContaining('fewer sats than the value'),
-            findsNothing,
-          );
+          expect(find.textContaining('the coordinator pays'), findsNothing);
           clock = clock.add(const Duration(minutes: 3));
           await pressAfterHeldRead(tester, answers, atWallet);
           expect(inDialog('You receive 106,873 sats'), findsOneWidget);
-          expect(inDialog('fewer sats than the value'), findsNothing);
+          expect(inDialog('the coordinator pays'), findsNothing);
           expect(inDialog('but asked for an invoice of'), findsNothing);
           // The figure moves while the dialog is open: its lines follow.
           watch.add(
@@ -3106,7 +3086,7 @@ void main() {
             inDialog('but asked for an invoice of 106,873'),
             findsOneWidget,
           );
-          expect(inDialog('fewer sats than the value'), findsOneWidget);
+          expect(inDialog('the coordinator pays'), findsOneWidget);
         },
       );
     },

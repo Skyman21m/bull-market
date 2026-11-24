@@ -662,8 +662,8 @@ final class _Sender {
   }
 }
 
-/// The breakdown's « Your invoice » with [sats], the amount the invoice must be for, which replaces the reference's « Submit invoice for … Sats » (#228).
+/// The amount the invoice must be for, [sats], which replaces the reference's « Submit invoice for … sats » (#228): on arrival, « You will receive » of the lean breakdown while no invoice of this wallet is in the field (#250); « Your invoice » in its detail.
 Finder invoiceRow(String sats) => find.descendant(
-  of: find.byKey(PayoutBreakdownView.invoiceRow),
+  of: find.byKey(PayoutBreakdownView.receivedRow),
   matching: find.text(sats),
 );

@@ -631,6 +631,11 @@ void main() {
           cubit.state.submittable(PayoutKind.lightning)?.text,
           invoice.text,
         );
+        // The copy of « Your invoice », in the breakdown's detail (#250).
+        await reveal(tester, find.byKey(PayoutPanel.detailToggle));
+        await tester.tap(find.byKey(PayoutPanel.detailToggle));
+        await tester.pump();
+        await reveal(tester, find.byTooltip('Copy the amount'));
         await tester.tap(find.byTooltip('Copy the amount'));
         await tester.pump();
         expect(copied, ['106606']);
@@ -1114,7 +1119,7 @@ void main() {
                 await tester.pump();
               } else if (seen != fifteenRetrying) {
                 if (seen == six) {
-                  // The advanced options open, a budget above 1 % and the copy's « Copied! » (the breakdown above the tabs since #228: the switch revealed first).
+                  // The advanced options open, a budget above 1 %, the breakdown's detail open and the copy's « Copied! » (the breakdown above the tabs since #228: the switch revealed first; the copy in the detail since #250).
                   await reveal(tester, find.byType(BullSwitch));
                   await tester.tap(find.byType(BullSwitch));
                   await tester.pump();
@@ -1122,6 +1127,9 @@ void main() {
                     find.byKey(PayoutPanel.budgetField),
                     '20000',
                   );
+                  await tester.pump();
+                  await reveal(tester, find.byKey(PayoutPanel.detailToggle));
+                  await tester.tap(find.byKey(PayoutPanel.detailToggle));
                   await tester.pump();
                   await reveal(tester, find.byTooltip(_copyTooltip(locale)));
                   await tester.tap(find.byTooltip(_copyTooltip(locale)));
@@ -1948,8 +1956,8 @@ extension on PayoutCubit {
       submit(kind, shown: state.submittable(kind));
 }
 
-/// The breakdown's « Your invoice » with [sats], the amount the invoice must be for, which replaces the reference's « Submit invoice for … Sats » (#228).
+/// The amount the invoice must be for, [sats], which replaces the reference's « Submit invoice for … sats » (#228): on arrival, « You will receive » of the lean breakdown while no invoice of this wallet is in the field (#250); « Your invoice » in its detail.
 Finder invoiceRow(String sats) => find.descendant(
-  of: find.byKey(PayoutBreakdownView.invoiceRow),
+  of: find.byKey(PayoutBreakdownView.receivedRow),
   matching: find.text(sats),
 );
