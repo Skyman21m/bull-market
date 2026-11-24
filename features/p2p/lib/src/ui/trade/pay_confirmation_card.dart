@@ -97,7 +97,7 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     final confirming = widget.confirming;
-    final quote = confirming.walletQuote;
+    final walletQuote = confirming.walletQuote;
     final escrow = widget.escrow;
     final contract = confirming.contract;
     String sats(Sats amount) =>
@@ -229,12 +229,14 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
         AmountRow(
           key: PayConfirmationCard.amountRow,
           label: escrow ? l10n.p2pPayRowCollateral : l10n.p2pPayRowBond,
-          amount: sats(quote.amount),
+          amount: sats(walletQuote.amount),
         ),
         AmountRow(
           key: PayConfirmationCard.feesRow,
           label: l10n.p2pPayRowFees,
-          amount: sats(Sats(quote.serviceFee.value + quote.networkFee.value)),
+          amount: sats(
+            Sats(walletQuote.serviceFee.value + walletQuote.networkFee.value),
+          ),
         ),
         Divider(
           height: BullSpacing.xs,
@@ -248,7 +250,7 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
             liveRegion: true,
             child: AmountRow(
               label: l10n.p2pPayRowTotal,
-              amount: sats(quote.total),
+              amount: sats(walletQuote.total),
               tone: AmountRowTone.total,
             ),
           ),
@@ -284,7 +286,9 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
         KeyedSubtree(
           key: widget.payKey,
           child: TradeButton(
-            label: l10n.p2pPayConfirm(formats.sats(quote.total.value.toInt())),
+            label: l10n.p2pPayConfirm(
+              formats.sats(walletQuote.total.value.toInt()),
+            ),
             // A confirmation of a contract the order moved on from pays nothing: not offered.
             onPressed: confirming.stale ? null : widget.onPay,
           ),
@@ -298,7 +302,7 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
         if (_open)
           _Detail(
             key: PayConfirmationCard.detail,
-            quote: quote,
+            walletQuote: walletQuote,
             rate: rate,
             escrow: escrow,
             earlier: [for (final alert in earlier) ?alert.detail],
@@ -311,7 +315,7 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
 
 /// The confirmation's detail, in this order: the swap fees, the network fee, the balance after payment; the comparison's paragraph and « A small gap is normal » (within the threshold only), or the red alert's explanation, or « Amount not checked »'s; the earlier collateral's explanation; for a collateral the swap service's facts; the reference's sentence on the hold invoice, word for word, in grey.
 class _Detail extends StatelessWidget {
-  final P2pWalletQuote quote;
+  final P2pWalletQuote walletQuote;
 
   /// The rule's check as the card draws it: `null` when nothing is compared, or a comparison within the threshold beside an alert.
   final WalletRateCheck? rate;
@@ -321,7 +325,7 @@ class _Detail extends StatelessWidget {
 
   const _Detail({
     super.key,
-    required this.quote,
+    required this.walletQuote,
     required this.rate,
     required this.escrow,
     required this.earlier,
@@ -430,17 +434,17 @@ class _Detail extends StatelessWidget {
         AmountRow(
           key: PayConfirmationCard.swapFeeRow,
           label: l10n.p2pPayRowSwapFees,
-          amount: sats(quote.serviceFee),
+          amount: sats(walletQuote.serviceFee),
         ),
         AmountRow(
           key: PayConfirmationCard.networkFeeRow,
           label: l10n.p2pPayRowNetworkFee,
-          amount: sats(quote.networkFee),
+          amount: sats(walletQuote.networkFee),
         ),
         AmountRow(
           key: PayConfirmationCard.balanceRow,
           label: l10n.p2pPayRowLeft,
-          amount: sats(quote.remaining),
+          amount: sats(walletQuote.remaining),
         ),
         for (final paragraph in paragraphs) ...[
           const Gap(BullSpacing.xs),
