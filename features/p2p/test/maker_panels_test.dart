@@ -1606,75 +1606,91 @@ void main() {
         },
       );
 
-      testWidgets(
-        'at 9, a kept invoice within the margin beside the amounts\' warning: the alert alone, on the screen and in « Confirm … sent »; once the coordinator\'s figures agree again, the line comes back (#228, the ticket\'s comment)',
-        (tester) async {
-          final chain = await _chain([
-            makerOrderJson(0),
-            makerOrderJson(1),
-            makerOrderJson(6, last: 106900),
-            makerOrderJson(8, last: 106900),
-            makerOrderJson(
-              9,
-              last: 106900,
-              changes: {'trade_satoshis': 200000},
-            ),
-          ]);
-          final honest = await _chain([
-            makerOrderJson(0),
-            makerOrderJson(1),
-            makerOrderJson(6, last: 106900),
-            makerOrderJson(8, last: 106900),
-            makerOrderJson(9, last: 106900),
-          ]);
-          expect(chain[4].status.has<MakerFeeAboveAnnounced>(), isTrue);
-          expect(honest[4].status.warnings, isEmpty);
-          final (_, watch) = await _show(
-            tester,
-            chain[2],
-            rate: rateOf(() => atWallet),
-          );
-          await tester.pump();
-          watch
-            ..add(TradeScreenStatuses.watched(chain[3], of: _record))
-            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
-          await tester.pump();
-          await tester.pump();
-          expect(find.textContaining('do not add up'), findsOneWidget);
-          expect(
-            find.textContaining('At the Bull wallet\'s price'),
-            findsNothing,
-          );
-          expect(find.textContaining('the coordinator pays'), findsNothing);
-          final confirm = find.textContaining('Confirm 100 EUR sent');
-          await _reveal(tester, confirm);
-          await tester.tap(confirm);
-          await tester.pumpAndSettle();
-          Finder inDialog(String words) => find.descendant(
-            of: find.byType(ConfirmFiatSentDialog),
-            matching: find.textContaining(words),
-          );
-          expect(inDialog('do not add up'), findsOneWidget);
-          expect(inDialog('At the Bull wallet\'s price'), findsNothing);
-          // The dialog follows the screen: the coordinator's figures agree again and the amounts' alert goes; the trace of a payout this page did not see given from this wallet (#204) is still an alert of the screen, so the comparison within the threshold stays silent beside it, in the dialog as on the screen (#249's rule, `ShownAlerts`, written after #228's first draft).
-          watch.add(TradeScreenStatuses.watched(honest[4], of: _record));
-          await tester.pump();
-          await tester.pump();
-          expect(inDialog('do not add up'), findsNothing);
-          expect(inDialog('payout invoice or address'), findsOneWidget);
-          expect(inDialog('At the Bull wallet\'s price'), findsNothing);
-          // On the screen under the dialog too.
-          expect(find.textContaining('do not add up'), findsNothing);
-          expect(
-            find.textContaining('payout invoice or address'),
-            findsNWidgets(2),
-          );
-          expect(
-            find.textContaining('At the Bull wallet\'s price'),
-            findsNothing,
-          );
-        },
-      );
+      for (final givenHere in [true, false]) {
+        testWidgets(
+          givenHere
+              ? 'at 9, a kept invoice within the margin beside the amounts\' warning, the payout given from this wallet: the alert alone, on the screen and in « Confirm … sent »; once the coordinator\'s figures agree again, the line comes back, in the open dialog as on the screen (#228, the ticket\'s comment; R4 of the security review of #219)'
+              : 'at 9, a kept invoice within the margin beside the amounts\' warning, the payout not seen given from this wallet: once the coordinator\'s figures agree again, the trace of the payout (#204) is still an alert, so the comparison stays silent beside it, in the open dialog as on the screen (#249)',
+          (tester) async {
+            TradeSeen given(TradeSeen seen) =>
+                givenHere ? seen.withPayout(_givenHere) : seen;
+            final chain = await _chain([
+              makerOrderJson(0),
+              makerOrderJson(1),
+              makerOrderJson(6, last: 106900),
+              makerOrderJson(8, last: 106900),
+              makerOrderJson(
+                9,
+                last: 106900,
+                changes: {'trade_satoshis': 200000},
+              ),
+            ]);
+            final honest = await _chain([
+              makerOrderJson(0),
+              makerOrderJson(1),
+              makerOrderJson(6, last: 106900),
+              makerOrderJson(8, last: 106900),
+              makerOrderJson(9, last: 106900),
+            ]);
+            expect(chain[4].status.has<MakerFeeAboveAnnounced>(), isTrue);
+            expect(honest[4].status.warnings, isEmpty);
+            final (_, watch) = await _show(
+              tester,
+              chain[2],
+              rate: rateOf(() => atWallet),
+            );
+            await tester.pump();
+            watch
+              ..add(TradeScreenStatuses.watched(chain[3], of: _record))
+              ..add(TradeScreenStatuses.watched(given(chain[4]), of: _record));
+            await tester.pump();
+            await tester.pump();
+            expect(find.textContaining('do not add up'), findsOneWidget);
+            expect(
+              find.textContaining('At the Bull wallet\'s price'),
+              findsNothing,
+            );
+            expect(find.textContaining('the coordinator pays'), findsNothing);
+            final confirm = find.textContaining('Confirm 100 EUR sent');
+            await _reveal(tester, confirm);
+            await tester.tap(confirm);
+            await tester.pumpAndSettle();
+            Finder inDialog(String words) => find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.textContaining(words),
+            );
+            expect(inDialog('do not add up'), findsOneWidget);
+            expect(inDialog('At the Bull wallet\'s price'), findsNothing);
+            watch.add(
+              TradeScreenStatuses.watched(given(honest[4]), of: _record),
+            );
+            await tester.pump();
+            await tester.pump();
+            expect(inDialog('do not add up'), findsNothing);
+            expect(find.textContaining('do not add up'), findsNothing);
+            if (givenHere) {
+              // The dialog follows the screen: the alert goes and the comparison comes back, in the dialog as on the screen.
+              expect(inDialog('At the Bull wallet\'s price'), findsOneWidget);
+              expect(
+                find.textContaining('At the Bull wallet\'s price'),
+                findsNWidgets(2),
+              );
+            } else {
+              // The trace of a payout this page did not see given from this wallet (#204) is an alert of the screen: the comparison within the threshold stays silent beside it (`ShownAlerts`, #249).
+              expect(inDialog('payout invoice or address'), findsOneWidget);
+              expect(inDialog('At the Bull wallet\'s price'), findsNothing);
+              expect(
+                find.textContaining('payout invoice or address'),
+                findsNWidgets(2),
+              );
+              expect(
+                find.textContaining('At the Bull wallet\'s price'),
+                findsNothing,
+              );
+            }
+          },
+        );
+      }
 
       testWidgets(
         'at 9 with figures that do not agree and nothing kept: the warning alone on the screen, and in « Confirm … sent »',

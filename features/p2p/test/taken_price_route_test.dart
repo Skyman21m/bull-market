@@ -464,26 +464,61 @@ void main() {
           .style
           ?.color;
 
-      /// « Show details » then « Hide details »: the detail opens under the buttons, none of which moves; [open] checks the detail while it is open.
-      Future<void> detail(_Journey journey, void Function() open) async {
+      /// « Show details » then « Hide details » (#250, the owner's decision of 2026-11-24: the validated mock-up): the link in the breakdown's card under the rule's lines, seen on arrival on a phone of 720 × 1280 pixels; the detail opens in the card under it, the buttons moving down; closed, everything back in its place; [open] checks the detail while it is open.
+      Future<void> detail(
+        _Journey journey,
+        void Function() open, {
+        bool arrival = true,
+      }) async {
         final tester = journey.tester;
         final l10n = journey.l10n;
+        final card = find.byType(PayoutBreakdownView);
+        final toggle = find.byKey(PayoutPanel.detailToggle);
         final buttons = [
           find.text(l10n.p2pPayoutWalletGenerateInvoice),
           find.widgetWithText(TradeButton, l10n.p2pPayoutSubmit),
-          find.widgetWithText(TradeButton, l10n.p2pTradeCompatibleWallets),
         ];
-        await tester.ensureVisible(find.byKey(PayoutPanel.detailToggle));
-        await tester.pump();
+        expect(find.descendant(of: card, matching: toggle), findsOneWidget);
+        final checks = find.descendant(
+          of: card,
+          matching: find.byType(PayoutCheckLines),
+        );
+        if (checks.evaluate().isNotEmpty) {
+          expect(
+            tester.getTopLeft(toggle).dy,
+            greaterThanOrEqualTo(tester.getBottomLeft(checks).dy),
+          );
+        }
+        // Seen without scrolling on a phone of 720 × 1280 pixels; with an alert's two lines, the tests' font (wider than the app's) wraps them further down, so the arrival with an alert is checked on the captures, drawn with the app's font.
+        final alert =
+            find.byKey(PayoutCheckLines.alertRow).evaluate().isNotEmpty ||
+            find.byKey(PayoutCheckLines.unverifiedRow).evaluate().isNotEmpty;
+        if (!alert && arrival) {
+          final size = tester.view.physicalSize;
+          final ratio = tester.view.devicePixelRatio;
+          tester.view
+            ..physicalSize = const Size(720, 1280)
+            ..devicePixelRatio = 2;
+          await tester.pump();
+          expect(tester.getBottomLeft(toggle).dy, lessThanOrEqualTo(640));
+          tester.view
+            ..physicalSize = size
+            ..devicePixelRatio = ratio;
+          await tester.pump();
+        }
         final before = [for (final b in buttons) tester.getTopLeft(b)];
         expect(find.byKey(PayoutPanel.detail), findsNothing);
         await tester.tap(find.text(l10n.p2pDetailShow));
         await tester.pump();
-        expect(find.byKey(PayoutPanel.detail), findsOneWidget);
-        expect([for (final b in buttons) tester.getTopLeft(b)], before);
+        final detail = find.byKey(PayoutPanel.detail);
+        expect(find.descendant(of: card, matching: detail), findsOneWidget);
         expect(
-          tester.getTopLeft(find.byKey(PayoutPanel.detail)).dy,
-          greaterThan(before.last.dy),
+          tester.getTopLeft(detail).dy,
+          greaterThanOrEqualTo(tester.getBottomLeft(toggle).dy),
+        );
+        expect(
+          tester.getTopLeft(buttons.first).dy,
+          greaterThan(before.first.dy),
         );
         open();
         await tester.tap(find.text(l10n.p2pDetailHide));
@@ -566,8 +601,17 @@ void main() {
             row(tester, PayoutBreakdownView.receivedRow),
             journey.sats(112052),
           );
-          expect(find.textContaining('112,052 Sats'), findsNothing);
-          expect(find.textContaining('112 052 Sats'), findsNothing);
+          expect(
+            find.text(l10n.p2pPayoutSubmitInvoiceFor(journey.sats(112052))),
+            findsNothing,
+          );
+          expect(
+            find.textContaining(
+              // « Submit invoice for » / « Soumettre la facture pour »: the reference's line, whatever its figure and its unit's case.
+              l10n.p2pPayoutSubmitInvoiceFor('').split('  ').first,
+            ),
+            findsNothing,
+          );
           await detail(journey, () {
             expect(find.text(l10n.p2pPayoutBreakdownSmallGap), findsNothing);
             expect(
@@ -650,13 +694,14 @@ void main() {
               find.text(l10n.p2pPayoutBreakdownAgainst),
               red ? findsOneWidget : findsNothing,
             );
+            // The trace's line above the breakdown: not an arrival.
             await detail(journey, () {
               expect(find.text(l10n.p2pPayoutBreakdownSmallGap), findsNothing);
               expect(
                 find.byKey(PayoutBreakdownDetail.valueRow),
                 red ? findsOneWidget : findsNothing,
               );
-            });
+            }, arrival: false);
             await journey.close();
           }
         },

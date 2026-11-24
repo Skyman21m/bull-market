@@ -86,7 +86,7 @@ final class PayoutCheckNotPriced extends PayoutCheck {
   int get hashCode => Object.hash(PayoutCheckNotPriced, given);
 }
 
-/// The lean breakdown of the payout's sats, on arrival (#228; layout and words validated by the owner on 2026-11-24, #250): « Breakdown, in sats », the sats paid by the coordinator, the fees taken from them and, in bold, what the user will receive, then the gap to the Bull price ([PayoutCheckLines]). The detail ([PayoutBreakdownDetail]) opens under the panel's buttons, never here: the buttons never move.
+/// The lean breakdown of the payout's sats, on arrival (#228; layout and words validated by the owner on 2026-11-24, #250): « Breakdown, in sats », the sats paid by the coordinator, the fees taken from them and, in bold, what the user will receive, then the gap to the Bull price ([PayoutCheckLines]). Under them, « Show details » opens the detail ([PayoutBreakdownDetail]) in the card, as the validated mock-up draws it (the owner's decision of 2026-11-24); what is under the card moves down.
 ///
 /// On the Lightning tab ([lightning]) with an invoice: « Routing and swap fees » once this wallet made the invoice ([PayoutBreakdown.swap]), « Routing fees » before or for an invoice pasted from another wallet; « You will receive » their difference with the sats paid ([PayoutBreakdown.received]), so the lines add up by construction. On the Onchain tab, the sats paid and the gap only: the reference's table under the tabs says the swap's fees and the final amount.
 ///
@@ -102,6 +102,16 @@ class PayoutBreakdownView extends StatelessWidget {
   /// « Retry » of « Amount not checked »; `null` draws none.
   final VoidCallback? onRetry;
 
+  /// Whether the detail is open; [onToggleDetail] opens or closes it, `null` draws no « Show details » and no detail.
+  final bool detailOpen;
+  final VoidCallback? onToggleDetail;
+
+  /// Copies the invoice's amount, in the detail; `null` draws no copy.
+  final VoidCallback? onCopy;
+
+  /// Whether the amount was just copied: the icon then shows it.
+  final bool copied;
+
   const PayoutBreakdownView({
     super.key,
     required this.breakdown,
@@ -109,7 +119,15 @@ class PayoutBreakdownView extends StatelessWidget {
     this.lightning = true,
     this.notCompared = false,
     this.onRetry,
+    this.detailOpen = false,
+    this.onToggleDetail,
+    this.onCopy,
+    this.copied = false,
   });
+
+  /// The keys of « Show details » and of the detail, for the tests.
+  static const detailToggle = ValueKey('payout-detail-toggle');
+  static const detail = ValueKey('payout-detail');
 
   /// The keys of the rows, for the tests.
   static const notComparedLine = ValueKey('payout-breakdown-not-compared');
@@ -176,6 +194,23 @@ class PayoutBreakdownView extends StatelessWidget {
           ),
         ],
         if (drawn != null) PayoutCheckLines(check: drawn, onRetry: onRetry),
+        // In the card, under the gap's line (or the alert's two lines, or « not quoted »), as the validated mock-up draws it (the owner's decision of 2026-11-24).
+        if (onToggleDetail case final toggle?) ...[
+          PayoutDetailToggle(
+            key: detailToggle,
+            open: detailOpen,
+            onPressed: toggle,
+          ),
+          if (detailOpen)
+            PayoutBreakdownDetail(
+              key: detail,
+              breakdown: breakdown,
+              check: drawn,
+              lightning: lightning,
+              onCopy: onCopy,
+              copied: copied,
+            ),
+        ],
       ],
     );
   }
@@ -186,7 +221,17 @@ class PayoutCheckLines extends StatelessWidget {
   final PayoutCheck check;
   final VoidCallback? onRetry;
 
-  const PayoutCheckLines({super.key, required this.check, this.onRetry});
+  /// Whether the alert's explanation is said under its two lines: where the check is drawn alone above the form, with no breakdown and so no detail to hold it (#250).
+  final bool explained;
+
+  const PayoutCheckLines({
+    super.key,
+    required this.check,
+    this.onRetry,
+    this.explained = false,
+  });
+
+  static const explanation = ValueKey('payout-check-explanation');
 
   static const gapRow = ValueKey('payout-breakdown-gap');
   static const alertRow = ValueKey('payout-breakdown-alert');
@@ -240,6 +285,13 @@ class PayoutCheckLines extends StatelessWidget {
               ),
               colors.error,
             ),
+            if (explained)
+              if (check case PayoutCheckCompared(:final threshold))
+                second(
+                  explanation,
+                  l10n.p2pPayoutBreakdownAgainstDetail(threshold),
+                  colors.error,
+                ),
           ],
           PayoutCheckUnverified() => [
             PayoutRow(
@@ -267,6 +319,12 @@ class PayoutCheckLines extends StatelessWidget {
               l10n.p2pPayoutBreakdownUnverifiedLine,
               colors.warning,
             ),
+            if (explained)
+              second(
+                explanation,
+                l10n.p2pPayoutBreakdownUnverifiedDetail,
+                colors.warning,
+              ),
           ],
           PayoutCheckNotPriced() => [
             PayoutRow(
@@ -282,7 +340,7 @@ class PayoutCheckLines extends StatelessWidget {
   }
 }
 
-/// The breakdown's detail, opened by « Show details » under the payout panel's buttons (variant C of the owner's screen session of 2026-11-20, validated on 2026-11-24, #250), in this order: what Bull Wallet expected and its price's line, the coordinator's fee already deducted, on the Lightning tab the routing fees, « Your invoice » with the copy of its amount (the reference's copy beside « Submit invoice for … sats », `Forms/LightningPayout.tsx:556-577`) and the swap service's fee, then one paragraph: « A small gap is normal… » beside a comparison within the threshold only, never beside an alert; the red alert's explanation; « Amount not checked »'s.
+/// The breakdown's detail, opened by « Show details » inside the breakdown's card, under the gap's line (the validated mock-up of the payout screen, the owner's decision of 2026-11-24, #250), in this order: what Bull Wallet expected and its price's line, the coordinator's fee already deducted, on the Lightning tab the routing fees, « Your invoice » with the copy of its amount (the reference's copy beside « Submit invoice for … sats », `Forms/LightningPayout.tsx:556-577`) and the swap service's fee, then one paragraph: « A small gap is normal… » beside a comparison within the threshold only, never beside an alert; the red alert's explanation; « Amount not checked »'s.
 class PayoutBreakdownDetail extends StatelessWidget {
   final PayoutBreakdown breakdown;
 
@@ -341,7 +399,8 @@ class PayoutBreakdownDetail extends StatelessWidget {
       ),
       PayoutCheckNotPriced() || null => null,
     };
-    return _Card(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (check case PayoutCheckCompared(:final expected, :final price)) ...[
           PayoutRow(
@@ -403,7 +462,7 @@ class PayoutBreakdownDetail extends StatelessWidget {
   }
 }
 
-/// « Show details » / « Hide details » with its chevron, under the payout panel's buttons: the detail opens under it, so that nothing above moves.
+/// « Show details » / « Hide details » with its chevron, in the breakdown's card under the gap's line: the detail opens under it, in the card; what is under the card moves down.
 class PayoutDetailToggle extends StatelessWidget {
   final bool open;
   final VoidCallback onPressed;

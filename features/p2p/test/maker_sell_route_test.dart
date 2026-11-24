@@ -1556,32 +1556,20 @@ void main() {
               expect(find.text(l10n.p2pCommonRetry), findsNothing);
               expect(find.text(l10n.p2pPayoutBreakdownGap), findsNothing);
           }
-          // « Show details »: the detail opens under the buttons, none of which moves; « Hide details » closes it.
+          // « Show details » in the breakdown's card, under the gap's line, seen on arrival on a phone of 720 × 1280 pixels (the owner's decision of 2026-11-24: the validated mock-up); the detail opens in the card, the buttons moving down; « Hide details » puts everything back.
           final submit = find.widgetWithText(TradeButton, l10n.p2pPayoutSubmit);
-          final wallets = find.widgetWithText(
-            TradeButton,
-            l10n.p2pTradeCompatibleWallets,
-          );
           final toggle = find.byKey(PayoutPanel.detailToggle);
-          await tester.ensureVisible(toggle);
-          await tester.pump();
+          await _expectToggleInCard(tester);
           final before = [
-            for (final button in [generate, submit, wallets])
-              tester.getTopLeft(button),
+            for (final button in [generate, submit]) tester.getTopLeft(button),
           ];
-          expect(tester.getTopLeft(toggle).dy, greaterThan(before.last.dy));
           await tester.tap(find.text(l10n.p2pDetailShow));
           await tester.pump();
           expect(find.byKey(PayoutPanel.detail), findsOneWidget);
           expect(find.text(l10n.p2pDetailHide), findsOneWidget);
-          expect([
-            for (final button in [generate, submit, wallets])
-              tester.getTopLeft(button),
-          ], before);
-          expect(
-            tester.getTopLeft(find.byKey(PayoutPanel.detail)).dy,
-            greaterThan(before.last.dy),
-          );
+          _expectDetailInCard(tester);
+          expect(tester.getTopLeft(generate).dy, greaterThan(before.first.dy));
+          expect(toggle, findsOneWidget);
           expect(row(PayoutBreakdownDetail.feeRow), words.sats(last - payout));
           expect(
             row(PayoutBreakdownDetail.budgetRow),
@@ -1636,8 +1624,7 @@ void main() {
           await tester.pump();
           expect(find.byKey(PayoutPanel.detail), findsNothing);
           expect([
-            for (final button in [generate, submit, wallets])
-              tester.getTopLeft(button),
+            for (final button in [generate, submit]) tester.getTopLeft(button),
           ], before);
           // « Retry » of « Amount not checked »: the price read again, the gap line in its place.
           if (rate is P2pWalletRateUnavailable) {
@@ -1722,6 +1709,57 @@ void main() {
       await settle(tester);
       await tester.pump(const Duration(seconds: 61));
     },
+  );
+}
+
+/// « Show details » in the breakdown's card, under the rule's lines, and within a phone of 720 × 1280 pixels (360 × 640 points) on arrival, without scrolling (#250, the owner's decision of 2026-11-24).
+Future<void> _expectToggleInCard(WidgetTester tester) async {
+  final toggle = find.byKey(PayoutPanel.detailToggle);
+  expect(
+    find.descendant(of: find.byType(PayoutBreakdownView), matching: toggle),
+    findsOneWidget,
+  );
+  final checks = find.descendant(
+    of: find.byType(PayoutBreakdownView),
+    matching: find.byType(PayoutCheckLines),
+  );
+  if (checks.evaluate().isNotEmpty) {
+    expect(
+      tester.getTopLeft(toggle).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(checks).dy),
+    );
+  }
+  // Seen without scrolling on a phone of 720 × 1280 pixels; with an alert's two lines, the tests' font (wider than the app's) wraps them further down, so the arrival with an alert is checked on the captures, drawn with the app's font.
+  final alert =
+      find.byKey(PayoutCheckLines.alertRow).evaluate().isNotEmpty ||
+      find.byKey(PayoutCheckLines.unverifiedRow).evaluate().isNotEmpty;
+  if (!alert) {
+    final size = tester.view.physicalSize;
+    final ratio = tester.view.devicePixelRatio;
+    tester.view
+      ..physicalSize = const Size(720, 1280)
+      ..devicePixelRatio = 2;
+    await tester.pump();
+    expect(tester.getBottomLeft(toggle).dy, lessThanOrEqualTo(640));
+    tester.view
+      ..physicalSize = size
+      ..devicePixelRatio = ratio;
+    await tester.pump();
+  }
+}
+
+/// The detail open in the breakdown's card, under « Hide details ».
+void _expectDetailInCard(WidgetTester tester) {
+  final detail = find.byKey(PayoutPanel.detail);
+  expect(
+    find.descendant(of: find.byType(PayoutBreakdownView), matching: detail),
+    findsOneWidget,
+  );
+  expect(
+    tester.getTopLeft(detail).dy,
+    greaterThanOrEqualTo(
+      tester.getBottomLeft(find.byKey(PayoutPanel.detailToggle)).dy,
+    ),
   );
 }
 

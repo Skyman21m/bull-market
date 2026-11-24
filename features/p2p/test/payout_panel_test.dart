@@ -718,6 +718,33 @@ void main() {
       );
 
       testWidgets(
+        'no form at all (a status where nothing is asked yet, the payout panel drawing no breakdown): a red alert, « Amount not checked » and « not quoted » said alone, the alert with its explanation, there being no detail to hold it',
+        (tester) async {
+          for (final (check, words, explanation) in [
+            (
+              compared(106713, warns: true),
+              'Gap against you',
+              'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
+            ),
+            (
+              PayoutCheckUnverified(Sats.fromInt(106713)),
+              'Amount not checked',
+              'Without this price, it cannot compare the coordinator\'s amount.',
+            ),
+            (PayoutCheckNotPriced(Sats.fromInt(106713)), 'not quoted', null),
+          ]) {
+            await show(tester, cubitOf(_Sender()), seven, check: check);
+            expect(find.byType(PayoutBreakdownView), findsNothing);
+            expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+            expect(find.text(words), findsOneWidget);
+            if (explanation != null) {
+              expect(find.text(explanation), findsOneWidget);
+            }
+          }
+        },
+      );
+
+      testWidgets(
         '« Amount not checked » and « not quoted » of other sats: said alone above the form too',
         (tester) async {
           for (final (check, words) in [
