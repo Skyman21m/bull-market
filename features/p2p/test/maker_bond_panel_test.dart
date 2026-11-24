@@ -466,12 +466,12 @@ void main() {
         rate: Ok(_rateAt(P2pWalletRateRead(80000))),
       );
       await _confirming(tester, payments);
-      expect(find.text('-12.77%'), findsOneWidget);
+      expect(find.text('−12.77%'), findsOneWidget);
       expect(find.text('Gap to the Bull price (indicative)'), findsOneWidget);
       expect(find.text('Gap against you'), findsNothing);
       await _detail(tester);
       expect(
-        find.textContaining('Gap of the invoice: -12.77%'),
+        find.textContaining('Gap of the invoice: −12.77%'),
         findsOneWidget,
       );
       expect(find.textContaining('beyond a 10% gap'), findsNothing);

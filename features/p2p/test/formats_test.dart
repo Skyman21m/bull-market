@@ -15,7 +15,9 @@ void main() {
     'the gap of a payment from the wallet\'s price (#180): its sign, 2 decimals, none for 0',
     () {
       expect(en.gap(BigInt.from(1002)), '+10.02%');
-      expect(en.gap(BigInt.from(-1)), '-0.01%');
+      expect(en.gap(BigInt.from(-1)), '−0.01%');
+      // The minus sign (U+2212), as the owner's validated page writes it (#250).
+      expect(en.bigSats(BigInt.from(-320)), '−320');
       expect(en.gap(BigInt.zero), '0.00%');
       expect(en.threshold(0.10), '10%');
     },

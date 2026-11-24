@@ -103,8 +103,10 @@ final class _Words {
     required this.collateralBack,
   });
 
-  String sats(int value) =>
-      NumberFormat.decimalPattern(locale.languageCode).format(value);
+  /// A negative one with the minus sign (U+2212), as the screens write it (#250).
+  String sats(int value) => NumberFormat.decimalPattern(
+    locale.languageCode,
+  ).format(value).replaceFirst('-', '\u2212');
 }
 
 const _english = _Words(
@@ -1558,7 +1560,7 @@ void main() {
             case P2pWalletRateRead() when !warns:
               expect(find.text(l10n.p2pPayoutBreakdownGap), findsOneWidget);
               final gap = row(PayoutCheckLines.gapRow);
-              expect(gap.startsWith('-'), isTrue, reason: gap);
+              expect(gap.startsWith('−'), isTrue, reason: gap);
               expect(colourOf(PayoutCheckLines.gapRow), theme?.text);
               expect(colourOf(PayoutBreakdownView.givenRow), theme?.text);
               expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsNothing);
@@ -1567,7 +1569,7 @@ void main() {
               expect(find.text(l10n.p2pPayoutBreakdownGap), findsNothing);
               expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsOneWidget);
               final gap = row(PayoutCheckLines.alertRow);
-              expect(gap.startsWith('-'), isTrue, reason: gap);
+              expect(gap.startsWith('−'), isTrue, reason: gap);
               expect(colourOf(PayoutCheckLines.alertRow), theme?.error);
               expect(colourOf(PayoutBreakdownView.givenRow), theme?.error);
               expect(colourOf(PayoutBreakdownView.receivedRow), theme?.text);
