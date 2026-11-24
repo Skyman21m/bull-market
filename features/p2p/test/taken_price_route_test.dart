@@ -613,7 +613,7 @@ void main() {
     );
 
     testWidgets(
-      'a taker seller\'s red escrow confirmation open, then the coordinator\'s amounts no longer agree, $code: even the red comparison goes, the state machine\'s alert alone',
+      'a taker seller\'s red escrow confirmation open, then an alert of the amounts, then one that is not about them, then a clean read, $code: the red comparison stays throughout, never silenced by another alert, and « Pay » pays (security review, C5)',
       (tester) async {
         final journey = await _Journey.start(
           tester,
@@ -621,19 +621,93 @@ void main() {
           seller: true,
           sats: 1348344,
         );
+        final l10n = journey.l10n;
         await journey.take();
         await journey.confirmBond();
-        await journey.lockBond(find.text(journey.l10n.p2pPayWithThisWallet));
+        await journey.lockBond(find.text(l10n.p2pPayWithThisWallet));
         await journey.confirmEscrow();
         final red =
             '${journey.escrowLine(90175)} ${journey.escrowWarning(1350704)}';
         expect(find.text(red), findsOneWidget);
+        // `trade_satoshis` no longer the escrow's (`EscrowAmountMismatch`).
         journey.coordinator.tradeSatoshisAnswered = 100000;
-        await journey.waitUntil(() => find.text(red).evaluate().isEmpty);
+        final amounts = find.text(l10n.p2pTradeWarnAmounts('Temple of Sats'));
+        await journey.waitFor(amounts);
         await settle(tester);
-        expect(find.text(journey.l10n.p2pCommonGoBack), findsOneWidget);
-        expect(find.text(red), findsNothing);
-        expect(journey.wallet.paid, isEmpty);
+        expect(find.text(red), findsOneWidget);
+        // The amounts agree again; the order shown with another premium (`TradeTermsChanged`), then its own: the trace of terms shown otherwise stays.
+        journey.coordinator.tradeSatoshisAnswered = null;
+        await journey.waitUntil(() => amounts.evaluate().isEmpty);
+        await journey.termsShownOtherwise();
+        expect(find.text(red), findsOneWidget);
+        // « Pay » pays the invoice confirmed: no lock.
+        final pay = find.text(
+          l10n.p2pPayConfirm(journey.formats.sats(1350704 + 327)),
+        );
+        expect(pay, findsOneWidget);
+        final invoice = journey.coordinator.escrowInvoice;
+        if (invoice == null) fail('no escrow invoice');
+        journey.wallet.scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-escrow',
+              paymentHash: invoice.facts.paymentHash,
+            ),
+          ),
+        );
+        await journey.tap(pay);
+        await journey.waitUntil(() => journey.wallet.paid.isNotEmpty);
+        expect(journey.wallet.paid, hasLength(1));
+        await journey.close();
+      },
+    );
+
+    testWidgets(
+      'a taker buyer\'s red bond, then « rate not checked », beside the alert of terms changed and its trace, $code: each stays, « Pay » offered (security review, C5)',
+      (tester) async {
+        final journey = await _Journey.start(tester, locale, sats: 1348344);
+        final l10n = journey.l10n;
+        await journey.take();
+        await journey.confirmBond();
+        final warning = find.text(journey.bondWarning(40450));
+        expect(warning, findsOneWidget);
+        journey.coordinator.premium = 9;
+        await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
+        await settle(tester);
+        expect(warning, findsOneWidget);
+        expect(find.text(journey.bondLine(90000)), findsOneWidget);
+        journey.coordinator.premium = 3.5;
+        await journey.waitUntil(
+          () => find.text(l10n.p2pTradeWarnTerms).evaluate().isEmpty,
+        );
+        await settle(tester);
+        expect(warning, findsOneWidget);
+        expect(
+          find.text(l10n.p2pPayConfirm(journey.formats.sats(40450 + 327))),
+          findsOneWidget,
+        );
+        await journey.close();
+      },
+    );
+
+    testWidgets(
+      'a taker buyer\'s bond whose price could not be read, beside the alert of terms changed, $code: « rate not checked » and « Retry » stay (security review, C5)',
+      (tester) async {
+        final journey = await _Journey.start(
+          tester,
+          locale,
+          rate: const P2pWalletRateUnavailable(),
+        );
+        final l10n = journey.l10n;
+        await journey.take();
+        await journey.confirmBond();
+        final unverified = find.text(l10n.p2pPayRateUnverified('USD'));
+        expect(unverified, findsOneWidget);
+        journey.coordinator.premium = 9;
+        await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
+        await settle(tester);
+        expect(unverified, findsOneWidget);
+        expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
         await journey.close();
       },
     );

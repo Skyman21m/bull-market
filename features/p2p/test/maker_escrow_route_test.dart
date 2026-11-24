@@ -505,6 +505,72 @@ void main() {
   );
 
   group(
+    'an alert never silences another (security review of #249, C5): a red comparison stays beside an alert of the state machine, « Pay » offered, an order made here',
+    () {
+      Finder pay(String total) => find.text('Pay $total sats');
+
+      testWidgets(
+        'a maker seller\'s red escrow: beside an alert of the amounts, then of terms changed and its trace',
+        (tester) async {
+          final app = await _App.start(tester);
+          // The Bull wallet's price ten times the coordinator's: the escrow ten times the sats expected.
+          app.wallet.rate = P2pWalletRateRead(500000);
+          await app.openTrade();
+          final escrow = app.coordinator.order(app.record.orderId).escrow;
+          if (escrow == null) fail('no escrow invoice');
+          await _confirm(app, escrow);
+          final red = find.textContaining('This collateral is more than 10%');
+          expect(red, findsOneWidget);
+          final amounts = find.text(
+            'The amounts Temple of Sats gives do not add up.',
+          );
+          app.coordinator.orderChanges[app.record.orderId] = {
+            'trade_satoshis': 100000,
+          };
+          await _until(app, () => amounts.evaluate().isNotEmpty);
+          await app.settle();
+          expect(red, findsOneWidget);
+          expect(find.textContaining('100 EUR are worth'), findsOneWidget);
+          app.coordinator.orderChanges.remove(app.record.orderId);
+          await _until(app, () => amounts.evaluate().isEmpty);
+          await _termsShownOtherwise(app);
+          expect(red, findsOneWidget);
+          expect(pay('196,654'), findsOneWidget);
+          expect(app.wallet.paid, isEmpty);
+          await app.close();
+        },
+      );
+
+      testWidgets('the maker bond in red: beside an alert of terms changed', (
+        tester,
+      ) async {
+        final app = await _App.start(tester, taken: false);
+        app.wallet.rate = P2pWalletRateRead(500000);
+        await app.openTrade();
+        final bond = app.coordinator.order(app.record.orderId).bond;
+        if (bond == null) fail('no bond');
+        await _confirm(app, bond);
+        final red = find.textContaining('This bond is more than 10%');
+        expect(red, findsOneWidget);
+        final terms = find.text(
+          'The terms of the order are not those of the order taken.',
+        );
+        app.coordinator.orderChanges[app.record.orderId] = {'premium': '9.00'};
+        await _until(app, () => terms.evaluate().isNotEmpty);
+        await app.settle();
+        expect(red, findsOneWidget);
+        app.coordinator.orderChanges.remove(app.record.orderId);
+        await _until(app, () => terms.evaluate().isEmpty);
+        await app.settle();
+        expect(red, findsOneWidget);
+        expect(find.textContaining('Pay '), findsWidgets);
+        expect(app.wallet.paid, isEmpty);
+        await app.close();
+      });
+    },
+  );
+
+  group(
     'the contract\'s amount the confirmation names (functional review of #188, C1)',
     () {
       Future<void> openConfirmation(_App app) async {

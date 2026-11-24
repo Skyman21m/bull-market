@@ -464,11 +464,9 @@ class _Confirmation extends StatelessWidget {
               style: body,
             ),
             const Gap(BullSpacing.sm),
-            // The owner's payment rule (#180; for a take, #249): the bond or the escrow against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay. For a take, nothing while the status shown carries an alert of the state machine (terms read otherwise, amounts that do not agree…): the alert speaks alone, as for a maker seller's escrow (design note `docs/design/phase-3-taken-order-price-check.md` § 3). For any order, no comparison within the threshold beside an alert the screen shows (`ShownAlerts`: the state machine's, the trace of terms shown otherwise; security review of #249, C1).
+            // The owner's payment rule (#180; for a take, #249): the bond or the escrow against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay. Beside an alert the screen shows (`ShownAlerts`: the state machine's, the trace of terms shown otherwise), only a comparison within the threshold is left out; a red one, « rate not checked » and « not priced » stay, an alert never silencing another (security review of #249, C1, C5): the confirmation stays open, and « Pay » with it, when a read brings an alert.
             if (rate case final rate?
-                when (request.record.origin == TradeOrigin.madeHere ||
-                        !ShownAlerts.stateMachine(request.seen.status)) &&
-                    !ShownAlerts.reassuresBeside(request.seen, rate)) ...[
+                when !ShownAlerts.reassuresBeside(request.seen, rate)) ...[
               _RateLines(
                 rate: rate,
                 coordinator: coordinator,
@@ -551,10 +549,8 @@ class _EscrowConfirmation extends StatelessWidget {
     final currency = request.currency;
     final seen = request.seen;
     final rate = confirming.rate;
-    // The contract's amount as asked here, the trade screen's own rule (#183): none while the order read shows another; and no comparison either while the status shown carries an alert of the state machine (terms read otherwise, amounts that do not agree…): the alert above speaks alone (functional review of #188, C1; security review, C2).
-    final amount = ShownAlerts.stateMachine(seen.status)
-        ? null
-        : seen.contractAmountShown;
+    // The contract's amount the comparison was made for, as asked here (the trail's, `WalletRateCheck.ofMakerEscrow`), never the amount of a read: the line names it even while the order read shows another, when the line is itself an alert (functional review of #188, C1; security review of #249, C5: an alert never silences another).
+
     // The alerts of this confirmation itself (earlier escrows not back or kept, the order's bond held too, a confirmation stale or asked again): beside them, as beside an alert of the screen (`ShownAlerts`), no comparison within the threshold is drawn (security review of #249, C1).
     final earlierAlerts = [
       ...earlierEscrowAlerts(context, contract, coordinator: coordinator),
@@ -571,11 +567,14 @@ class _EscrowConfirmation extends StatelessWidget {
     // The comparison with the Bull wallet's price: in place, beside the amounts, within the threshold; beyond it, the line and its warning one red alert with the others above the buttons (functional review of #188, C2), never a neutral line beside it. A currency the Bull wallet does not price, or a price it could not read: its line alone, in the warning colour, with the alerts above the buttons (« Retry » for the latter), and no figure of the creation's price nor any gap from it (the owner's decisions of 2026-11-17; security review of #188, C1; R11).
     Widget? rateLines;
     final rateAlerts = <Widget>[];
-    if (amount != null) {
+    {
       switch (rate) {
         case null:
           break;
-        case final WalletRateCompared compared:
+        // A maker seller's escrow check always carries its contract's amount (`WalletRateCheck.ofMakerEscrow`).
+        case WalletRateCompared(amount: null):
+          break;
+        case WalletRateCompared(amount: final amount?) && final compared:
           final expected = formats.bigSats(compared.expected.value);
           final line = l10n.p2pPayRateWalletEscrow(
             formats.orderRate(compared.price),

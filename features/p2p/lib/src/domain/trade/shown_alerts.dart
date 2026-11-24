@@ -12,6 +12,8 @@ import 'wallet_rate_check.dart';
 /// - the trace of terms shown otherwise (#231: the coordinator showed this trade with other terms, then put them back), drawn in the warning colour while the trade lasts ([termsTrace]);
 /// - at 9, the trace of a buyer's payout not given from this wallet (#204: pasted, given elsewhere, or not known), drawn in the warning colour before « Confirm … sent » ([payoutTrace]).
 ///
+/// Beside an alert, only the line that reassures is left out ([reassuresBeside]); an alert never silences another: a red comparison, « rate not checked » and « not priced » stay, in the confirmation of « Pay with this wallet » as at the payout, for a taker and a maker (security review of #249, C5: a confirmation stays open, and « Pay » with it, when a read brings an alert).
+///
 /// The alerts a confirmation draws of its own (a maker seller's earlier escrows not back or kept, the order's bond held too, a confirmation stale or asked again) are its caller's to add ([reassuresBeside]'s `besides`).
 abstract final class ShownAlerts {
   /// Whether [seen] shows any alert of the trade ([stateMachine], [termsTrace], [payoutTrace]).
