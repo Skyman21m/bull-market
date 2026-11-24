@@ -761,7 +761,7 @@ void main() {
         await _show(tester, form);
         await _fill(tester);
         final line = find.text(
-          'For comparison, the Bull wallet\'s indicative price: 110,000 EUR/BTC (Temple of Sats: 91,711, gap -16.63%).',
+          'For comparison, the Bull wallet\'s indicative price: 110,000 EUR/BTC (Temple of Sats: 91,711, gap −16.63%).',
         );
         expect(line, findsOneWidget);
         expect(
@@ -806,7 +806,7 @@ void main() {
       final form = _Form()..rate = P2pWalletRateRead(100000);
       await _show(tester, form);
       await _typeAmount(tester);
-      expect(find.textContaining('gap -8.29%'), findsOneWidget);
+      expect(find.textContaining('gap −8.29%'), findsOneWidget);
       expect(find.textContaining('more than 10%'), findsNothing);
     });
 

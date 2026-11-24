@@ -47,19 +47,33 @@ final class P2pFormats {
   String sats(int sats) => NumberFormat.decimalPattern(_locale).format(sats);
 
   /// A number of sats held as a `BigInt`, with the thousands separator of the locale: exact while it fits an `int`, the nearest double's digits beyond (a figure computed from a price, never one the wallet pays).
-  String bigSats(BigInt sats) => sats.isValidInt
-      ? this.sats(sats.toInt())
-      : NumberFormat.decimalPattern(_locale).format(sats.toDouble());
+  ///
+  /// A negative one is written with the minus sign (U+2212), as the owner's validated page writes « −320 » (#250): display only, never read back nor sent.
+  String bigSats(BigInt sats) => _minus(
+    sats.isValidInt
+        ? this.sats(sats.toInt())
+        : NumberFormat.decimalPattern(_locale).format(sats.toDouble()),
+  );
 
-  /// How far an amount is from the one expected (#180), from hundredths of a percent already rounded away from zero: with its sign and 2 decimals, such as `+10.01%` or `-2.50%`.
+  /// How far an amount is from the one expected (#180), from hundredths of a percent already rounded away from zero: with its sign and 2 decimals, such as `+10.01%` or `−2.50%`.
   String gap(BigInt hundredths) {
     final text = _percent(
       hundredths.toDouble() / 100,
       minDecimals: 2,
       maxDecimals: 2,
     );
-    return hundredths > BigInt.zero ? '+$text' : text;
+    return hundredths > BigInt.zero ? '+$text' : _minus(text);
   }
+
+  /// [text] with its hyphen-minus written as the minus sign (U+2212), as the owner's validated page writes « −0.03 % » (#250): for the display of a gap or of sats taken off, never for a figure read back.
+  static String _minus(String text) => text.replaceFirst('-', '\u2212');
+
+  /// The size of a gap (#250), from the same hundredths of a percent, without its sign, for a sentence that says « more » itself: `0.34%` for `+0.34%`.
+  String gapSize(BigInt hundredths) => _percent(
+    hundredths.abs().toDouble() / 100,
+    minDecimals: 2,
+    maxDecimals: 2,
+  );
 
   /// A price of a bitcoin, as the reference writes « Order current rate »: 5 significant digits (`toPrecision(5)`, `components/MakerForm/MakerForm.tsx:168`), then the language's number format, which keeps at most 3 decimals (`new Intl.NumberFormat(settings.language)`, `:515`, `:1349`): `71,657`, `110,000`, `33.457`.
   String orderRate(double price) =>

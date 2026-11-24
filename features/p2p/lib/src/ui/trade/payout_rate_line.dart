@@ -8,6 +8,7 @@ import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/usecases/trade/check_payout_rate_usecase.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_rate_cubit.dart';
+import '../widgets/price_check_lines.dart';
 import '../widgets/trade_dialog_body.dart';
 import 'payout_breakdown_view.dart';
 
@@ -57,6 +58,7 @@ class PayoutRateLines extends StatelessWidget {
             gap: formats.gap(check.gapHundredths),
             warns: check.warns,
             threshold: formats.threshold(TradeTolerances.walletRateGap),
+            small: PriceCheckLines.smallGap(check.gapHundredths),
           ),
           WalletRateUnverified() => PayoutCheckUnverified(check.asked),
           WalletRateNotPriced() => PayoutCheckNotPriced(check.asked),

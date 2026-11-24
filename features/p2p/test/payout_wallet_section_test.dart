@@ -359,7 +359,7 @@ void main() {
           isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
         );
         // What arrives, as the lean breakdown's fees and total (#228, #250): the routing budget and the swap fee together, then what reaches the wallet.
-        expect(row(PayoutBreakdownView.feesRow, '-313'), findsOneWidget);
+        expect(row(PayoutBreakdownView.feesRow, '−313'), findsOneWidget);
         expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsOneWidget);
         expect(find.text('Routing and swap fees'), findsOneWidget);
         // Nothing submitted: « Submit » is the user's tap.
@@ -382,7 +382,7 @@ void main() {
       await tester.pump();
       // The swap fee goes: the routing fees alone, and the invoice to give as what will be received.
       expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsNothing);
-      expect(row(PayoutBreakdownView.feesRow, '-107'), findsOneWidget);
+      expect(row(PayoutBreakdownView.feesRow, '−107'), findsOneWidget);
       expect(find.text('Routing fees'), findsOneWidget);
       expect(row(PayoutBreakdownView.receivedRow, '106,606'), findsOneWidget);
     });
@@ -537,7 +537,7 @@ void main() {
         // No swap fee of the dropped invoice: the routing fees alone, the invoice's amount as what will be received (#250).
         expect(row(PayoutBreakdownView.receivedRow, '106,400'), findsNothing);
         expect(row(PayoutBreakdownView.receivedRow, '106,606'), findsOneWidget);
-        expect(row(PayoutBreakdownView.feesRow, '-107'), findsOneWidget);
+        expect(row(PayoutBreakdownView.feesRow, '−107'), findsOneWidget);
       },
     );
 

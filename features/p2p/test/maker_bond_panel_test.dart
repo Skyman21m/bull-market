@@ -201,6 +201,13 @@ Future<void> _confirming(WidgetTester tester, Payments payments) async {
   await tester.pump();
 }
 
+/// Opens the confirmation's detail (« Show details », #250).
+Future<void> _detail(WidgetTester tester) async {
+  await _reveal(tester, find.text('Show details'));
+  await tester.tap(find.text('Show details'));
+  await tester.pump();
+}
+
 void main() {
   setUpAll(() async {
     _bondStep = await _makerBondStep();
@@ -365,14 +372,26 @@ void main() {
           rate: Ok(_rateAt(P2pWalletRateRead(91711.15))),
         );
         await _confirming(tester, payments);
-        expect(find.text('Pay 3,207 sats to lock your bond?'), findsOneWidget);
+        // On arrival the bond and the gap « (indicative) » (#250); the sentence in the detail, with « A small gap is normal ».
+        expect(find.text('Bond'), findsOneWidget);
+        expect(find.text('3,207 sats'), findsOneWidget);
+        expect(find.text('Gap to the Bull price (indicative)'), findsOneWidget);
+        expect(find.text('+0.01%'), findsOneWidget);
+        expect(find.text('Gap against you'), findsNothing);
+        await _detail(tester);
         expect(
           find.text(
             'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, this bond is worth 3,206 sats. Gap of the invoice: +0.01%.',
           ),
           findsOneWidget,
         );
-        expect(find.textContaining('more than 10%'), findsNothing);
+        expect(
+          find.text(
+            'A small gap is normal: the coordinator has its own price source.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('beyond a 10% gap'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
@@ -394,20 +413,34 @@ void main() {
           rate: Ok(_rateAt(P2pWalletRateRead(110000))),
         );
         await _confirming(tester, payments);
-        expect(
-          find.text(
-            'At the Bull wallet\'s price, 110,000 EUR/BTC, with the order\'s premium, this bond is worth 2,673 sats. Gap of the invoice: +19.95%.',
-          ),
-          findsOneWidget,
-        );
+        // The red alert in two lines, visible on arrival above the buttons (#250): the gap against the user, then both amounts; never « (indicative) ».
+        expect(find.text('Gap against you'), findsOneWidget);
+        expect(find.text('+19.95%'), findsOneWidget);
+        expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
         final warning = find.text(
-          'This bond is more than 10% above that: 3,207 sats asked, 2,673 sats expected. Check it before you pay.',
+          'Bull Wallet expected 2,673 sats, the coordinator asks 3,207.',
         );
         expect(warning, findsOneWidget);
         expect(
           tester.widget<Text>(warning).style?.color,
           tester.element(warning).bull.error,
         );
+        expect(
+          tester.getTopLeft(warning).dy,
+          lessThan(tester.getTopLeft(find.text('Go back')).dy),
+        );
+        // Its explanation in the detail, in red, in place of the comparison's sentence; never « A small gap is normal ».
+        await _detail(tester);
+        final explanation = find.text(
+          'Bull Wallet redoes the calculation with its own price (110,000 EUR/BTC, premium included) and warns you beyond a 10% gap. Check the order before paying.',
+        );
+        expect(explanation, findsOneWidget);
+        expect(
+          tester.widget<Text>(explanation).style?.color,
+          tester.element(explanation).bull.error,
+        );
+        expect(find.textContaining('Gap of the invoice'), findsNothing);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
         final pay = tester.widget<TradeButton>(
           find.ancestor(
@@ -433,11 +466,17 @@ void main() {
         rate: Ok(_rateAt(P2pWalletRateRead(80000))),
       );
       await _confirming(tester, payments);
+      expect(find.text('−12.77%'), findsOneWidget);
+      expect(find.text('Gap to the Bull price (indicative)'), findsOneWidget);
+      expect(find.text('Gap against you'), findsNothing);
+      await _detail(tester);
       expect(
-        find.textContaining('Gap of the invoice: -12.77%'),
+        find.textContaining('Gap of the invoice: −12.77%'),
         findsOneWidget,
       );
-      expect(find.textContaining('more than 10%'), findsNothing);
+      expect(find.textContaining('beyond a 10% gap'), findsNothing);
+      // Beyond 10 % on the side that does not warn: no « small gap » either (functional review of #268, C1).
+      expect(find.textContaining('A small gap is normal'), findsNothing);
     });
 
     testWidgets(
@@ -457,19 +496,21 @@ void main() {
           ),
         );
         await _confirming(tester, payments);
-        final line = find.text(
-          'The Bull wallet has no price for EUR: rate not checked. You are trusting Temple of Sats\'s price: check it yourself before paying.',
-        );
+        // The grey « not quoted » line alone (the owner's decision of 2026-11-24, #250): no figure, no line naming the coordinator.
+        final line = find.text('not quoted');
         expect(line, findsOneWidget);
+        expect(find.text('Gap to the Bull price'), findsOneWidget);
         expect(
           tester.widget<Text>(line).style?.color,
-          tester.element(line).bull.warning,
+          tester.element(line).bull.textMuted,
         );
-        // Nothing reassuring: no price, no expected bond, no gap.
+        await _detail(tester);
+        // Nothing reassuring: no price, no expected bond, no gap, not even in the detail.
         expect(find.textContaining('Gap of the invoice'), findsNothing);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
         expect(find.textContaining('9,171'), findsNothing);
         expect(find.textContaining('EUR/BTC'), findsNothing);
-        expect(find.textContaining('more than 10%'), findsNothing);
+        expect(find.textContaining('Temple of Sats'), findsNothing);
         expect(find.text('Retry'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
         await tester.tap(find.text('Pay 3,357 sats'));
@@ -500,19 +541,30 @@ void main() {
           ),
         );
         await _confirming(tester, payments);
-        final line = find.text(
-          'The Bull wallet\'s price of a bitcoin in EUR could not be read: rate not checked. You can try again, or pay without the check.',
-        );
+        // « Amount not checked » in orange and its second line, visible on arrival (#250).
+        final line = find.text('Amount not checked');
         expect(line, findsOneWidget);
         expect(
           tester.widget<Text>(line).style?.color,
           tester.element(line).bull.warning,
         );
-        // Nothing reassuring: no expected bond, no gap, no price of the creation.
-        expect(find.textContaining('Gap of the invoice'), findsNothing);
-        expect(find.textContaining('9,171'), findsNothing);
-        expect(find.textContaining('more than 10%'), findsNothing);
+        expect(
+          find.text('Bull Wallet could not get its bitcoin price.'),
+          findsOneWidget,
+        );
         expect(find.text('Retry'), findsOneWidget);
+        await _detail(tester);
+        expect(
+          find.text(
+            'Without this price, it cannot compare the coordinator\'s amount. You can try again, or pay without this check.',
+          ),
+          findsOneWidget,
+        );
+        // Nothing reassuring: no expected bond, no gap, no price of the creation, not even in the detail.
+        expect(find.textContaining('Gap of the invoice'), findsNothing);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
+        expect(find.textContaining('9,171'), findsNothing);
+        expect(find.textContaining('beyond a 10% gap'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
@@ -541,10 +593,10 @@ void main() {
         // While it reads: « Retry » waits, « Pay » stays.
         expect(
           tester
-              .widget<TradeButton>(
+              .widget<TextButton>(
                 find.ancestor(
                   of: find.text('Retry'),
-                  matching: find.byType(TradeButton),
+                  matching: find.byType(TextButton),
                 ),
               )
               .onPressed,
@@ -555,11 +607,14 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(find.text('Retry'), findsNothing);
+        expect(find.text('Gap against you'), findsOneWidget);
+        expect(find.text('+19.95%'), findsOneWidget);
         expect(
-          find.textContaining('Gap of the invoice: +19.95%'),
+          find.text(
+            'Bull Wallet expected 2,673 sats, the coordinator asks 3,207.',
+          ),
           findsOneWidget,
         );
-        expect(find.textContaining('more than 10%'), findsOneWidget);
         // The same quote: no second quote asked of the swap service.
         expect(payments.quotes, hasLength(1));
       },
@@ -594,6 +649,7 @@ void main() {
         await tester.pump();
         expect(cubit.state.step, isA<BondPaySending>());
         expect(find.textContaining('Gap of the invoice'), findsNothing);
+        expect(find.text('Gap against you'), findsNothing);
         expect(payments.pays, hasLength(1));
         payments.pays.single.complete(
           const Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
@@ -619,8 +675,19 @@ void main() {
         reads.last.complete(Ok(_rateAt(const P2pWalletRateUnavailable())));
         await tester.pump();
         await tester.pump();
-        expect(find.textContaining('rate not checked'), findsOneWidget);
+        expect(find.text('Amount not checked'), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextButton>(
+                find.ancestor(
+                  of: find.text('Retry'),
+                  matching: find.byType(TextButton),
+                ),
+              )
+              .onPressed,
+          isNotNull,
+        );
         expect(find.text('Pay 3,357 sats'), findsOneWidget);
         expect(payments.quotes, hasLength(1));
       },
@@ -634,7 +701,9 @@ void main() {
           rate: Ok(_rateAt(P2pWalletRateRead(1e15))),
         );
         await _confirming(tester, payments);
-        expect(find.textContaining('rate not checked'), findsOneWidget);
+        expect(find.text('Amount not checked'), findsOneWidget);
+        expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
+        await _detail(tester);
         expect(find.textContaining('Gap of the invoice'), findsNothing);
       },
     );
@@ -647,6 +716,7 @@ void main() {
           rate: Ok(_rateAt(P2pWalletRateRead(33.4567))),
         );
         await _confirming(tester, payments);
+        await _detail(tester);
         expect(find.textContaining('33.457 EUR/BTC'), findsOneWidget);
       },
     );
@@ -666,13 +736,25 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump();
-      // The numbers in the French conventions of the locale (its own spaces), the sentence the project's.
+      // The numbers in the French conventions of the locale (its own spaces), the validated words (#250).
+      expect(find.text('Écart en votre défaveur'), findsOneWidget);
+      expect(find.text('Caution'), findsOneWidget);
+      expect(find.textContaining('Bull Wallet attendait 2'), findsOneWidget);
       expect(
-        find.textContaining('Cette caution dépasse ce montant de plus de 10'),
+        find.textContaining('sats, le coordinateur en demande 3'),
+        findsOneWidget,
+      );
+      await _reveal(tester, find.text('Voir le détail'));
+      await tester.tap(find.text('Voir le détail'));
+      await tester.pump();
+      expect(
+        find.textContaining(
+          'EUR/BTC, prime comprise) et vous prévient au-delà de 10',
+        ),
         findsOneWidget,
       );
       expect(
-        find.textContaining('sats attendus. Vérifiez-la avant de payer.'),
+        find.textContaining('d’écart. Vérifiez l’ordre avant de payer.'),
         findsOneWidget,
       );
     });

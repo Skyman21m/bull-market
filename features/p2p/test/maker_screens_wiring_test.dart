@@ -320,8 +320,10 @@ void main() {
       'a trade taken here (buyer) at 6, ${locale.languageCode}: the breakdown without the Bull wallet\'s price, « Generate Invoice » adding what reaches the wallet; amounts that do not agree: the alert alone (#228)',
       (tester) async {
         final english = locale.languageCode == 'en';
-        String sats(int value) =>
-            NumberFormat.decimalPattern(locale.languageCode).format(value);
+        // A negative one with the minus sign (U+2212), as the screens write it (#250).
+        String sats(int value) => NumberFormat.decimalPattern(
+          locale.languageCode,
+        ).format(value).replaceFirst('-', '\u2212');
         tester.view
           ..physicalSize = const Size(390, 2400) * 3
           ..devicePixelRatio = 3;

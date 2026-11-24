@@ -1992,22 +1992,18 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pPayQuoting => 'Calcul des frais de swap…';
 
   @override
-  String p2pPayConfirmTitle(String amount) {
-    return 'Payer $amount sats pour bloquer votre caution ?';
-  }
+  String get p2pPayRowCollateral => 'Garantie';
 
   @override
-  String p2pPayEscrowConfirmTitle(String amount) {
-    return 'Payer $amount sats pour bloquer la garantie ?';
-  }
+  String get p2pPayRowBond => 'Caution';
 
   @override
-  String p2pPayEscrowNewContract(String take) {
-    return 'Nouveau contrat : cet ordre a été repris après une prise précédente. Cette garantie est celle de la prise $take.';
-  }
+  String get p2pPayRowFees => 'Frais de swap et de réseau';
 
   @override
-  String get p2pPayRowCollateral => 'Facture de la garantie';
+  String p2pPayAmountSats(String amount) {
+    return '$amount sats';
+  }
 
   @override
   String get p2pPayRowSwapFees => 'Frais de swap';
@@ -2016,29 +2012,14 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pPayRowNetworkFee => 'Frais de réseau (estimation)';
 
   @override
-  String get p2pPayRowTotal => 'Total sorti de ce portefeuille';
+  String get p2pPayRowTotal => 'Total à payer';
 
   @override
-  String get p2pPayRowLeft => 'Reste dans Paiements instantanés';
+  String get p2pPayRowLeft => 'Solde après paiement';
 
   @override
   String get p2pPayEscrowHeld =>
-      'Jusqu’à la fin de l’échange, ces sats sont chez le service de swap, pas dans ce portefeuille. Si l’échange est annulé, le swap est remboursé vers Paiements instantanés sans les frais de swap ni les frais de réseau, et le remboursement peut tarder.';
-
-  @override
-  String p2pPayServiceFee(String serviceFee) {
-    return 'Frais de swap : $serviceFee sats';
-  }
-
-  @override
-  String p2pPayNetworkFee(String networkFee) {
-    return 'Frais de réseau : environ $networkFee sats';
-  }
-
-  @override
-  String p2pPayTotal(String total, String left) {
-    return 'Total : $total sats. Reste dans Paiements instantanés : $left sats.';
-  }
+      'Jusqu’à la fin de l’échange, ces sats sont chez le service de swap, pas dans ce portefeuille. Si l’échange est annulé, ils reviennent sur Paiements instantanés, moins les frais de swap et de réseau, parfois avec du retard.';
 
   @override
   String p2pPayRateWallet(
@@ -2048,21 +2029,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String gap,
   ) {
     return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
-  }
-
-  @override
-  String p2pPayRateNotPriced(String currency, String coordinator) {
-    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix annoncé par $coordinator : vérifiez-le vous-même avant de payer.';
-  }
-
-  @override
-  String p2pPayRateUnverified(String currency) {
-    return 'Le portefeuille Bull n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
-  }
-
-  @override
-  String p2pPayRateWarning(String threshold, String asked, String expected) {
-    return 'Cette caution dépasse ce montant de plus de $threshold : $asked sats demandés, $expected sats attendus. Vérifiez-la avant de payer.';
   }
 
   @override
@@ -2077,13 +2043,64 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayRateWarningEscrow(
-    String threshold,
-    String asked,
+  String p2pPayRateDetail(
+    String amount,
+    String currency,
+    String price,
     String expected,
+    String gap,
   ) {
-    return 'Cette garantie dépasse ce montant de plus de $threshold : $asked sats demandés, $expected sats attendus. Vérifiez-la avant de payer.';
+    return 'Bull Wallet refait le calcul avec son propre prix : $amount $currency à $price $currency/BTC, prime comprise, font $expected sats. Le coordinateur demande $gap de plus, ses frais compris.';
   }
+
+  @override
+  String p2pPayAgainstFigures(String expected, String asked) {
+    return 'Bull Wallet attendait $expected sats, le coordinateur en demande $asked.';
+  }
+
+  @override
+  String p2pPayAgainstDetail(String price, String currency, String threshold) {
+    return 'Bull Wallet refait le calcul avec son propre prix ($price $currency/BTC, prime comprise) et vous prévient au-delà de $threshold d’écart. Vérifiez l’ordre avant de payer.';
+  }
+
+  @override
+  String get p2pPayUnverifiedDetail =>
+      'Sans ce prix, il ne peut pas comparer le montant du coordinateur. Vous pouvez réessayer, ou payer sans cette vérification.';
+
+  @override
+  String get p2pPayEarlierNotBack =>
+      'Une garantie précédente n’est pas revenue';
+
+  @override
+  String p2pPayEarlierOutTotal(String total) {
+    return 'Avec celle-ci, $total sats seront hors de ce portefeuille.';
+  }
+
+  @override
+  String p2pPayEarlierNotBackDetail(String sats) {
+    return 'Vous avez déjà payé, ou tenté de payer, une garantie de $sats sats pour cet ordre avec ce portefeuille. Elle n’y est pas encore revenue.';
+  }
+
+  @override
+  String get p2pPayNewContractTitle => 'Nouveau contrat';
+
+  @override
+  String get p2pPayNewContractLine =>
+      'La prise précédente de cet ordre n’a pas abouti. Cette garantie vaut pour le nouveau contrat.';
+
+  @override
+  String get p2pPayConfirmAgainTitle => 'Les montants ont changé';
+
+  @override
+  String get p2pPayConfirmAgainLine =>
+      'Vérifiez-les, puis confirmez à nouveau.';
+
+  @override
+  String get p2pPayConfirmStaleTitle => 'L’ordre a été repris entre-temps';
+
+  @override
+  String get p2pPayConfirmStaleLine =>
+      'Cette confirmation n’est plus valable. Revenez en arrière.';
 
   @override
   String p2pPayConfirm(String total) {
@@ -2200,10 +2217,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayConfirmAgain =>
       'Depuis votre confirmation, ce qui sortira de ce portefeuille, ou l’état d’une garantie précédente, a changé. Rien n’a été payé : vérifiez les chiffres ci-dessous et confirmez de nouveau.';
-
-  @override
-  String get p2pPayConfirmStale =>
-      'Cet ordre a été repris depuis l’ouverture de cette confirmation : elle valait pour la prise précédente, et son « Payer » ne paie rien. Revenez en arrière, puis payez la garantie de la nouvelle prise.';
 
   @override
   String get p2pPayContractMoved =>

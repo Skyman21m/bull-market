@@ -283,8 +283,11 @@ P2pWalletQuote _quoteOf(Bolt11TestInvoice invoice) {
   );
 }
 
-const _earlierOut =
-    'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: 196,654 sats. With this one, 393,308 sats will be out of this wallet for the collaterals of this order, bond not included.';
+/// One earlier collateral of a known amount, in the two lines the owner validated on 2026-11-24 (#250); its sats in the detail.
+const _earlierNotBack = 'A previous collateral has not come back';
+const _earlierOut = 'With this one, 393,308 sats will be out of this wallet.';
+const _earlierDetail =
+    'You already paid, or tried to pay, a collateral of 196,654 sats for this order with this wallet. It has not come back to it yet.';
 const _earlierOutUnknown =
     'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet; this device no longer knows its amount. With this one, at least 196,654 sats will be out of this wallet for the collaterals of this order, bond not included.';
 
@@ -343,7 +346,12 @@ void main() {
       world.wallet.scriptQuote(Ok(_quoteOf(escrow1)));
       await again.tap(find.text('Pay with this wallet'));
       await settle(tester);
+      expect(find.text(_earlierNotBack), findsOneWidget);
       expect(find.text(_earlierOut), findsOneWidget);
+      // The earlier collateral's exact sats, from its record: in the detail.
+      await again.tap(find.text('Show details'));
+      await settle(tester);
+      expect(find.text(_earlierDetail), findsOneWidget);
       expect(find.textContaining('at least'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await settle(tester);

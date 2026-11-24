@@ -14,9 +14,12 @@ import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/trade/trade_tolerances.dart';
 import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
+import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
+import 'package:p2p/src/ui/widgets/price_check_lines.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -24,6 +27,7 @@ import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/harness.dart';
+import 'support/lean_confirmation.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// An order of the book taken on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`) by the user's gestures, in English and in French, and the owner's payment rule for a taken order (#249; design note `docs/design/phase-3-taken-order-price-check.md` § 3, § 5): the bond in the confirmation of « Pay with this wallet », a taker seller's escrow in its confirmation, a taker buyer's payout before « Submit » and in « Confirm … sent ».
@@ -227,7 +231,7 @@ final class _Journey {
   }
 
   /// A quote of [invoice] scripted, then « Pay with this wallet »: its confirmation.
-  Future<void> confirm(Bolt11TestInvoice invoice) async {
+  Future<P2pWalletQuote> confirm(Bolt11TestInvoice invoice) async {
     final checked = checkedBolt11InvoiceForTesting(
       bolt11: invoice.text,
       amount: invoice.facts.amount,
@@ -237,27 +241,25 @@ final class _Journey {
       now: clock(),
     );
     if (checked == null) fail('not a payable invoice');
-    wallet.scriptQuote(
-      Ok(
-        P2pWalletQuote(
-          invoice: checked,
-          payin: Sats(checked.amount.value + BigInt.from(300)),
-          networkFee: Sats.fromInt(27),
-          balance: Sats.fromInt(5000000),
-          quotedAt: clock(),
-        ),
-      ),
+    final quote = P2pWalletQuote(
+      invoice: checked,
+      payin: Sats(checked.amount.value + BigInt.from(300)),
+      networkFee: Sats.fromInt(27),
+      balance: Sats.fromInt(5000000),
+      quotedAt: clock(),
     );
+    wallet.scriptQuote(Ok(quote));
     await tap(find.text(l10n.p2pPayWithThisWallet));
     await settle(tester);
     await waitFor(find.text(l10n.p2pCommonGoBack));
+    return quote;
   }
 
   /// The bond's confirmation.
-  Future<void> confirmBond() async {
+  Future<P2pWalletQuote> confirmBond() async {
     final bond = coordinator.bondOf(robot);
     if (bond == null) fail('no bond');
-    await confirm(bond);
+    return confirm(bond);
   }
 
   /// « Go back », then the bond locked: the trade at 6, [shown] on the screen.
@@ -270,13 +272,13 @@ final class _Journey {
   }
 
   /// The escrow's confirmation, at 6, once the coordinator made its invoice at a read of 6.
-  Future<void> confirmEscrow() async {
+  Future<P2pWalletQuote> confirmEscrow() async {
     await waitUntil(() => coordinator.escrowInvoice != null);
     await settle(tester);
     await waitFor(find.text(l10n.p2pPayWithThisWallet));
     final escrow = coordinator.escrowInvoice;
     if (escrow == null) fail('no escrow invoice');
-    await confirm(escrow);
+    return confirm(escrow);
   }
 
   /// The coordinator shows the trade with another premium for a read, then puts its own back (#231): its alert comes and goes, the trace of terms shown otherwise stays, in the warning colour.
@@ -297,8 +299,9 @@ final class _Journey {
   String bondLine(int gapHundredths) =>
       l10n.p2pPayRateWallet(price(), 'USD', sats(4045), gap(gapHundredths));
 
-  String bondWarning(int asked) =>
-      l10n.p2pPayRateWarning(threshold, sats(asked), sats(4045));
+  /// The red alert's line of figures in the confirmation (#250): the bond expected at the Bull wallet's price, 4,045 sats, and the bond asked.
+  String bondFigures(int asked) =>
+      l10n.p2pPayAgainstFigures(sats(4045), sats(asked));
 
   /// The escrow's line: 100 USD worth 134,834 sats at the Bull wallet's price, and the gap, the coordinator's fee included.
   String escrowLine(int gapHundredths) => l10n.p2pPayRateWalletEscrow(
@@ -309,8 +312,57 @@ final class _Journey {
     gap(gapHundredths),
   );
 
-  String escrowWarning(int asked) =>
-      l10n.p2pPayRateWarningEscrow(threshold, sats(asked), sats(134834));
+  /// The red alert's line of figures in the confirmation (#250): 100 USD worth 134,834 sats at the Bull wallet's price, and the escrow asked.
+  String escrowFigures(int asked) =>
+      l10n.p2pPayAgainstFigures(sats(134834), sats(asked));
+
+  /// The escrow's sentence in the confirmation's detail (#250): the validated one when the coordinator asks more than expected, the earlier one, with the gap's sign, at or below.
+  String escrowSentence(int gapHundredths) => gapHundredths > 0
+      ? l10n.p2pPayRateDetail(
+          formats.amount(_hundred),
+          'USD',
+          price(),
+          sats(134834),
+          formats.gapSize(BigInt.from(gapHundredths)),
+        )
+      : escrowLine(gapHundredths);
+
+  /// The confirmation's card (#250).
+  Finder get card => find.byType(PayConfirmationCard);
+
+  Finder inCard(Finder finder) => find.descendant(of: card, matching: finder);
+
+  /// The rule's lines of the confirmation (#250): on arrival the gap « (indicative) », or in its place the red alert's two lines (« Gap against you », then [figures]), never the comparison's sentence; in the detail the comparison's [sentence] and, for a gap within 10 % both ways, « A small gap is normal », or the alert's explanation, never both. The detail closed again after.
+  Future<void> expectCheck({
+    required int gap,
+    required bool warns,
+    required String figures,
+    required String sentence,
+  }) async {
+    expect(
+      inCard(find.text(l10n.p2pPayoutBreakdownGap)),
+      warns ? findsNothing : findsOneWidget,
+    );
+    expect(
+      inCard(find.text(l10n.p2pPayoutBreakdownAgainst)),
+      warns ? findsOneWidget : findsNothing,
+    );
+    expect(inCard(find.text(this.gap(gap))), findsOneWidget);
+    expect(find.text(figures), warns ? findsOneWidget : findsNothing);
+    expect(find.text(sentence), findsNothing);
+    await tap(inCard(find.text(l10n.p2pDetailShow)));
+    expect(find.text(sentence), warns ? findsNothing : findsOneWidget);
+    // « A small gap is normal » beside a gap within the threshold both ways only (functional review of #268, C1).
+    expect(
+      find.text(l10n.p2pPayoutBreakdownSmallGap),
+      !warns && gap.abs() <= 1000 ? findsOneWidget : findsNothing,
+    );
+    expect(
+      find.text(l10n.p2pPayAgainstDetail(price(), 'USD', threshold)),
+      warns ? findsOneWidget : findsNothing,
+    );
+    await tap(inCard(find.text(l10n.p2pDetailHide)));
+  }
 
   /// The red alert's line of figures (#250), in the breakdown at 6 and 8 and in « Confirm … sent » at 9: 100 USD worth 134,834 sats at the Bull wallet's price, and the sats the coordinator pays.
   String payoutWarning(int received) =>
@@ -356,10 +408,11 @@ void main() {
             );
             await journey.take();
             await journey.confirmBond();
-            expect(find.text(journey.bondLine(bond.gap)), findsOneWidget);
-            expect(
-              find.text(journey.bondWarning(bond.asked)),
-              bond.warns ? findsOneWidget : findsNothing,
+            await journey.expectCheck(
+              gap: bond.gap,
+              warns: bond.warns,
+              figures: journey.bondFigures(bond.asked),
+              sentence: journey.bondLine(bond.gap),
             );
             // « Pay » stays offered: never a lock.
             expect(
@@ -590,6 +643,24 @@ void main() {
       );
 
       testWidgets(
+        'a coordinator\'s price ten times too low, so ten times the sats paid: the gap « (indicative) » alone, never « A small gap is normal » beside a gap that large (functional review of #268, C1)',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale, sats: 1348344);
+          final l10n = journey.l10n;
+          await journey.take();
+          await journey.confirmBond();
+          await journey.lockBond(find.byKey(PayoutCheckLines.gapRow));
+          expect(row(tester, PayoutCheckLines.gapRow), journey.gap(89825));
+          expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsNothing);
+          await detail(journey, () {
+            expect(find.byKey(PayoutBreakdownDetail.valueRow), findsOneWidget);
+            expect(find.text(l10n.p2pPayoutBreakdownSmallGap), findsNothing);
+          }, arrival: false);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
         'a coordinator\'s price 20 % too high: the red alert in the breakdown, the figure paid in red, the two figures, no « (indicative) » and never « A small gap is normal »; nothing blocked',
         (tester) async {
           final journey = await _Journey.start(tester, locale, sats: 112362);
@@ -735,10 +806,11 @@ void main() {
             );
             await journey.take();
             await journey.confirmBond();
-            expect(find.text(journey.bondLine(bond.gap)), findsOneWidget);
-            expect(
-              find.text(journey.bondWarning(bond.asked)),
-              bond.warns ? findsOneWidget : findsNothing,
+            await journey.expectCheck(
+              gap: bond.gap,
+              warns: bond.warns,
+              figures: journey.bondFigures(bond.asked),
+              sentence: journey.bondLine(bond.gap),
             );
             await journey.close();
           },
@@ -767,15 +839,12 @@ void main() {
               find.text(journey.l10n.p2pPayWithThisWallet),
             );
             await journey.confirmEscrow();
-            final line = journey.escrowLine(escrow.gap);
-            final warning = journey.escrowWarning(escrow.asked);
-            if (escrow.warns) {
-              expect(find.text('$line $warning'), findsOneWidget);
-              expect(find.text(line), findsNothing);
-            } else {
-              expect(find.text(line), findsOneWidget);
-              expect(find.textContaining(warning), findsNothing);
-            }
+            await journey.expectCheck(
+              gap: escrow.gap,
+              warns: escrow.warns,
+              figures: journey.escrowFigures(escrow.asked),
+              sentence: journey.escrowSentence(escrow.gap),
+            );
             expect(journey.wallet.ratesAsked, hasLength(2));
             expect(journey.wallet.paid, isEmpty);
             await journey.close();
@@ -792,14 +861,21 @@ void main() {
         await journey.confirmBond();
         await journey.lockBond(find.text(journey.l10n.p2pPayWithThisWallet));
         await journey.confirmEscrow();
-        final line = journey.escrowLine(18);
-        expect(find.text(line), findsOneWidget);
+        final line = journey.inCard(find.byKey(PriceCheckLines.gapRow));
+        expect(line, findsOneWidget);
         // `trade_satoshis` no longer the escrow's (`EscrowAmountMismatch`).
         journey.coordinator.tradeSatoshisAnswered = 100000;
-        await journey.waitUntil(() => find.text(line).evaluate().isEmpty);
+        await journey.waitUntil(() => line.evaluate().isEmpty);
         await settle(tester);
         expect(find.text(journey.l10n.p2pCommonGoBack), findsOneWidget);
-        expect(find.text(line), findsNothing);
+        expect(line, findsNothing);
+        // Nor in the detail: neither the comparison's sentence nor « A small gap is normal ».
+        await journey.tap(find.text(journey.l10n.p2pDetailShow));
+        expect(find.text(journey.escrowSentence(18)), findsNothing);
+        expect(
+          find.text(journey.l10n.p2pPayoutBreakdownSmallGap),
+          findsNothing,
+        );
         expect(find.textContaining(journey.sats(134834)), findsNothing);
         expect(journey.wallet.paid, isEmpty);
         await journey.close();
@@ -815,8 +891,17 @@ void main() {
           await journey.termsShownOtherwise();
           await journey.confirmBond();
           expect(journey.wallet.ratesAsked, hasLength(1));
-          expect(find.text(journey.bondLine(-1)), findsNothing);
+          expect(
+            journey.inCard(find.byKey(PriceCheckLines.gapRow)),
+            findsNothing,
+          );
           expect(find.textContaining(journey.sats(4045)), findsWidgets);
+          await journey.tap(find.text(journey.l10n.p2pDetailShow));
+          expect(find.text(journey.bondLine(-1)), findsNothing);
+          expect(
+            find.text(journey.l10n.p2pPayoutBreakdownSmallGap),
+            findsNothing,
+          );
           expect(journey.wallet.paid, isEmpty);
           await journey.close();
         });
@@ -828,8 +913,12 @@ void main() {
             await journey.take();
             await journey.termsShownOtherwise();
             await journey.confirmBond();
-            expect(find.text(journey.bondLine(90000)), findsOneWidget);
-            expect(find.text(journey.bondWarning(40450)), findsOneWidget);
+            await journey.expectCheck(
+              gap: 90000,
+              warns: true,
+              figures: journey.bondFigures(40450),
+              sentence: journey.bondLine(90000),
+            );
             await journey.close();
           },
         );
@@ -845,7 +934,16 @@ void main() {
           await journey.termsShownOtherwise();
           await journey.confirmEscrow();
           expect(journey.wallet.ratesAsked, hasLength(2));
-          expect(find.text(journey.escrowLine(18)), findsNothing);
+          expect(
+            journey.inCard(find.byKey(PriceCheckLines.gapRow)),
+            findsNothing,
+          );
+          await journey.tap(find.text(journey.l10n.p2pDetailShow));
+          expect(find.text(journey.escrowSentence(18)), findsNothing);
+          expect(
+            find.text(journey.l10n.p2pPayoutBreakdownSmallGap),
+            findsNothing,
+          );
           expect(journey.wallet.paid, isEmpty);
           await journey.close();
         });
@@ -917,20 +1015,23 @@ void main() {
         await journey.confirmBond();
         await journey.lockBond(find.text(l10n.p2pPayWithThisWallet));
         await journey.confirmEscrow();
-        final red =
-            '${journey.escrowLine(90175)} ${journey.escrowWarning(1350704)}';
-        expect(find.text(red), findsOneWidget);
+        final red = find.text(journey.escrowFigures(1350704));
+        expect(red, findsOneWidget);
+        expect(
+          journey.inCard(find.text(l10n.p2pPayoutBreakdownAgainst)),
+          findsOneWidget,
+        );
         // `trade_satoshis` no longer the escrow's (`EscrowAmountMismatch`).
         journey.coordinator.tradeSatoshisAnswered = 100000;
         final amounts = find.text(l10n.p2pTradeWarnAmounts('Temple of Sats'));
         await journey.waitFor(amounts);
         await settle(tester);
-        expect(find.text(red), findsOneWidget);
+        expect(red, findsOneWidget);
         // The amounts agree again; the order shown with another premium (`TradeTermsChanged`), then its own: the trace of terms shown otherwise stays.
         journey.coordinator.tradeSatoshisAnswered = null;
         await journey.waitUntil(() => amounts.evaluate().isEmpty);
         await journey.termsShownOtherwise();
-        expect(find.text(red), findsOneWidget);
+        expect(red, findsOneWidget);
         // « Pay » pays the invoice confirmed: no lock.
         final pay = find.text(
           l10n.p2pPayConfirm(journey.formats.sats(1350704 + 327)),
@@ -946,6 +1047,8 @@ void main() {
             ),
           ),
         );
+        // The trace of terms shown otherwise has just moved the card: « Pay » ignores a tap for a moment (security review of #268, C1), then pays.
+        await tester.pump(MovedTapGuard.afterMove);
         await journey.tap(pay);
         await journey.waitUntil(() => journey.wallet.paid.isNotEmpty);
         expect(journey.wallet.paid, hasLength(1));
@@ -960,13 +1063,16 @@ void main() {
         final l10n = journey.l10n;
         await journey.take();
         await journey.confirmBond();
-        final warning = find.text(journey.bondWarning(40450));
+        final warning = find.text(journey.bondFigures(40450));
         expect(warning, findsOneWidget);
         journey.coordinator.premium = 9;
         await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
         await settle(tester);
         expect(warning, findsOneWidget);
-        expect(find.text(journey.bondLine(90000)), findsOneWidget);
+        expect(
+          journey.inCard(find.text(l10n.p2pPayoutBreakdownAgainst)),
+          findsOneWidget,
+        );
         journey.coordinator.premium = 3.5;
         await journey.waitUntil(
           () => find.text(l10n.p2pTradeWarnTerms).evaluate().isEmpty,
@@ -992,8 +1098,14 @@ void main() {
         final l10n = journey.l10n;
         await journey.take();
         await journey.confirmBond();
-        final unverified = find.text(l10n.p2pPayRateUnverified('USD'));
+        final unverified = journey.inCard(
+          find.text(l10n.p2pPayoutBreakdownUnverified),
+        );
         expect(unverified, findsOneWidget);
+        expect(
+          find.text(l10n.p2pPayoutBreakdownUnverifiedLine),
+          findsOneWidget,
+        );
         journey.coordinator.premium = 9;
         await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
         await settle(tester);
@@ -1014,13 +1126,24 @@ void main() {
         await journey.take();
         await journey.confirmBond();
         final l10n = journey.l10n;
-        expect(find.text(l10n.p2pPayRateUnverified('USD')), findsOneWidget);
-        expect(find.text(journey.bondLine(-1)), findsNothing);
+        expect(
+          journey.inCard(find.text(l10n.p2pPayoutBreakdownUnverified)),
+          findsOneWidget,
+        );
+        expect(
+          journey.inCard(find.byKey(PriceCheckLines.gapRow)),
+          findsNothing,
+        );
         journey.wallet.rate = P2pWalletRateRead(71657);
         await journey.tap(find.text(l10n.p2pCommonRetry));
         await settle(tester);
-        expect(find.text(l10n.p2pPayRateUnverified('USD')), findsNothing);
-        expect(find.text(journey.bondLine(-1)), findsOneWidget);
+        expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
+        await journey.expectCheck(
+          gap: -1,
+          warns: false,
+          figures: journey.bondFigures(4045),
+          sentence: journey.bondLine(-1),
+        );
         expect(journey.wallet.ratesAsked, hasLength(2));
         await journey.close();
       },
@@ -1038,9 +1161,18 @@ void main() {
         await journey.take();
         await journey.confirmBond();
         final l10n = journey.l10n;
+        // The grey « not quoted » line, nothing else: no line naming the coordinator (#250).
         expect(
-          find.text(l10n.p2pPayRateNotPriced('CHF', 'Temple of Sats')),
+          journey.inCard(find.text(l10n.p2pPayoutBreakdownGapNotPriced)),
           findsOneWidget,
+        );
+        expect(
+          journey.inCard(find.text(l10n.p2pPayoutBreakdownNotPriced)),
+          findsOneWidget,
+        );
+        expect(
+          journey.inCard(find.textContaining('Temple of Sats')),
+          findsNothing,
         );
         expect(find.text(l10n.p2pCommonRetry), findsNothing);
         expect(journey.wallet.ratesAsked.single.$2.code, 'CHF');
@@ -1055,5 +1187,530 @@ void main() {
         await journey.close();
       },
     );
+    group('the lean confirmation of a take (#250), $code', () {
+      /// The bond's confirmation of a taker buyer, or of a taker seller ([seller]).
+      Future<(_Journey, LeanConfirmation, P2pWalletQuote)> bond(
+        WidgetTester tester, {
+        bool seller = false,
+        int sats = 134834,
+      }) async {
+        final journey = await _Journey.start(
+          tester,
+          locale,
+          seller: seller,
+          sats: sats,
+        );
+        await journey.take();
+        final quote = await journey.confirmBond();
+        return (journey, LeanConfirmation(tester, locale), quote);
+      }
+
+      /// A taker seller's escrow confirmation.
+      Future<(_Journey, LeanConfirmation, P2pWalletQuote)> escrow(
+        WidgetTester tester, {
+        int sats = 134834,
+        int currency = 1,
+        P2pWalletBitcoinRate? rate,
+      }) async {
+        final journey = await _Journey.start(
+          tester,
+          locale,
+          seller: true,
+          sats: sats,
+          currency: currency,
+          rate: rate,
+        );
+        await journey.take();
+        await journey.confirmBond();
+        await journey.lockBond(find.text(journey.l10n.p2pPayWithThisWallet));
+        final quote = await journey.confirmEscrow();
+        return (journey, LeanConfirmation(tester, locale), quote);
+      }
+
+      /// Two taps on « Pay » in a row: one payment, of the quote shown, its total the card's.
+      Future<void> payOnce(
+        _Journey journey,
+        LeanConfirmation lean,
+        P2pWalletQuote quote,
+        Bolt11TestInvoice invoice,
+      ) async {
+        final tester = journey.tester;
+        journey.wallet.scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-lean',
+              paymentHash: invoice.facts.paymentHash,
+            ),
+          ),
+        );
+        final pay = lean.payOf(quote);
+        await tester.ensureVisible(pay);
+        await tester.pump();
+        await tester.tap(pay);
+        await tester.tap(pay, warnIfMissed: false);
+        await tester.pump();
+        await journey.waitUntil(() => journey.wallet.paid.isNotEmpty);
+        await journey.pass(2);
+        expect(journey.wallet.paid, hasLength(1));
+        final (paidInvoice, paidQuote) = journey.wallet.paid.single;
+        expect(paidInvoice.paymentHash, invoice.facts.paymentHash);
+        expect(paidQuote.total, quote.total);
+        expect(paidQuote.amount, quote.amount);
+        expect(paidQuote.serviceFee, quote.serviceFee);
+        expect(paidQuote.networkFee, quote.networkFee);
+      }
+
+      testWidgets(
+        'a taker buyer\'s bond: the card on arrival, the gap « (indicative) » above the buttons, the detail opened and closed with the buttons still; « Pay » pays the quote shown, once',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          final l10n = journey.l10n;
+          lean.expectArrival(quote, escrow: false);
+          expect(
+            lean.row(PriceCheckLines.gapRow),
+            '${l10n.p2pPayoutBreakdownGap} | ${journey.gap(-1)}',
+          );
+          lean.expectAboveButtons(find.byKey(PriceCheckLines.gapRow));
+          await lean.toggleDetail(
+            quote,
+            whileOpen: () {
+              lean.expectDetailRows(quote);
+              final sentence = find.text(journey.bondLine(-1));
+              final small = find.text(l10n.p2pPayoutBreakdownSmallGap);
+              final hold = find.text(l10n.p2pTradeHoldInvoiceBond);
+              expect(sentence, findsOneWidget);
+              expect(small, findsOneWidget);
+              expect(hold, findsOneWidget);
+              // A bond's detail says nothing of the swap service holding the sats.
+              expect(find.text(l10n.p2pPayEscrowHeld), findsNothing);
+              expect(
+                tester.getTopLeft(sentence).dy,
+                lessThan(tester.getTopLeft(small).dy),
+              );
+              expect(
+                tester.getTopLeft(small).dy,
+                lessThan(tester.getTopLeft(hold).dy),
+              );
+            },
+          );
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          await payOnce(journey, lean, quote, invoice);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a taker seller\'s collateral: the card on arrival, the detail with the validated sentence, the swap service\'s facts and the reference\'s line; « Pay » pays the quote shown, once',
+        (tester) async {
+          final (journey, lean, quote) = await escrow(tester);
+          final l10n = journey.l10n;
+          lean.expectArrival(quote, escrow: true);
+          expect(
+            lean.row(PriceCheckLines.gapRow),
+            '${l10n.p2pPayoutBreakdownGap} | ${journey.gap(18)}',
+          );
+          await lean.toggleDetail(
+            quote,
+            whileOpen: () {
+              lean.expectDetailRows(quote);
+              final sentence = find.text(journey.escrowSentence(18));
+              final small = find.text(l10n.p2pPayoutBreakdownSmallGap);
+              final held = find.text(l10n.p2pPayEscrowHeld);
+              final hold = find.text(l10n.p2pTradeHoldInvoiceEscrow('USD'));
+              for (final finder in [sentence, small, held, hold]) {
+                expect(finder, findsOneWidget);
+              }
+              for (final (a, b) in [
+                (sentence, small),
+                (small, held),
+                (held, hold),
+              ]) {
+                expect(
+                  tester.getTopLeft(a).dy,
+                  lessThan(tester.getTopLeft(b).dy),
+                );
+              }
+            },
+          );
+          final invoice = journey.coordinator.escrowInvoice;
+          if (invoice == null) fail('no escrow invoice');
+          await payOnce(journey, lean, quote, invoice);
+          await journey.close();
+        },
+      );
+
+      for (final payment in ['bond', 'escrow']) {
+        testWidgets(
+          'a taker\'s $payment ten times too large: the red alert\'s two lines above the buttons, its explanation in the detail, the buttons still; « Pay » offered',
+          (tester) async {
+            final (journey, lean, quote) = payment == 'bond'
+                ? await bond(tester, sats: 1348344)
+                : await escrow(tester, sats: 1348344);
+            final l10n = journey.l10n;
+            lean.expectArrival(quote, escrow: payment == 'escrow');
+            if (payment == 'bond') {
+              lean.expectRed(journey.gap(90000), journey.bondFigures(40450));
+            } else {
+              lean.expectRed(
+                journey.gap(90175),
+                journey.escrowFigures(1350704),
+              );
+            }
+            await lean.toggleDetail(
+              quote,
+              whileOpen: () {
+                final explanation = find.text(
+                  l10n.p2pPayAgainstDetail(
+                    journey.price(),
+                    'USD',
+                    journey.threshold,
+                  ),
+                );
+                expect(explanation, findsOneWidget);
+                expect(find.byKey(PayConfirmationCard.smallGap), findsNothing);
+                expect(find.text(journey.bondLine(90000)), findsNothing);
+                expect(find.text(journey.escrowSentence(90175)), findsNothing);
+              },
+            );
+            expect(
+              tester.widget<TradeButton>(lean.payOf(quote)).onPressed,
+              isNotNull,
+            );
+            await journey.close();
+          },
+        );
+      }
+
+      testWidgets(
+        'a taker seller\'s collateral, the Bull wallet\'s price not read: « Amount not checked » and its line above the buttons, « Retry » beside it, the explanation in the detail; « Retry » brings the comparison',
+        (tester) async {
+          final (journey, lean, quote) = await escrow(
+            tester,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          lean.expectArrival(quote, escrow: true);
+          expect(
+            lean.row(PriceCheckLines.unverifiedRow),
+            '${l10n.p2pPayoutBreakdownUnverified} | ${l10n.p2pCommonRetry}',
+          );
+          final line = lean.inCard(
+            find.text(l10n.p2pPayoutBreakdownUnverifiedLine),
+          );
+          lean.expectAboveButtons(line);
+          final colors = Theme.of(tester.element(line)).extension<BullTheme>();
+          expect(tester.widget<Text>(line).style?.color, colors?.warning);
+          expect(lean.inCard(find.byKey(PriceCheckLines.gapRow)), findsNothing);
+          await lean.toggleDetail(
+            quote,
+            whileOpen: () {
+              expect(find.text(l10n.p2pPayUnverifiedDetail), findsOneWidget);
+              expect(find.byKey(PayConfirmationCard.smallGap), findsNothing);
+            },
+          );
+          expect(
+            tester.widget<TradeButton>(lean.payOf(quote)).onPressed,
+            isNotNull,
+          );
+          journey.wallet.rate = P2pWalletRateRead(71657);
+          await journey.tap(lean.inCard(find.text(l10n.p2pCommonRetry)));
+          await settle(tester);
+          expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
+          await journey.expectCheck(
+            gap: 18,
+            warns: false,
+            figures: journey.escrowFigures(135070),
+            sentence: journey.escrowSentence(18),
+          );
+          expect(journey.wallet.paid, isEmpty);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a taker seller\'s collateral in a currency the Bull wallet does not price (CHF): the grey « not quoted » line alone, nothing in the detail but the fees and the facts',
+        (tester) async {
+          final (journey, lean, quote) = await escrow(
+            tester,
+            currency: 7,
+            rate: const P2pWalletRateNotPriced(),
+          );
+          final l10n = journey.l10n;
+          lean.expectArrival(quote, escrow: true);
+          expect(
+            lean.row(PriceCheckLines.notPricedRow),
+            '${l10n.p2pPayoutBreakdownGapNotPriced} | ${l10n.p2pPayoutBreakdownNotPriced}',
+          );
+          final value = lean.inCard(
+            find.text(l10n.p2pPayoutBreakdownNotPriced),
+          );
+          final colors = Theme.of(tester.element(value)).extension<BullTheme>();
+          expect(tester.widget<Text>(value).style?.color, colors?.textMuted);
+          expect(
+            lean.inCard(find.textContaining('Temple of Sats')),
+            findsNothing,
+          );
+          expect(
+            lean.inCard(find.byIcon(Icons.warning_amber_rounded)),
+            findsNothing,
+          );
+          await lean.toggleDetail(
+            quote,
+            whileOpen: () {
+              expect(
+                find.byKey(PayConfirmationCard.rateParagraph),
+                findsNothing,
+              );
+              expect(find.byKey(PayConfirmationCard.smallGap), findsNothing);
+              expect(
+                find.text(l10n.p2pTradeHoldInvoiceEscrow('CHF')),
+                findsOneWidget,
+              );
+            },
+          );
+          await journey.close();
+        },
+      );
+
+      /// A phone of 320 × 568 points, the card's link brought into view.
+      Future<void> smallPhone(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(320, 568) * 3;
+        await tester.pump();
+        await settle(tester);
+        await tester.ensureVisible(
+          find.byKey(PayConfirmationCard.detailToggle),
+        );
+        await tester.pump();
+        await settle(tester);
+      }
+
+      /// The script of the payment of [invoice], for a « Pay » that goes through.
+      void payable(_Journey journey, Bolt11TestInvoice invoice) =>
+          journey.wallet.scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-guard',
+                paymentHash: invoice.facts.paymentHash,
+              ),
+            ),
+          );
+
+      /// « Pay » tapped once, now: it pays the quote shown, once.
+      Future<void> paysNow(
+        _Journey journey,
+        LeanConfirmation lean,
+        P2pWalletQuote quote,
+      ) async {
+        final tester = journey.tester;
+        await tester.tap(lean.payOf(quote));
+        await tester.pump();
+        await journey.waitUntil(() => journey.wallet.paid.isNotEmpty);
+        expect(journey.wallet.paid, hasLength(1));
+        expect(journey.wallet.paid.single.$2.total, quote.total);
+      }
+
+      testWidgets(
+        'an alert of the screen that comes, then goes, while the card is open (a coordinator showing other terms for a read): a tap aimed at what stood where « Pay » now is pays nothing; « Pay » a moment later pays the quote shown, once (security review of #268, C1)',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          final l10n = journey.l10n;
+          await smallPhone(tester);
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          payable(journey, invoice);
+          final pay = lean.payOf(quote);
+          final toggle = find.byKey(PayConfirmationCard.detailToggle);
+          // The alert comes: the card moves; a tap on « Pay » at once was aimed at what stood there before.
+          var before = tester.getRect(pay);
+          journey.coordinator.premium = 9;
+          await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
+          await tester.pump();
+          expect(tester.getRect(pay), isNot(before));
+          // A tenth of a second later, as a finger already on its way.
+          await tester.pump(const Duration(milliseconds: 100));
+          await tester.tapAt(tester.getRect(pay).center);
+          await tester.pump();
+          expect(journey.wallet.paid, isEmpty);
+          // The alert goes, its trace stays: the card moves down by the trace's line, « Pay » onto what stood under it (« Show details », or the space under « Pay »).
+          await tester.pump(
+            MovedTapGuard.afterMove + const Duration(milliseconds: 50),
+          );
+          before = tester.getRect(pay);
+          final link = tester.getRect(toggle).center;
+          journey.coordinator.premium = 3.5;
+          await journey.waitUntil(
+            () => find.text(l10n.p2pTradeWarnTerms).evaluate().isEmpty,
+          );
+          await tester.pump();
+          final after = tester.getRect(pay);
+          expect(after.top, greaterThan(before.top));
+          await tester.pump(const Duration(milliseconds: 100));
+          // Where « Pay » now covers the link's old place, the tap aimed at the link; else a tap on « Pay » itself, as soon.
+          await tester.tapAt(after.contains(link) ? link : after.center);
+          await tester.pump();
+          expect(journey.wallet.paid, isEmpty);
+          // A moment later « Pay » pays, never a lock.
+          await tester.pump(
+            MovedTapGuard.afterMove + const Duration(milliseconds: 50),
+          );
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        '« Retry » that brings the Bull price while the user goes for « Go back »: the tap where « Go back » was, now under « Pay », pays nothing; « Pay » a moment later pays (security review of #268, C2)',
+        (tester) async {
+          final (journey, lean, quote) = await escrow(
+            tester,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          await smallPhone(tester);
+          final invoice = journey.coordinator.escrowInvoice;
+          if (invoice == null) fail('no escrow invoice');
+          payable(journey, invoice);
+          // « Retry » in view, under the tabs.
+          final retry = lean.inCard(find.text(l10n.p2pCommonRetry));
+          unawaited(
+            Scrollable.ensureVisible(tester.element(retry), alignment: 0.3),
+          );
+          await tester.pump();
+          await settle(tester);
+          final back = tester.getRect(lean.goBack).center;
+          expect(back.dy, lessThan(568));
+          journey.wallet.rate = P2pWalletRateRead(71657);
+          await tester.tap(retry);
+          await journey.waitUntil(
+            () =>
+                find.text(l10n.p2pPayoutBreakdownUnverified).evaluate().isEmpty,
+          );
+          expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
+          expect(tester.getRect(lean.payOf(quote)).contains(back), isTrue);
+          await tester.pump(const Duration(milliseconds: 100));
+          await tester.tapAt(back);
+          await tester.pump();
+          expect(journey.wallet.paid, isEmpty);
+          expect(lean.card, findsOneWidget);
+          await tester.pump(
+            MovedTapGuard.afterMove + const Duration(milliseconds: 50),
+          );
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'the page scrolled, then « Pay » tapped at once: it pays, a scroll never sets the guard off (security review of #268)',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          await smallPhone(tester);
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          payable(journey, invoice);
+          final before = tester.getRect(lean.payOf(quote));
+          // The page scrolled by 80 points, as a finger would.
+          final position = Scrollable.of(tester.element(lean.card)).position;
+          final up = position.pixels - 80;
+          position.jumpTo(
+            up >= position.minScrollExtent ? up : position.pixels + 80,
+          );
+          await tester.pump();
+          expect(tester.getRect(lean.payOf(quote)), isNot(before));
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'the detail opened and closed, then « Pay » tapped at once: it pays, the detail never moves « Pay » (security review of #268)',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          payable(journey, invoice);
+          await lean.toggleDetail(quote);
+          await tester.tap(lean.inCard(find.text(journey.l10n.p2pDetailShow)));
+          await tester.pump();
+          expect(find.byKey(PayConfirmationCard.detail), findsOneWidget);
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a taker seller\'s red collateral beside the screen\'s alert of terms changed: both visible, the red lines above the buttons, « Pay » offered',
+        (tester) async {
+          final (journey, lean, quote) = await escrow(tester, sats: 1348344);
+          final l10n = journey.l10n;
+          journey.coordinator.premium = 9;
+          await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
+          await settle(tester);
+          expect(find.text(l10n.p2pTradeWarnTerms), findsOneWidget);
+          lean.expectRed(journey.gap(90175), journey.escrowFigures(1350704));
+          expect(
+            tester.widget<TradeButton>(lean.payOf(quote)).onPressed,
+            isNotNull,
+          );
+          await journey.close();
+        },
+      );
+    });
   }
+
+  // Last in the file: the app's font, loaded here, stays loaded for the tests after it.
+  group(
+    'the lean confirmation of a take on a phone of 320 points, in the app\'s font (#250)',
+    () {
+      for (final locale in const [Locale('en'), Locale('fr')]) {
+        for (final payment in ['bond', 'escrow']) {
+          testWidgets(
+            '${locale.languageCode}: a taker\'s $payment, its red alert, the text at ×1, ×2 and ×3: the card and its detail overflow nothing, no word cut',
+            (tester) async {
+              await tester.runAsync(loadAppFont);
+              final journey = await _Journey.start(
+                tester,
+                locale,
+                seller: payment == 'escrow',
+                sats: 1348344,
+              );
+              await journey.take();
+              if (payment == 'bond') {
+                await journey.confirmBond();
+              } else {
+                await journey.confirmBond();
+                await journey.lockBond(
+                  find.text(journey.l10n.p2pPayWithThisWallet),
+                );
+                await journey.confirmEscrow();
+              }
+              final lean = LeanConfirmation(tester, locale);
+              addTearDown(
+                tester.platformDispatcher.clearTextScaleFactorTestValue,
+              );
+              tester.view
+                ..physicalSize = const Size(320 * 3, 4000 * 3)
+                ..devicePixelRatio = 3;
+              for (final scale in const [1.0, 2.0, 3.0]) {
+                tester.platformDispatcher.textScaleFactorTestValue = scale;
+                await tester.pump();
+                lean.expectNothingCut('$payment ×$scale, on arrival');
+                final toggle = find.byKey(PayConfirmationCard.detailToggle);
+                await tester.ensureVisible(toggle);
+                await tester.pump();
+                await tester.tap(toggle);
+                await tester.pump();
+                expect(find.byKey(PayConfirmationCard.detail), findsOneWidget);
+                lean.expectNothingCut('$payment ×$scale, the detail open');
+                await tester.tap(toggle);
+                await tester.pump();
+              }
+              await journey.close();
+            },
+          );
+        }
+      }
+    },
+  );
 }

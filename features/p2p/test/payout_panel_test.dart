@@ -655,6 +655,7 @@ void main() {
             gap: warns ? '-17.91%' : '-0.27%',
             warns: warns,
             threshold: '10%',
+            small: !warns,
           );
 
       testWidgets(

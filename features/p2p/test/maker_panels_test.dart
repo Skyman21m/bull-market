@@ -705,7 +705,7 @@ void main() {
           makerOrderJson(6, last: 110000),
         ]);
         await _show(tester, seen);
-        expect(find.textContaining('-2.82% from the rate'), findsOneWidget);
+        expect(find.textContaining('−2.82% from the rate'), findsOneWidget);
         expect(
           find.descendant(
             of: find.byType(RateGapLine),
@@ -1291,12 +1291,12 @@ void main() {
           await tester.pump();
           expect(
             find.textContaining(
-              'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, 100 EUR are worth 106,899 sats. You receive 89,978 sats: gap -15.83%.',
+              'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, 100 EUR are worth 106,899 sats. You receive 89,978 sats: gap −15.83%.',
             ),
             findsOneWidget,
           );
           // The red alert in the owner's two lines (#250).
-          expect(find.text('Gap against you -15.83%'), findsOneWidget);
+          expect(find.text('Gap against you −15.83%'), findsOneWidget);
           expect(
             find.text(
               'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
@@ -1580,7 +1580,7 @@ void main() {
           expect(find.textContaining('do not add up'), findsOneWidget);
           // The kept invoice is still compared (R8): its red warning is an alert of its own; the neutral line that recalled it and its gap is not said beside the amounts' alert (#228).
           // Its red alert in the owner's two lines (#250): the gap, then the two figures, the kept sats as those the coordinator pays the contract.
-          expect(find.text('Gap against you -53.24%'), findsOneWidget);
+          expect(find.text('Gap against you −53.24%'), findsOneWidget);
           expect(
             find.text(
               'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
@@ -1607,7 +1607,7 @@ void main() {
             matching: find.textContaining(words),
           );
           expect(inDialog('do not add up'), findsOneWidget);
-          expect(inDialog('Gap against you -53.24%'), findsOneWidget);
+          expect(inDialog('Gap against you −53.24%'), findsOneWidget);
           // The kept sats compared alone: the explanation too (R4).
           expect(inDialog('warns you beyond a 10% gap'), findsOneWidget);
           expect(
