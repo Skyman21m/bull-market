@@ -1525,6 +1525,8 @@ void main() {
           await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
           await tester.pump();
           expect(tester.getRect(pay), isNot(before));
+          // A tenth of a second later, as a finger already on its way.
+          await tester.pump(const Duration(milliseconds: 100));
           await tester.tapAt(tester.getRect(pay).center);
           await tester.pump();
           expect(journey.wallet.paid, isEmpty);
@@ -1541,6 +1543,7 @@ void main() {
           await tester.pump();
           final after = tester.getRect(pay);
           expect(after.top, greaterThan(before.top));
+          await tester.pump(const Duration(milliseconds: 100));
           // Where « Pay » now covers the link's old place, the tap aimed at the link; else a tap on « Pay » itself, as soon.
           await tester.tapAt(after.contains(link) ? link : after.center);
           await tester.pump();
@@ -1583,6 +1586,7 @@ void main() {
           );
           expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
           expect(tester.getRect(lean.payOf(quote)).contains(back), isTrue);
+          await tester.pump(const Duration(milliseconds: 100));
           await tester.tapAt(back);
           await tester.pump();
           expect(journey.wallet.paid, isEmpty);
