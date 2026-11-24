@@ -241,11 +241,17 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
           thickness: 1,
           color: colors.outlineVariant,
         ),
-        AmountRow(
+        // Read out when the confirmation opens, the card having no title of its own (the step's title above it says what is paid).
+        MergeSemantics(
           key: PayConfirmationCard.totalRow,
-          label: l10n.p2pPayRowTotal,
-          amount: sats(quote.total),
-          tone: AmountRowTone.total,
+          child: Semantics(
+            liveRegion: true,
+            child: AmountRow(
+              label: l10n.p2pPayRowTotal,
+              amount: sats(quote.total),
+              tone: AmountRowTone.total,
+            ),
+          ),
         ),
         ?check,
         // The alerts of the confirmation, under a rule, just above the buttons.

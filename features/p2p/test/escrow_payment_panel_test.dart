@@ -22,6 +22,7 @@ import 'package:p2p/src/presentation/bond_payment_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/bond_payment_panel.dart';
+import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
@@ -46,7 +47,7 @@ late Payments _bondPayments;
 const _holdLine =
     'This is a hold invoice, it will freeze in your wallet. It will be released to the buyer once you confirm to have received the EUR.';
 const _heldLine =
-    'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.';
+    'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, they come back to Instant payments, less the swap and network fees, sometimes with a delay.';
 
 /// Shows the trade screen at [state] with the escrow's panel over [escrow]'s payments (the bond's cubit idle beside it).
 Future<(EscrowPaymentCubit, Payments)> _show(
@@ -291,12 +292,31 @@ void main() {
     (tester) async {
       final (_, payments) = await _show(tester, state: 'six');
       await _confirming(tester, payments);
+      // The lean card on arrival (#250): « Collateral », never « Bond », the fees together, the total; the escrow's facts and the reference's line in the detail, once.
+      String row(Key key) => [
+        for (final text in tester.widgetList<Text>(
+          find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+        ))
+          text.data ?? '',
+      ].join(' | ');
+      expect(row(PayConfirmationCard.amountRow), 'Collateral | 3,207 sats');
       expect(
-        find.text('Pay 3,207 sats to lock the collateral?'),
-        findsOneWidget,
+        row(PayConfirmationCard.feesRow),
+        'Swap and network fees | 150 sats',
       );
-      expect(find.text('Swap fees: 123 sats'), findsOneWidget);
-      expect(find.text('Network fee: about 27 sats'), findsOneWidget);
+      expect(row(PayConfirmationCard.totalRow), 'Total to pay | 3,357 sats');
+      expect(find.text('Bond'), findsNothing);
+      expect(find.text(_heldLine), findsNothing);
+      expect(find.text(_holdLine), findsNothing);
+      await tester.ensureVisible(find.text('Show details'));
+      await tester.pump();
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+      expect(row(PayConfirmationCard.swapFeeRow), 'Swap fees | 123 sats');
+      expect(
+        row(PayConfirmationCard.networkFeeRow),
+        'Network fee (estimate) | 27 sats',
+      );
       expect(find.text(_heldLine), findsOneWidget);
       expect(find.text(_holdLine), findsOneWidget);
       expect(find.textContaining('lock your bond'), findsNothing);
@@ -716,6 +736,14 @@ void main() {
             await tester.pump();
             await tester.pump();
             _expectNothingCut(tester, 'confirmation');
+            // The detail open too (#250).
+            final show = find.byKey(PayConfirmationCard.detailToggle);
+            await tester.ensureVisible(show);
+            await tester.pump();
+            await tester.tap(show);
+            await tester.pump();
+            expect(find.byKey(PayConfirmationCard.detail), findsOneWidget);
+            _expectNothingCut(tester, 'confirmation, the detail open');
             cubit.dismiss();
             unawaited(cubit.ask(six));
             await tester.pump();

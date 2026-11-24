@@ -5,6 +5,7 @@ import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
+import 'package:p2p/src/ui/widgets/detail_toggle.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -350,7 +351,7 @@ void main() {
                         check: check,
                         onRetry: () {},
                       ),
-                      PayoutDetailToggle(open: true, onPressed: () {}),
+                      DetailToggle(open: true, onPressed: () {}),
                       PayoutBreakdownDetail(
                         breakdown: breakdown,
                         check: check,

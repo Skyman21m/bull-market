@@ -20,6 +20,7 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
+import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -30,6 +31,7 @@ import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/harness.dart';
+import 'support/lean_confirmation.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// Making a sell order and running it to its end on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`), by the user's gestures (#188): « Create », « Sell », the form, « Create order », the maker bond paid with this wallet, the order taken, the collateral of the first take paid with this wallet, the order taken again while the page stays open, the second take's collateral with the alert of the first, a confirmation to make again, « Confirm … received » and its dialog, in English and in French.
@@ -49,10 +51,14 @@ final class _Words {
   final String payWithThisWallet;
   final String payTotal;
   final String newContract;
+  final String newContractLine;
   final String feeIncluded;
+  final String earlierNotBack;
   final String earlierOut;
   final String bondHeld;
   final String confirmAgain;
+  final String confirmAgainLine;
+  final String showDetails;
   final String kept;
   final String earlierTitle;
   final String chat;
@@ -76,10 +82,14 @@ final class _Words {
     required this.payWithThisWallet,
     required this.payTotal,
     required this.newContract,
+    required this.newContractLine,
     required this.feeIncluded,
+    required this.earlierNotBack,
     required this.earlierOut,
     required this.bondHeld,
     required this.confirmAgain,
+    required this.confirmAgainLine,
+    required this.showDetails,
     required this.kept,
     required this.earlierTitle,
     required this.chat,
@@ -107,15 +117,17 @@ const _english = _Words(
   done: 'Done',
   payWithThisWallet: 'Pay with this wallet',
   payTotal: 'Pay {n} sats',
-  newContract:
-      'New contract: this order was taken again after an earlier take. This collateral is for take 2.',
-  feeIncluded: 'the coordinator\'s fee included',
-  earlierOut:
-      'An earlier collateral of this order, paid or attempted with this wallet, has not come back yet: {a} sats. With this one, {b} sats will be out of this wallet for the collaterals of this order, bond not included.',
+  newContract: 'New contract',
+  newContractLine:
+      'The previous take of this order did not go through. This collateral is for the new contract.',
+  feeIncluded: 'its fees included',
+  earlierNotBack: 'A previous collateral has not come back',
+  earlierOut: 'With this one, {b} sats will be out of this wallet.',
   bondHeld:
       'Your order\'s bond was paid with this wallet: it is out of this wallet too until the order ends, and is not in this total.',
-  confirmAgain:
-      'Since you confirmed, what will leave this wallet, or the state of an earlier collateral, changed. Nothing was paid: check the figures below and confirm again.',
+  confirmAgain: 'The amounts have changed',
+  confirmAgainLine: 'Check them, then confirm again.',
+  showDetails: 'Show details',
   kept:
       'The collateral of an earlier take ({a} sats) was kept by {c}: check this order in the official RoboSats app before paying another one.',
   earlierTitle:
@@ -143,15 +155,17 @@ const _french = _Words(
   done: 'Fait',
   payWithThisWallet: 'Payer avec ce portefeuille',
   payTotal: 'Payer {n} sats',
-  newContract:
-      'Nouveau contrat : cet ordre a été repris après une prise précédente. Cette garantie est celle de la prise 2.',
-  feeIncluded: 'frais du coordinateur compris',
-  earlierOut:
-      'Une garantie précédente de cet ordre, payée ou tentée avec ce portefeuille, n’est pas encore revenue : {a} sats. Avec celle-ci, {b} sats seront hors de ce portefeuille pour les garanties de cet ordre, caution non comprise.',
+  newContract: 'Nouveau contrat',
+  newContractLine:
+      'La prise précédente de cet ordre n’a pas abouti. Cette garantie vaut pour le nouveau contrat.',
+  feeIncluded: 'ses frais compris',
+  earlierNotBack: 'Une garantie précédente n’est pas revenue',
+  earlierOut: 'Avec celle-ci, {b} sats seront hors de ce portefeuille.',
   bondHeld:
       'La caution de votre ordre a été payée avec ce portefeuille : elle est aussi hors de ce portefeuille jusqu’à la fin de l’ordre, et n’est pas dans ce total.',
-  confirmAgain:
-      'Depuis votre confirmation, ce qui sortira de ce portefeuille, ou l’état d’une garantie précédente, a changé. Rien n’a été payé : vérifiez les chiffres ci-dessous et confirmez de nouveau.',
+  confirmAgain: 'Les montants ont changé',
+  confirmAgainLine: 'Vérifiez-les, puis confirmez à nouveau.',
+  showDetails: 'Voir le détail',
   kept:
       'La garantie d’une prise précédente ({a} sats) a été encaissée par {c} : vérifiez cet ordre dans l’application officielle RoboSats avant d’en payer une autre.',
   earlierTitle:
@@ -511,8 +525,11 @@ void main() {
           words.payTotal.replaceAll('{n}', words.sats(196654)),
         );
         expect(pay0, findsOneWidget);
-        // The first take: no new contract, no alert, the comparison with the fee said.
+        // The first take: no new contract, no alert, the comparison with the fee said (in the detail, #250).
         expect(find.textContaining(words.newContract), findsNothing);
+        expect(find.textContaining(words.feeIncluded), findsNothing);
+        await journey.tap(find.text(words.showDetails));
+        await settle(tester);
         expect(find.textContaining(words.feeIncluded), findsOneWidget);
         expect(find.textContaining(words.earlierTitle), findsNothing);
         journey.wallet.scriptPayment(
@@ -543,8 +560,10 @@ void main() {
         journey.wallet.scriptQuote(Ok(journey.quoteOf(escrow1)));
         await journey.tap(find.text(words.payWithThisWallet));
         await settle(tester);
-        // The confirmation of the second take: a new contract, the red alert with the first collateral's sats and the total out, the bond paid with this wallet beside it.
+        // The confirmation of the second take: a new contract, the red alert in two lines with the total out (the first collateral's sats in the detail, #250), the bond paid with this wallet beside it.
         expect(find.text(words.newContract), findsOneWidget);
+        expect(find.text(words.newContractLine), findsOneWidget);
+        expect(find.text(words.earlierNotBack), findsOneWidget);
         expect(
           find.text(
             words.earlierOut
@@ -580,6 +599,7 @@ void main() {
         // Nothing paid: the confirmation again, with the figures now.
         expect(journey.wallet.paid, hasLength(2));
         expect(find.text(words.confirmAgain), findsOneWidget);
+        expect(find.text(words.confirmAgainLine), findsOneWidget);
         expect(
           find.text(
             words.kept
@@ -673,9 +693,14 @@ void main() {
         isNotNull,
       );
       journey.takenAgain();
-      const stale =
-          'This order was taken again since this confirmation opened: it was for the earlier take, and its « Pay » pays nothing. Go back, then pay the new take\'s collateral.';
+      const stale = 'The order was taken again meanwhile';
       await journey.waitFor(find.text(stale), seconds: 30);
+      expect(
+        find.text('This confirmation is no longer valid. Go back.'),
+        findsOneWidget,
+      );
+      // Never with « The amounts have changed ».
+      expect(find.text(_english.confirmAgain), findsNothing);
       expect(
         tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
         isNull,
@@ -747,29 +772,41 @@ void main() {
       await journey.waitFor(find.text(_english.payWithThisWallet), seconds: 60);
       final walletQuote = await journey.openConfirmation();
       expect(walletQuote.amount, Sats.fromInt(245159));
-      // One red alert: the comparison, the fee said included, then the warning with both amounts.
-      final line = find.textContaining(
-        '100 USD are worth 196,078 sats. Gap of the collateral: +25.04%, the coordinator\'s fee included. This collateral is more than 10% above that: 245,159 sats asked, 196,078 sats expected. Check it before you pay.',
+      // One red alert in two lines, the mock-up's figures (#250): « Gap against you +25.04% », then both amounts; never « (indicative) ».
+      final line = find.text(
+        'Bull Wallet expected 196,078 sats, the coordinator asks 245,159.',
       );
       expect(line, findsOneWidget);
-      expect(
-        find.textContaining('At the Bull wallet\'s price, 50,000 USD/BTC'),
-        findsOneWidget,
-      );
+      expect(find.text('Gap against you'), findsOneWidget);
+      expect(find.text('+25.04%'), findsOneWidget);
+      expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
       final colors = Theme.of(tester.element(line)).extension<BullTheme>();
       expect(tester.widget<Text>(line).style?.color, colors?.error);
-      // With the other red alerts just above the buttons, after the neutral paragraphs, and no neutral line of the price beside it (functional review of #188, C2).
       expect(
-        tester.getTopLeft(line).dy,
-        greaterThan(
-          tester.getTopLeft(find.textContaining('Until the trade ends')).dy,
-        ),
+        tester.widget<Text>(find.text('Gap against you')).style?.color,
+        colors?.error,
       );
+      // Just above the buttons, visible without a tap; the swap service's facts in the detail, under the buttons (functional review of #188, C2).
       expect(
         tester.getTopLeft(line).dy,
         lessThan(tester.getTopLeft(find.text('Go back')).dy),
       );
-      expect(find.textContaining('are worth'), findsOneWidget);
+      expect(find.textContaining('Until the trade ends'), findsNothing);
+      await journey.tap(find.text('Show details'));
+      await settle(tester);
+      // The alert's explanation, in red, in place of the comparison's sentence: never a neutral line of the price beside the alert.
+      final explanation = find.text(
+        'Bull Wallet redoes the calculation with its own price (50,000 USD/BTC, premium included) and warns you beyond a 10% gap. Check the order before paying.',
+      );
+      expect(explanation, findsOneWidget);
+      expect(tester.widget<Text>(explanation).style?.color, colors?.error);
+      expect(
+        tester.getTopLeft(find.textContaining('Until the trade ends')).dy,
+        greaterThan(tester.getTopLeft(journey.payOf(walletQuote)).dy),
+      );
+      expect(find.textContaining('come to'), findsNothing);
+      expect(find.textContaining('are worth'), findsNothing);
+      expect(find.textContaining('A small gap is normal'), findsNothing);
       expect(
         tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
         isNotNull,
@@ -822,8 +859,19 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Beside the alert of the earlier collateral not back, the comparison within the threshold is not drawn: an alert speaks alone (security review of #249, C1).
+      // Beside the alert of the earlier collateral not back, the comparison within the threshold is not drawn, on arrival nor in the detail: an alert speaks alone (security review of #249, C1).
+      expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
+      await journey.tap(find.text('Show details'));
+      await settle(tester);
       expect(find.textContaining(_english.feeIncluded), findsNothing);
+      expect(find.textContaining('A small gap is normal'), findsNothing);
+      // The earlier collateral's explanation, with its sats.
+      expect(
+        find.text(
+          'You already paid, or tried to pay, a collateral of 196,654 sats for this order with this wallet. It has not come back to it yet.',
+        ),
+        findsOneWidget,
+      );
       expect(journey.wallet.ratesAsked, isNotEmpty);
       await journey.tap(find.text('Go back'));
       await settle(tester);
@@ -1059,16 +1107,16 @@ void main() {
     (
       'a currency the Bull wallet does not price',
       const P2pWalletRateNotPriced() as P2pWalletBitcoinRate,
-      'The Bull wallet has no price for USD: rate not checked.',
+      'not quoted',
     ),
     (
       'the Bull wallet\'s price not read',
       const P2pWalletRateUnavailable() as P2pWalletBitcoinRate,
-      'could not be read: rate not checked.',
+      'Amount not checked',
     ),
   ]) {
     testWidgets(
-      '$name, a coordinator\'s price ten times too low: the confirmation\'s alert alone, above the buttons, no gap and no price of the creation; « Pay » offered (security review of #188, C1, R11)',
+      '$name, a coordinator\'s price ten times too low: the confirmation\'s line alone, above the buttons, no gap and no price of the creation; « Pay » offered (security review of #188, C1, R11)',
       (tester) async {
         final journey = await _Journey.start(tester, _english);
         // 5,000 USD/BTC announced before the make and fixed at the take: a collateral ten times too large.
@@ -1077,8 +1125,33 @@ void main() {
         await journey.toFirstTake();
         final walletQuote = await journey.openConfirmation();
         expect(walletQuote.amount, Sats.fromInt(1961274));
-        final alert = find.textContaining(line);
+        final alert = find.text(line);
         expect(alert, findsOneWidget);
+        expect(
+          tester.getTopLeft(alert).dy,
+          lessThan(tester.getTopLeft(find.text('Go back')).dy),
+        );
+        // « Amount not checked » in orange; a currency the Bull wallet does not price, the grey « not quoted » line alone (the owner's decision of 2026-11-24, #250).
+        final palette = Theme.of(tester.element(alert)).extension<BullTheme>();
+        expect(
+          tester.widget<Text>(alert).style?.color,
+          rate is P2pWalletRateUnavailable
+              ? palette?.warning
+              : palette?.textMuted,
+        );
+        expect(
+          tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
+          isNotNull,
+        );
+        expect(
+          find.widgetWithText(TextButton, 'Retry'),
+          rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
+        );
+        // Nothing of the creation's price nor any gap, on arrival nor in the detail.
+        await journey.tap(find.text('Show details'));
+        await settle(tester);
+        expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
+        expect(find.text('Gap against you'), findsNothing);
         expect(
           find.textContaining('from the rate when you made it'),
           findsNothing,
@@ -1086,26 +1159,8 @@ void main() {
         expect(find.textContaining('5,100'), findsNothing);
         expect(find.textContaining('5,000 USD'), findsNothing);
         expect(find.textContaining('are worth'), findsNothing);
-        expect(
-          tester.getTopLeft(alert).dy,
-          greaterThan(
-            tester.getTopLeft(find.textContaining('Until the trade ends')).dy,
-          ),
-        );
-        expect(
-          tester.getTopLeft(alert).dy,
-          lessThan(tester.getTopLeft(find.text('Go back')).dy),
-        );
-        final palette = Theme.of(tester.element(alert)).extension<BullTheme>();
-        expect(tester.widget<Text>(alert).style?.color, palette?.warning);
-        expect(
-          tester.widget<TradeButton>(journey.payOf(walletQuote)).onPressed,
-          isNotNull,
-        );
-        expect(
-          find.widgetWithText(TradeButton, 'Retry'),
-          rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
-        );
+        expect(find.textContaining('come to'), findsNothing);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
         await tester.pumpWidget(const SizedBox.shrink());
         await settle(tester);
         await tester.pump(const Duration(seconds: 61));
@@ -1710,6 +1765,126 @@ void main() {
       await tester.pump(const Duration(seconds: 61));
     },
   );
+  for (final words in const [_english, _french]) {
+    final code = words.locale.languageCode;
+    group('the lean confirmation of a maker seller\'s collateral (#250), $code', () {
+      /// The first take's collateral paid with this wallet and held, the order taken again: the second take's page, before its confirmation.
+      Future<(_Journey, P2pWalletQuote)> secondTake(WidgetTester tester) async {
+        final journey = await _Journey.start(tester, words);
+        await journey.toFirstTake();
+        final first = await journey.openConfirmation();
+        final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
+        journey.wallet.scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-e0',
+              paymentHash: escrow0.facts.paymentHash,
+            ),
+          ),
+        );
+        journey.paidAt(escrow0, 'swap-e0', const P2pWalletPaymentPending());
+        await journey.tap(journey.payOf(first));
+        await settle(tester);
+        expect(journey.wallet.paid, isNotEmpty);
+        journey.takenAgain();
+        await journey.waitFor(find.text(words.earlierTitle), seconds: 60);
+        await journey.waitFor(find.text(words.payWithThisWallet), seconds: 20);
+        return (journey, first);
+      }
+
+      testWidgets(
+        'two alerts at once: the earlier collateral not back and « Amount not checked », each in two lines above the buttons, with « New contract »; their explanations in the detail; the buttons still; « Pay » offered',
+        (tester) async {
+          final (journey, first) = await secondTake(tester);
+          journey.wallet.rate = const P2pWalletRateUnavailable();
+          final quote = await journey.openConfirmation();
+          final lean = LeanConfirmation(tester, words.locale);
+          final l10n = lean.l10n;
+          lean.expectArrival(quote, escrow: true);
+          final block = find.byKey(PayConfirmationCard.earlierBlock);
+          expect(
+            find.descendant(of: block, matching: find.text(words.earlierNotBack)),
+            findsOneWidget,
+          );
+          final total = Sats(first.total.value + quote.total.value);
+          final out = find.descendant(
+            of: block,
+            matching: find.text(
+              words.earlierOut.replaceAll(
+                '{b}',
+                words.sats(total.value.toInt()),
+              ),
+            ),
+          );
+          expect(out, findsOneWidget);
+          lean.expectAboveButtons(out);
+          final palette = Theme.of(tester.element(out)).extension<BullTheme>();
+          expect(tester.widget<Text>(out).style?.color, palette?.error);
+          final unverified = lean.inCard(
+            find.text(l10n.p2pPayoutBreakdownUnverifiedLine),
+          );
+          lean.expectAboveButtons(unverified);
+          expect(lean.inCard(find.text(l10n.p2pCommonRetry)), findsOneWidget);
+          // « New contract », neutral, beside them.
+          final contract = find.descendant(
+            of: find.byKey(PayConfirmationCard.newContractBlock),
+            matching: find.text(words.newContractLine),
+          );
+          expect(contract, findsOneWidget);
+          expect(tester.widget<Text>(contract).style?.color, palette?.text);
+          await lean.toggleDetail(
+            quote,
+            whileOpen: () {
+              expect(find.text(l10n.p2pPayUnverifiedDetail), findsOneWidget);
+              expect(
+                find.text(
+                  l10n.p2pPayEarlierNotBackDetail(
+                    words.sats(first.total.value.toInt()),
+                  ),
+                ),
+                findsOneWidget,
+              );
+              expect(find.byKey(PayConfirmationCard.smallGap), findsNothing);
+            },
+          );
+          expect(
+            tester.widget<TradeButton>(lean.payOf(quote)).onPressed,
+            isNotNull,
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 61));
+        },
+      );
+
+      testWidgets(
+        'a confirmation left open while the order is taken again: « The order was taken again meanwhile » in red above the buttons, « Pay » not offered and paying nothing, never « The amounts have changed »',
+        (tester) async {
+          final journey = await _Journey.start(tester, words);
+          await journey.toFirstTake();
+          final quote = await journey.openConfirmation();
+          final lean = LeanConfirmation(tester, words.locale);
+          final l10n = lean.l10n;
+          journey.takenAgain();
+          final title = find.text(l10n.p2pPayConfirmStaleTitle);
+          await journey.waitFor(title, seconds: 30);
+          final line = find.text(l10n.p2pPayConfirmStaleLine);
+          expect(line, findsOneWidget);
+          lean.expectAboveButtons(line);
+          final palette = Theme.of(tester.element(line)).extension<BullTheme>();
+          expect(tester.widget<Text>(line).style?.color, palette?.error);
+          expect(find.text(l10n.p2pPayConfirmAgainTitle), findsNothing);
+          expect(tester.widget<TradeButton>(lean.payOf(quote)).onPressed, isNull);
+          await tester.tap(lean.payOf(quote), warnIfMissed: false);
+          await settle(tester);
+          expect(journey.wallet.paid, isEmpty);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 61));
+        },
+      );
+    });
+  }
 }
 
 /// « Show details » in the breakdown's card, under the rule's lines, and within a phone of 720 × 1280 pixels (360 × 640 points) on arrival, without scrolling (#250, the owner's decision of 2026-11-24).
