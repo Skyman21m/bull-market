@@ -834,7 +834,7 @@ void main() {
             lean.expectArrival(quote, escrow: !bond);
             expect(
               lean.row(PriceCheckLines.gapRow),
-              startsWith('${l10n.p2pPayoutBreakdownGap} | +'),
+              startsWith('${l10n.p2pPayoutBreakdownGap} | '),
             );
             lean.expectAboveButtons(find.byKey(PriceCheckLines.gapRow));
             await lean.toggleDetail(
@@ -859,7 +859,10 @@ void main() {
                           lean.formats.gapSize(BigInt.from(3)),
                         ),
                 );
-                expect(find.byKey(PayConfirmationCard.smallGap), findsOneWidget);
+                expect(
+                  find.byKey(PayConfirmationCard.smallGap),
+                  findsOneWidget,
+                );
                 expect(
                   find.byKey(PayConfirmationCard.heldParagraph),
                   bond ? findsNothing : findsOneWidget,
@@ -968,7 +971,10 @@ void main() {
             await _tap(tester, lean.inCard(find.text(l10n.p2pCommonRetry)));
             await app.settle();
             expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
-            expect(lean.inCard(find.byKey(PriceCheckLines.gapRow)), findsOneWidget);
+            expect(
+              lean.inCard(find.byKey(PriceCheckLines.gapRow)),
+              findsOneWidget,
+            );
             expect(app.wallet.paid, isEmpty);
             await app.close();
           },

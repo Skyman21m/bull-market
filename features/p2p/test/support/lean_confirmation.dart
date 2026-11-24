@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:bull_ui/bull_ui.dart' show BullTheme;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
@@ -8,6 +11,20 @@ import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/widgets/price_check_lines.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
+
+/// Loads the app's own font (`assets/fonts/GolosText.ttf`) in place of the tests' default, once: the checks of words broken are made in it, Flutter's test font drawing every glyph as a square of the text's size, words about twice as wide as the app draws them. It stays loaded for the rest of the file's tests.
+Future<void> loadAppFont() async {
+  if (_appFontLoaded) return;
+  _appFontLoaded = true;
+  final bytes = File('../../assets/fonts/GolosText.ttf').readAsBytesSync();
+  for (final family in ['Roboto', 'Golos Text']) {
+    final loader = FontLoader(family)
+      ..addFont(Future.value(ByteData.sublistView(bytes)));
+    await loader.load();
+  }
+}
+
+var _appFontLoaded = false;
 
 /// The checks of the lean confirmation of « Pay with this wallet » (#250; layout and words validated by the owner on 2026-11-24), shared by the route tests of the four payments: a maker's bond and a maker seller's collateral (`maker_escrow_route_test.dart`, `maker_sell_route_test.dart`), a taker's bond and a taker seller's collateral (`taken_price_route_test.dart`).
 final class LeanConfirmation {

@@ -1468,39 +1468,61 @@ void main() {
           await journey.close();
         },
       );
-
-      for (final payment in ['bond', 'escrow']) {
-        testWidgets(
-          'a taker\'s $payment on a phone of 320 points, the text at ×1, ×2 and ×3: the card and its detail overflow nothing, no word cut',
-          (tester) async {
-            final (journey, lean, quote) = payment == 'bond'
-                ? await bond(tester, sats: 1348344)
-                : await escrow(tester, sats: 1348344);
-            addTearDown(
-              tester.platformDispatcher.clearTextScaleFactorTestValue,
-            );
-            tester.view
-              ..physicalSize = const Size(320 * 3, 4000 * 3)
-              ..devicePixelRatio = 3;
-            for (final scale in const [1.0, 2.0, 3.0]) {
-              tester.platformDispatcher.textScaleFactorTestValue = scale;
-              await tester.pump();
-              lean.expectNothingCut('$payment ×$scale, on arrival');
-              final toggle = find.byKey(PayConfirmationCard.detailToggle);
-              await tester.ensureVisible(toggle);
-              await tester.pump();
-              await tester.tap(toggle);
-              await tester.pump();
-              expect(find.byKey(PayConfirmationCard.detail), findsOneWidget);
-              lean.expectNothingCut('$payment ×$scale, the detail open');
-              await tester.tap(toggle);
-              await tester.pump();
-            }
-            expect(quote.total, isNotNull);
-            await journey.close();
-          },
-        );
-      }
     });
   }
+
+  // Last in the file: the app's font, loaded here, stays loaded for the tests after it.
+  group(
+    'the lean confirmation of a take on a phone of 320 points, in the app\'s font (#250)',
+    () {
+      for (final locale in const [Locale('en'), Locale('fr')]) {
+        for (final payment in ['bond', 'escrow']) {
+          testWidgets(
+            '${locale.languageCode}: a taker\'s $payment, its red alert, the text at ×1, ×2 and ×3: the card and its detail overflow nothing, no word cut',
+            (tester) async {
+              await tester.runAsync(loadAppFont);
+              final journey = await _Journey.start(
+                tester,
+                locale,
+                seller: payment == 'escrow',
+                sats: 1348344,
+              );
+              await journey.take();
+              if (payment == 'bond') {
+                await journey.confirmBond();
+              } else {
+                await journey.confirmBond();
+                await journey.lockBond(
+                  find.text(journey.l10n.p2pPayWithThisWallet),
+                );
+                await journey.confirmEscrow();
+              }
+              final lean = LeanConfirmation(tester, locale);
+              addTearDown(
+                tester.platformDispatcher.clearTextScaleFactorTestValue,
+              );
+              tester.view
+                ..physicalSize = const Size(320 * 3, 4000 * 3)
+                ..devicePixelRatio = 3;
+              for (final scale in const [1.0, 2.0, 3.0]) {
+                tester.platformDispatcher.textScaleFactorTestValue = scale;
+                await tester.pump();
+                lean.expectNothingCut('$payment ×$scale, on arrival');
+                final toggle = find.byKey(PayConfirmationCard.detailToggle);
+                await tester.ensureVisible(toggle);
+                await tester.pump();
+                await tester.tap(toggle);
+                await tester.pump();
+                expect(find.byKey(PayConfirmationCard.detail), findsOneWidget);
+                lean.expectNothingCut('$payment ×$scale, the detail open');
+                await tester.tap(toggle);
+                await tester.pump();
+              }
+              await journey.close();
+            },
+          );
+        }
+      }
+    },
+  );
 }

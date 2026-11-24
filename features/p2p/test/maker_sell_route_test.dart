@@ -1803,7 +1803,10 @@ void main() {
           lean.expectArrival(quote, escrow: true);
           final block = find.byKey(PayConfirmationCard.earlierBlock);
           expect(
-            find.descendant(of: block, matching: find.text(words.earlierNotBack)),
+            find.descendant(
+              of: block,
+              matching: find.text(words.earlierNotBack),
+            ),
             findsOneWidget,
           );
           final total = Sats(first.total.value + quote.total.value);
@@ -1874,7 +1877,10 @@ void main() {
           final palette = Theme.of(tester.element(line)).extension<BullTheme>();
           expect(tester.widget<Text>(line).style?.color, palette?.error);
           expect(find.text(l10n.p2pPayConfirmAgainTitle), findsNothing);
-          expect(tester.widget<TradeButton>(lean.payOf(quote)).onPressed, isNull);
+          expect(
+            tester.widget<TradeButton>(lean.payOf(quote)).onPressed,
+            isNull,
+          );
           await tester.tap(lean.payOf(quote), warnIfMissed: false);
           await settle(tester);
           expect(journey.wallet.paid, isEmpty);
