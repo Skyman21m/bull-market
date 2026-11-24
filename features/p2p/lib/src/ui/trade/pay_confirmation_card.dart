@@ -13,6 +13,7 @@ import '../../presentation/bond_payment_cubit.dart';
 import '../../presentation/p2p_formats.dart';
 import '../widgets/amount_row.dart';
 import '../widgets/detail_toggle.dart';
+import '../widgets/moved_tap_guard.dart';
 import '../widgets/price_check_lines.dart';
 import '../widgets/trade_button.dart';
 import '../widgets/word_fit_text.dart';
@@ -285,14 +286,18 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
         const Gap(BullSpacing.sm),
         KeyedSubtree(
           key: widget.payKey,
-          child: TradeButton(
-            label: l10n.p2pPayConfirm(
-              formats.sats(walletQuote.total.value.toInt()),
+          // A tap aimed at « Show details » or « Go back » when the screen moved « Pay » onto it is ignored for a moment (security review of #268, C1, C2); « Pay » stays enabled and pays at the next tap.
+          child: MovedTapGuard(
+            builder: (context, guard) => TradeButton(
+              label: l10n.p2pPayConfirm(
+                formats.sats(walletQuote.total.value.toInt()),
+              ),
+              // A confirmation of a contract the order moved on from pays nothing: not offered.
+              onPressed: guard(confirming.stale ? null : widget.onPay),
             ),
-            // A confirmation of a contract the order moved on from pays nothing: not offered.
-            onPressed: confirming.stale ? null : widget.onPay,
           ),
         ),
+        const Gap(BullSpacing.sm),
         // Under the buttons, in the card: the detail opens under the link, so the buttons never move (the owner's decision of 2026-11-24).
         DetailToggle(
           key: PayConfirmationCard.detailToggle,

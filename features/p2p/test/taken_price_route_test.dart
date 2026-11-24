@@ -17,6 +17,7 @@ import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
 import 'package:p2p/src/ui/widgets/price_check_lines.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -1466,6 +1467,168 @@ void main() {
               );
             },
           );
+          await journey.close();
+        },
+      );
+
+      /// A phone of 320 × 568 points, the card's link brought into view.
+      Future<void> smallPhone(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(320, 568) * 3;
+        await tester.pump();
+        await settle(tester);
+        await tester.ensureVisible(
+          find.byKey(PayConfirmationCard.detailToggle),
+        );
+        await tester.pump();
+        await settle(tester);
+      }
+
+      /// The script of the payment of [invoice], for a « Pay » that goes through.
+      void payable(_Journey journey, Bolt11TestInvoice invoice) =>
+          journey.wallet.scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-guard',
+                paymentHash: invoice.facts.paymentHash,
+              ),
+            ),
+          );
+
+      /// « Pay » tapped once, now: it pays the quote shown, once.
+      Future<void> paysNow(
+        _Journey journey,
+        LeanConfirmation lean,
+        P2pWalletQuote quote,
+      ) async {
+        final tester = journey.tester;
+        await tester.tap(lean.payOf(quote));
+        await tester.pump();
+        await journey.waitUntil(() => journey.wallet.paid.isNotEmpty);
+        expect(journey.wallet.paid, hasLength(1));
+        expect(journey.wallet.paid.single.$2.total, quote.total);
+      }
+
+      testWidgets(
+        'an alert of the screen that comes, then goes, while the card is open (a coordinator showing other terms for a read): a tap aimed at what stood where « Pay » now is pays nothing; « Pay » a moment later pays the quote shown, once (security review of #268, C1)',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          final l10n = journey.l10n;
+          await smallPhone(tester);
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          payable(journey, invoice);
+          final pay = lean.payOf(quote);
+          final toggle = find.byKey(PayConfirmationCard.detailToggle);
+          // The alert comes: the card moves; a tap on « Pay » at once was aimed at what stood there before.
+          var before = tester.getRect(pay);
+          journey.coordinator.premium = 9;
+          await journey.waitFor(find.text(l10n.p2pTradeWarnTerms));
+          await tester.pump();
+          expect(tester.getRect(pay), isNot(before));
+          await tester.tapAt(tester.getRect(pay).center);
+          await tester.pump();
+          expect(journey.wallet.paid, isEmpty);
+          // The alert goes, its trace stays: the card moves down by the trace's line, « Pay » onto what stood under it (« Show details », or the space under « Pay »).
+          await tester.pump(
+            MovedTapGuard.afterMove + const Duration(milliseconds: 50),
+          );
+          before = tester.getRect(pay);
+          final link = tester.getRect(toggle).center;
+          journey.coordinator.premium = 3.5;
+          await journey.waitUntil(
+            () => find.text(l10n.p2pTradeWarnTerms).evaluate().isEmpty,
+          );
+          await tester.pump();
+          final after = tester.getRect(pay);
+          expect(after.top, greaterThan(before.top));
+          // Where « Pay » now covers the link's old place, the tap aimed at the link; else a tap on « Pay » itself, as soon.
+          await tester.tapAt(after.contains(link) ? link : after.center);
+          await tester.pump();
+          expect(journey.wallet.paid, isEmpty);
+          // A moment later « Pay » pays, never a lock.
+          await tester.pump(
+            MovedTapGuard.afterMove + const Duration(milliseconds: 50),
+          );
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        '« Retry » that brings the Bull price while the user goes for « Go back »: the tap where « Go back » was, now under « Pay », pays nothing; « Pay » a moment later pays (security review of #268, C2)',
+        (tester) async {
+          final (journey, lean, quote) = await escrow(
+            tester,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          await smallPhone(tester);
+          final invoice = journey.coordinator.escrowInvoice;
+          if (invoice == null) fail('no escrow invoice');
+          payable(journey, invoice);
+          // « Retry » in view, under the tabs.
+          final retry = lean.inCard(find.text(l10n.p2pCommonRetry));
+          unawaited(
+            Scrollable.ensureVisible(tester.element(retry), alignment: 0.3),
+          );
+          await tester.pump();
+          await settle(tester);
+          final back = tester.getRect(lean.goBack).center;
+          expect(back.dy, lessThan(568));
+          journey.wallet.rate = P2pWalletRateRead(71657);
+          await tester.tap(retry);
+          await journey.waitUntil(
+            () =>
+                find.text(l10n.p2pPayoutBreakdownUnverified).evaluate().isEmpty,
+          );
+          expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
+          expect(tester.getRect(lean.payOf(quote)).contains(back), isTrue);
+          await tester.tapAt(back);
+          await tester.pump();
+          expect(journey.wallet.paid, isEmpty);
+          expect(lean.card, findsOneWidget);
+          await tester.pump(
+            MovedTapGuard.afterMove + const Duration(milliseconds: 50),
+          );
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'the page scrolled, then « Pay » tapped at once: it pays, a scroll never sets the guard off (security review of #268)',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          await smallPhone(tester);
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          payable(journey, invoice);
+          final before = tester.getRect(lean.payOf(quote));
+          // The page scrolled by 80 points, as a finger would.
+          final position = Scrollable.of(tester.element(lean.card)).position;
+          final up = position.pixels - 80;
+          position.jumpTo(
+            up >= position.minScrollExtent ? up : position.pixels + 80,
+          );
+          await tester.pump();
+          expect(tester.getRect(lean.payOf(quote)), isNot(before));
+          await paysNow(journey, lean, quote);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'the detail opened and closed, then « Pay » tapped at once: it pays, the detail never moves « Pay » (security review of #268)',
+        (tester) async {
+          final (journey, lean, quote) = await bond(tester);
+          final invoice = journey.coordinator.bondOf(journey.robot);
+          if (invoice == null) fail('no bond');
+          payable(journey, invoice);
+          await lean.toggleDetail(quote);
+          await tester.tap(lean.inCard(find.text(journey.l10n.p2pDetailShow)));
+          await tester.pump();
+          expect(find.byKey(PayConfirmationCard.detail), findsOneWidget);
+          await paysNow(journey, lean, quote);
           await journey.close();
         },
       );
