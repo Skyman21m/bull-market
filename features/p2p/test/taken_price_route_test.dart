@@ -613,6 +613,32 @@ void main() {
     );
 
     testWidgets(
+      'a taker seller\'s red escrow confirmation open, then the coordinator\'s amounts no longer agree, $code: even the red comparison goes, the state machine\'s alert alone',
+      (tester) async {
+        final journey = await _Journey.start(
+          tester,
+          locale,
+          seller: true,
+          sats: 1348344,
+        );
+        await journey.take();
+        await journey.confirmBond();
+        await journey.lockBond(find.text(journey.l10n.p2pPayWithThisWallet));
+        await journey.confirmEscrow();
+        final red =
+            '${journey.escrowLine(90175)} ${journey.escrowWarning(1350704)}';
+        expect(find.text(red), findsOneWidget);
+        journey.coordinator.tradeSatoshisAnswered = 100000;
+        await journey.waitUntil(() => find.text(red).evaluate().isEmpty);
+        await settle(tester);
+        expect(find.text(journey.l10n.p2pCommonGoBack), findsOneWidget);
+        expect(find.text(red), findsNothing);
+        expect(journey.wallet.paid, isEmpty);
+        await journey.close();
+      },
+    );
+
+    testWidgets(
       'the Bull wallet\'s price unreadable at the bond, $code: « rate not checked » and « Retry », then the comparison',
       (tester) async {
         final journey = await _Journey.start(
