@@ -232,7 +232,7 @@ sealed class WalletRateCheck {
   bool get warns => false;
 }
 
-/// The two points of the owner's payment rule for an order taken here that the owner has not decided yet (design note `docs/design/phase-3-taken-order-price-check.md` § 7, questions 2 and 3): each coded as the note recommends, here and nowhere else, so that a contrary answer changes this class and its tests (`wallet_rate_check_test.dart`, group « the two points the owner has not decided »).
+/// The two points of the owner's payment rule for an order taken here that the owner has not decided yet (design note `docs/design/phase-3-taken-order-price-check.md` § 7, questions 2 and 3): each coded as the note recommends, here and nowhere else, so that a contrary answer changes this class and its tests (`taken_price_check_test.dart`, group « the two points the owner has not decided »).
 abstract final class TakenRateRules {
   /// Question 3, an order priced in sats (its sats chosen by the maker, `TakenSide.explicitSatoshis`): `true`, compared at the payments as the other orders, with the premium the coordinator computed for it at its own price (`premium_now`, kept in the terms), the note's recommendation; the owner has not answered yet. `false` would compare nothing at the payments for such an order ([compares]).
   static const bool comparesOrdersPricedInSats = true;

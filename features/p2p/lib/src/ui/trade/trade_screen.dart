@@ -1467,7 +1467,8 @@ class _Contract extends StatelessWidget {
       PayoutRateReading(:final step) ||
       PayoutRateChecked(:final step) ||
       PayoutRateSatsMissing(:final step) ||
-      PayoutRateAmountsDisagree(:final step) => step,
+      PayoutRateAmountsDisagree(:final step) ||
+      PayoutRateAlertAlone(:final step) => step,
       _ => null,
     };
     if (step == null || step != shown) return null;

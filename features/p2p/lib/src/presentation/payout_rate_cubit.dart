@@ -136,6 +136,13 @@ final class PayoutRateAmountsDisagree extends PayoutRateState {
   const PayoutRateAmountsDisagree(this.step, {this.notSeen = false});
 }
 
+/// The comparison of [step] is within the owner's threshold while the status shown carries an alert of the state machine (`CheckPayoutRateUsecase.reassuresBesideAlert`): nothing drawn, the alert said alone, never a reassuring line beside it (correction C1 of the functional review of #249, for any buyer).
+final class PayoutRateAlertAlone extends PayoutRateState {
+  final PayoutRateStep step;
+
+  const PayoutRateAlertAlone(this.step);
+}
+
 /// What a line of the rule says, to tell whether a read changed it.
 enum PayoutRateVerdict {
   none,
@@ -146,6 +153,9 @@ enum PayoutRateVerdict {
   unverified,
   satsMissing,
   disagree,
+
+  /// Nothing drawn beside an alert of the state machine ([PayoutRateAlertAlone]).
+  alertAlone,
 }
 
 /// The owner's payment rule on a buyer's side (#182, design note § 3.3), on the trade screen: the only caller of [CheckPayoutRateUsecase], for an order made here whose user buys and, since #249, for an order taken here whose user buys ([CheckPayoutRateUsecase.termsOf]; a seller's trade never sees it, not even « reading »).
@@ -214,7 +224,10 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     _seen = seen;
     _step = step;
     _status = seen.status.runtimeType;
-    if (!_termsRead) emit(PayoutRateReading(step));
+    // « Reading » before the terms are known only for an order made here, as since #182: a taker buyer whose terms give nothing to compare never sees it (R6 of the functional review of #249); one whose terms are compared sees it once the price is asked.
+    if (!_termsRead && record.origin == TradeOrigin.madeHere) {
+      emit(PayoutRateReading(step));
+    }
     final terms = await _readTerms();
     // A later show took over meanwhile: it does the rest.
     if (isClosed || !identical(_seen, seen)) return;
@@ -234,7 +247,13 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     if (read) {
       await _read(terms);
     } else {
-      _emitFor(step, terms, subject, _reading == null ? kept?.price : null);
+      _emitFor(
+        step,
+        terms,
+        seen.status,
+        subject,
+        _reading == null ? kept?.price : null,
+      );
     }
   }
 
@@ -276,6 +295,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     PayoutRateAmountsDisagree(notSeen: true) => PayoutRateVerdict.warns,
     PayoutRateSatsMissing() => PayoutRateVerdict.satsMissing,
     PayoutRateAmountsDisagree() => PayoutRateVerdict.disagree,
+    PayoutRateAlertAlone() => PayoutRateVerdict.alertAlone,
     PayoutRateChecked(:final check, :final basis) => switch (check) {
       // A coordinator's figure that moved since the invoice is an alert of its own, whatever the price says.
       _ when basis is PayoutRateTold || basis is PayoutRateNotSeen =>
@@ -313,9 +333,11 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     return subject;
   }
 
+  /// The state of [step] for [subject], a status of [status], at [price]: a comparison within the threshold beside an alert of the state machine is [PayoutRateAlertAlone] ([CheckPayoutRateUsecase.reassuresBesideAlert]).
   void _emitFor(
     PayoutRateStep step,
     PayoutRateTerms terms,
+    TradeStatus status,
     PayoutRateSubject? subject,
     P2pWalletBitcoinRate? price,
   ) {
@@ -330,14 +352,23 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
         step,
         notSeen: notSeen,
       ),
-      final PayoutRateCompared compared =>
-        price == null
-            ? PayoutRateReading(step)
-            : PayoutRateChecked(
-                step,
-                CheckPayoutRateUsecase.compareFor(terms, compared, price),
-                basis: compared.basis,
-              ),
+      final PayoutRateCompared compared => switch (price) {
+        null => PayoutRateReading(step),
+        final price => switch (CheckPayoutRateUsecase.compareFor(
+          terms,
+          compared,
+          price,
+        )) {
+          final check
+              when CheckPayoutRateUsecase.reassuresBesideAlert(
+                status,
+                check,
+                compared.basis,
+              ) =>
+            PayoutRateAlertAlone(step),
+          final check => PayoutRateChecked(step, check, basis: compared.basis),
+        },
+      },
     });
   }
 
@@ -357,7 +388,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       final seen = _seen;
       final step = _step;
       if (isClosed || seen == null || step == null) return;
-      _emitFor(step, terms, _subjectOf(terms, seen), price);
+      _emitFor(step, terms, seen.status, _subjectOf(terms, seen), price);
     }();
   }
 }

@@ -7,6 +7,7 @@ import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
 import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
+import 'package:p2p/src/presentation/payout_rate_cubit.dart';
 import 'package:test/test.dart';
 
 import 'support/trade_orders.dart';
@@ -316,9 +317,9 @@ void main() {
   );
 
   test(
-    'the premium kept, as a percentage and with its sign: at −5 % the same 100 USD are worth 146,898 sats (146,898.4…), more than at +3.5 % (134,834)',
+    'the premium kept, as a percentage and with its sign: at −5 % the same 100 USD are worth 146,898 sats (146,898.6…), more than at +3.5 % (134,834)',
     () {
-      // 100 / (71,657 × 0.95) × 10^8 = 146,898.41…; a premium read as a fraction (+0.035 %) would expect 139,066 sats.
+      // 100 / (71,657 × 0.95) × 10^8 = 146,898.63…; a premium read as a fraction (1 + 3.5 instead of 1 + 3.5 / 100) would expect 31,011 sats.
       expect(
         escrow(146898, of: taken(premium: -5)).expected,
         Sats.fromInt(146898),
@@ -639,6 +640,136 @@ void main() {
               asked: Sats.fromInt(106713),
             ),
             isA<PayoutRateMismatch>(),
+          );
+        },
+      );
+
+      group(
+        'beside an alert of the state machine that is not about the terms nor the amounts, a reassuring comparison is not drawn, a comparison that is itself an alert is (C1 of the functional review)',
+        () {
+          // 100 EUR at +2 %: 106,900.0… sats at 91,711.15 EUR/BTC (106,713 received, −0.18 %), 166,666.6… at 58,823.53 (−35.97 %, red).
+          WalletRateCheck checkAt(double price) =>
+              WalletRateCheck.ofTakerPayout(
+                terms(),
+                received: Sats.fromInt(106713),
+                wallet: P2pWalletRateRead(price),
+              );
+
+          /// 6 read again with a deadline earlier than the one kept (`DeadlineMovedBack`).
+          Future<TradeSeen> deadline() async => statuses.read(
+            await statuses.waitingForBoth(),
+            orderJson(6, expiresAt: tradeNow),
+          );
+
+          /// 6 read again after an answer that broke the trade's history (another role shown): every status then says `CoordinatorInconsistent`.
+          Future<TradeSeen> inconsistent() async {
+            final broken = await statuses.refusedRead(
+              await statuses.waitingForBoth(),
+              orderJson(6, role: TradeRole.seller),
+            );
+            return statuses.read(broken, orderJson(6));
+          }
+
+          PayoutRateCubit cubitOf(double price) {
+            final cubit = PayoutRateCubit(
+              record,
+              terms: (_) async => TakerPayoutTerms(terms()),
+              price: (_, _) async => P2pWalletRateRead(price),
+              memory: PayoutRateMemory(),
+              now: () => tradeNow,
+            );
+            addTearDown(cubit.close);
+            return cubit;
+          }
+
+          for (final (name, alerted) in [
+            ('a deadline moved back', deadline),
+            ('a coordinator that broke the trade\'s history', inconsistent),
+          ]) {
+            test(
+              '$name: within the threshold, the alert alone; red, the comparison',
+              () async {
+                final seen = await alerted();
+                expect(CheckPayoutRateUsecase.alerted(seen.status), isTrue);
+                expect(
+                  CheckPayoutRateUsecase.subjectOfTake(record, terms(), seen),
+                  isA<PayoutRateCompared>(),
+                );
+                final within = checkAt(91711.15);
+                expect(within.warns, isFalse);
+                expect(
+                  CheckPayoutRateUsecase.reassuresBesideAlert(
+                    seen.status,
+                    within,
+                    const PayoutRateAskedNow(),
+                  ),
+                  isTrue,
+                );
+                final red = checkAt(58823.53);
+                expect(red.warns, isTrue);
+                expect(
+                  CheckPayoutRateUsecase.reassuresBesideAlert(
+                    seen.status,
+                    red,
+                    const PayoutRateAskedNow(),
+                  ),
+                  isFalse,
+                );
+                for (final alert in [
+                  WalletRateCheck.ofTakerPayout(
+                    terms(),
+                    received: Sats.fromInt(106713),
+                    wallet: const P2pWalletRateUnavailable(),
+                  ),
+                  WalletRateCheck.ofTakerPayout(
+                    terms(),
+                    received: Sats.fromInt(106713),
+                    wallet: const P2pWalletRateNotPriced(),
+                  ),
+                ]) {
+                  expect(
+                    CheckPayoutRateUsecase.reassuresBesideAlert(
+                      seen.status,
+                      alert,
+                      const PayoutRateAskedNow(),
+                    ),
+                    isFalse,
+                  );
+                }
+                // The cubit: the alert alone within the threshold, the red comparison beyond it.
+                final quiet = cubitOf(91711.15);
+                await quiet.show(seen, appeared: true);
+                await pumpEventQueue();
+                expect(quiet.state, isA<PayoutRateAlertAlone>());
+                final loud = cubitOf(58823.53);
+                await loud.show(seen, appeared: true);
+                await pumpEventQueue();
+                expect(
+                  loud.state,
+                  isA<PayoutRateChecked>().having(
+                    (s) => s.check.warns,
+                    'warns',
+                    true,
+                  ),
+                );
+              },
+            );
+          }
+
+          test(
+            'without an alert, the comparison within the threshold is drawn',
+            () async {
+              final six = await statuses.waitingForBoth();
+              expect(CheckPayoutRateUsecase.alerted(six.status), isFalse);
+              expect(
+                CheckPayoutRateUsecase.reassuresBesideAlert(
+                  six.status,
+                  checkAt(91711.15),
+                  const PayoutRateAskedNow(),
+                ),
+                isFalse,
+              );
+            },
           );
         },
       );

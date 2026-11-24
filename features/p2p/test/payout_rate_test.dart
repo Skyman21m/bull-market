@@ -5,6 +5,7 @@ import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -217,6 +218,77 @@ void main() {
       );
     });
   });
+
+  group(
+    'a maker buyer beside an alert of the state machine that is not about the terms nor the amounts (C1 of the functional review of #249): a reassuring comparison is not drawn, a red one is',
+    () {
+      Future<TradeSeen> deadline(
+        MakeHarness harness,
+        TradeRecord record,
+      ) async {
+        harness.coordinator.orderChanges[record.orderId] = {
+          'expires_at': harness.now
+              .add(const Duration(minutes: 1))
+              .toIso8601String(),
+        };
+        return readOf(harness, record);
+      }
+
+      Future<TradeSeen> inconsistent(
+        MakeHarness harness,
+        TradeRecord record,
+      ) async {
+        harness.coordinator.orderChanges[record.orderId] = {
+          // Another taker under the same contract (`TradeTakerChanged`, a breach of trust, refused as an answer).
+          'taker_hash_id': harness.robot(3).hashId.hex,
+          'taker_nick': harness.robot(3).nickname,
+        };
+        final broken = await readOf(harness, record);
+        expect(broken.status.has<TradeTakerChanged>(), isTrue);
+        harness.coordinator.orderChanges.remove(record.orderId);
+        final again = await readOf(harness, record);
+        expect(again.status, isA<WaitingForBoth>());
+        return again;
+      }
+
+      for (final (name, alerted) in [
+        ('a deadline moved back', deadline),
+        ('a coordinator that broke the trade\'s history', inconsistent),
+      ]) {
+        test(
+          '$name: within the threshold, the alert alone; red, the comparison',
+          () async {
+            final (harness, record, _) = await taken();
+            final seen = await alerted(harness, record);
+            expect(CheckPayoutRateUsecase.alerted(seen.status), isTrue);
+            final quiet = cubitOf(
+              harness,
+              record,
+              wallet(P2pWalletRateRead(91711.15)),
+            );
+            await quiet.show(seen, appeared: true);
+            await harness.settle();
+            expect(quiet.state, isA<PayoutRateAlertAlone>());
+            final loud = cubitOf(
+              harness,
+              record,
+              wallet(P2pWalletRateRead(45000)),
+            );
+            await loud.show(seen, appeared: true);
+            await harness.settle();
+            expect(
+              loud.state,
+              isA<PayoutRateChecked>().having(
+                (s) => s.check.warns,
+                'warns',
+                true,
+              ),
+            );
+          },
+        );
+      }
+    },
+  );
 
   group('the cubit', () {
     test(
@@ -570,7 +642,7 @@ void main() {
     });
 
     test(
-      'a trade said taken here whose terms are a maker\'s: nothing compared and no price read, the line gone once the terms are read (a taker buyer\'s own terms are compared since #249, `taken_price_usecases_test.dart`)',
+      'a trade said taken here whose terms give nothing to compare (here a maker\'s): never the rule, not even « reading » (a taker buyer\'s own terms are compared since #249, `taken_price_usecases_test.dart`)',
       () async {
         final (harness, record, six) = await taken();
         final taker = TradeRecord(
@@ -597,8 +669,7 @@ void main() {
         await cubit.show(six, appeared: true);
         await harness.settle();
         expect(reads, isEmpty);
-        expect(states.last, isA<PayoutRateNone>());
-        expect(states.whereType<PayoutRateChecked>(), isEmpty);
+        expect(states, isEmpty);
         expect(await cubit.beforeAct(), isTrue);
       },
     );

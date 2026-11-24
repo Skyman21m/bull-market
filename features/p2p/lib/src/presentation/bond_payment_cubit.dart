@@ -138,7 +138,7 @@ final class BondPayQuoting extends BondPayStep {
 final class BondPayConfirming extends BondPayStep {
   final P2pWalletQuote walletQuote;
 
-  /// For an order made here, how the bond or the escrow quoted compares with what the order implies at the wallet's own price (#180, #188, the owner's payment rule of 2026-11-17): shown in the confirmation, a red warning beyond the owner's threshold; `null` for a take.
+  /// How the bond or the escrow quoted compares with what the order implies at the wallet's own price (the owner's payment rule of 2026-11-17: for an order made here, #180, #188; for an order taken here, #249): shown in the confirmation, a red warning beyond the owner's threshold; `null` where nothing is compared.
   final WalletRateCheck? rate;
 
   /// For a maker seller's escrow (#188), the contract the confirmation states, built from [walletQuote] itself, the quote « Pay » pays (security review of #187, C4, point (a) of #188): a new contract, the earlier escrows not back or kept; the payment takes it back. `null` for every other payment.

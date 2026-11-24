@@ -66,6 +66,27 @@ final class CheckPayoutRateUsecase {
   static bool takeDisagrees(TradeStatus status) =>
       amountsDisagree(status) || status.has<TradeTermsChanged>();
 
+  /// Whether [status] carries an alert of the state machine, its invoice's included: any warning but `ContractSeenLate` (information, not an alert), the rule of the confirmation of the bond and of the escrow (`bond_payment_panel.dart`).
+  static bool alerted(TradeStatus status) {
+    final invoice = status.invoice;
+    return [
+      ...status.warnings,
+      if (invoice case CheckedInvoice(:final warnings)) ...warnings,
+    ].any((warning) => warning is! ContractSeenLate);
+  }
+
+  /// Whether the line of [check], of sats coming from [basis], would reassure beside an alert of the state machine that [status] carries ([alerted]): a comparison within the owner's threshold, with no alert of its own (`PayoutRateTold`, `PayoutRateNotSeen`). Such a line is not drawn: an alert speaks alone, never with a reassuring line beside it (the owner's rule; correction C1 of the functional review of #249, for a taker buyer and a maker buyer alike). A comparison that is itself an alert (red, « rate not checked », a currency not priced) is still drawn beside it.
+  static bool reassuresBesideAlert(
+    TradeStatus status,
+    WalletRateCheck check,
+    PayoutRateBasis basis,
+  ) =>
+      alerted(status) &&
+      check is WalletRateCompared &&
+      !check.warns &&
+      basis is! PayoutRateTold &&
+      basis is! PayoutRateNotSeen;
+
   /// What the rule compares at [seen] for [terms], a maker's ([subjectAt]) or a taker's ([subjectOfTake]).
   static PayoutRateSubject? subjectFor(
     TradeRecord record,
