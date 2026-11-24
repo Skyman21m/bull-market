@@ -5982,7 +5982,7 @@ abstract class P2pLocalizations {
   /// **'A small gap is normal: the coordinator has its own price source.'**
   String get p2pPayoutBreakdownSmallGap;
 
-  /// Not in the RoboSats texts: the project's own (#250; the lean layout validated by the owner on 2026-11-24, « Voir le détail ⌄ », the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): under the panel's buttons, opens the detail under them; the buttons never move.
+  /// Not in the RoboSats texts: the project's own (#250; the lean layout validated by the owner on 2026-11-24, « Voir le détail ⌄ », the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): in the payout breakdown's card under the gap's line, opens the detail in the card under it (the validated mock-up, the owner's decision of 2026-11-24).
   ///
   /// In en, this message translates to:
   /// **'Show details'**
