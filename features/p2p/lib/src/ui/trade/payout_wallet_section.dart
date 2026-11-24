@@ -14,7 +14,7 @@ import 'payout_panel.dart';
 /// The wallet's slot of the payout panel (#90): on the Lightning tab « Generate Invoice », an invoice of this wallet's Instant payments for exactly the amount the panel shows; on the Onchain tab « Generate New Address », a new address of its Bitcoin wallet.
 ///
 /// The wallet's own words for the same acts (its Receive screen); the reference has no wallet, and with a WebLN one it makes the invoice and submits it by itself on the status change (`TradeBox/index.tsx:336-345`). Here each request is the user's tap, and what the wallet gives goes into the panel's field through [PayoutWalletRequest.use], where the panel checks it as a pasted text and shows what « Submit » gives (for an invoice its amount, its expiry and its network, with the warning when it may expire before the coordinator pays); the user then taps « Submit ». Nothing is submitted by this section.
-/// While the field holds the invoice it put there, it says what the Instant payments wallet receives once the swap fees are taken, in the wallet's words. At status 15 the panel shows the Lightning tab alone: the same button gives a new invoice once the wallet's earlier one for the trade has ended, and while that one is still open it says so, since the coordinator takes only a new invoice, and an invoice from another wallet can be pasted.
+/// While the field holds the invoice it put there, what the Instant payments wallet receives once the swap service's fee is taken is said by the panel's breakdown ([receiptOf], #228). At status 15 the panel shows the Lightning tab alone: the same button gives a new invoice once the wallet's earlier one for the trade has ended, and while that one is still open it says so, since the coordinator takes only a new invoice, and an invoice from another wallet can be pasted.
 /// An answer that comes once the user changed the field meanwhile is dropped: what the user pasted stays.
 /// Each wait says what it waits for, with the bar, and after 30 s that it still waits; a refusal is said in the wallet's words.
 class PayoutWalletSection extends StatelessWidget {
@@ -26,11 +26,22 @@ class PayoutWalletSection extends StatelessWidget {
   static Widget? slotFor(BuildContext context, PayoutWalletRequest request) =>
       PayoutWalletSection(request: request);
 
+  /// What the invoice this wallet made brings, while the Lightning field of [request] holds it, as the payout panel's `PayoutWalletReceiptOf` (#228): its amount and what arrives in Instant payments, the swap service's fee taken out; `null` otherwise (no invoice made, another text in the field, the Onchain tab).
+  static ({Sats amount, Sats received})? receiptOf(
+    BuildContext context,
+    PayoutWalletRequest request,
+  ) => switch (context.watch<PayoutWalletCubit>().state) {
+    PayoutWalletMadeInvoice(:final invoice)
+        when request.kind == PayoutKind.lightning &&
+            request.field == invoice.bolt11 =>
+      (amount: invoice.amount, received: invoice.received),
+    _ => null,
+  };
+
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
-    final formats = P2pFormats.of(context);
     final state = context.watch<PayoutWalletCubit>().state;
     final kind = request.kind;
     final making = state is PayoutWalletMaking;
@@ -76,23 +87,7 @@ class PayoutWalletSection extends StatelessWidget {
           ],
         ],
         ...switch (state) {
-          // What the invoice in the field brings, while the field holds it.
-          PayoutWalletMadeInvoice(:final invoice)
-              when kind == PayoutKind.lightning &&
-                  request.field == invoice.bolt11 =>
-            [
-              const Gap(BullSpacing.xs),
-              _Line(
-                l10n.p2pPayoutWalletReceived(
-                  formats.sats(invoice.received.value.toInt()),
-                ),
-                live: true,
-              ),
-              _Line(
-                l10n.p2pPayServiceFee(formats.sats(invoice.fee.value.toInt())),
-              ),
-              _Line(l10n.p2pPayoutWalletFeeTaken, muted: true, small: true),
-            ],
+          // What the invoice in the field brings is the breakdown's last two lines (#228, [receiptOf]).
           PayoutWalletEarlierStillOpen() when kind == PayoutKind.lightning => [
             const Gap(BullSpacing.xs),
             _Line(
@@ -193,16 +188,9 @@ class _Line extends StatelessWidget {
   final String text;
   final Color? color;
   final bool muted;
-  final bool small;
   final bool live;
 
-  const _Line(
-    this.text, {
-    this.color,
-    this.muted = false,
-    this.small = false,
-    this.live = false,
-  });
+  const _Line(this.text, {this.color, this.muted = false, this.live = false});
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +202,7 @@ class _Line extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: (small ? theme.bodySmall : theme.bodyMedium)?.copyWith(
+        style: theme.bodyMedium?.copyWith(
           color: color ?? (muted ? colors.textMuted : colors.onSurface),
         ),
       ),

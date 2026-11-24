@@ -2855,15 +2855,6 @@ class P2pLocalizationsTr extends P2pLocalizations {
   String get p2pPayoutWalletStillWaiting => 'Still waiting for the wallet.';
 
   @override
-  String p2pPayoutWalletReceived(String amount) {
-    return 'Receive Amount: $amount sats';
-  }
-
-  @override
-  String get p2pPayoutWalletFeeTaken =>
-      'This fee will be deducted from the amount sent';
-
-  @override
   String get p2pPayoutWalletNoInvoice =>
       'This wallet cannot create an invoice now.';
 
@@ -3756,25 +3747,60 @@ class P2pLocalizationsTr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayoutRateWalletAsked(
-    String price,
-    String currency,
-    String amount,
-    String expected,
-    String received,
-    String gap,
-  ) {
-    return 'At the Bull wallet\'s price, $price $currency/BTC, with the order\'s premium, the $amount $currency asked here are worth $expected sats. The payout invoice this app saw asked for this contract is of $received sats: gap $gap.';
-  }
-
-  @override
   String p2pPayoutRateWarning(
     String threshold,
     String received,
     String expected,
   ) {
-    return 'You receive more than $threshold fewer sats than that: $received sats received, $expected sats expected. Check it before going on.';
+    return 'More than $threshold fewer sats than the value at the Bull wallet\'s price: $received sats instead of $expected. Check it before going on.';
   }
+
+  @override
+  String p2pPayoutRateWarningAsked(
+    String coordinator,
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'The sats $coordinator gave for this contract at the payout step, kept by this app, are more than $threshold below the value at the Bull wallet\'s price: $received sats instead of $expected. Check it before going on.';
+  }
+
+  @override
+  String get p2pPayoutBreakdownTitle => 'What you will receive, in sats';
+
+  @override
+  String get p2pPayoutBreakdownNotCompared =>
+      'Not compared with the Bull wallet\'s price at this step';
+
+  @override
+  String get p2pPayoutBreakdownValue => 'Value at the Bull wallet\'s price';
+
+  @override
+  String p2pPayoutBreakdownPrice(String amount, String currency, String price) {
+    return '$amount $currency at $price $currency/BTC, with the order\'s premium';
+  }
+
+  @override
+  String get p2pPayoutBreakdownGiven => 'Given by the coordinator';
+
+  @override
+  String get p2pPayoutBreakdownGap => 'Gap from the value above';
+
+  @override
+  String get p2pPayoutBreakdownCoordinatorFee =>
+      'Coordinator\'s fee, already deducted';
+
+  @override
+  String get p2pPayoutBreakdownRoutingBudget => 'Lightning routing budget';
+
+  @override
+  String get p2pPayoutBreakdownInvoice => 'Your invoice';
+
+  @override
+  String get p2pPayoutBreakdownSwapFee => 'Swap fees';
+
+  @override
+  String get p2pPayoutBreakdownReceived => 'To be received in your wallet';
 
   @override
   String p2pPayoutRateNotPriced(String currency, String coordinator) {

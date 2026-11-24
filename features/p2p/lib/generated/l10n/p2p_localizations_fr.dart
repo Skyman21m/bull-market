@@ -2895,15 +2895,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Toujours en attente du portefeuille.';
 
   @override
-  String p2pPayoutWalletReceived(String amount) {
-    return 'Montant à recevoir : $amount sats';
-  }
-
-  @override
-  String get p2pPayoutWalletFeeTaken =>
-      'Ces frais seront déduits du montant envoyé';
-
-  @override
   String get p2pPayoutWalletNoInvoice =>
       'Ce portefeuille ne peut pas créer de facture pour le moment.';
 
@@ -3810,25 +3801,60 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayoutRateWalletAsked(
-    String price,
-    String currency,
-    String amount,
-    String expected,
-    String received,
-    String gap,
-  ) {
-    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, les $amount $currency demandés ici valent $expected sats. La facture de paiement demandée pour ce contrat, vue par cette app, est de $received sats : écart $gap.';
-  }
-
-  @override
   String p2pPayoutRateWarning(
     String threshold,
     String received,
     String expected,
   ) {
-    return 'Vous recevez plus de $threshold de sats de moins que prévu : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
+    return 'Plus de $threshold de sats en moins que la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
   }
+
+  @override
+  String p2pPayoutRateWarningAsked(
+    String coordinator,
+    String threshold,
+    String received,
+    String expected,
+  ) {
+    return 'Les sats que $coordinator donnait pour ce contrat à l\'étape du paiement, gardés par cette app, sont de plus de $threshold en dessous de la valeur au prix du portefeuille Bull : $received sats au lieu de $expected. Vérifiez avant de continuer.';
+  }
+
+  @override
+  String get p2pPayoutBreakdownTitle => 'Ce que vous allez recevoir, en sats';
+
+  @override
+  String get p2pPayoutBreakdownNotCompared =>
+      'Non comparé au prix du portefeuille Bull à cette étape';
+
+  @override
+  String get p2pPayoutBreakdownValue => 'Valeur au prix du portefeuille Bull';
+
+  @override
+  String p2pPayoutBreakdownPrice(String amount, String currency, String price) {
+    return '$amount $currency à $price $currency/BTC, avec la prime de l’ordre';
+  }
+
+  @override
+  String get p2pPayoutBreakdownGiven => 'Donné par le coordinateur';
+
+  @override
+  String get p2pPayoutBreakdownGap => 'Écart avec la valeur ci-dessus';
+
+  @override
+  String get p2pPayoutBreakdownCoordinatorFee =>
+      'Frais du coordinateur, déjà déduits';
+
+  @override
+  String get p2pPayoutBreakdownRoutingBudget => 'Budget de routage Lightning';
+
+  @override
+  String get p2pPayoutBreakdownInvoice => 'Votre facture';
+
+  @override
+  String get p2pPayoutBreakdownSwapFee => 'Frais de swap';
+
+  @override
+  String get p2pPayoutBreakdownReceived => 'À recevoir dans votre portefeuille';
 
   @override
   String p2pPayoutRateNotPriced(String currency, String coordinator) {

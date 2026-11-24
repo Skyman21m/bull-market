@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
@@ -20,6 +22,7 @@ import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/trade/active_trades_sheet.dart';
 import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
+import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -30,7 +33,7 @@ import 'package:secrets/testing.dart';
 import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
 import 'support/trade_harness.dart' show tradeKey;
-import 'support/trade_orders.dart' show tradeNow;
+import 'support/trade_orders.dart' show orderJson, tradeNow;
 import 'support/trade_screens.dart';
 
 /// The screens of #182 built by the real composition (`setUpP2pForTesting`, the feature's own setup over fakes), with and without the wallet's port, with and without the Garage: the route `create` opened from the tab, « Active trades » over the composition's pending makes, and the trade page of an order made here, each without an exception. A screen that throws on opening on the owner's phone is what this test closes.
@@ -310,4 +313,178 @@ void main() {
       await tester.pump(const Duration(seconds: 31));
     },
   );
+
+  // The breakdown of the buyer's payout (#228) for a trade taken here, on the trade page as the route builds it over the real composition with the wallet's port: the rule does not run for a taker, so no first line and no gap; the coordinator's figures, its fee, the routing budget, the invoice, and what reaches the wallet once it made the invoice. Then amounts that do not agree: no breakdown at all, the alert alone, and the reference's « Submit invoice for … Sats » so that the amount to ask stays given.
+  for (final locale in const [Locale('en'), Locale('fr')]) {
+    testWidgets(
+      'a trade taken here (buyer) at 6, ${locale.languageCode}: the breakdown without the Bull wallet\'s price, « Generate Invoice » adding what reaches the wallet; amounts that do not agree: the alert alone (#228)',
+      (tester) async {
+        final english = locale.languageCode == 'en';
+        String sats(int value) =>
+            NumberFormat.decimalPattern(locale.languageCode).format(value);
+        tester.view
+          ..physicalSize = const Size(390, 2400) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        addTearDown(locator.reset);
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        final port = FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
+          ..rate = P2pWalletRateRead(91711.15);
+        setUpP2pForTesting(
+          locator,
+          transport: FakeTransport(network: RobosatsNetwork.mainnet),
+          torStates: () => tor.stream,
+          clock: () => tradeNow,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          wallet: port,
+        );
+        final statuses = await TradeScreenStatuses.make();
+        final six = await statuses.waitingForBoth();
+        final disagree = await statuses.read(
+          six,
+          orderJson(6, changes: {'invoice_amount': 100000}),
+          after: const Duration(seconds: 60),
+        );
+        final taken = TradeScreenStatuses.record;
+        final invoice = Bolt11TestInvoice(
+          network: Bolt11Network.mainnet,
+          sats: 106606,
+          seed: 71,
+          createdAt: tradeNow,
+          expiry: const Duration(days: 2),
+        );
+        final reader = Bolt11Reader(Bolt11TestDecoder([invoice]));
+        final watch = StreamController<TradeWatchState>.broadcast();
+        addTearDown(watch.close);
+        locator
+          ..unregister<TradeCubit>()
+          ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+            (record, _) => TradeCubit(record, (
+              record, {
+              signals = const Stream.empty(),
+              onScreen = true,
+            }) {
+              signals.listen((_) {});
+              return watch.stream;
+            }, (record, seen, {bondLoss}) => Completer<Never>().future),
+          )
+          ..unregister<PayoutCubit>()
+          ..registerFactoryParam<PayoutCubit, TradeRecord, void>(
+            (record, _) => PayoutCubit(
+              record,
+              PayoutAsk.of,
+              (record, seen, destination) =>
+                  switch (PayoutAsk.of(record, seen)) {
+                    Err(:final failure) => Err(failure),
+                    Ok(:final value) => value.check(
+                      destination,
+                      now: tradeNow,
+                      reader: reader,
+                    ),
+                  },
+              (record, shown, {onProgress}) => Completer<Never>().future,
+              (_) => () {},
+              now: () => tradeNow,
+            ),
+          );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            locale: locale,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(taken)),
+            ),
+          ),
+        );
+        await tester.pump();
+        watch.add(TradeScreenStatuses.watched(six));
+        await tester.pump();
+        await tester.pump();
+        String row(Key key) => [
+          for (final text in tester.widgetList<Text>(
+            find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+          ))
+            text.data ?? '',
+        ].last;
+        // 106,900 sats fixed at the take, the taker fee of 0.175 % (187), 1,000 ppm of routing budget (107).
+        expect(find.byKey(PayoutBreakdownView.valueRow), findsNothing);
+        expect(find.byKey(PayoutBreakdownView.gapRow), findsNothing);
+        expect(row(PayoutBreakdownView.givenRow), sats(106713));
+        expect(row(PayoutBreakdownView.feeRow), sats(187));
+        expect(row(PayoutBreakdownView.budgetRow), sats(-107));
+        expect(row(PayoutBreakdownView.invoiceRow), sats(106606));
+        expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
+        port.scriptInvoice(
+          Ok(
+            P2pWalletInvoice(
+              bolt11: invoice.text,
+              amount: Sats.fromInt(106606),
+              expiresAt: tradeNow.add(const Duration(days: 2)),
+              received: Sats.fromInt(106400),
+            ),
+          ),
+        );
+        final generate = find.text(
+          english ? 'Generate Invoice' : 'Générer une facture',
+        );
+        await tester.ensureVisible(generate);
+        await tester.pump();
+        await tester.tap(generate);
+        await tester.pump();
+        await tester.pump();
+        expect(row(PayoutBreakdownView.swapRow), sats(-206));
+        expect(row(PayoutBreakdownView.receivedRow), sats(106400));
+        // The copy of « Your invoice » writes the amount asked, as the reference's copy.
+        String? copied;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String?;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(PayoutBreakdownView.invoiceRow),
+            matching: find.byType(IconButton),
+          ),
+        );
+        await tester.pump();
+        expect(copied, '106606');
+        await tester.pump(const Duration(seconds: 3));
+
+        // Amounts that do not agree: the alert alone, no line of the breakdown, the amount to ask still given.
+        watch.add(TradeScreenStatuses.watched(disagree));
+        await tester.pump();
+        await tester.pump();
+        // ignore: avoid_print
+        await tester.pump();
+        expect(find.byType(PayoutBreakdownView), findsNothing);
+        expect(
+          find.text(
+            english
+                ? 'Submit invoice for 106,606 Sats'
+                : 'Soumettre la facture pour ${sats(106606)} Sats',
+          ),
+          findsOneWidget,
+        );
+        expect(port.ratesAsked, isEmpty);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(seconds: 31));
+      },
+    );
+  }
 }

@@ -9,6 +9,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/trade/payout_breakdown.dart';
 import '../../domain/trade/trade_payout.dart';
 import '../../domain/trade/trade_payout_outcome.dart';
 import '../../domain/trade/trade_status.dart';
@@ -21,6 +22,7 @@ import '../widgets/coordinator_link_sheet.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
+import 'payout_breakdown_view.dart';
 
 /// What the trade screen gives the payout panel of the status it shows.
 @immutable
@@ -42,6 +44,9 @@ final class PayoutPanelRequest {
   /// A check the screen runs when « Submit » is pressed, before the payout is given, « Submit » busy meanwhile: `false` stops the press (the screen then shows what changed, and a second press goes on); `null` gives it at once.
   final Future<bool> Function()? beforeSubmit;
 
+  /// The comparison with the Bull wallet's price the owner's payment rule made of the sats given, for the breakdown's first line and gap (#228); `null` when it made none (a taker, « rate not checked », a currency the Bull wallet does not price, a price being read, no wallet's port).
+  final PayoutValuation? valuation;
+
   const PayoutPanelRequest({
     required this.record,
     required this.seen,
@@ -49,6 +54,7 @@ final class PayoutPanelRequest {
     required this.now,
     this.cancelling = false,
     this.beforeSubmit,
+    this.valuation,
   });
 }
 
@@ -88,6 +94,13 @@ final class PayoutWalletRequest {
 typedef PayoutWalletBuilder =
     Widget? Function(BuildContext context, PayoutWalletRequest request);
 
+/// The amount and the sats received of the invoice this wallet made, while the field of [request]'s tab holds it, for the breakdown's last two lines (#228); `null` otherwise.
+typedef PayoutWalletReceiptOf =
+    ({Sats amount, Sats received})? Function(
+      BuildContext context,
+      PayoutWalletRequest request,
+    );
+
 /// Calls [onTold] once a payout given told something ([PayoutPanelState.toldBetween]): the route puts it around the trade screen, so that it hears it whichever tab is shown, and asks the trade's watch to read at once.
 class PayoutTold extends StatelessWidget {
   final VoidCallback onTold;
@@ -112,11 +125,18 @@ class PayoutTold extends StatelessWidget {
 /// « Submit » gives the cubit the payout shown, once; while it is given, each wait says what it waits for, and after 30 s that it still waits; what it gave is said under « Submit », a refusal of the coordinator under the field, as the reference's helper text.
 /// The robot's key is held while the panel is shown with the app in the foreground and its tab visible, and let go otherwise.
 /// [wallet] fills the slot of the wallet's invoice and address (#90), « Generate Invoice » and « Generate New Address » (`PayoutWalletSection`), where the wallet's port was lent; with `null`, the slot draws nothing.
+/// Above the tabs, one breakdown of the sats from top to bottom (#228, [PayoutBreakdownView]) in place of the figures said apart before (the rule's « You receive », « Submit invoice for … Sats », the wallet's « Receive Amount » and its swap fees): what the coordinator gives and its fee, and on the Lightning tab the routing budget, « Your invoice » with the reference's copy, and, from [walletReceipt], the swap service's fee and what reaches the wallet; none while the amounts do not agree ([PayoutBreakdown.of]).
 class PayoutPanel extends StatefulWidget {
   final PayoutPanelRequest request;
   final PayoutWalletBuilder? wallet;
+  final PayoutWalletReceiptOf? walletReceipt;
 
-  const PayoutPanel({super.key, required this.request, this.wallet});
+  const PayoutPanel({
+    super.key,
+    required this.request,
+    this.wallet,
+    this.walletReceipt,
+  });
 
   /// The keys of the fields, for the tests.
   static const invoiceField = ValueKey('payout-invoice');
@@ -338,9 +358,53 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final onchain = ask.onchain;
     // A tab whose option the coordinator withdrew falls back to Lightning.
     final kind = onchain == null ? PayoutKind.lightning : state.form.kind;
+    final walletRequest = PayoutWalletRequest(
+      record: widget.request.record,
+      ask: ask,
+      kind: kind,
+      use: (text) => _edit(
+        () => switch (kind) {
+          PayoutKind.lightning => _cubit.editInvoice(text),
+          PayoutKind.onchain => _cubit.editAddress(text),
+        },
+      ),
+      invoiceSats: ask.invoiceSatsFor(state.form.budget),
+      field: switch (kind) {
+        PayoutKind.lightning => state.form.invoice,
+        PayoutKind.onchain => state.form.address,
+      },
+      editable:
+          state.phase is PayoutEditing &&
+          !state.outcomeTold &&
+          !widget.request.cancelling,
+    );
+    final breakdown = PayoutBreakdown.of(
+      ask,
+      budget: state.form.budget,
+      wallet: widget.walletReceipt?.call(context, walletRequest),
+    );
+    final lightning = kind == PayoutKind.lightning;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The sats from top to bottom, above the tabs: the rule's alert, said just above the panel, stays next to it (#228).
+        if (breakdown != null) ...[
+          PayoutBreakdownView(
+            breakdown: breakdown,
+            valuation: widget.request.valuation,
+            lightning: lightning,
+            onCopy: switch ((lightning, breakdown.invoice)) {
+              (true, final invoice?) => () => _copyAmount(invoice),
+              _ => null,
+            },
+            copied: _copied,
+            // At 15 the owner's rule does not run: said, so that the figures do not look checked (security review of #228, C2).
+            notCompared: ask.isNewInvoice,
+          ),
+          if (_copied && lightning)
+            _Text(l10n.p2pCommonCopied, center: true, live: true),
+          const Gap(BullSpacing.md),
+        ],
         if (!newInvoice) ...[
           BullSegmented(
             items: {l10n.p2pPayoutTabLightning, l10n.p2pPayoutTabOnchain},
@@ -369,36 +433,19 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
           ],
           const Gap(BullSpacing.md),
         ],
-        ?widget.wallet?.call(
-          context,
-          PayoutWalletRequest(
-            record: widget.request.record,
-            ask: ask,
-            kind: kind,
-            use: (text) => _edit(
-              () => switch (kind) {
-                PayoutKind.lightning => _cubit.editInvoice(text),
-                PayoutKind.onchain => _cubit.editAddress(text),
-              },
-            ),
-            invoiceSats: ask.invoiceSatsFor(state.form.budget),
-            field: switch (kind) {
-              PayoutKind.lightning => state.form.invoice,
-              PayoutKind.onchain => state.form.address,
-            },
-            editable:
-                state.phase is PayoutEditing &&
-                !state.outcomeTold &&
-                !widget.request.cancelling,
-          ),
-        ),
+        ?widget.wallet?.call(context, walletRequest),
         switch ((kind, onchain)) {
           (PayoutKind.onchain, final onchain?) => _onchain(
             context,
             state,
             onchain,
           ),
-          _ => _lightning(context, state, ask),
+          _ => _lightning(
+            context,
+            state,
+            ask,
+            breakdownShown: breakdown != null,
+          ),
         },
       ],
     );
@@ -407,8 +454,9 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
   Widget _lightning(
     BuildContext context,
     PayoutPanelState state,
-    PayoutAsk ask,
-  ) {
+    PayoutAsk ask, {
+    required bool breakdownShown,
+  }) {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
     final formats = P2pFormats.of(context);
@@ -472,7 +520,8 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             ),
         ],
         const Gap(BullSpacing.md),
-        if (asked != null)
+        // « Submit invoice for … Sats » and its copy are the breakdown's « Your invoice » above the tabs (#228); without a breakdown (amounts that do not agree, the alert said alone), the reference's line as before, so that the amount to ask stays given: nothing is stopped.
+        if (asked != null && !breakdownShown) ...[
           Row(
             children: [
               Expanded(
@@ -496,8 +545,9 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
               ),
             ],
           ),
-        if (_copied) _Text(l10n.p2pCommonCopied, center: true, live: true),
-        const Gap(BullSpacing.sm),
+          if (_copied) _Text(l10n.p2pCommonCopied, center: true, live: true),
+          const Gap(BullSpacing.sm),
+        ],
         _Field(
           label: l10n.p2pPayoutInvoiceField,
           onPaste: editable ? () => _paste(PayoutKind.lightning) : null,

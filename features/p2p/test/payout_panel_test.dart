@@ -14,6 +14,7 @@ import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
+import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart' show Bolt11TestDecoder, Bolt11TestInvoice;
@@ -569,7 +570,7 @@ void main() {
           find.text('Temple of Sats does not offer swaps.'),
           findsOneWidget,
         );
-        expect(find.text('Submit invoice for 106,606 Sats'), findsOneWidget);
+        expect(invoiceRow('106,606'), findsOneWidget);
         expect(enabled(tester, submitButton()), isFalse);
 
         await tester.enterText(
@@ -649,7 +650,7 @@ void main() {
         expect(find.text('Routing Budget'), findsOneWidget);
         await tester.enterText(find.byKey(PayoutPanel.budgetField), '0');
         await tester.pump();
-        expect(find.text('Submit invoice for 106,713 Sats'), findsOneWidget);
+        expect(invoiceRow('106,713'), findsOneWidget);
         await tester.enterText(
           find.byKey(PayoutPanel.invoiceField),
           wholeAmount.text,
@@ -684,7 +685,7 @@ void main() {
         // Off: the default budget again.
         await tester.tap(find.byType(BullSwitch));
         await tester.pump();
-        expect(find.text('Submit invoice for 106,606 Sats'), findsOneWidget);
+        expect(invoiceRow('106,606'), findsOneWidget);
       },
     );
 
@@ -926,7 +927,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Onchain'), findsNothing);
-        expect(find.text('Submit invoice for 106,606 Sats'), findsOneWidget);
+        expect(invoiceRow('106,606'), findsOneWidget);
       },
     );
 
@@ -1102,6 +1103,7 @@ void main() {
                 now: DateTime.utc(2026, 11, 13, 9, 8, 30),
               );
               if (onchainTab) {
+                await reveal(tester, find.text('Onchain'));
                 await tester.tap(find.text('Onchain'));
                 await tester.pump();
                 await tester.enterText(
@@ -1112,7 +1114,8 @@ void main() {
                 await tester.pump();
               } else if (seen != fifteenRetrying) {
                 if (seen == six) {
-                  // The advanced options open, a budget above 1 % and the copy's « Copied! ».
+                  // The advanced options open, a budget above 1 % and the copy's « Copied! » (the breakdown above the tabs since #228: the switch revealed first).
+                  await reveal(tester, find.byType(BullSwitch));
                   await tester.tap(find.byType(BullSwitch));
                   await tester.pump();
                   await tester.enterText(
@@ -1202,7 +1205,7 @@ void main() {
         await tester.pump();
         expect(_fieldText(tester, PayoutPanel.budgetField), '0');
         expect(_fieldText(tester, PayoutPanel.invoiceField), wholeAmount.text);
-        expect(find.text('Submit invoice for 106,713 Sats'), findsOneWidget);
+        expect(invoiceRow('106,713'), findsOneWidget);
       },
     );
 
@@ -1944,3 +1947,9 @@ extension on PayoutCubit {
   Future<void> submitShown(PayoutKind kind) =>
       submit(kind, shown: state.submittable(kind));
 }
+
+/// The breakdown's « Your invoice » with [sats], the amount the invoice must be for, which replaces the reference's « Submit invoice for … Sats » (#228).
+Finder invoiceRow(String sats) => find.descendant(
+  of: find.byKey(PayoutBreakdownView.invoiceRow),
+  matching: find.text(sats),
+);

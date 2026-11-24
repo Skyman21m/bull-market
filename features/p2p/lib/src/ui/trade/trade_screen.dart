@@ -1582,6 +1582,8 @@ class _Contract extends StatelessWidget {
         coordinator: coordinator,
         amount: PayoutRateLines.amountOf(context, contract.seen),
         onRetry: onRetryRate,
+        // At 6 and 8 the payout panel's breakdown says the comparison (#228), wherever the screen draws the panel.
+        comparisonInBreakdown: payout != null,
       ),
     );
   }
@@ -1669,6 +1671,12 @@ class _Contract extends StatelessWidget {
       now: now,
       cancelling: cancel is CancelRunning,
       beforeSubmit: beforeAct,
+      // The rule's comparison of the step shown, for the breakdown's first line and gap (#228): only a comparison with the Bull wallet's price at 6 and 8.
+      valuation: PayoutRateLines.valuationOf(
+        context,
+        _ruleShown,
+        amount: PayoutRateLines.amountOf(context, contract.seen),
+      ),
     ),
   )) {
     final panel? => KeyedSubtree(

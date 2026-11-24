@@ -19,6 +19,7 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
+import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
@@ -385,7 +386,15 @@ final class _Journey {
     await tap(find.text(words.create));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    await tap(inForm(find.text(buy ? 'Buy' : words.sell)));
+    await tap(
+      inForm(
+        find.text(
+          buy
+              ? (words.locale.languageCode == 'en' ? 'Buy' : 'Acheter')
+              : words.sell,
+        ),
+      ),
+    );
     await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
     await settle(tester);
     await tap(inForm(find.byTooltip(words.addMethod)));
@@ -1384,6 +1393,185 @@ void main() {
         await tester.pump(const Duration(seconds: 61));
       },
     );
+  }
+
+  // The breakdown of the buyer's payout (#228), on the real route and composition by the user's gestures, a maker buyer: the Bull wallet's price as the coordinator's (within the margin), then 20 % above it (the red warning), then not read.
+  for (final words in [_english, _french]) {
+    final english = words.locale.languageCode == 'en';
+    final value = english
+        ? 'Value at the Bull wallet\'s price'
+        : 'Valeur au prix du portefeuille Bull';
+    final given = english
+        ? 'Given by the coordinator'
+        : 'Donné par le coordinateur';
+    final received = english
+        ? 'To be received in your wallet'
+        : 'À recevoir dans votre portefeuille';
+    for (final (name, rate) in [
+      ('the Bull wallet\'s price as the coordinator\'s', 50000.0),
+      ('the Bull wallet\'s price 20 % below the coordinator\'s', 40000.0),
+      ('the Bull wallet\'s price not read', null),
+    ]) {
+      testWidgets(
+        'a maker buyer at 6, ${words.locale.languageCode}, $name: one breakdown from top to bottom that adds up to the sat, the rule\'s alert beside it as before, « Generate Invoice » adding what reaches the wallet, « Submit » still offered (#228)',
+        (tester) async {
+          final journey = await _Journey.start(tester, words);
+          journey.wallet.rate = rate == null
+              ? const P2pWalletRateUnavailable()
+              : P2pWalletRateRead(rate);
+          await journey.makeSellOrder(buy: true);
+          final order = journey.order;
+          journey.coordinator.lockMakerBond(order.id);
+          await journey.waitFor(find.textContaining(words.public), seconds: 20);
+          journey.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+          final generate = find.text(
+            english ? 'Generate Invoice' : 'Générer une facture',
+          );
+          await journey.waitFor(generate, seconds: 60);
+          await journey.pass(2);
+          String row(Key key) => [
+            for (final text in tester.widgetList<Text>(
+              find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+            ))
+              text.data ?? '',
+          ].last;
+          final last = order.lastSatoshis;
+          final payout = _halfEven(last - last * journey.coordinator.makerFee);
+          final asked = (payout - payout * 1000 / 1000000).truncate();
+          // What the coordinator gives, its fee, the reference's routing budget and the invoice: differences of whole sats, to the sat.
+          expect(row(PayoutBreakdownView.givenRow), words.sats(payout));
+          expect(row(PayoutBreakdownView.feeRow), words.sats(last - payout));
+          expect(
+            row(PayoutBreakdownView.budgetRow),
+            words.sats(-(payout - asked)),
+          );
+          expect(row(PayoutBreakdownView.invoiceRow), words.sats(asked));
+          expect(find.text(given), findsOneWidget);
+          // « You receive » and « Submit invoice for … Sats » no longer said apart.
+          expect(
+            find.textContaining(RegExp(r'You receive [0-9]')),
+            findsNothing,
+          );
+          expect(
+            find.textContaining(RegExp(r'Vous recevez [0-9]')),
+            findsNothing,
+          );
+          expect(find.textContaining('Submit invoice for'), findsNothing);
+          expect(
+            find.textContaining('At the Bull wallet\'s price'),
+            findsNothing,
+          );
+          expect(
+            find.textContaining('Au prix du portefeuille Bull'),
+            findsNothing,
+          );
+          if (rate == null) {
+            // No first line and no gap: « rate not checked » alone, with « Retry ».
+            expect(find.byKey(PayoutBreakdownView.valueRow), findsNothing);
+            expect(find.byKey(PayoutBreakdownView.gapRow), findsNothing);
+            expect(
+              find.textContaining(
+                english ? 'rate not checked' : 'taux non vérifié',
+              ),
+              findsOneWidget,
+            );
+          } else {
+            // 100 USD at the Bull wallet's price with the order's premium of 2 %, rounded down.
+            final worth = (100 * 100000000 / (rate * 1.02)).floor();
+            expect(row(PayoutBreakdownView.valueRow), words.sats(worth));
+            expect(find.text(value), findsOneWidget);
+            final gapText = row(PayoutBreakdownView.gapRow);
+            final warns = rate < 50000;
+            expect(gapText.startsWith('-'), isTrue, reason: gapText);
+            final error = Theme.of(
+              tester.element(find.byKey(PayoutBreakdownView.gapRow)),
+            ).extension<BullTheme>()?.error;
+            final gapStyle = tester
+                .widgetList<Text>(
+                  find.descendant(
+                    of: find.byKey(PayoutBreakdownView.gapRow),
+                    matching: find.byType(Text),
+                  ),
+                )
+                .last
+                .style;
+            expect(gapStyle?.color == error, warns);
+            // Beyond 10 %, the figure at fault in the alert colour, the value at the Bull wallet's price (the reference) plain (security review of #228, R3).
+            Color? colourOf(Key key) => tester
+                .widgetList<Text>(
+                  find.descendant(
+                    of: find.byKey(key),
+                    matching: find.byType(Text),
+                  ),
+                )
+                .last
+                .style
+                ?.color;
+            expect(colourOf(PayoutBreakdownView.givenRow) == error, warns);
+            expect(colourOf(PayoutBreakdownView.valueRow) == error, isFalse);
+            // Under the threshold the gap in the text's size, never the muted detail's (R1).
+            final gapSize = gapStyle?.fontSize;
+            final valueSize = tester
+                .widgetList<Text>(
+                  find.descendant(
+                    of: find.byKey(PayoutBreakdownView.valueRow),
+                    matching: find.byType(Text),
+                  ),
+                )
+                .last
+                .style
+                ?.fontSize;
+            expect(gapSize, valueSize);
+            // The rule's red warning, as before, only beyond 10 %.
+            expect(
+              find.textContaining(
+                english
+                    ? 'fewer sats than the value'
+                    : 'de sats en moins que la valeur',
+              ),
+              warns ? findsOneWidget : findsNothing,
+            );
+          }
+          // « Generate Invoice »: the swap service's fee and what reaches the wallet join the breakdown.
+          final now = journey.coordinator.clock();
+          final invoice = Bolt11TestInvoice(
+            network: Bolt11Network.testnet,
+            sats: asked,
+            seed: 78,
+            createdAt: now,
+            expiry: const Duration(hours: 24),
+            description: 'Bull wallet payout',
+          );
+          journey.coordinator.decoder.add(invoice);
+          journey.wallet.scriptInvoice(
+            Ok(
+              P2pWalletInvoice(
+                bolt11: invoice.text,
+                amount: Sats.fromInt(asked),
+                expiresAt: now.add(const Duration(hours: 24)),
+                received: Sats.fromInt(asked - 187),
+              ),
+            ),
+          );
+          expect(find.byKey(PayoutBreakdownView.receivedRow), findsNothing);
+          await journey.tap(generate);
+          await settle(tester);
+          expect(row(PayoutBreakdownView.swapRow), words.sats(-187));
+          expect(row(PayoutBreakdownView.receivedRow), words.sats(asked - 187));
+          expect(find.text(received), findsOneWidget);
+          // Nothing is stopped: « Submit » offered for the wallet's invoice.
+          final submit = find.widgetWithText(
+            TradeButton,
+            english ? 'Submit' : 'Soumettre',
+          );
+          await tester.ensureVisible(submit);
+          expect(tester.widget<TradeButton>(submit).onPressed, isNotNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 61));
+        },
+      );
+    }
   }
 }
 
