@@ -13,6 +13,8 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart'
+    show MakerPayoutTerms;
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/presentation/payout_rate_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -89,7 +91,7 @@ void main() {
       record,
       terms: (record) async => switch (await harness.reader.open(record)) {
         TradeOpened(:final trade) => switch (trade.terms.side) {
-          MadeSide(:final maker) => maker,
+          MadeSide(:final maker) => MakerPayoutTerms(maker),
           _ => null,
         },
         _ => null,

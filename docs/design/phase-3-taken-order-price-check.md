@@ -146,4 +146,12 @@ Three questions. The comparisons at the bond, the escrow and the payout follow f
 
 **Reviews**: two, separate and independent, with no prior context: functional first, then security, on each slice.
 
+**As slices 1 to 3 wrote it** (one pull request, slice 4 left for the owner's answer to question 1 and #250's words):
+
+- the computation shared by both sides is `amountSatsAtPrice` of `domain/trade/sats_at_price.dart`, with `TradePriceBounds` (the bounds `MakerTerms.minCreatedPrice` and `maxCreatedPrice` keep) and `payoutLessFee` (`MakerTerms.payoutAt` and `TakenSide.payoutAt`); the maker's figures are unchanged;
+- `WalletRateCheck` carries the amount whose sats are expected (`amount`), so that a taker seller's escrow line names the amount taken; a taker seller's escrow beyond the threshold is drawn as one red alert (its line and its warning), as a maker seller's confirmation draws it (functional review of #188, C2), the bond's lines as the maker bond's;
+- the confirmation of a take draws no comparison while the status shown carries an alert of the state machine, as a maker seller's escrow confirmation; at 9 a taker buyer's kept invoice is not compared beside such an alert either (a maker buyer's is, `PayoutRateAskedOnly`), since `p2pPayoutRateWalletAsked` does not fit a taker (§ 5) and the alert speaks alone (§ 3);
+- questions 2 and 3 are `TakenRateRules`: question 3 is one constant; a contrary answer to question 2 needs the orange alert's words from #250 and a figure to compare, so it is more than one line, the class being where it goes;
+- the coordinator's price 20 % too high gives a payout gap of −16.82 % as the app rounds it (away from zero, `WalletRateCompared.gapHundredths`), where § 3 above writes −16.81 %.
+
 **For the trial script** of the APK that brings it: the threshold unmeasured; seven currencies only; a bond or escrow paid from another wallet is compared on the order page only (nowhere if it shows nothing); up to 10 % against the user is never red; an honest move of the market of more than 10 % before « Confirm … sent » shows red; the reads outside Tor; a red line after the bond's lock leaves only a choice between paying and losing the bond.

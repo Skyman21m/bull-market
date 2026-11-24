@@ -7,7 +7,6 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../../public/p2p_wallet_port.dart';
 import '../domain/robot_binding.dart';
-import '../domain/trade/maker_terms.dart';
 import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade/wallet_rate_check.dart';
@@ -15,11 +14,15 @@ import '../domain/trade_record.dart';
 import '../domain/usecases/trade/check_payout_rate_usecase.dart';
 
 /// [CheckPayoutRateUsecase.termsOf], which the locator gives the cubit.
-typedef PayoutRateTermsOf = Future<MakerTerms?> Function(TradeRecord record);
+typedef PayoutRateTermsOf =
+    Future<PayoutRateTerms?> Function(TradeRecord record);
 
 /// [CheckPayoutRateUsecase.priceOf], which the locator gives the cubit.
 typedef PayoutRatePriceOf =
-    Future<P2pWalletBitcoinRate> Function(TradeRecord record, MakerTerms maker);
+    Future<P2pWalletBitcoinRate> Function(
+      TradeRecord record,
+      PayoutRateTerms terms,
+    );
 
 /// Which buyer's step a check is for: the payout (6 and 8) or « fiat sent » (9), of a contract ([take]).
 @immutable
@@ -145,7 +148,7 @@ enum PayoutRateVerdict {
   disagree,
 }
 
-/// The owner's payment rule on a maker buyer's side (#182, design note § 3.3), on the trade screen: the only caller of [CheckPayoutRateUsecase], for an order made here whose user buys only (a taker's trade never sees it, not even « reading »).
+/// The owner's payment rule on a buyer's side (#182, design note § 3.3), on the trade screen: the only caller of [CheckPayoutRateUsecase], for an order made here whose user buys and, since #249, for an order taken here whose user buys ([CheckPayoutRateUsecase.termsOf]; a seller's trade never sees it, not even « reading »).
 ///
 /// What is compared follows each read of the order shown, at once, with the price already read: another figure at the same step is compared again (security review of #182, C1). The Bull wallet's price is read (one request outside Tor, [CheckPayoutRateUsecase.priceOf]) only while the screen is shown (the screen does not call [show] when hidden), and only when a step has something to compare and: no price of the currency was read in this run of the app; or the step is shown for the first time, appears anew (the screen built or shown again, the app back) or moves to another status (8 after 6) while the last read is [freshFor] old (or could not be read, for a step shown for the first time); or « Submit » or « Confirm … sent » is pressed while it is [freshFor] old ([beforeAct]); or « Retry » after a price that could not be read. A new read of the same status, which the trade's watch brings at its own cadence, never reads it: never in a loop.
 class PayoutRateCubit extends Cubit<PayoutRateState> {
@@ -163,9 +166,9 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
   /// How long a read is awaited, past which the price is taken as not read (the shell's own bound, `ReadWalletRateUsecase.readBound`).
   static const Duration readBound = Duration(seconds: 15);
 
-  MakerTerms? _maker;
+  PayoutRateTerms? _terms;
   bool _termsRead = false;
-  Future<MakerTerms?>? _termsReading;
+  Future<PayoutRateTerms?>? _termsReading;
 
   /// The status shown last, its step and its kind (8 after 6 is the same step at another status).
   TradeSeen? _seen;
@@ -185,8 +188,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
        _priceOf = price,
        super(const PayoutRateNone());
 
-  bool get _applies =>
-      record.origin == TradeOrigin.madeHere && record.role == TradeRole.buyer;
+  /// A buyer's trade, made or taken here: which of them the rule compares, [CheckPayoutRateUsecase.termsOf] says.
+  bool get _applies => record.role == TradeRole.buyer;
 
   /// The screen shows [seen]: what it compares is compared at once with the price read, and the price read as the class says, [appeared] when the step appears anew (the screen built, shown again, the app back).
   Future<void> show(TradeSeen seen, {bool appeared = false}) async {
@@ -212,15 +215,15 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     _step = step;
     _status = seen.status.runtimeType;
     if (!_termsRead) emit(PayoutRateReading(step));
-    final maker = await _terms();
+    final terms = await _readTerms();
     // A later show took over meanwhile: it does the rest.
     if (isClosed || !identical(_seen, seen)) return;
-    if (maker == null) {
+    if (terms == null) {
       emit(const PayoutRateNone());
       return;
     }
-    final subject = _subjectOf(maker, seen);
-    final kept = memory.priceOf(record.network, maker.currency.code);
+    final subject = _subjectOf(terms, seen);
+    final kept = memory.priceOf(record.network, terms.currency.code);
     final stale = kept == null || !now().isBefore(kept.at.add(freshFor));
     final unread = kept?.price is P2pWalletRateUnavailable;
     final read =
@@ -229,34 +232,34 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
         (kept == null ||
             ((newStep || appeared || moved) && (stale || (newStep && unread))));
     if (read) {
-      await _read(maker);
+      await _read(terms);
     } else {
-      _emitFor(step, maker, subject, _reading == null ? kept?.price : null);
+      _emitFor(step, terms, subject, _reading == null ? kept?.price : null);
     }
   }
 
   /// « Retry »: the price read again, only after a price that could not be read.
   Future<void> retry() async {
-    final maker = _maker;
-    if (maker == null || isClosed) return;
+    final terms = _terms;
+    if (terms == null || isClosed) return;
     if (state case PayoutRateChecked(check: WalletRateUnverified())) {
-      await _read(maker);
+      await _read(terms);
     }
   }
 
   /// Before « Submit » gives the payout, or before the dialog of « Confirm … sent » opens (decided by the coordinator of the work after the reviews of #182): a price read under way is awaited, and a price [freshFor] old read again (within [readBound]); `true` when the line shown did not change, or now says the sats are within the margin with no warning (the press goes on: a line that became « within the margin », from a read under way as from « rate not checked » or a warning, never stops it, third functional pass of #182, #207), `false` when it changed to any other line, which the screen then shows, and a second press goes on. Nothing is ever blocked.
   Future<bool> beforeAct() async {
-    final maker = _maker;
+    final terms = _terms;
     final seen = _seen;
-    if (!_applies || isClosed || maker == null || seen == null) return true;
+    if (!_applies || isClosed || terms == null || seen == null) return true;
     final before = verdictOf(state);
     final reading = _reading;
     if (reading != null) {
       await reading;
-    } else if (_subjectOf(maker, seen) is PayoutRateCompared) {
-      final kept = memory.priceOf(record.network, maker.currency.code);
+    } else if (_subjectOf(terms, seen) is PayoutRateCompared) {
+      final kept = memory.priceOf(record.network, terms.currency.code);
       if (kept == null || !now().isBefore(kept.at.add(freshFor))) {
-        await _read(maker);
+        await _read(terms);
       }
     }
     if (isClosed) return false;
@@ -284,20 +287,20 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     },
   };
 
-  Future<MakerTerms?> _terms() async {
-    if (_termsRead) return _maker;
-    final maker = await (_termsReading ??= _termsOf(record));
-    _maker = maker;
+  Future<PayoutRateTerms?> _readTerms() async {
+    if (_termsRead) return _terms;
+    final terms = await (_termsReading ??= _termsOf(record));
+    _terms = terms;
     _termsRead = true;
-    return maker;
+    return terms;
   }
 
   /// What [seen] compares, the invoice's sats it shows kept for 9.
-  PayoutRateSubject? _subjectOf(MakerTerms maker, TradeSeen seen) {
+  PayoutRateSubject? _subjectOf(PayoutRateTerms terms, TradeSeen seen) {
     final take = seen.status.trail.take;
-    final subject = CheckPayoutRateUsecase.subjectAt(
+    final subject = CheckPayoutRateUsecase.subjectFor(
       record,
-      maker,
+      terms,
       seen,
       asked: memory.askedOf(record, take),
     );
@@ -312,7 +315,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
 
   void _emitFor(
     PayoutRateStep step,
-    MakerTerms maker,
+    PayoutRateTerms terms,
     PayoutRateSubject? subject,
     P2pWalletBitcoinRate? price,
   ) {
@@ -332,29 +335,29 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
             ? PayoutRateReading(step)
             : PayoutRateChecked(
                 step,
-                CheckPayoutRateUsecase.compare(maker, compared, price),
+                CheckPayoutRateUsecase.compareFor(terms, compared, price),
                 basis: compared.basis,
               ),
     });
   }
 
   /// One read of the price at a time; its answer compared with what the step shown compares when it lands, never with what it compared when asked.
-  Future<void> _read(MakerTerms maker) {
+  Future<void> _read(PayoutRateTerms terms) {
     final step = _step;
     if (step != null && !isClosed) emit(PayoutRateReading(step));
     return _reading ??= () async {
       P2pWalletBitcoinRate price;
       try {
-        price = await _priceOf(record, maker).timeout(readBound);
+        price = await _priceOf(record, terms).timeout(readBound);
       } on TimeoutException {
         price = const P2pWalletRateUnavailable();
       }
-      memory.keepPrice(record.network, maker.currency.code, price, now());
+      memory.keepPrice(record.network, terms.currency.code, price, now());
       _reading = null;
       final seen = _seen;
       final step = _step;
       if (isClosed || seen == null || step == null) return;
-      _emitFor(step, maker, _subjectOf(maker, seen), price);
+      _emitFor(step, terms, _subjectOf(terms, seen), price);
     }();
   }
 }

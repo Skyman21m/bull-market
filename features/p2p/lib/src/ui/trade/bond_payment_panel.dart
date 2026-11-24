@@ -385,11 +385,11 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
   }
 }
 
-/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, for an order made here how the bond compares with the wallet's own price (#180), the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
+/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, how the bond or the escrow compares with the wallet's own price (for the maker bond, #180; for a taker's bond and a taker seller's escrow, #249), the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
 class _Confirmation extends StatelessWidget {
   final P2pWalletQuote walletQuote;
 
-  /// For an order made here, the bond quoted against the wallet's own price (the owner's payment rule of 2026-11-17): a line, and a red warning beyond the owner's threshold; `null` for a take, which shows none.
+  /// The bond or the escrow quoted against the wallet's own price (the owner's payment rule of 2026-11-17, for the maker bond and, since #249, for a take): a line, and a red warning beyond the owner's threshold; `null` where nothing is compared.
   final WalletRateCheck? rate;
 
   /// The trade's coordinator, named when the wallet has no price for the order's currency and the user trusts the coordinator's.
@@ -464,13 +464,16 @@ class _Confirmation extends StatelessWidget {
               style: body,
             ),
             const Gap(BullSpacing.sm),
-            // The owner's payment rule (#180): the bond against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay.
-            if (rate case final rate?) ...[
+            // The owner's payment rule (#180; for a take, #249): the bond or the escrow against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay. For a take, nothing while the status shown carries an alert of the state machine (terms read otherwise, amounts that do not agree…): the alert speaks alone, as for a maker seller's escrow (design note `docs/design/phase-3-taken-order-price-check.md` § 3).
+            if (rate case final rate?
+                when request.record.origin == TradeOrigin.madeHere ||
+                    !_EscrowConfirmation._alerted(request.seen.status)) ...[
               _RateLines(
                 rate: rate,
                 coordinator: coordinator,
                 retrying: retrying,
                 onRetry: onRetry,
+                escrow: escrow,
               ),
               const Gap(BullSpacing.sm),
             ],
@@ -803,18 +806,22 @@ class _InfoLine extends StatelessWidget {
   }
 }
 
-/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the wallet's price and the bond it gives with the gap of the invoice, and beyond the owner's threshold a red warning with both amounts. For a currency the wallet does not price, no figure at all: one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price, with no « Retry », since there is nothing to read again (the owner's decision of 2026-11-17 in the evening). When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
+/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the wallet's price and the bond it gives with the gap of the invoice, and beyond the owner's threshold a red warning with both amounts; for a taker seller's escrow ([escrow], #249), the escrow's words of a maker seller's confirmation, the amount taken and the sats it is worth, the coordinator's fee included in the gap (`p2pPayRateWalletEscrow`, `p2pPayRateWarningEscrow`). For a currency the wallet does not price, no figure at all: one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price, with no « Retry », since there is nothing to read again (the owner's decision of 2026-11-17 in the evening). When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
 class _RateLines extends StatelessWidget {
   final WalletRateCheck rate;
   final String coordinator;
   final bool retrying;
   final VoidCallback onRetry;
 
+  /// Whether the amount compared is an escrow rather than a bond: the lines then take the escrow's words.
+  final bool escrow;
+
   const _RateLines({
     required this.rate,
     required this.coordinator,
     required this.retrying,
     required this.onRetry,
+    this.escrow = false,
   });
 
   @override
@@ -878,7 +885,27 @@ class _RateLines extends StatelessWidget {
         final gap = formats.gap(gapHundredths);
         final threshold = formats.threshold(TradeTolerances.walletRateGap);
         final askedText = formats.bigSats(asked.value);
-        final line = l10n.p2pPayRateWallet(price, code, expectedText, gap);
+        final amount = rate.amount;
+        // An escrow's line names the amount whose sats are expected; an escrow check always carries it (`WalletRateCheck.ofTakerEscrow`).
+        if (escrow && amount == null) return const SizedBox.shrink();
+        final line = escrow && amount != null
+            ? l10n.p2pPayRateWalletEscrow(
+                price,
+                code,
+                formats.amount(amount),
+                expectedText,
+                gap,
+              )
+            : l10n.p2pPayRateWallet(price, code, expectedText, gap);
+        // An escrow beyond the threshold: the line and its warning one red alert, never a neutral line beside it, as a maker seller's escrow confirmation draws them (functional review of #188, C2).
+        if (escrow && rate.warns) {
+          final warning = l10n.p2pPayRateWarningEscrow(
+            threshold,
+            askedText,
+            expectedText,
+          );
+          return alert('$line $warning', colors.error);
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

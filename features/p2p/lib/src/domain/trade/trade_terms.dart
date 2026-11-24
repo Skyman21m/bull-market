@@ -3,7 +3,9 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../trade_record.dart' show TradeRole;
+import 'exact_ratio.dart';
 import 'maker_terms.dart';
+import 'sats_at_price.dart';
 import 'trade_storable.dart';
 import 'trade_tolerances.dart';
 
@@ -79,6 +81,9 @@ final class TakenSide extends TradeSide {
             TradeTolerances.feeSats)
         .floor(),
   );
+
+  /// What a taker buyer receives for a trade whose sats the coordinator fixed at [lastSatoshis] (`last_satoshis`, `satoshis_now` to a participant from 6 on, `api/views.py:324`): its `invoice_amount`, `round(last_satoshis − last_satoshis × taker fee)` (`Logics.payout_amount`, `api/logics.py:650-669`), with the taker fee of these terms, rounded half to even ([payoutLessFee]); at 9, where the coordinator gives no `trade_satoshis` (`api/views.py:345-371`), the sats the owner's payment rule compares (#249, design note `docs/design/phase-3-taken-order-price-check.md` § 3).
+  Sats payoutAt(Sats lastSatoshis) => payoutLessFee(lastSatoshis, takerFee);
 
   @override
   bool operator ==(Object other) =>
@@ -433,6 +438,14 @@ extension TakenTradeTerms on TradeTerms<TakenSide> {
   double get takerFee => side.takerFee;
   double get expectedSatoshis => side.expectedSatoshis;
   Sats get escrowCeiling => side.escrowCeiling;
+
+  Sats payoutAt(Sats lastSatoshis) => side.payoutAt(lastSatoshis);
+
+  /// The sats the amount taken ([amount]) is worth at [price], a price of one bitcoin in the order's currency without the premium, with the order's premium kept in these terms ([premium], read from the robot's read at the take and never read again), exactly ([amountSatsAtPrice]): the figure the owner's payment rule expects at each payment of a taker, at the Bull wallet's price of the moment (#249, design note `docs/design/phase-3-taken-order-price-check.md` § 3); `null` for a price outside [TradePriceBounds] or a premium of −100 %.
+  ///
+  /// The amount is the one this take chose (a range's amount, or the fixed amount), never a range's maximum; the taker fee is not added, so that it shows in the gap.
+  ExactRatio? satsAtPrice(double price) =>
+      amountSatsAtPrice(amount: amount, premium: premium, price: price);
 
   /// The exact, storable form of these terms: store it at the take, with the trade (#87).
   TradeTermsRecord get record => _takenRecord(side);

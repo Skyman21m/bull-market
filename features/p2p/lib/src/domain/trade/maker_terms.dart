@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 
 import '../trade_record.dart' show TradeRole;
 import 'exact_ratio.dart';
+import 'sats_at_price.dart';
 import 'trade_storable.dart';
 import 'trade_tolerances.dart';
 
@@ -99,12 +100,12 @@ final class TradeRateGap {
 @immutable
 final class MakerTerms {
   /// The highest [createdPrice]: the bound `maker_terms` keeps (`CHECK (created_price < 1000000000000000)`, schema 8), far above any price the coordinator can store (`exchange_rate`, 18 digits with 4 decimals, `api/models/currency.py:17-23`).
-  static const double maxCreatedPrice = 1e15;
+  static const double maxCreatedPrice = TradePriceBounds.highest;
 
   /// The lowest [createdPrice]: the smallest positive price the coordinator can give, its `exchange_rate` being a decimal of 4 places (`DecimalField(max_digits=18, decimal_places=4)`, `api/models/currency.py:17-23`), stored so by `update_or_create` (`api/tasks.py:415-423`) and read back from the database by `/api/limits/` (`LimitView`, `api/views.py:1186-1189`).
   ///
   /// Below it no coordinator of the reference answers; above it every figure of these terms for display is finite, where a price such as `5e-324` would make the expected bond infinite and the rate of the creation 0. The database keeps only `created_price > 0` (schema 8): it is wider here, and [restore] goes through [create].
-  static const double minCreatedPrice = 0.0001;
+  static const double minCreatedPrice = TradePriceBounds.lowest;
 
   final RobosatsNetwork network;
 
@@ -317,46 +318,20 @@ final class MakerTerms {
   double get expectedBond => _expectedBond.toDouble();
 
   /// What a maker buyer receives for a contract whose sats the coordinator fixed at [lastSatoshis] (`last_satoshis`, `satoshis_now` to a participant, `api/views.py:324`): its `invoice_amount`, `round(last_satoshis − last_satoshis × maker fee)` (`Logics.payout_amount`, `api/logics.py:650-669`), with the maker fee of these terms, rounded half to even as Python's `round`; computed exactly, where the coordinator computes in floating point, so a figure on a half could differ by one sat (#182: the sats of the owner's rule at 9, where the coordinator gives no `trade_satoshis`, `api/views.py:346-356`).
-  Sats payoutAt(Sats lastSatoshis) {
-    final exact =
-        ExactRatio.bigInt(lastSatoshis.value) *
-        (ExactRatio.integer(1) - _exact(makerFee));
-    final floor = exact.floor();
-    final rest = exact - ExactRatio.bigInt(floor);
-    final half = ExactRatio.integer(1) / ExactRatio.integer(2);
-    final up = rest > half || (rest == half && floor.isOdd);
-    return Sats(up ? floor + BigInt.one : floor);
-  }
+  Sats payoutAt(Sats lastSatoshis) => payoutLessFee(lastSatoshis, makerFee);
 
   /// The sats [amount] of this order's currency is worth at [price] with the order's premium, exactly (the contract's sats at the wallet's price, #182): `null` for a price outside the bounds of a price of the creation, as [bondAtPrice].
-  ExactRatio? satsAtPrice(double price, FiatAmount amount) {
-    if (!price.isFinite ||
-        price < minCreatedPrice ||
-        price >= maxCreatedPrice) {
-      return null;
-    }
-    final rate =
-        _exact(price) * (_hundred + _exact(request.premium.percent)) / _hundred;
-    return _exact(amount.value) * _satsPerBitcoin / rate;
-  }
+  ExactRatio? satsAtPrice(double price, FiatAmount amount) =>
+      amountSatsAtPrice(amount: amount, premium: request.premium, price: price);
 
   /// The maker bond the order implies at [price], a price of one bitcoin in the order's currency that is not the creation's, exactly: the bond size of the sats of the order's largest amount (the maximum of a range) at [price] with the order's premium, the formula of [_expectedBond] (`Logics.calc_sats`, `api/logics.py:256-259`; `api/logics.py:1266-1268`), before any rounding.
   ///
   /// For the owner's payment rule of 2026-11-17 (design note § 3.3, `WalletRateCheck`), at the wallet's own price at the moment of paying. `null` when [price] is not a price [create] would take for [createdPrice] (not finite, below [minCreatedPrice], not below [maxCreatedPrice]), so that every figure computed from it is finite.
-  ExactRatio? bondAtPrice(double price) {
-    if (!price.isFinite ||
-        price < minCreatedPrice ||
-        price >= maxCreatedPrice) {
-      return null;
-    }
-    final rate =
-        _exact(price) * (_hundred + _exact(request.premium.percent)) / _hundred;
-    return _exact(request.amount.max.value) *
-        _satsPerBitcoin /
-        rate *
-        _exact(request.bondSize.percent) /
-        _hundred;
-  }
+  ExactRatio? bondAtPrice(double price) =>
+      switch (satsAtPrice(price, request.amount.max)) {
+        final sats? => sats * _exact(request.bondSize.percent) / _hundred,
+        null => null,
+      };
 
   /// The most a maker bond invoice of this order may ask: the expected bond with the tolerance of a taker's bond on it, [TradeTolerances.price] and [TradeTolerances.roundingSats], rounded down to the sat (design note § 3.2: `TradeTerms.bondCeiling`'s formula on these sats).
   ///

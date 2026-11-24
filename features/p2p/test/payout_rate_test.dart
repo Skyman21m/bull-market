@@ -45,11 +45,13 @@ void main() {
       FakeP2pWalletPort(Ok(Sats.fromInt(50000)))..rate = rate;
 
   Future<MakerTerms> termsOf(MakeHarness harness, TradeRecord record) async =>
-      await CheckPayoutRateUsecase(
+      switch (await CheckPayoutRateUsecase(
         harness.reader,
         wallet(P2pWalletRateRead(91711.15)),
-      ).termsOf(record) ??
-      (throw StateError('no terms'));
+      ).termsOf(record)) {
+        MakerPayoutTerms(:final maker) => maker,
+        _ => throw StateError('no terms'),
+      };
 
   PayoutRateCompared comparedOf(PayoutRateSubject? subject) =>
       switch (subject) {
@@ -99,7 +101,7 @@ void main() {
         final check = CheckPayoutRateUsecase.compare(
           maker,
           subject,
-          await usecase.priceOf(record, maker),
+          await usecase.priceOf(record, MakerPayoutTerms(maker)),
         );
         expect(check, isA<WalletRateAtWallet>());
         expect(check.side, WalletRateSide.receives);
@@ -568,7 +570,7 @@ void main() {
     });
 
     test(
-      'a taker\'s trade never sees the rule, not even « reading »',
+      'a trade said taken here whose terms are a maker\'s: nothing compared and no price read, the line gone once the terms are read (a taker buyer\'s own terms are compared since #249, `taken_price_usecases_test.dart`)',
       () async {
         final (harness, record, six) = await taken();
         final taker = TradeRecord(
@@ -595,7 +597,8 @@ void main() {
         await cubit.show(six, appeared: true);
         await harness.settle();
         expect(reads, isEmpty);
-        expect(states, isEmpty);
+        expect(states.last, isA<PayoutRateNone>());
+        expect(states.whereType<PayoutRateChecked>(), isEmpty);
         expect(await cubit.beforeAct(), isTrue);
       },
     );

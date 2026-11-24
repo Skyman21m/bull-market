@@ -262,7 +262,7 @@ PayoutRateCubit _rateCubit(
   };
   final cubit = PayoutRateCubit(
     _record,
-    terms: (_) async => maker,
+    terms: (_) async => MakerPayoutTerms(maker),
     price: (_, _) async {
       final price = wallet();
       reads?.add(price);
@@ -1833,7 +1833,7 @@ void main() {
           final cubit = PayoutRateCubit(
             _record,
             terms: (_) async => switch (madeTerms().side) {
-              MadeSide(:final maker) => maker,
+              MadeSide(:final maker) => MakerPayoutTerms(maker),
             },
             price: (_, _) => read.future,
             memory: PayoutRateMemory(),
@@ -2178,7 +2178,7 @@ void main() {
           ..registerFactoryParam<PayoutRateCubit, TradeRecord, void>(
             (record, _) => PayoutRateCubit(
               record,
-              terms: (_) async => maker,
+              terms: (_) async => MakerPayoutTerms(maker),
               price: (_, _) async {
                 final price = wallet?.call() ?? P2pWalletRateRead(91711.15);
                 reads?.add(price);
@@ -2818,7 +2818,7 @@ void main() {
         };
         final cubit = PayoutRateCubit(
           _record,
-          terms: (_) async => maker,
+          terms: (_) async => MakerPayoutTerms(maker),
           price: (_, _) {
             if (first) {
               first = false;
