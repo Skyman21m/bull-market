@@ -480,7 +480,8 @@ void main() {
       testWidgets('a maker buyer\'s payout before « Submit »', (tester) async {
         final app = await _App.start(tester, sell: false);
         await app.openTrade();
-        final line = find.textContaining('At the Bull wallet\'s price');
+        // At 6 the comparison is the payout breakdown's gap line (#250).
+        final line = find.text('Gap to the Bull price (indicative)');
         await _until(app, () => line.evaluate().isNotEmpty);
         await _termsShownOtherwise(app);
         await _until(app, () => line.evaluate().isEmpty);
@@ -493,8 +494,15 @@ void main() {
       ) async {
         final app = await _App.start(tester, sell: false);
         await app.openTrade();
+        // At 6 the comparison is the payout breakdown's gap line (#250); at 9, the rule's sentence.
+        await _until(
+          app,
+          () => find
+              .text('Gap to the Bull price (indicative)')
+              .evaluate()
+              .isNotEmpty,
+        );
         final line = find.textContaining('At the Bull wallet\'s price');
-        await _until(app, () => line.evaluate().isNotEmpty);
         app.coordinator.lockEscrow(app.record.orderId);
         app.coordinator.order(app.record.orderId).status = 9;
         await _until(

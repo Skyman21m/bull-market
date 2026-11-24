@@ -474,6 +474,7 @@ void main() {
       Size size = const Size(390, 844),
       double textScale = 1,
       DateTime? now,
+      PayoutCheck? check,
     }) async {
       tester.view
         ..physicalSize = size * 3
@@ -508,6 +509,7 @@ void main() {
                       seen: seen,
                       coordinator: coordinatorName,
                       now: now ?? readAt,
+                      check: check,
                     ),
                   ),
                 ),
@@ -643,6 +645,92 @@ void main() {
         await tester.pump(const Duration(seconds: 3));
       },
     );
+
+    group('the rule\'s check where the breakdown cannot draw it (#250)', () {
+      PayoutCheck compared(int given, {required bool warns}) =>
+          PayoutCheckCompared(
+            given: Sats.fromInt(given),
+            expected: Sats.fromInt(130000),
+            price: '100 EUR at 91,711 EUR/BTC, premium included',
+            gap: warns ? '-17.91%' : '-0.27%',
+            warns: warns,
+            threshold: '10%',
+          );
+
+      testWidgets(
+        'a red alert of other sats than those the breakdown shows (a figure that changed while the rule compares again): said alone above the form, never left out; within the threshold, nothing',
+        (tester) async {
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106700, warns: true),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+          expect(find.text('Gap against you'), findsOneWidget);
+          expect(
+            find.text(
+              'Bull Wallet expected 130,000 sats, the coordinator pays 106,700.',
+            ),
+            findsOneWidget,
+          );
+          // Never drawn as the breakdown's own: the sats it shows are not those compared.
+          expect(
+            find.descendant(
+              of: find.byType(PayoutBreakdownView),
+              matching: find.text('Gap against you'),
+            ),
+            findsNothing,
+          );
+          expect(
+            tester.getTopLeft(find.byKey(PayoutPanel.looseCheck)).dy,
+            lessThan(tester.getTopLeft(find.byType(PayoutBreakdownView)).dy),
+          );
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106700, warns: false),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+          expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'for the very sats shown: in the breakdown, nothing alone above it',
+        (tester) async {
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106713, warns: true),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+          expect(
+            find.descendant(
+              of: find.byType(PayoutBreakdownView),
+              matching: find.text('Gap against you'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        '« Amount not checked » and « not quoted » of other sats: said alone above the form too',
+        (tester) async {
+          for (final (check, words) in [
+            (PayoutCheckUnverified(Sats.fromInt(1)), 'Amount not checked'),
+            (PayoutCheckNotPriced(Sats.fromInt(1)), 'not quoted'),
+          ]) {
+            await show(tester, cubitOf(_Sender()), six, check: check);
+            expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+            expect(find.text(words), findsOneWidget);
+          }
+        },
+      );
+    });
 
     testWidgets(
       'the routing budget changes the amount asked, and says when it is above 1 %',

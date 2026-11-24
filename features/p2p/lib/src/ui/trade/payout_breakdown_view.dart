@@ -5,6 +5,7 @@ import 'package:primitives/primitives.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/payout_breakdown.dart';
 import '../../presentation/p2p_formats.dart';
+import '../widgets/word_fit_text.dart';
 
 /// What the owner's payment rule said at the payout step (6 and 8) of the sats [given] by the coordinator (#182, #249), as the breakdown draws it (#228, #250): a comparison with the Bull wallet's price ([PayoutCheckCompared]), a price that could not be read ([PayoutCheckUnverified]) or a currency the Bull wallet does not price ([PayoutCheckNotPriced]).
 ///
@@ -136,12 +137,12 @@ class PayoutBreakdownView extends StatelessWidget {
     final received = breakdown.received;
     return _Card(
       children: [
-        Text(
+        WordFitText(
           l10n.p2pPayoutBreakdownTitle,
           style: text.labelMedium?.copyWith(color: colors.textMuted),
         ),
         if (notCompared && drawn == null)
-          Text(
+          WordFitText(
             l10n.p2pPayoutBreakdownNotCompared,
             key: notComparedLine,
             style: text.bodySmall?.copyWith(color: colors.textMuted),
@@ -203,7 +204,7 @@ class PayoutCheckLines extends StatelessWidget {
     final onRetry = this.onRetry;
     Widget second(Key key, String line, Color color) => Padding(
       padding: const EdgeInsets.only(bottom: BullSpacing.xxs / 2),
-      child: Text(
+      child: WordFitText(
         line,
         key: key,
         style: text.bodyMedium?.copyWith(color: color),
@@ -391,7 +392,7 @@ class PayoutBreakdownDetail extends StatelessWidget {
         ],
         if (paragraph case (final line, final color)) ...[
           const Gap(BullSpacing.xs),
-          Text(
+          WordFitText(
             line,
             key: explanation,
             style: text.bodyMedium?.copyWith(color: color),
@@ -424,7 +425,7 @@ class PayoutDetailToggle extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Flexible(
-              child: Text(
+              child: WordFitText(
                 open ? l10n.p2pDetailHide : l10n.p2pDetailShow,
                 textAlign: TextAlign.center,
                 style: Theme.of(
@@ -539,7 +540,7 @@ class PayoutRow extends StatelessWidget {
           ExcludeSemantics(child: Icon(icon, size: 18, color: base?.color)),
           const Gap(BullSpacing.xxs),
         ],
-        Flexible(child: Text(this.label, style: base)),
+        Flexible(child: WordFitText(this.label, style: base)),
         if (!stacked) ?trailing,
       ],
     );
