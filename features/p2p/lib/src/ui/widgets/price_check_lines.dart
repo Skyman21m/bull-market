@@ -6,7 +6,7 @@ import '../../domain/trade/trade_tolerances.dart';
 import 'amount_row.dart';
 import 'word_fit_text.dart';
 
-/// What the owner's payment rule says of an amount, drawn in a lean card of #250 (the payout breakdown, the confirmation of a bond or a collateral), in the words validated on 2026-11-24: the gap to the Bull price as information ([PriceCheckLines.gap]); beyond the threshold the red alert in two lines, its bold line in the gap's place and the two figures under it ([PriceCheckLines.against]); « Amount not checked » in orange with « Retry » and its second line ([PriceCheckLines.unverified]); the grey « not quoted » line ([PriceCheckLines.notPriced]). Always visible without a tap; an alert's explanation goes in the card's detail, or under its two lines when there is no detail to hold it ([explanation]).
+/// What the owner's payment rule says of an amount, drawn in a lean card of #250 (the payout breakdown, the confirmation of a bond or a collateral), and of a price on the order page before a take (#249, slice 4, with its own bold lines, [label]), in the words validated on 2026-11-24: the gap to the Bull price as information ([PriceCheckLines.gap]); beyond the threshold the red alert in two lines, its bold line in the gap's place and the two figures under it ([PriceCheckLines.against]); « Amount not checked » in orange with « Retry » and its second line ([PriceCheckLines.unverified]); the grey « not quoted » line ([PriceCheckLines.notPriced]). Always visible without a tap; an alert's explanation goes in the card's detail, or under its two lines when there is no detail to hold it ([explanation]).
 ///
 /// The caller words the figures (« the coordinator asks » or « pays ») and the explanation; this widget only draws them, one node for a screen reader, announced when it changes.
 class PriceCheckLines extends StatelessWidget {
@@ -27,13 +27,17 @@ class PriceCheckLines extends StatelessWidget {
   /// Whether the price is being read again: « Retry » is then shown but not offered.
   final bool retrying;
 
+  /// The bold line's words in place of « Gap against you » or « Amount not checked », for the order page, which compares a price and not an amount (#249, slice 4); `null` keeps them.
+  final String? label;
+
   /// The gap to the Bull price within the threshold, written with its sign: « Gap to the Bull price (indicative) ».
   const PriceCheckLines.gap(String this.gap, {super.key})
     : _kind = _PriceCheckKind.gap,
       figures = null,
       explanation = null,
       onRetry = null,
-      retrying = false;
+      retrying = false,
+      label = null;
 
   /// Beyond the threshold: « ⚠ Gap against you » and the gap, in red and bold, then [figures] in red; never « (indicative) ».
   const PriceCheckLines.against(
@@ -41,6 +45,7 @@ class PriceCheckLines extends StatelessWidget {
     super.key,
     required String this.figures,
     this.explanation,
+    this.label,
   }) : _kind = _PriceCheckKind.against,
        onRetry = null,
        retrying = false;
@@ -51,6 +56,7 @@ class PriceCheckLines extends StatelessWidget {
     this.onRetry,
     this.retrying = false,
     this.explanation,
+    this.label,
   }) : _kind = _PriceCheckKind.unverified,
        gap = null,
        figures = null;
@@ -62,7 +68,8 @@ class PriceCheckLines extends StatelessWidget {
       figures = null,
       explanation = null,
       onRetry = null,
-      retrying = false;
+      retrying = false,
+      label = null;
 
   /// Whether a gap of [hundredths] of a percent is small both ways, within [TradeTolerances.walletRateGap] on either side: the only gap beside which « A small gap is normal » is said (functional review of #268, C1). A large gap on the side that does not warn (a bond far below the sats expected, a payout far above them) gets neither the alert nor the sentence.
   static bool smallGap(BigInt hundredths) =>
@@ -113,7 +120,7 @@ class PriceCheckLines extends StatelessWidget {
           _PriceCheckKind.against => [
             AmountRow(
               key: alertRow,
-              label: l10n.p2pPayoutBreakdownAgainst,
+              label: label ?? l10n.p2pPayoutBreakdownAgainst,
               amount: gap,
               tone: AmountRowTone.alert,
               icon: Icons.warning_amber_rounded,
@@ -126,7 +133,7 @@ class PriceCheckLines extends StatelessWidget {
           _PriceCheckKind.unverified => [
             AmountRow(
               key: unverifiedRow,
-              label: l10n.p2pPayoutBreakdownUnverified,
+              label: label ?? l10n.p2pPayoutBreakdownUnverified,
               tone: AmountRowTone.warning,
               icon: Icons.warning_amber_rounded,
               trailing: onRetry == null

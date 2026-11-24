@@ -15,6 +15,7 @@ import 'package:p2p/src/presentation/order_details_cubit.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/take_order_section.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/order_detail_row.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
@@ -406,8 +407,9 @@ void main() {
           expect(find.text('The order changed.'), findsOneWidget);
           expect(taken, isEmpty);
 
-          // The new read is taken only by « Continue » and « Done » again.
+          // The new read is taken only by « Continue » and « Done » again, once « The order changed. » that moved « Continue » has been seen ([MovedTapGuard], #249).
           take.answer = null;
+          await tester.pump(MovedTapGuard.afterMove);
           await _confirm(tester);
           expect(take.confirmed, [_read, _readFresh]);
           expect(taken, [TradeScreenStatuses.record]);
@@ -712,7 +714,9 @@ void main() {
       await _reveal(tester, find.text('The order changed.'));
       expect(taken, isEmpty);
 
+      // « The order changed. » moved « Continue »: a tap at once is aimed at what stood there ([MovedTapGuard], #249).
       take.answer = null;
+      await tester.pump(MovedTapGuard.afterMove);
       await _confirm(tester);
       expect(take.confirmed, [_read, _readFresh]);
       expect(taken, [TradeScreenStatuses.record]);

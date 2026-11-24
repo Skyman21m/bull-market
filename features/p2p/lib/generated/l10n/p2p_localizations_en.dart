@@ -4259,4 +4259,37 @@ class P2pLocalizationsEn extends P2pLocalizations {
 
   @override
   String get p2pMapTilesUnavailable => 'Map tiles unavailable';
+
+  @override
+  String get p2pTakePriceAgainst => 'Price against you';
+
+  @override
+  String get p2pTakePriceFarBelow => 'Price far below the Bull price';
+
+  @override
+  String p2pTakePriceFigures(
+    String wallet,
+    String currency,
+    String coordinator,
+  ) {
+    return 'Bull Wallet uses $wallet $currency/BTC, the coordinator $coordinator.';
+  }
+
+  @override
+  String p2pTakePriceDetail(String threshold) {
+    return 'Bull Wallet compares the coordinator\'s price, premium excluded, with its own price and warns you beyond a $threshold gap. Check the order before taking it.';
+  }
+
+  @override
+  String get p2pTakePriceUnverified => 'Price not checked';
+
+  @override
+  String get p2pTakePriceUnverifiedDetail =>
+      'Without this price, it cannot compare the coordinator\'s price. You can try again, or take the order without this check.';
+
+  @override
+  String get p2pTakePriceChangedTitle => 'The price has changed';
+
+  @override
+  String get p2pTakePriceChangedLine => 'Check it, then continue again.';
 }

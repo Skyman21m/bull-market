@@ -167,6 +167,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 ///
 /// With [read], the take prepared (#119), the figures are those the robot that takes the order read (`GET /api/order/`): its price and premium, its sats, its expiry and deposit time; the maker's description follows the payment methods when there is one, as plain text, the bond the take asks follows the price, and the time of the read, read out when it arrives, closes the card.
 /// With [previous], the read the user saw before, when the order changed at the confirmation, the rows that differ from it are marked as the official client marks the time left: in colour and bold.
+/// [priceAlert], under « Price and premium », is what the owner's payment rule says of the read's price before the take (#249, slice 4): an alert only, `null` when there is none.
 class PublicOrderDetailsCard extends StatelessWidget {
   final PublicOrder order;
 
@@ -180,6 +181,9 @@ class PublicOrderDetailsCard extends StatelessWidget {
   /// The read the user saw before [read], when the order changed.
   final PreparedTake? previous;
 
+  /// The comparison of [read]'s price with the Bull wallet's, when it is an alert or the « not quoted » line (#249).
+  final Widget? priceAlert;
+
   const PublicOrderDetailsCard({
     super.key,
     required this.order,
@@ -187,6 +191,7 @@ class PublicOrderDetailsCard extends StatelessWidget {
     required this.now,
     this.read,
     this.previous,
+    this.priceAlert,
   });
 
   @override
@@ -303,6 +308,8 @@ class PublicOrderDetailsCard extends StatelessWidget {
               shown.priceValue,
               changed: differs((f) => f.priceValue),
             ),
+            // Under the price it speaks of, always visible without a tap, above « Continue » (#249).
+            if (read != null) ?priceAlert,
             if (read != null)
               OrderDetailRow(
                 l10n.p2pTakerBond,
