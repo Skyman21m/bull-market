@@ -475,6 +475,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('beyond a 10% gap'), findsNothing);
+      // Beyond 10 % on the side that does not warn: no « small gap » either (functional review of #268, C1).
+      expect(find.textContaining('A small gap is normal'), findsNothing);
     });
 
     testWidgets(

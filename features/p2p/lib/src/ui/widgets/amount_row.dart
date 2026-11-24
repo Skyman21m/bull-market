@@ -69,14 +69,23 @@ class AmountRow extends StatelessWidget {
     final trailing = this.trailing;
     final amount = this.amount;
     final stacked = MediaQuery.textScalerOf(context).scale(1) > stackedFrom;
+    final beside = !stacked && trailing != null;
     final words = Row(
+      // The icon on the label's first line when the label wraps (functional review of #268, R2); centred beside a button.
+      crossAxisAlignment: beside
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         if (icon != null) ...[
           ExcludeSemantics(child: Icon(icon, size: 18, color: base?.color)),
           const Gap(BullSpacing.xxs),
         ],
-        Flexible(child: WordFitText(this.label, style: base)),
-        if (!stacked) ?trailing,
+        // The button at the right of its row, as the validated mock-up draws « ↻ Retry » (functional review of #268, R1).
+        if (beside)
+          Expanded(child: WordFitText(this.label, style: base))
+        else
+          Flexible(child: WordFitText(this.label, style: base)),
+        if (!stacked && trailing != null) trailing,
       ],
     );
     // Under a large text the button goes under its label, on the right, so that neither is cut on a narrow phone.

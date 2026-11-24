@@ -1863,6 +1863,82 @@ void main() {
       );
 
       testWidgets(
+        'the « Pay » of a confirmation the screen replaced with « The amounts have changed » pays nothing; the new one\'s « Pay » pays once (functional review of #268, R4)',
+        (tester) async {
+          final journey = await _Journey.start(tester, words);
+          await journey.toFirstTake();
+          final first = await journey.openConfirmation();
+          final escrow0 = journey.order.escrow ?? fail('no escrow invoice');
+          journey.wallet.scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-e0',
+                paymentHash: escrow0.facts.paymentHash,
+              ),
+            ),
+          );
+          final payment0 = journey.paidAt(
+            escrow0,
+            'swap-e0',
+            const P2pWalletPaymentPending(),
+          );
+          await journey.tap(journey.payOf(first));
+          await settle(tester);
+          journey.takenAgain();
+          await journey.waitFor(find.text(words.earlierTitle), seconds: 60);
+          await journey.waitFor(
+            find.text(words.payWithThisWallet),
+            seconds: 20,
+          );
+          final quote = await journey.openConfirmation();
+          final lean = LeanConfirmation(tester, words.locale);
+          final escrow1 = journey.order.escrow ?? fail('no second escrow');
+          // Before « Pay », the coordinator keeps the first collateral: under the payment's lock, more is out than confirmed.
+          journey.wallet
+            ..setFound(
+              payment0.paymentHash,
+              P2pWalletPaymentFound(
+                payment: payment0,
+                progress: const P2pWalletPaymentPaid(),
+              ),
+            )
+            ..setProgress(payment0, const Ok(P2pWalletPaymentPaid()));
+          journey.wallet.scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-e1',
+                paymentHash: escrow1.facts.paymentHash,
+              ),
+            ),
+          );
+          final paid = journey.wallet.paid.length;
+          // The « Pay » of this confirmation, as drawn: its tap is the one a second, late tap would make.
+          final press =
+              tester.widget<TradeButton>(lean.payOf(quote)).onPressed ??
+              fail('« Pay » off');
+          press();
+          await settle(tester);
+          await settle(tester);
+          expect(find.text(lean.l10n.p2pPayConfirmAgainTitle), findsOneWidget);
+          expect(journey.wallet.paid, hasLength(paid));
+          // The replaced confirmation's « Pay » again: it was drawn for the confirmation before, and pays nothing.
+          press();
+          await settle(tester);
+          await settle(tester);
+          expect(journey.wallet.paid, hasLength(paid));
+          expect(find.text(lean.l10n.p2pPayConfirmAgainTitle), findsOneWidget);
+          // The new confirmation's own « Pay »: it pays once.
+          journey.paidAt(escrow1, 'swap-e1', const P2pWalletPaymentPending());
+          await journey.tap(lean.payOf(quote));
+          await settle(tester);
+          expect(journey.wallet.paid, hasLength(paid + 1));
+          await tester.pumpWidget(const SizedBox.shrink());
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 61));
+        },
+      );
+
+      testWidgets(
         'a confirmation left open while the order is taken again: « The order was taken again meanwhile » in red above the buttons, « Pay » not offered and paying nothing, never « The amounts have changed »',
         (tester) async {
           final journey = await _Journey.start(tester, words);

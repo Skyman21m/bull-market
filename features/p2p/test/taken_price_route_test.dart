@@ -331,7 +331,7 @@ final class _Journey {
 
   Finder inCard(Finder finder) => find.descendant(of: card, matching: finder);
 
-  /// The rule's lines of the confirmation (#250): on arrival the gap « (indicative) », or in its place the red alert's two lines (« Gap against you », then [figures]), never the comparison's sentence; in the detail the comparison's [sentence] and « A small gap is normal », or the alert's explanation, never both. The detail closed again after.
+  /// The rule's lines of the confirmation (#250): on arrival the gap « (indicative) », or in its place the red alert's two lines (« Gap against you », then [figures]), never the comparison's sentence; in the detail the comparison's [sentence] and, for a gap within 10 % both ways, « A small gap is normal », or the alert's explanation, never both. The detail closed again after.
   Future<void> expectCheck({
     required int gap,
     required bool warns,
@@ -351,9 +351,10 @@ final class _Journey {
     expect(find.text(sentence), findsNothing);
     await tap(inCard(find.text(l10n.p2pDetailShow)));
     expect(find.text(sentence), warns ? findsNothing : findsOneWidget);
+    // « A small gap is normal » beside a gap within the threshold both ways only (functional review of #268, C1).
     expect(
       find.text(l10n.p2pPayoutBreakdownSmallGap),
-      warns ? findsNothing : findsOneWidget,
+      !warns && gap.abs() <= 1000 ? findsOneWidget : findsNothing,
     );
     expect(
       find.text(l10n.p2pPayAgainstDetail(price(), 'USD', threshold)),
@@ -636,6 +637,24 @@ void main() {
             expect(find.text(l10n.p2pPayoutBreakdownSmallGap), findsOneWidget);
           });
           expect(journey.wallet.paid, isEmpty);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a coordinator\'s price ten times too low, so ten times the sats paid: the gap « (indicative) » alone, never « A small gap is normal » beside a gap that large (functional review of #268, C1)',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale, sats: 1348344);
+          final l10n = journey.l10n;
+          await journey.take();
+          await journey.confirmBond();
+          await journey.lockBond(find.byKey(PayoutCheckLines.gapRow));
+          expect(row(tester, PayoutCheckLines.gapRow), journey.gap(89825));
+          expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsNothing);
+          await detail(journey, () {
+            expect(find.byKey(PayoutBreakdownDetail.valueRow), findsOneWidget);
+            expect(find.text(l10n.p2pPayoutBreakdownSmallGap), findsNothing);
+          }, arrival: false);
           await journey.close();
         },
       );

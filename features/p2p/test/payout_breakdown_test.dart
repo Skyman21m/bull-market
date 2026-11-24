@@ -6,6 +6,7 @@ import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/widgets/detail_toggle.dart';
+import 'package:p2p/src/ui/widgets/price_check_lines.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -231,6 +232,28 @@ void main() {
     },
   );
 
+  test(
+    'a small gap, within the threshold both ways: the only gap beside which « A small gap is normal » is said (functional review of #268, C1)',
+    () {
+      for (final (hundredths, small) in [
+        (34, true),
+        (-25, true),
+        (1000, true),
+        (-1000, true),
+        (1001, false),
+        (-1001, false),
+        (-1277, false),
+        (-2584, false),
+      ]) {
+        expect(
+          PriceCheckLines.smallGap(BigInt.from(hundredths)),
+          small,
+          reason: '$hundredths',
+        );
+      }
+    },
+  );
+
   group('the check drawn (#250)', () {
     PayoutCheck compared(int given, {bool warns = false}) =>
         PayoutCheckCompared(
@@ -240,6 +263,7 @@ void main() {
           gap: warns ? '-15.83%' : '-0.27%',
           warns: warns,
           threshold: '10%',
+          small: !warns,
         );
 
     Future<void> draw(
@@ -291,6 +315,28 @@ void main() {
         expect(find.text('Routing fees'), findsOneWidget);
         expect(find.text('You will receive'), findsOneWidget);
         expect(find.text('Your invoice'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a gap within the threshold on the side that does not warn but large (+12.00%): the gap line, never « A small gap is normal » (functional review of #268, C1)',
+      (tester) async {
+        await draw(
+          tester,
+          PayoutCheckCompared(
+            given: Sats.fromInt(106713),
+            expected: Sats.fromInt(95000),
+            price: '100 EUR at 91,711 EUR/BTC, premium included',
+            gap: '+12.33%',
+            warns: false,
+            threshold: '10%',
+            small: false,
+          ),
+          detail: true,
+        );
+        expect(find.byKey(PayoutCheckLines.gapRow), findsOneWidget);
+        expect(find.byKey(PayoutBreakdownDetail.valueRow), findsOneWidget);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
       },
     );
 

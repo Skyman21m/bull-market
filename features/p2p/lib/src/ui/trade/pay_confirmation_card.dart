@@ -313,7 +313,7 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
   }
 }
 
-/// The confirmation's detail, in this order: the swap fees, the network fee, the balance after payment; the comparison's paragraph and « A small gap is normal » (within the threshold only), or the red alert's explanation, or « Amount not checked »'s; the earlier collateral's explanation; for a collateral the swap service's facts; the reference's sentence on the hold invoice, word for word, in grey.
+/// The confirmation's detail, in this order: the swap fees, the network fee, the balance after payment; the comparison's paragraph and « A small gap is normal » (beside a gap within the threshold both ways only), or the red alert's explanation, or « Amount not checked »'s; the earlier collateral's explanation; for a collateral the swap service's facts; the reference's sentence on the hold invoice, word for word, in grey.
 class _Detail extends StatelessWidget {
   final P2pWalletQuote walletQuote;
 
@@ -390,7 +390,11 @@ class _Detail extends StatelessWidget {
       WalletRateUnverified() => (l10n.p2pPayUnverifiedDetail, colors.warning),
       WalletRateNotPriced() || null => null,
     };
-    final reassures = rate is WalletRateCompared && !rate.warns;
+    // Within the threshold both ways only (functional review of #268, C1): a large favourable gap gets no « small gap ».
+    final reassures =
+        rate is WalletRateCompared &&
+        !rate.warns &&
+        PriceCheckLines.smallGap(rate.gapHundredths);
     final paragraphs = <Widget>[
       if (paragraph case (final line, final color))
         WordFitText(
@@ -398,7 +402,7 @@ class _Detail extends StatelessWidget {
           key: PayConfirmationCard.rateParagraph,
           style: text.bodyMedium?.copyWith(color: color),
         ),
-      // Beside a comparison within the threshold only, never beside an alert.
+      // Beside a gap within the threshold both ways only, never beside an alert.
       if (reassures)
         WordFitText(
           l10n.p2pPayoutBreakdownSmallGap,

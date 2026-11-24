@@ -24,13 +24,14 @@ sealed class PayoutCheck {
   bool get alert;
 }
 
-/// The comparison with the Bull wallet's price: [expected] the sats the contract's amount is worth at it with the order's premium, rounded down; [price] its line (the amount, the price and the premium, written by the trade screen); [gap] the gap of [given] from it, written with its sign; [warns] beyond the owner's threshold ([threshold], written), the red alert.
+/// The comparison with the Bull wallet's price: [expected] the sats the contract's amount is worth at it with the order's premium, rounded down; [price] its line (the amount, the price and the premium, written by the trade screen); [gap] the gap of [given] from it, written with its sign; [warns] beyond the owner's threshold ([threshold], written), the red alert; [small] whether the gap is within the threshold both ways (`PriceCheckLines.smallGap`), the only case where « A small gap is normal » is said.
 final class PayoutCheckCompared extends PayoutCheck {
   final Sats expected;
   final String price;
   final String gap;
   final bool warns;
   final String threshold;
+  final bool small;
 
   const PayoutCheckCompared({
     required Sats given,
@@ -39,6 +40,7 @@ final class PayoutCheckCompared extends PayoutCheck {
     required this.gap,
     required this.warns,
     required this.threshold,
+    required this.small,
   }) : super(given);
 
   @override
@@ -52,11 +54,12 @@ final class PayoutCheckCompared extends PayoutCheck {
       other.price == price &&
       other.gap == gap &&
       other.warns == warns &&
-      other.threshold == threshold;
+      other.threshold == threshold &&
+      other.small == small;
 
   @override
   int get hashCode =>
-      Object.hash(given, expected, price, gap, warns, threshold);
+      Object.hash(given, expected, price, gap, warns, threshold, small);
 }
 
 /// The Bull wallet's price could not be read: « Amount not checked », in orange, with « Retry ».
@@ -271,7 +274,7 @@ class PayoutCheckLines extends StatelessWidget {
   }
 }
 
-/// The breakdown's detail, opened by « Show details » inside the breakdown's card, under the gap's line (the validated mock-up of the payout screen, the owner's decision of 2026-11-24, #250), in this order: what Bull Wallet expected and its price's line, the coordinator's fee already deducted, on the Lightning tab the routing fees, « Your invoice » with the copy of its amount (the reference's copy beside « Submit invoice for … sats », `Forms/LightningPayout.tsx:556-577`) and the swap service's fee, then one paragraph: « A small gap is normal… » beside a comparison within the threshold only, never beside an alert; the red alert's explanation; « Amount not checked »'s.
+/// The breakdown's detail, opened by « Show details » inside the breakdown's card, under the gap's line (the validated mock-up of the payout screen, the owner's decision of 2026-11-24, #250), in this order: what Bull Wallet expected and its price's line, the coordinator's fee already deducted, on the Lightning tab the routing fees, « Your invoice » with the copy of its amount (the reference's copy beside « Submit invoice for … sats », `Forms/LightningPayout.tsx:556-577`) and the swap service's fee, then one paragraph: « A small gap is normal… » beside a gap within the threshold both ways only, never beside an alert; the red alert's explanation; « Amount not checked »'s.
 class PayoutBreakdownDetail extends StatelessWidget {
   final PayoutBreakdown breakdown;
 
@@ -316,6 +319,8 @@ class PayoutBreakdownDetail extends StatelessWidget {
     final invoice = breakdown.invoice;
     final swap = breakdown.swap;
     final paragraph = switch (check) {
+      // Within the threshold both ways only (functional review of #268, C1).
+      PayoutCheckCompared(warns: false, small: false) => null,
       PayoutCheckCompared(warns: false) => (
         l10n.p2pPayoutBreakdownSmallGap,
         colors.text,

@@ -2,6 +2,7 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/trade/trade_tolerances.dart';
 import 'amount_row.dart';
 import 'word_fit_text.dart';
 
@@ -62,6 +63,14 @@ class PriceCheckLines extends StatelessWidget {
       explanation = null,
       onRetry = null,
       retrying = false;
+
+  /// Whether a gap of [hundredths] of a percent is small both ways, within [TradeTolerances.walletRateGap] on either side: the only gap beside which « A small gap is normal » is said (functional review of #268, C1). A large gap on the side that does not warn (a bond far below the sats expected, a payout far above them) gets neither the alert nor the sentence.
+  static bool smallGap(BigInt hundredths) =>
+      hundredths.abs() <= _thresholdHundredths;
+
+  static final _thresholdHundredths = BigInt.from(
+    (TradeTolerances.walletRateGap * 10000).round(),
+  );
 
   static const explanationLine = ValueKey('price-check-explanation');
   static const gapRow = ValueKey('price-check-gap');
