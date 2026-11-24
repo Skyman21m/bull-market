@@ -232,7 +232,8 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     // A later show took over meanwhile: it does the rest.
     if (isClosed || !identical(_seen, seen)) return;
     if (terms == null) {
-      emit(const PayoutRateNone());
+      // Nothing said: none emitted again over none.
+      if (state is! PayoutRateNone) emit(const PayoutRateNone());
       return;
     }
     final subject = _subjectOf(terms, seen);
