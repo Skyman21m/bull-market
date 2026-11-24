@@ -5952,7 +5952,7 @@ abstract class P2pLocalizations {
   /// **'Bull Wallet expected {expected} sats, the coordinator pays {received}.'**
   String p2pPayoutBreakdownAgainstFigures(String expected, String received);
 
-  /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): the red alert's explanation, in the detail. {threshold} is the owner's threshold as a percentage, such as « 10% ». Nothing is blocked.
+  /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): the red alert's explanation, in the breakdown's detail, under the alert drawn alone above the form, and as the third line of the rule's red alert at 9 and in « Confirm … sent », where there is no detail. {threshold} is the owner's threshold as a percentage, such as « 10% ». Nothing is blocked.
   ///
   /// In en, this message translates to:
   /// **'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a {threshold} gap. Check the order before going on.'**

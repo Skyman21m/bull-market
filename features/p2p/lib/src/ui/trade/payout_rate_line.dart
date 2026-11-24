@@ -113,46 +113,48 @@ class PayoutRateLines extends StatelessWidget {
         // At 6 and 8 the payout panel's breakdown says it, where it is drawn (#250).
         if (!(comparisonInBreakdown && basis is PayoutRateAskedNow))
           ...switch (check) {
-            WalletRateCompared(
-              :final price,
-              :final expected,
-              :final gapHundredths,
-            ) =>
-              [
-                // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red alert still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219).
-                if (basis is! PayoutRateAskedOnly)
-                  (
-                    text: l10n.p2pPayoutRateWallet(
-                      formats.orderRate(price),
-                      check.currency.code,
-                      amount,
-                      formats.bigSats(expected.value),
-                      formats.bigSats(check.asked.value),
-                      formats.gap(gapHundredths),
-                    ),
-                    tone: TradeDialogTone.plain,
+            WalletRateCompared(:final price, :final expected, :final gapHundredths) => [
+              // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red alert still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219).
+              if (basis is! PayoutRateAskedOnly)
+                (
+                  text: l10n.p2pPayoutRateWallet(
+                    formats.orderRate(price),
+                    check.currency.code,
+                    amount,
+                    formats.bigSats(expected.value),
+                    formats.bigSats(check.asked.value),
+                    formats.gap(gapHundredths),
                   ),
-                // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
-                if (basis is PayoutRateToldNow)
-                  (
-                    text: l10n.p2pPayoutRateToldNow(coordinator),
-                    tone: TradeDialogTone.plain,
+                  tone: TradeDialogTone.plain,
+                ),
+              // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
+              if (basis is PayoutRateToldNow)
+                (
+                  text: l10n.p2pPayoutRateToldNow(coordinator),
+                  tone: TradeDialogTone.plain,
+                ),
+              // The red alert in the owner's two lines (validated on 2026-11-24, #250): what happens and the gap, then the two figures, each named by whom it comes from; then the validated explanation, which the breakdown keeps in its detail.
+              if (check.warns) ...[
+                (
+                  text: l10n.p2pPayoutRateAgainst(formats.gap(gapHundredths)),
+                  tone: TradeDialogTone.alert,
+                ),
+                (
+                  text: l10n.p2pPayoutBreakdownAgainstFigures(
+                    formats.bigSats(expected.value),
+                    formats.bigSats(check.asked.value),
                   ),
-                // The red alert in the owner's two lines (validated on 2026-11-24, #250): what happens and the gap, then the two figures, each named by whom it comes from; the threshold is said in the breakdown's detail only.
-                if (check.warns) ...[
-                  (
-                    text: l10n.p2pPayoutRateAgainst(formats.gap(gapHundredths)),
-                    tone: TradeDialogTone.alert,
+                  tone: TradeDialogTone.alertFigures,
+                ),
+                // Its explanation, the threshold and what to do, under it: no detail holds it here, at 9 and in « Confirm … sent », the last moment before the money is sent (security review of #250, R4).
+                (
+                  text: l10n.p2pPayoutBreakdownAgainstDetail(
+                    formats.threshold(TradeTolerances.walletRateGap),
                   ),
-                  (
-                    text: l10n.p2pPayoutBreakdownAgainstFigures(
-                      formats.bigSats(expected.value),
-                      formats.bigSats(check.asked.value),
-                    ),
-                    tone: TradeDialogTone.alertFigures,
-                  ),
-                ],
+                  tone: TradeDialogTone.alertFigures,
+                ),
               ],
+            ],
             WalletRateNotPriced() => [
               (
                 text: l10n.p2pPayoutRateNotPriced(

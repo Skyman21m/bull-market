@@ -444,6 +444,16 @@ void main() {
             ),
             findsOneWidget,
           );
+          // Its explanation as a third line, there being no detail here (security review of #250, R4).
+          expect(
+            find.descendant(
+              of: find.byType(Dialog),
+              matching: find.text(
+                journey.l10n.p2pPayoutBreakdownAgainstDetail(journey.threshold),
+              ),
+            ),
+            findsOneWidget,
+          );
           await journey.close();
         },
       );

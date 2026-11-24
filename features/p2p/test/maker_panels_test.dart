@@ -1299,6 +1299,12 @@ void main() {
           expect(find.text('Gap against you -15.83%'), findsOneWidget);
           expect(
             find.text(
+              'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
               'Bull Wallet expected 106,899 sats, the coordinator pays 89,978.',
             ),
             findsOneWidget,
@@ -1577,6 +1583,12 @@ void main() {
           expect(find.text('Gap against you -53.24%'), findsOneWidget);
           expect(
             find.text(
+              'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
               'Bull Wallet expected 106,899 sats, the coordinator pays 49,988.',
             ),
             findsOneWidget,
@@ -1596,6 +1608,8 @@ void main() {
           );
           expect(inDialog('do not add up'), findsOneWidget);
           expect(inDialog('Gap against you -53.24%'), findsOneWidget);
+          // The kept sats compared alone: the explanation too (R4).
+          expect(inDialog('warns you beyond a 10% gap'), findsOneWidget);
           expect(
             inDialog(
               'Bull Wallet expected 106,899 sats, the coordinator pays 49,988.',
@@ -1675,6 +1689,8 @@ void main() {
                 find.textContaining('At the Bull wallet\'s price'),
                 findsNWidgets(2),
               );
+              // Within the threshold: no alert, so no explanation of one.
+              expect(find.textContaining('warns you beyond'), findsNothing);
             } else {
               // The trace of a payout this page did not see given from this wallet (#204) is an alert of the screen: the comparison within the threshold stays silent beside it (`ShownAlerts`, #249).
               expect(inDialog('payout invoice or address'), findsOneWidget);
@@ -2133,6 +2149,51 @@ void main() {
       );
 
       testWidgets(
+        'at 9 in French, a phone of 320 points with the text at three times its size: the red alert\'s three lines on the screen and in « Confirm … sent », nothing overflows (security review of #250, R4)',
+        (tester) async {
+          final seen = await _at([
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 90000),
+            makerOrderJson(8, last: 90000),
+            makerOrderJson(9, last: 90000),
+          ]);
+          await _show(
+            tester,
+            seen,
+            locale: const Locale('fr'),
+            rate: rateOf(() => atWallet),
+          );
+          tester.view.physicalSize = const Size(320, 1600) * 3;
+          tester.platformDispatcher.textScaleFactorTestValue = 3;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await tester.pump();
+          await tester.pump();
+          const explanation =
+              'Bull Wallet refait le calcul avec son propre prix, prime comprise, et vous prévient au-delà de 10\u00a0% d’écart. Vérifiez l’ordre avant de continuer.';
+          expect(
+            find.textContaining('le coordinateur en verse'),
+            findsOneWidget,
+          );
+          expect(find.text(explanation), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          final confirm = find.textContaining('Confirmer l\'envoi de 100');
+          await _reveal(tester, confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: find.byType(ConfirmFiatSentDialog),
+              matching: find.text(explanation),
+            ),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pump(const Duration(seconds: 31));
+        },
+      );
+
+      testWidgets(
         'at 9, the red warning in « Confirm … sent », and « Confirm » still sends',
         (tester) async {
           final seen = await _at([
@@ -2162,6 +2223,19 @@ void main() {
           expect(warning, findsOneWidget);
           expect(
             tester.widget<Text>(warning).style?.color,
+            testBullTheme.error,
+          );
+          // The alert's explanation as its third line, on the screen and in the dialog, there being no detail at 9 (security review of #250, R4).
+          const explanation =
+              'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.';
+          expect(find.text(explanation), findsNWidgets(2));
+          final explained = find.descendant(
+            of: find.byType(ConfirmFiatSentDialog),
+            matching: find.text(explanation),
+          );
+          expect(explained, findsOneWidget);
+          expect(
+            tester.widget<Text>(explained).style?.color,
             testBullTheme.error,
           );
           // The comparison shown: no gap from the creation's rate in the dialog either.
