@@ -32,6 +32,7 @@ import 'support/captures.dart';
 import 'support/fakes.dart' show bookOrder, parseOrders;
 import 'support/harness.dart';
 import 'support/make_form.dart';
+import 'support/map_tiles.dart';
 import 'support/trade_harness.dart' show tradeKey;
 import 'support/trade_screens.dart';
 
@@ -204,6 +205,7 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
               coordinatorDetails: (_) => throw StateError('not opened'),
               onMade: opened.add,
               locationDraws: () => 0.5,
+              openTiles: FakeMapTiles().open,
               book: book,
               activeTrades: activeTrades,
               onOpenOrder: openedOrders?.add,

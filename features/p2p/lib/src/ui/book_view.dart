@@ -8,6 +8,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/book_filter.dart';
+import '../domain/map_tiles.dart';
 import '../domain/option_search.dart';
 import '../domain/order_search.dart';
 import '../presentation/book_cubit.dart';
@@ -46,11 +47,15 @@ class BookView extends StatefulWidget {
   /// Opens the page of an order the books do not list, for its robot to read (#245): a password-protected order searched by its URL; `null` when the tab holds no robot.
   final void Function(Coordinator coordinator, int orderId)? onOpenProtected;
 
+  /// Opens the tiles of the map, once its « Show tiles » is on and its dialog acknowledged (#246).
+  final MapTileSession Function() openTiles;
+
   const BookView({
     super.key,
     required this.now,
     required this.onOpenOrder,
     required this.coordinatorDetails,
+    required this.openTiles,
     this.onOpenGarage,
     this.onOpenProtected,
   });
@@ -131,6 +136,7 @@ class _BookViewState extends State<BookView> {
                       state: state,
                       now: _now,
                       onOpenOrder: widget.onOpenOrder,
+                      openTiles: widget.openTiles,
                     ),
                   ),
                 },

@@ -1032,5 +1032,12 @@
   "p2pTakePasswordMissing": "Saisissez le mot de passe de l’ordre.",
   "p2pTakeProtectedHidden": "Ordre protégé : sa description et son lieu s’affichent une fois que vous l’avez pris.",
   "p2pTradeMeetingPoint": "Emplacement F2F",
-  "p2pTradeMeetingPointApproximate": "L'emplacement épinglé est approximatif. L'emplacement exact du lieu de rencontre doit être échangé dans le chat crypté."
+  "p2pTradeMeetingPointApproximate": "L'emplacement épinglé est approximatif. L'emplacement exact du lieu de rencontre doit être échangé dans le chat crypté.",
+  "p2pMapShowTiles": "Afficher les tuiles",
+  "p2pMapTilesTitle": "Télécharger une carte haute résolution?",
+  "p2pMapTilesText": "By doing so, you will be fetching map tiles from a third-party provider. Depending on your setup, private information might be leaked to servers outside the RoboSats federation.",
+  "p2pMapTilesClose": "Fermer",
+  "p2pMapTilesAcknowledged": "Confirmer",
+  "p2pMapTilesCredit": "© OpenStreetMap contributors",
+  "p2pMapTilesUnavailable": "Tuiles de la carte indisponibles"
 }

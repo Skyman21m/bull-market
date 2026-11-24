@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/map_tiles.dart';
 import '../domain/p2p_shuffle.dart';
 import '../domain/tor_wait.dart';
 import '../presentation/book_cubit.dart';
@@ -47,6 +48,9 @@ class P2pTabScreen extends StatelessWidget {
   /// Whether a tap on an order of the book awaits the read of the active trades (at most 10 s, #182): a bar shows it under the entries (#207).
   final bool waitingForTrades;
 
+  /// Opens the tiles of the book's map, once its « Show tiles » is on and its dialog acknowledged (#246).
+  final MapTileSession Function() openTiles;
+
   /// The bar of [waitingForTrades].
   static const waitingForTradesKey = ValueKey('p2p-waiting-for-trades');
 
@@ -56,6 +60,7 @@ class P2pTabScreen extends StatelessWidget {
     required this.shuffle,
     required this.onOpenOrder,
     required this.coordinatorDetails,
+    required this.openTiles,
     required this.destination,
     required this.onDestination,
     required this.garage,
@@ -116,6 +121,7 @@ class P2pTabScreen extends StatelessWidget {
                           onOpenOrder: onOpenOrder,
                           onOpenProtected: onOpenProtected,
                           coordinatorDetails: coordinatorDetails,
+                          openTiles: openTiles,
                           onOpenGarage: garage == null
                               ? null
                               : () => onDestination(P2pDestination.garage),

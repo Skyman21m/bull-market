@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/map_tiles.dart';
 import '../domain/matching_orders.dart';
 import '../domain/meeting_point.dart';
 import '../domain/option_search.dart';
@@ -26,6 +27,7 @@ import '../presentation/p2p_formats.dart';
 import '../presentation/pending_makes_cubit.dart';
 import 'garage/select_host_sheet.dart';
 import 'location_map_dialog.dart';
+import 'map_tile_layer.dart';
 import 'trade/pending_make_lines.dart';
 import 'widgets/add_payment_method_dialog.dart';
 import 'widgets/coordinator_avatar.dart';
@@ -82,11 +84,15 @@ class CreateOrderScreen extends StatefulWidget {
   /// The draws that move a meeting point pinned (#189, [MeetingPoint.randomized]).
   final double Function() locationDraws;
 
+  /// Opens the tiles of the meeting point's map, once its « Show tiles » is on and its dialog acknowledged (#246).
+  final MapTileSession Function() openTiles;
+
   const CreateOrderScreen({
     super.key,
     required this.coordinatorDetails,
     required this.onMade,
     required this.locationDraws,
+    required this.openTiles,
     this.initialType,
     this.offline = const {},
     this.onOpenGarage,
@@ -101,6 +107,9 @@ class CreateOrderScreen extends StatefulWidget {
 }
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
+  /// « Show tiles » of the meeting point's map and its acknowledgment, for the life of this form, as the reference's `F2fMapDialog` stays mounted in `MakerForm` (#246): a new form starts off.
+  final _locationTiles = MapTilesChoice();
+
   final _amount = TextEditingController();
   final _premium = TextEditingController();
 
@@ -528,6 +537,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       initial: _location,
       primary: _type == OrderType.buy,
       draw: widget.locationDraws,
+      openTiles: widget.openTiles,
+      tiles: _locationTiles,
     );
     if (point == null || !mounted) return;
     setState(() {

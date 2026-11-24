@@ -1,4 +1,4 @@
-/// Troc peer-to-peer trading on the RoboSats federation, read over the embedded Tor.
+/// Troc peer-to-peer trading on the RoboSats federation, read over the embedded Tor; the maps' tiles, once « Show tiles » is on, from OpenStreetMap outside Tor.
 ///
 /// The shell calls [P2pFeature.setup], mounts [P2pFeature.route] in its bottom bar and registers [P2pLocalizations.delegate]; everything else goes through [P2pFacade], whose signatures use the types of `package:robosats` exported here.
 library;

@@ -256,6 +256,15 @@ void main() {
             'rawWebSocket': {'network WebSocket'},
             'rawSocket': {'network Socket'},
             'rawProcess': {'network Process'},
+            'networkImage': {'network NetworkImage'},
+            'imageNetwork': {'network Image.network'},
+            'fadeInNetwork': {
+              'network FadeInImage.assetNetwork',
+              'network FadeInImage.memoryNetwork',
+            },
+            'networkBundle': {'network NetworkAssetBundle'},
+            'lookUp': {'network InternetAddress'},
+            'rawSynchronousSocket': {'network RawSynchronousSocket'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
             'acknowledgeByTearOff': {
@@ -788,13 +797,24 @@ void main() {
       });
     });
 
-    test('only the transport holds a raw network client', () {
+    test('only the transport and the tile client hold a raw network client', () {
       expect(
         referring(
           (r) =>
               r.startsWith('network ') && r != 'network TorHttpClientFactory',
         ),
-        {'lib/src/data/tor_coordinator_transport.dart'},
+        {
+          'lib/src/data/tor_coordinator_transport.dart',
+          // The tiles of the maps (#246): the one connection the feature opens itself outside Tor, the owner's decision of 2026-11-23; the wallet's price and swap service, outside Tor too, are reached through the wallet's port (`wallet_port_architecture_test.dart`).
+          'lib/src/data/osm_map_tile_adapter.dart',
+        },
+      );
+      // The tile client holds `dart:io`'s HTTP client and nothing else: no Tor session, no Tor client factory, no `dio`, no socket of its own.
+      expect(
+        references['lib/src/data/osm_map_tile_adapter.dart']
+            ?.where((r) => r.startsWith('network '))
+            .toSet(),
+        {'network HttpClient'},
       );
       // The locator reads the factory from the shell's container and hands it to the transport.
       expect(referring((r) => r == 'network TorHttpClientFactory'), {
@@ -2626,6 +2646,9 @@ const _networkLibraries = [
 ];
 const _networkClasses = {
   'package:bull_tor/': {'TorHttpClientFactory', 'TorSessions', 'TorSession'},
+  // Flutter's own ways to an image or a file over the network, each with `dart:io`'s client and its default user agent (security review of #246).
+  'package:flutter/src/painting/': {'NetworkImage'},
+  'package:flutter/src/services/': {'NetworkAssetBundle'},
   'dart:_http': {
     'HttpClient',
     'HttpServer',
@@ -2645,6 +2668,17 @@ const _networkClasses = {
     'RawSecureServerSocket',
     'ConnectionTask',
     'Process',
+    // A name resolved by the device's resolver, and a socket that blocks (security review of #246).
+    'InternetAddress',
+    'RawSynchronousSocket',
+  },
+};
+
+/// The constructors that fetch over the network, by the library and the class that declare them: their class is no client of its own (`Image` also draws a bundled asset).
+const _networkConstructors = {
+  'package:flutter/src/widgets/': {
+    'Image': {'network'},
+    'FadeInImage': {'assetNetwork', 'memoryNetwork'},
   },
 };
 
@@ -2813,6 +2847,23 @@ final class _ReferenceVisitor extends RecursiveAstVisitor<void> {
   void visitNamedType(NamedType node) {
     _check(node.element);
     super.visitNamedType(node);
+  }
+
+  /// A constructor named, invoked or torn off, of [_networkConstructors].
+  @override
+  void visitConstructorName(ConstructorName node) {
+    final constructor = node.element;
+    if (constructor != null) {
+      final owner = constructor.enclosingElement;
+      for (final MapEntry(key: library, value: classes)
+          in _networkConstructors.entries) {
+        if (_in(owner, library) &&
+            (classes[owner.name]?.contains(constructor.name) ?? false)) {
+          _add('network ${owner.name}.${constructor.name}');
+        }
+      }
+    }
+    super.visitConstructorName(node);
   }
 
   @override

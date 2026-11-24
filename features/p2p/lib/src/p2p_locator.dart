@@ -11,6 +11,7 @@ import 'package:secrets/secrets.dart' show GarageKeys;
 import '../public/p2p_wallet_port.dart';
 import 'data/garage_key_repository_impl.dart';
 import 'data/isolate_robot_key_compute.dart';
+import 'data/osm_map_tile_adapter.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
@@ -23,6 +24,7 @@ import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/meeting_point.dart';
+import 'domain/map_tiles.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/p2p_waits.dart';
@@ -57,6 +59,7 @@ import 'domain/usecases/import_garage_key_usecase.dart';
 import 'domain/usecases/list_robot_hosts_usecase.dart';
 import 'domain/usecases/load_federation_books_usecase.dart';
 import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
+import 'domain/usecases/open_map_tiles_usecase.dart';
 import 'domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'domain/usecases/read_garage_key_usecase.dart';
 import 'domain/usecases/read_robot_on_coordinator_usecase.dart';
@@ -150,6 +153,8 @@ final class P2pLocator {
       lotteryDraws: Random().nextDouble,
       // The draws that move a meeting point pinned (#189): they hide the place pinned, so the secure source.
       locationDraws: Random.secure().nextDouble,
+      // The tiles of the maps (#246): OpenStreetMap's, outside Tor, the one connection the feature opens itself outside Tor (the wallet's price and swap service also leave outside Tor, through the wallet's port); nothing is created before a map's « Show tiles » is on and acknowledged.
+      tiles: () => const OsmMapTileAdapter(),
     );
     if (garageKeys != null && databaseDirectory != null) {
       registerGarageKeys(
@@ -797,6 +802,7 @@ final class P2pLocator {
     required P2pWaits waits,
     required double Function() lotteryDraws,
     required double Function() locationDraws,
+    required MapTilePort Function() tiles,
     P2pShuffle shuffle = P2pShuffle.random,
   }) {
     locator.registerSingleton<P2pClock>(P2pClock(clock));
@@ -808,6 +814,10 @@ final class P2pLocator {
     );
     locator.registerSingleton<P2pShuffle>(shuffle);
     locator.registerSingleton<P2pWaits>(waits);
+    // The tiles of the two maps (#246): its only callers are the maps, through the routes that build them.
+    locator.registerFactory<OpenMapTilesUsecase>(
+      () => OpenMapTilesUsecase(tiles()),
+    );
     locator.registerFactory<RequestFederationBooksUsecase>(
       () => RequestFederationBooksUsecase(
         FederationBookReader(transport(), clock: clock),

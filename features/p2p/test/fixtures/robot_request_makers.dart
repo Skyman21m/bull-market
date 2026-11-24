@@ -4,6 +4,8 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
@@ -96,6 +98,28 @@ Future<Object> rawSocket(String host) => Socket.connect(host, 80);
 
 /// A process that could send the request itself.
 Future<Object> rawProcess(String url) => Process.run('curl', [url]);
+
+/// Flutter's image from the network (security review of #246).
+Object networkImage(String url) => NetworkImage(url);
+
+/// The same, through `Image`'s constructor.
+Widget imageNetwork(String url) => Image.network(url);
+
+/// The fading images that fetch theirs, torn off.
+List<Object> fadeInNetwork() => [
+  FadeInImage.assetNetwork,
+  FadeInImage.memoryNetwork,
+];
+
+/// A bundle read over the network.
+Object networkBundle(String url) => NetworkAssetBundle(Uri.parse(url));
+
+/// A name resolved by the device's resolver.
+Future<Object> lookUp(String host) => InternetAddress.lookup(host);
+
+/// A socket that blocks.
+Object rawSynchronousSocket(String host) =>
+    RawSynchronousSocket.connectSync(host, 443);
 
 /// A raw request to a coordinator, which could carry either header.
 Object sendRaw(CoordinatorTransport transport, CoordinatorRequest request) =>
