@@ -7,7 +7,7 @@ typedef GuardedTap = VoidCallback? Function(VoidCallback? onTap);
 
 /// A guard for a button that pays: when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
 ///
-/// Its place is measured after every frame in the coordinates of the content of the nearest [Scrollable], not of the screen, so that scrolling the page (by the user, or by the screen bringing the button into view) never sets it off; its first place, when it appears, neither. Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
+/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) never sets it off, while any other move does; its first place, when it appears, is only recorded. Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
 class MovedTapGuard extends StatefulWidget {
   final Widget Function(BuildContext context, GuardedTap guard) builder;
 
@@ -54,22 +54,27 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
     });
   }
 
-  /// The guarded widget's top left in the content of the nearest [Scrollable] (its place in the viewport plus the scroll offset), or on the screen when nothing scrolls it.
+  /// The guarded widget's top left on the screen, with the scroll offset of every [Scrollable] around it added back along its axis: a scroll (of the page, between tabs, of a nested list, or the screen bringing the button into view) leaves it unchanged, and any other move on the screen changes it, whatever the structure of the page.
   Offset? _placeNow() {
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.attached || !box.hasSize) return null;
-    final scrollable = Scrollable.maybeOf(context);
-    final viewport = scrollable?.context.findRenderObject();
-    if (scrollable == null || viewport == null || !viewport.attached) {
-      return box.localToGlobal(Offset.zero);
+    var place = box.localToGlobal(Offset.zero);
+    for (
+      var scrollable = Scrollable.maybeOf(context);
+      scrollable != null;
+      scrollable = Scrollable.maybeOf(scrollable.context)
+    ) {
+      final position = scrollable.position;
+      final scrolled = position.hasPixels ? position.pixels : 0.0;
+      // Scrolling by d moves the content by d against the axis direction.
+      place += switch (position.axisDirection) {
+        AxisDirection.down => Offset(0, scrolled),
+        AxisDirection.up => Offset(0, -scrolled),
+        AxisDirection.right => Offset(scrolled, 0),
+        AxisDirection.left => Offset(-scrolled, 0),
+      };
     }
-    final position = scrollable.position;
-    final scrolled = position.hasPixels ? position.pixels : 0.0;
-    final inViewport = box.localToGlobal(Offset.zero, ancestor: viewport);
-    return switch (position.axis) {
-      Axis.vertical => inViewport.translate(0, scrolled),
-      Axis.horizontal => inViewport.translate(scrolled, 0),
-    };
+    return place;
   }
 
   VoidCallback? _guard(VoidCallback? onTap) => onTap == null

@@ -1047,6 +1047,8 @@ void main() {
             ),
           ),
         );
+        // The trace of terms shown otherwise has just moved the card: « Pay » ignores a tap for a moment (security review of #268, C1), then pays.
+        await tester.pump(MovedTapGuard.afterMove);
         await journey.tap(pay);
         await journey.waitUntil(() => journey.wallet.paid.isNotEmpty);
         expect(journey.wallet.paid, hasLength(1));
