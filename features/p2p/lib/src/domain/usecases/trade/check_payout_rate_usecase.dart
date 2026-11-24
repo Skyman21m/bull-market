@@ -3,6 +3,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show FiatAmount, RobosatsCurrency;
 
 import '../../../../public/p2p_wallet_port.dart';
+import '../../trade/shown_alerts.dart';
 import '../../trade/trade_payout.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_terms.dart';
@@ -66,24 +67,13 @@ final class CheckPayoutRateUsecase {
   static bool takeDisagrees(TradeStatus status) =>
       amountsDisagree(status) || status.has<TradeTermsChanged>();
 
-  /// Whether [status] carries an alert of the state machine, its invoice's included: any warning but `ContractSeenLate` (information, not an alert), the rule of the confirmation of the bond and of the escrow (`bond_payment_panel.dart`).
-  static bool alerted(TradeStatus status) {
-    final invoice = status.invoice;
-    return [
-      ...status.warnings,
-      if (invoice case CheckedInvoice(:final warnings)) ...warnings,
-    ].any((warning) => warning is! ContractSeenLate);
-  }
-
-  /// Whether the line of [check], of sats coming from [basis], would reassure beside an alert of the state machine that [status] carries ([alerted]): a comparison within the owner's threshold, with no alert of its own (`PayoutRateTold`, `PayoutRateNotSeen`). Such a line is not drawn: an alert speaks alone, never with a reassuring line beside it (the owner's rule; correction C1 of the functional review of #249, for a taker buyer and a maker buyer alike). A comparison that is itself an alert (red, « rate not checked », a currency not priced) is still drawn beside it.
+  /// Whether the line of [check], of sats coming from [basis], would reassure beside an alert [seen] shows (`ShownAlerts.any`: a warning of the state machine, the trace of terms shown otherwise, #231, or at 9 the trace of a payout not given from this wallet, #204): a comparison within the owner's threshold, with no alert of its own (`PayoutRateTold`, `PayoutRateNotSeen`). Such a line is not drawn: an alert speaks alone (the owner's rule; C1 of the functional review and C1, C2 of the security review of #249, for a taker buyer and a maker buyer alike). A comparison that is itself an alert (red, « rate not checked », a currency not priced, a figure that moved since the invoice) is still drawn beside it.
   static bool reassuresBesideAlert(
-    TradeStatus status,
+    TradeSeen seen,
     WalletRateCheck check,
     PayoutRateBasis basis,
   ) =>
-      alerted(status) &&
-      check is WalletRateCompared &&
-      !check.warns &&
+      ShownAlerts.reassuresBeside(seen, check) &&
       basis is! PayoutRateTold &&
       basis is! PayoutRateNotSeen;
 

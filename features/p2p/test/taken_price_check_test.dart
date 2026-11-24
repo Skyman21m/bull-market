@@ -1,6 +1,7 @@
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/trade/exact_ratio.dart';
 import 'package:p2p/src/domain/trade/sats_at_price.dart';
+import 'package:p2p/src/domain/trade/shown_alerts.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
@@ -690,7 +691,7 @@ void main() {
               '$name: within the threshold, the alert alone; red, the comparison',
               () async {
                 final seen = await alerted();
-                expect(CheckPayoutRateUsecase.alerted(seen.status), isTrue);
+                expect(ShownAlerts.stateMachine(seen.status), isTrue);
                 expect(
                   CheckPayoutRateUsecase.subjectOfTake(record, terms(), seen),
                   isA<PayoutRateCompared>(),
@@ -699,7 +700,7 @@ void main() {
                 expect(within.warns, isFalse);
                 expect(
                   CheckPayoutRateUsecase.reassuresBesideAlert(
-                    seen.status,
+                    seen,
                     within,
                     const PayoutRateAskedNow(),
                   ),
@@ -709,7 +710,7 @@ void main() {
                 expect(red.warns, isTrue);
                 expect(
                   CheckPayoutRateUsecase.reassuresBesideAlert(
-                    seen.status,
+                    seen,
                     red,
                     const PayoutRateAskedNow(),
                   ),
@@ -729,7 +730,7 @@ void main() {
                 ]) {
                   expect(
                     CheckPayoutRateUsecase.reassuresBesideAlert(
-                      seen.status,
+                      seen,
                       alert,
                       const PayoutRateAskedNow(),
                     ),
@@ -760,10 +761,10 @@ void main() {
             'without an alert, the comparison within the threshold is drawn',
             () async {
               final six = await statuses.waitingForBoth();
-              expect(CheckPayoutRateUsecase.alerted(six.status), isFalse);
+              expect(ShownAlerts.stateMachine(six.status), isFalse);
               expect(
                 CheckPayoutRateUsecase.reassuresBesideAlert(
-                  six.status,
+                  six,
                   checkAt(91711.15),
                   const PayoutRateAskedNow(),
                 ),

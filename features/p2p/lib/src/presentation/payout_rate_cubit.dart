@@ -136,7 +136,7 @@ final class PayoutRateAmountsDisagree extends PayoutRateState {
   const PayoutRateAmountsDisagree(this.step, {this.notSeen = false});
 }
 
-/// The comparison of [step] is within the owner's threshold while the status shown carries an alert of the state machine (`CheckPayoutRateUsecase.reassuresBesideAlert`): nothing drawn, the alert said alone, never a reassuring line beside it (correction C1 of the functional review of #249, for any buyer).
+/// The comparison of [step] is within the owner's threshold while the screen shows an alert (`ShownAlerts.any`: a warning of the state machine, the trace of terms shown otherwise, the trace of a payout not given from this wallet; `CheckPayoutRateUsecase.reassuresBesideAlert`): nothing drawn, the alert said alone, never a reassuring line beside it (C1 of the functional review, C1 and C2 of the security review of #249, for any buyer).
 final class PayoutRateAlertAlone extends PayoutRateState {
   final PayoutRateStep step;
 
@@ -251,7 +251,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       _emitFor(
         step,
         terms,
-        seen.status,
+        seen,
         subject,
         _reading == null ? kept?.price : null,
       );
@@ -334,11 +334,11 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     return subject;
   }
 
-  /// The state of [step] for [subject], a status of [status], at [price]: a comparison within the threshold beside an alert of the state machine is [PayoutRateAlertAlone] ([CheckPayoutRateUsecase.reassuresBesideAlert]).
+  /// The state of [step] for [subject], of [seen], at [price]: a comparison within the threshold beside an alert the screen shows is [PayoutRateAlertAlone] ([CheckPayoutRateUsecase.reassuresBesideAlert]).
   void _emitFor(
     PayoutRateStep step,
     PayoutRateTerms terms,
-    TradeStatus status,
+    TradeSeen seen,
     PayoutRateSubject? subject,
     P2pWalletBitcoinRate? price,
   ) {
@@ -362,7 +362,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
         )) {
           final check
               when CheckPayoutRateUsecase.reassuresBesideAlert(
-                status,
+                seen,
                 check,
                 compared.basis,
               ) =>
@@ -389,7 +389,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       final seen = _seen;
       final step = _step;
       if (isClosed || seen == null || step == null) return;
-      _emitFor(step, terms, seen.status, _subjectOf(terms, seen), price);
+      _emitFor(step, terms, seen, _subjectOf(terms, seen), price);
     }();
   }
 }

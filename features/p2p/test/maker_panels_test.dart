@@ -82,6 +82,9 @@ final _record = TradeRecord(
 final _reader = Bolt11Reader(Bolt11TestDecoder([makerBondInvoice()]));
 
 /// The statuses of the reference's answers [answers] read one after the other by the state machine, from the order's first read (`TradeStatus.afterMake`): an order's JSON, or an answer of another kind ([TradeAnswer]); the order's terms are [madeTerms]'s unless [terms] are given.
+/// A payout given from this wallet (#204), for a status at 9 whose comparison is not to be silenced by its trace.
+final _givenHere = PayoutFromThisWallet(PayoutTraceKind.invoice, tradeNow);
+
 Future<List<TradeSeen>> _chain(
   List<Object> answers, {
   TradeTerms<MadeSide>? terms,
@@ -1670,7 +1673,12 @@ void main() {
             makerOrderJson(8, last: 50000),
             makerOrderJson(9, last: 106900),
           ]);
-          await _show(tester, seen, rate: rateOf(() => atWallet));
+          // The payout given from this wallet: no trace of #204 beside the comparison (security review of #249, C2).
+          await _show(
+            tester,
+            seen.withPayout(_givenHere),
+            rate: rateOf(() => atWallet),
+          );
           await tester.pump();
           // A normal case, said plainly: in the text colour, not bold, the user asked to compare it with the invoice (functional review of #182, U3, #207); a line of its own beside the comparison.
           final now = find.text(
@@ -2928,9 +2936,15 @@ void main() {
           ]);
           final (_, watch) = await _show(tester, chain[2], rate: cubit);
           await tester.pump();
+          // The payout given from this wallet: no trace of #204 beside the comparison (security review of #249, C2).
           watch
             ..add(TradeScreenStatuses.watched(chain[3], of: _record))
-            ..add(TradeScreenStatuses.watched(chain[4], of: _record));
+            ..add(
+              TradeScreenStatuses.watched(
+                chain[4].withPayout(_givenHere),
+                of: _record,
+              ),
+            );
           await tester.pump();
           await tester.pump();
           expect(find.textContaining('fewer sats than that'), findsNothing);
@@ -2940,7 +2954,12 @@ void main() {
           expect(inDialog('fewer sats than that'), findsNothing);
           expect(inDialog('but asked for an invoice of'), findsNothing);
           // The figure moves while the dialog is open: its lines follow.
-          watch.add(TradeScreenStatuses.watched(chain[5], of: _record));
+          watch.add(
+            TradeScreenStatuses.watched(
+              chain[5].withPayout(_givenHere),
+              of: _record,
+            ),
+          );
           await tester.pump();
           await tester.pump();
           expect(
