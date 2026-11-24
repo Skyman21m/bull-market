@@ -17,6 +17,7 @@ import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_edges.dart';
 import '../../domain/trade/trade_pause.dart';
 import '../../domain/trade/trade_renewal.dart';
+import '../../domain/trade/shown_alerts.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/trade_watch.dart';
@@ -1467,7 +1468,8 @@ class _Contract extends StatelessWidget {
       PayoutRateReading(:final step) ||
       PayoutRateChecked(:final step) ||
       PayoutRateSatsMissing(:final step) ||
-      PayoutRateAmountsDisagree(:final step) => step,
+      PayoutRateAmountsDisagree(:final step) ||
+      PayoutRateAlertAlone(:final step) => step,
       _ => null,
     };
     if (step == null || step != shown) return null;
@@ -1685,9 +1687,8 @@ String? termsShownOtherwise(
   required Premium? own,
 }) {
   final at = status.trail.termsChangedAt;
-  if (at == null || status.isTerminal || status.has<TradeTermsChanged>()) {
-    return null;
-  }
+  // Drawn exactly when `ShownAlerts.termsTrace` says so: the one rule of what counts as an alert beside a comparison (#249).
+  if (at == null || !ShownAlerts.termsTrace(status)) return null;
   final l10n = P2pLocalizations.of(context);
   final formats = P2pFormats.of(context);
   final day = formats.day(at);
@@ -1747,13 +1748,8 @@ String? payoutTraceOf(
   TradeSeen seen, {
   required PayoutRateState? rule,
 }) {
-  final status = seen.status;
-  if (status is! Chatting ||
-      status.role != TradeRole.buyer ||
-      status.fiatSent ||
-      _saysPayoutNotSeen(rule)) {
-    return null;
-  }
+  // Drawn exactly when `ShownAlerts.payoutTrace` says so (the one rule of what counts as an alert beside a comparison, #249), but where the rule's own red line says the invoice was never seen here.
+  if (!ShownAlerts.payoutTrace(seen) || _saysPayoutNotSeen(rule)) return null;
   final l10n = P2pLocalizations.of(context);
   return switch (seen.payout) {
     PayoutFromThisWallet() => null,

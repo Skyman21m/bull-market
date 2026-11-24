@@ -811,6 +811,9 @@ void main() {
         ),
         findsOneWidget,
       );
+      // Beside the alert of the earlier collateral not back, the comparison within the threshold is not drawn: an alert speaks alone (security review of #249, C1).
+      expect(find.textContaining(_english.feeIncluded), findsNothing);
+      expect(journey.wallet.ratesAsked, isNotEmpty);
       await journey.tap(find.text('Go back'));
       await settle(tester);
       // The wallet finds it now, its refund pending, then the coordinator holding it again.

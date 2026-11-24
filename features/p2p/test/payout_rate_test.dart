@@ -1,10 +1,14 @@
 import 'dart:async';
 
 import 'package:p2p/public/p2p_wallet_port.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/maker_terms.dart';
+import 'package:p2p/src/domain/trade/payout_trace.dart';
+import 'package:p2p/src/domain/trade/shown_alerts.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -41,15 +45,33 @@ void main() {
     return (harness, record, await readOf(harness, record));
   }
 
+  /// The payout of contract [take] of [record] recorded as given from this wallet (#204), as a « Submit » of an invoice this wallet gave records it.
+  Future<void> givenHere(
+    MakeHarness harness,
+    TradeRecord record, {
+    int take = 0,
+  }) async => expect(
+    await harness.payouts.recordPayout(
+      record,
+      take: take,
+      source: PayoutTraceSource.thisWallet,
+      kind: PayoutTraceKind.invoice,
+      at: harness.now,
+    ),
+    isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'written', isTrue),
+  );
+
   FakeP2pWalletPort wallet(P2pWalletBitcoinRate rate) =>
       FakeP2pWalletPort(Ok(Sats.fromInt(50000)))..rate = rate;
 
   Future<MakerTerms> termsOf(MakeHarness harness, TradeRecord record) async =>
-      await CheckPayoutRateUsecase(
+      switch (await CheckPayoutRateUsecase(
         harness.reader,
         wallet(P2pWalletRateRead(91711.15)),
-      ).termsOf(record) ??
-      (throw StateError('no terms'));
+      ).termsOf(record)) {
+        MakerPayoutTerms(:final maker) => maker,
+        _ => throw StateError('no terms'),
+      };
 
   PayoutRateCompared comparedOf(PayoutRateSubject? subject) =>
       switch (subject) {
@@ -99,7 +121,7 @@ void main() {
         final check = CheckPayoutRateUsecase.compare(
           maker,
           subject,
-          await usecase.priceOf(record, maker),
+          await usecase.priceOf(record, MakerPayoutTerms(maker)),
         );
         expect(check, isA<WalletRateAtWallet>());
         expect(check.side, WalletRateSide.receives);
@@ -216,6 +238,113 @@ void main() {
     });
   });
 
+  group(
+    'a maker buyer beside an alert of the state machine that is not about the terms nor the amounts (C1 of the functional review of #249): a reassuring comparison is not drawn, a red one is',
+    () {
+      Future<TradeSeen> deadline(
+        MakeHarness harness,
+        TradeRecord record,
+      ) async {
+        harness.coordinator.orderChanges[record.orderId] = {
+          'expires_at': harness.now
+              .add(const Duration(minutes: 1))
+              .toIso8601String(),
+        };
+        return readOf(harness, record);
+      }
+
+      Future<TradeSeen> inconsistent(
+        MakeHarness harness,
+        TradeRecord record,
+      ) async {
+        harness.coordinator.orderChanges[record.orderId] = {
+          // Another taker under the same contract (`TradeTakerChanged`, a breach of trust, refused as an answer).
+          'taker_hash_id': harness.robot(3).hashId.hex,
+          'taker_nick': harness.robot(3).nickname,
+        };
+        final broken = await readOf(harness, record);
+        expect(broken.status.has<TradeTakerChanged>(), isTrue);
+        harness.coordinator.orderChanges.remove(record.orderId);
+        final again = await readOf(harness, record);
+        expect(again.status, isA<WaitingForBoth>());
+        return again;
+      }
+
+      test(
+        'at 9, the payout not given from this wallet (#204): within the threshold, the alert alone; red, the comparison (security review of #249, C2)',
+        () async {
+          final (harness, record, _) = await taken();
+          harness.coordinator.lockEscrow(record.orderId);
+          await readOf(harness, record);
+          harness.coordinator.order(record.orderId).status = 9;
+          final nine = await readOf(harness, record);
+          expect(nine.status, isA<Chatting>());
+          expect(ShownAlerts.payoutTrace(nine), isTrue);
+          final quiet = cubitOf(
+            harness,
+            record,
+            wallet(P2pWalletRateRead(91711.15)),
+          );
+          await quiet.show(nine, appeared: true);
+          await harness.settle();
+          expect(quiet.state, isA<PayoutRateAlertAlone>());
+          final loud = cubitOf(
+            harness,
+            record,
+            wallet(P2pWalletRateRead(45000)),
+          );
+          await loud.show(nine, appeared: true);
+          await harness.settle();
+          expect(
+            loud.state,
+            isA<PayoutRateChecked>().having(
+              (s) => s.check.warns,
+              'warns',
+              true,
+            ),
+          );
+        },
+      );
+
+      for (final (name, alerted) in [
+        ('a deadline moved back', deadline),
+        ('a coordinator that broke the trade\'s history', inconsistent),
+      ]) {
+        test(
+          '$name: within the threshold, the alert alone; red, the comparison',
+          () async {
+            final (harness, record, _) = await taken();
+            final seen = await alerted(harness, record);
+            expect(ShownAlerts.stateMachine(seen.status), isTrue);
+            final quiet = cubitOf(
+              harness,
+              record,
+              wallet(P2pWalletRateRead(91711.15)),
+            );
+            await quiet.show(seen, appeared: true);
+            await harness.settle();
+            expect(quiet.state, isA<PayoutRateAlertAlone>());
+            final loud = cubitOf(
+              harness,
+              record,
+              wallet(P2pWalletRateRead(45000)),
+            );
+            await loud.show(seen, appeared: true);
+            await harness.settle();
+            expect(
+              loud.state,
+              isA<PayoutRateChecked>().having(
+                (s) => s.check.warns,
+                'warns',
+                true,
+              ),
+            );
+          },
+        );
+      }
+    },
+  );
+
   group('the cubit', () {
     test(
       'one read for 6, 8 and 9 within 3 minutes, the price kept; « Retry » only after a price not read',
@@ -247,6 +376,8 @@ void main() {
         // 8, then 9, within 3 minutes: compared with the price read.
         harness.coordinator.lockEscrow(record.orderId);
         await cubit.show(await readOf(harness, record));
+        // The payout given from this wallet: no trace of #204 drawn at 9, beside which a comparison within the threshold would be silent (security review of #249, C2).
+        await givenHere(harness, record, take: 0);
         harness.coordinator.order(record.orderId).status = 9;
         final nine = await readOf(harness, record);
         await cubit.show(nine);
@@ -303,6 +434,8 @@ void main() {
         final (harness, record, six) = await taken();
         harness.coordinator.lockEscrow(record.orderId);
         await readOf(harness, record);
+        // The payout given from this wallet: no trace of #204 drawn at 9, beside which a comparison within the threshold would be silent (security review of #249, C2).
+        await givenHere(harness, record, take: 0);
         harness.coordinator.order(record.orderId).status = 9;
         final nine = await readOf(harness, record);
         final answers = <Completer<P2pWalletBitcoinRate>>[];
@@ -478,6 +611,8 @@ void main() {
         final first = cubitOf(harness, record, port, memory: memory);
         await first.show(six, appeared: true);
         await first.close();
+        // The payout given from this wallet: no trace of #204 drawn at 9, beside which a comparison within the threshold would be silent (security review of #249, C2).
+        await givenHere(harness, record, take: 0);
         harness.coordinator.order(record.orderId).status = 9;
         final nine = await readOf(harness, record);
         final again = cubitOf(harness, record, port, memory: memory);
@@ -541,6 +676,8 @@ void main() {
         final six = await readOf(harness, record);
         expect(six.status.trail.take, 1);
         await cubit.show(six);
+        // The payout given from this wallet: no trace of #204 drawn at 9, beside which a comparison within the threshold would be silent (security review of #249, C2).
+        await givenHere(harness, record, take: 1);
         harness.coordinator.order(record.orderId).status = 9;
         final nine = await readOf(harness, record);
         await cubit.show(nine);
@@ -568,7 +705,7 @@ void main() {
     });
 
     test(
-      'a taker\'s trade never sees the rule, not even « reading »',
+      'a trade said taken here whose terms give nothing to compare (here a maker\'s): never the rule, not even « reading » (a taker buyer\'s own terms are compared since #249, `taken_price_usecases_test.dart`)',
       () async {
         final (harness, record, six) = await taken();
         final taker = TradeRecord(

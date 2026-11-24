@@ -29,7 +29,7 @@ import 'trade_take_locks.dart';
 ///
 /// - [watchBalance]: what the Instant Payments wallet can spend, as the wallet reads it.
 /// - [quoteBond]: on the user's tap of « Pay with this wallet » only, the swap service's quote for the invoice the status shown offers (`walletPaymentFor`, at most the bond the take's or the make's terms imply, [TradeTerms.bondCeiling]); nothing is created at the service.
-/// - [rateOfBond]: for an order made here, once the quote is given and before the confirmation is shown, how the bond quoted compares with the bond at the wallet's own price of a bitcoin ([WalletRateCheck], the owner's payment rule of 2026-11-17); `null` for a take, whose rule is the take's. Information and a warning for the confirmation: it never refuses, and [payBond] never reads it.
+/// - [rateOfBond]: once the quote is given and before the confirmation is shown, how the bond or the escrow quoted compares with what the order implies at the wallet's own price of a bitcoin ([WalletRateCheck], the owner's payment rule of 2026-11-17, for an order made here and, since #249, for an order taken here). Information and a warning for the confirmation: it never refuses for the price, and [payBond] never reads it.
 /// - [payBond]: on the user's confirmation of that quote only, one action of the order at a time ([TradeTakeLocks], shared with the take and the payout). It reads the order again with the trade's robot, keeps what the read gives, and pays only when the status it now stores is [step]'s and `walletPaymentFor` offers the very invoice quoted; the payment is recorded ([TradePaymentRepository.recordStart]) before the wallet is asked, and the wallet's id of it after.
 /// - [followBond]: where the payment recorded for the trade stands, from the wallet's records ([P2pWalletPort.findPayment], then [P2pWalletPort.watchPayment]); it pays nothing.
 ///
@@ -124,9 +124,9 @@ final class PayBondFromWalletUsecase {
     };
   }
 
-  /// For an order made here, how the bond or the escrow of [quote] (the swap service's quote [quoteBond] gave) compares with what the order implies at the wallet's own price of a bitcoin, read now through the wallet's port (the owner's payment rule of 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3): for the maker bond, the bond of the order's largest amount ([WalletRateCheck.ofMakerBond], #180); for a maker seller's escrow, the sats of the contract's amount kept in the trail, the fixed amount or a range's amount its take chose ([WalletRateCheck.ofMakerEscrow], #187). `null` for a take, whose rules are the take's.
+  /// How the bond or the escrow of [quote] (the swap service's quote [quoteBond] gave) compares with what the order implies at the wallet's own price of a bitcoin, read now through the wallet's port (the owner's payment rule of 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3): for the maker bond, the bond of the order's largest amount ([WalletRateCheck.ofMakerBond], #180); for a maker seller's escrow, the sats of the contract's amount kept in the trail, the fixed amount or a range's amount its take chose ([WalletRateCheck.ofMakerEscrow], #187); for a take (#249, the owner's decision of 2026-11-20), the taker bond and a taker seller's escrow against the amount taken at that price with the premium of the take's terms ([_rateOfTake]).
   ///
-  /// Asked once the quote is given, before the confirmation is shown: the price is the one of the moment of paying. The amount compared is the quote's invoice's, the one the wallet pays. It refuses nothing for the price: an amount beyond the owner's threshold is shown in red, and [payBond] still pays what the user confirms. For the escrow, a quote of another invoice than the escrow the trail pins is [BondPayInvoiceChanged], and a contract's amount the trail does not give (a range without one kept, which the state machine never stores at 6 or 7) [BondPayNotAtBondStep]. The wallet's price is asked only for an order made here, never at a take.
+  /// Asked once the quote is given, before the confirmation is shown: the price is the one of the moment of paying. The amount compared is the quote's invoice's, the one the wallet pays. It refuses nothing for the price: an amount beyond the owner's threshold is shown in red, and [payBond] still pays what the user confirms. For the escrow, a quote of another invoice than the escrow the trail pins is [BondPayInvoiceChanged], and a contract's amount the trail does not give (a range without one kept, which the state machine never stores at 6 or 7) [BondPayNotAtBondStep]. The wallet's price is asked only here, once the quote is given.
   Future<Result<WalletRateCheck?, BondPayRefusal>> rateOfBond(
     TradeRecord record,
     P2pWalletQuote quote,
@@ -141,8 +141,10 @@ final class PayBondFromWalletUsecase {
         return Err(BondPayRecordsUnreadable(failure));
     }
     final terms = trade.terms;
+    if (terms is TradeTerms<TakenSide>) return _rateOfTake(trade, terms, quote);
     switch ((terms.side, step)) {
       case (TakenSide(), _):
+        // Taken above: never here.
         return const Ok(null);
       case (MadeSide(:final maker), InvoiceStep.bond):
         final rate = await _wallet.bitcoinRate(maker.network, maker.currency);
@@ -165,6 +167,37 @@ final class PayBondFromWalletUsecase {
           WalletRateCheck.ofMakerEscrow(
             maker,
             amount: amount,
+            asked: quote.amount,
+            wallet: rate,
+          ),
+        );
+    }
+  }
+
+  /// [rateOfBond] for a take (#249, design note `docs/design/phase-3-taken-order-price-check.md` § 3): the taker bond against the bond size of the amount taken at the wallet's price with the premium kept in the terms ([WalletRateCheck.ofTakerBond]); a taker seller's escrow against the amount taken at that price ([WalletRateCheck.ofTakerEscrow]), only for the escrow the trail pins ([BondPayInvoiceChanged] for a quote of another invoice, as for a maker seller); `null` for a taker buyer's escrow step (a buyer locks no escrow), and for an order the rule does not compare ([TakenRateRules.compares]).
+  ///
+  /// Every figure expected comes from the terms kept at the take, never from the coordinator's read; the amount compared is the quote's invoice's, the one the wallet pays.
+  Future<Result<WalletRateCheck?, BondPayRefusal>> _rateOfTake(
+    OpenTrade trade,
+    TradeTerms<TakenSide> terms,
+    P2pWalletQuote quote,
+  ) async {
+    if (!TakenRateRules.compares(terms)) return const Ok(null);
+    switch (step) {
+      case InvoiceStep.bond:
+        final rate = await _wallet.bitcoinRate(terms.network, terms.currency);
+        return Ok(
+          WalletRateCheck.ofTakerBond(terms, asked: quote.amount, wallet: rate),
+        );
+      case InvoiceStep.escrow:
+        if (terms.role != TradeRole.seller) return const Ok(null);
+        if (trade.seen.status.trail.escrowHash != quote.invoice.paymentHash) {
+          return const Err(BondPayInvoiceChanged());
+        }
+        final rate = await _wallet.bitcoinRate(terms.network, terms.currency);
+        return Ok(
+          WalletRateCheck.ofTakerEscrow(
+            terms,
             asked: quote.amount,
             wallet: rate,
           ),

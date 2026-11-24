@@ -45,11 +45,13 @@ void main() {
   }
 
   Future<MakerTerms> termsOf(MakeHarness harness, TradeRecord record) async =>
-      await CheckPayoutRateUsecase(
+      switch (await CheckPayoutRateUsecase(
         harness.reader,
         FakeP2pWalletPort(Ok(Sats.fromInt(50000))),
-      ).termsOf(record) ??
-      (throw StateError('no terms'));
+      ).termsOf(record)) {
+        MakerPayoutTerms(:final maker) => maker,
+        _ => throw StateError('no terms'),
+      };
 
   test(
     'the make sends the range, the description, the durations and the bond size, and keeps them as asked',

@@ -10,9 +10,9 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../../public/p2p_wallet_port.dart';
 import '../../domain/trade/bond_payment.dart';
 import '../../domain/trade/escrow_contract.dart';
+import '../../domain/trade/shown_alerts.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_tolerances.dart';
-import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/wallet_payment.dart';
 import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/trade_record.dart';
@@ -385,11 +385,11 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
   }
 }
 
-/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, for an order made here how the bond compares with the wallet's own price (#180), the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
+/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, how the bond or the escrow compares with the wallet's own price (for the maker bond, #180; for a taker's bond and a taker seller's escrow, #249), the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
 class _Confirmation extends StatelessWidget {
   final P2pWalletQuote walletQuote;
 
-  /// For an order made here, the bond quoted against the wallet's own price (the owner's payment rule of 2026-11-17): a line, and a red warning beyond the owner's threshold; `null` for a take, which shows none.
+  /// The bond or the escrow quoted against the wallet's own price (the owner's payment rule of 2026-11-17, for the maker bond and, since #249, for a take): a line, and a red warning beyond the owner's threshold; `null` where nothing is compared.
   final WalletRateCheck? rate;
 
   /// The trade's coordinator, named when the wallet has no price for the order's currency and the user trusts the coordinator's.
@@ -464,13 +464,15 @@ class _Confirmation extends StatelessWidget {
               style: body,
             ),
             const Gap(BullSpacing.sm),
-            // The owner's payment rule (#180): the bond against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay.
-            if (rate case final rate?) ...[
+            // The owner's payment rule (#180; for a take, #249): the bond or the escrow against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay. Beside an alert the screen shows (`ShownAlerts`: the state machine's, the trace of terms shown otherwise), only a comparison within the threshold is left out; a red one, « rate not checked » and « not priced » stay, an alert never silencing another (security review of #249, C1, C5): the confirmation stays open, and « Pay » with it, when a read brings an alert.
+            if (rate case final rate?
+                when !ShownAlerts.reassuresBeside(request.seen, rate)) ...[
               _RateLines(
                 rate: rate,
                 coordinator: coordinator,
                 retrying: retrying,
                 onRetry: onRetry,
+                escrow: escrow,
               ),
               const Gap(BullSpacing.sm),
             ],
@@ -547,16 +549,32 @@ class _EscrowConfirmation extends StatelessWidget {
     final currency = request.currency;
     final seen = request.seen;
     final rate = confirming.rate;
-    // The contract's amount as asked here, the trade screen's own rule (#183): none while the order read shows another; and no comparison either while the status shown carries an alert of the state machine (terms read otherwise, amounts that do not agree…): the alert above speaks alone (functional review of #188, C1; security review, C2).
-    final amount = _alerted(seen.status) ? null : seen.contractAmountShown;
+    // The contract's amount the comparison was made for, as asked here (the trail's, `WalletRateCheck.ofMakerEscrow`), never the amount of a read: the line names it even while the order read shows another, when the line is itself an alert (functional review of #188, C1; security review of #249, C5: an alert never silences another).
+
+    // The alerts of this confirmation itself (earlier escrows not back or kept, the order's bond held too, a confirmation stale or asked again): beside them, as beside an alert of the screen (`ShownAlerts`), no comparison within the threshold is drawn (security review of #249, C1).
+    final earlierAlerts = [
+      ...earlierEscrowAlerts(context, contract, coordinator: coordinator),
+      // The order's bond, which the alert's total leaves out (security review of #187, C5): beside the alert of the escrows not back.
+      if (contract.notBack.isNotEmpty)
+        ?switch (bondPaidHere) {
+          WalletPaidHere.yes => l10n.p2pPayEscrowBondHeldToo,
+          WalletPaidHere.cannotTell => l10n.p2pPayEscrowBondMaybeHeldToo,
+          WalletPaidHere.no => null,
+        },
+    ];
+    final besideOwnAlert =
+        earlierAlerts.isNotEmpty || confirming.stale || confirming.again;
     // The comparison with the Bull wallet's price: in place, beside the amounts, within the threshold; beyond it, the line and its warning one red alert with the others above the buttons (functional review of #188, C2), never a neutral line beside it. A currency the Bull wallet does not price, or a price it could not read: its line alone, in the warning colour, with the alerts above the buttons (« Retry » for the latter), and no figure of the creation's price nor any gap from it (the owner's decisions of 2026-11-17; security review of #188, C1; R11).
     Widget? rateLines;
     final rateAlerts = <Widget>[];
-    if (amount != null) {
+    {
       switch (rate) {
         case null:
           break;
-        case final WalletRateCompared compared:
+        // A maker seller's escrow check always carries its contract's amount (`WalletRateCheck.ofMakerEscrow`).
+        case WalletRateCompared(amount: null):
+          break;
+        case WalletRateCompared(amount: final amount?) && final compared:
           final expected = formats.bigSats(compared.expected.value);
           final line = l10n.p2pPayRateWalletEscrow(
             formats.orderRate(compared.price),
@@ -572,7 +590,11 @@ class _EscrowConfirmation extends StatelessWidget {
               expected,
             );
             rateAlerts.add(_AlertLine('$line $warning', color: colors.error));
-          } else {
+          } else if (!ShownAlerts.reassuresBeside(
+            seen,
+            compared,
+            besides: besideOwnAlert,
+          )) {
             rateLines = Text(line, style: body);
           }
         case WalletRateNotPriced() || WalletRateUnverified():
@@ -588,17 +610,7 @@ class _EscrowConfirmation extends StatelessWidget {
     }
     final alerts = <Widget>[
       ...rateAlerts,
-      for (final alert in [
-        ...earlierEscrowAlerts(context, contract, coordinator: coordinator),
-        // The order's bond, which the alert's total leaves out (security review of #187, C5): beside the alert of the escrows not back.
-        if (contract.notBack.isNotEmpty)
-          ?switch (bondPaidHere) {
-            WalletPaidHere.yes => l10n.p2pPayEscrowBondHeldToo,
-            WalletPaidHere.cannotTell => l10n.p2pPayEscrowBondMaybeHeldToo,
-            WalletPaidHere.no => null,
-          },
-      ])
-        _AlertLine(alert, color: colors.error),
+      for (final alert in earlierAlerts) _AlertLine(alert, color: colors.error),
     ];
     final blocks = <Widget>[
       Semantics(
@@ -682,15 +694,6 @@ class _EscrowConfirmation extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// Whether [status] carries an alert of the state machine, its invoice's included: terms read otherwise than kept, amounts that do not agree, a breach… (a next contract seen late is information, not an alert). Nothing is then compared beside it.
-  static bool _alerted(TradeStatus status) {
-    final invoice = status.invoice;
-    return [
-      ...status.warnings,
-      if (invoice case CheckedInvoice(:final warnings)) ...warnings,
-    ].any((warning) => warning is! ContractSeenLate);
   }
 }
 
@@ -803,18 +806,22 @@ class _InfoLine extends StatelessWidget {
   }
 }
 
-/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the wallet's price and the bond it gives with the gap of the invoice, and beyond the owner's threshold a red warning with both amounts. For a currency the wallet does not price, no figure at all: one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price, with no « Retry », since there is nothing to read again (the owner's decision of 2026-11-17 in the evening). When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
+/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the wallet's price and the bond it gives with the gap of the invoice, and beyond the owner's threshold a red warning with both amounts; for a taker seller's escrow ([escrow], #249), the escrow's words of a maker seller's confirmation, the amount taken and the sats it is worth, the coordinator's fee included in the gap (`p2pPayRateWalletEscrow`, `p2pPayRateWarningEscrow`). For a currency the wallet does not price, no figure at all: one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price, with no « Retry », since there is nothing to read again (the owner's decision of 2026-11-17 in the evening). When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
 class _RateLines extends StatelessWidget {
   final WalletRateCheck rate;
   final String coordinator;
   final bool retrying;
   final VoidCallback onRetry;
 
+  /// Whether the amount compared is an escrow rather than a bond: the lines then take the escrow's words.
+  final bool escrow;
+
   const _RateLines({
     required this.rate,
     required this.coordinator,
     required this.retrying,
     required this.onRetry,
+    this.escrow = false,
   });
 
   @override
@@ -878,7 +885,27 @@ class _RateLines extends StatelessWidget {
         final gap = formats.gap(gapHundredths);
         final threshold = formats.threshold(TradeTolerances.walletRateGap);
         final askedText = formats.bigSats(asked.value);
-        final line = l10n.p2pPayRateWallet(price, code, expectedText, gap);
+        final amount = rate.amount;
+        // An escrow's line names the amount whose sats are expected; an escrow check always carries it (`WalletRateCheck.ofTakerEscrow`).
+        if (escrow && amount == null) return const SizedBox.shrink();
+        final line = escrow && amount != null
+            ? l10n.p2pPayRateWalletEscrow(
+                price,
+                code,
+                formats.amount(amount),
+                expectedText,
+                gap,
+              )
+            : l10n.p2pPayRateWallet(price, code, expectedText, gap);
+        // An escrow beyond the threshold: the line and its warning one red alert, never a neutral line beside it, as a maker seller's escrow confirmation draws them (functional review of #188, C2).
+        if (escrow && rate.warns) {
+          final warning = l10n.p2pPayRateWarningEscrow(
+            threshold,
+            askedText,
+            expectedText,
+          );
+          return alert('$line $warning', colors.error);
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart' show P2pWalletBitcoinRate, P2pWalletRateRead;
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/trade/payout_trace.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
@@ -13,6 +15,8 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart'
+    show MakerPayoutTerms;
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/presentation/payout_rate_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -89,7 +93,7 @@ void main() {
       record,
       terms: (record) async => switch (await harness.reader.open(record)) {
         TradeOpened(:final trade) => switch (trade.terms.side) {
-          MadeSide(:final maker) => maker,
+          MadeSide(:final maker) => MakerPayoutTerms(maker),
           _ => null,
         },
         _ => null,
@@ -166,6 +170,17 @@ void main() {
     );
     await settleBoth(tester, harness);
     expect(trade.state.seen?.status, isA<WaitingForPayout>());
+    // The payout given from this wallet (#204): no trace of where it came from drawn at 9, beside which a comparison within the threshold would be silent (security review of #249, C2).
+    final given = await tester.runAsync(
+      () => harness.payouts.recordPayout(
+        record,
+        take: 0,
+        source: PayoutTraceSource.thisWallet,
+        kind: PayoutTraceKind.invoice,
+        at: harness.now,
+      ),
+    );
+    expect(given, isA<Ok<bool, P2pFailure>>());
     // Into the chat, as the reference moves it once the payout is in.
     harness.coordinator.order(record.orderId).status = 9;
     await tester.runAsync(() => harness.elapse(const Duration(minutes: 3)));

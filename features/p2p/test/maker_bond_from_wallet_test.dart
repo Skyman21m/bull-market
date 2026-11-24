@@ -797,7 +797,7 @@ void main() {
   );
 
   test(
-    'a take is unchanged: no price of the wallet is asked, and no comparison given',
+    'a take since #249: the price of the wallet asked once, and the taker bond compared with it (`taken_price_usecases_test.dart` for its figures)',
     () async {
       final harness = await TradeHarness.start();
       final record = TradeHarness.recordOf(await harness.takeShown());
@@ -831,10 +831,10 @@ void main() {
         isA<Ok<WalletRateCheck?, BondPayRefusal>>().having(
           (r) => r.value,
           'value',
-          isNull,
+          isA<WalletRateAtWallet>(),
         ),
       );
-      expect(fake.ratesAsked, isEmpty);
+      expect(fake.ratesAsked, hasLength(1));
     },
   );
 }

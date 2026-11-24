@@ -53,6 +53,8 @@ class PayoutRateLines extends StatelessWidget {
         ),
       ],
       // The state machine's warning says it alone: no comparison beside amounts that do not agree (security review of #182, C1 bis); for a contract seen late whose invoice was never seen here, its alert beside it (R13, #207).
+      // Within the threshold beside an alert of the state machine: the alert alone (C1 of the functional review of #249).
+      PayoutRateAlertAlone() => const [],
       PayoutRateAmountsDisagree(:final notSeen) => [
         if (notSeen)
           (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),

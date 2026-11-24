@@ -125,6 +125,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The sats of the order's largest amount at the coordinator's price now: the market moves them (`Logics.satoshis_now`).
   int satoshisNow = bookSats;
 
+  /// The order's currency, the reference's id (`currency`, 2 for EUR by default, 1 for USD), in the book and in every read (#249: a currency the Bull wallet prices or not).
+  int currency = 2;
+
+  /// The order's premium in percent (#249): the maker's, as the book and every read give it (`premium`, two decimals), and the one the coordinator gives a robot that reads the order without taking part or holds its pre-take (`premium_now`, `api/views.py:288`, and at statuses 1 to 5 `:300-302`, the maker's for an order not priced in sats, `Logics.price_and_premium_now`, `api/logics.py:277-295`); for an order priced in sats, what the test makes the coordinator compute at its own price.
+  double premium = 2;
+
+  /// The coordinator's price of a bitcoin with the premium, as the book (`price`) and those reads (`price_now`) give it, rounded to 5 significant digits (`Logics.price_and_premium_now`, `api/logics.py:290-293`): the test keeps it with [satoshisNow] and [premium] (#249); the app computes nothing from it.
+  double price = 93545.0;
+
   /// Whether the buyer is offered an on-chain payout at 6 and 8 (`swap_allowed`), with [swapFeeRate] and [suggestedMiningFeeRate]; otherwise the reference's `swap_failure_reason` when swaps are disabled.
   bool swapAllowed = false;
   double swapFeeRate = 0.75;
@@ -1148,14 +1157,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'created_at': _createdAt.toIso8601String(),
     'expires_at': _createdAt.add(const Duration(hours: 23)).toIso8601String(),
     'type': orderType,
-    'currency': 2,
+    'currency': currency,
     'amount': range ? null : '100.00000000',
     'has_range': range,
     'min_amount': range ? '50.00000000' : null,
     'max_amount': range ? '200.00000000' : null,
     'payment_method': paymentMethod,
     'is_explicit': explicitSatoshis != null,
-    'premium': '2.00',
+    'premium': premium.toStringAsFixed(2),
     'satoshis': explicitSatoshis,
     'maker': 7,
     'escrow_duration': escrowSeconds,
@@ -1164,7 +1173,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'longitude': meetingPoint?.$2.toStringAsFixed(6),
     'maker_hash_id': _maker.hex,
     'satoshis_now': _satsNow,
-    'price': 93545.0,
+    'price': price,
     'maker_status': 'Active',
     ...bookView,
   };
@@ -1190,7 +1199,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'created_at': _createdAt.toIso8601String(),
       'expires_at': deadline.toIso8601String(),
       'type': orderType,
-      'currency': 2,
+      'currency': currency,
       'amount': !range
           ? '100.00000000'
           : switch (_chosen[robot.sessionKey]) {
@@ -1202,7 +1211,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'max_amount': range ? '200.00000000' : null,
       'payment_method': paymentMethod,
       'is_explicit': explicitSatoshis != null,
-      'premium': explicitSatoshis != null ? null : '2.00',
+      'premium': explicitSatoshis != null ? null : premium.toStringAsFixed(2),
       'satoshis': explicitSatoshis,
       'maker': 7,
       'taker': taken ? 8 : null,
@@ -1226,8 +1235,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     };
     if (!participant) {
       data
-        ..['price_now'] = 93545.0
-        ..['premium_now'] = 2.0
+        ..['price_now'] = price
+        ..['premium_now'] = premium
         ..['satoshis_now'] = _satsNow;
       // A protected order's description and place are hidden from a robot that takes no part in it (`api/views.py:294-298`, #245).
       if (password != null) {
@@ -1271,8 +1280,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         data
           ..['bond_invoice'] = invoice.text
           ..['bond_satoshis'] = invoice.facts.amount.value.toInt()
-          ..['price_now'] = 93545.0
-          ..['premium_now'] = 2.0;
+          ..['price_now'] = price
+          ..['premium_now'] = premium;
       case 6 || 8 when buyer:
         data
           ..['invoice_amount'] = payout
