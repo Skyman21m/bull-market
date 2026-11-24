@@ -241,7 +241,7 @@ abstract final class TakenRateRules {
   static bool compares(TradeTerms<TakenSide> terms) =>
       terms.explicitSatoshis == null || comparesOrdersPricedInSats;
 
-  /// Question 2, a currency the Bull wallet does not price, for a taken order: the « not priced » line alone ([WalletRateNotPriced]: no figure, no « Retry »), decided by the owner on 2026-11-24 (question 2). For an order made here the owner decided on 2026-11-20 a grey « not priced » line and an orange alert when the rate at the take is more than 10 % worse than at the creation (#250, not applied yet); for a taker the line alone, the state machine already warning from 2 % when the bond or the trade's sats move from the read the take was made on (`BondAmountOutsideOrder`, `TradePriceOutsideOrder`), beside which nothing is compared.
+  /// Question 2, a currency the Bull wallet does not price, for a taken order: the « not priced » line alone ([WalletRateNotPriced]: no figure, no « Retry »), decided by the owner on 2026-11-24 (question 2). For an order made here the owner decided on 2026-11-20 a grey « not priced » line and an orange alert when the rate at the take is more than 10 % worse than at the creation (#237; #250 drew the grey line in the payout's breakdown, for a maker and a taker alike, the orange alert not written); for a taker the line alone, the state machine already warning from 2 % when the bond or the trade's sats move from the read the take was made on (`BondAmountOutsideOrder`, `TradePriceOutsideOrder`), beside which nothing is compared.
   static WalletRateCheck notPriced(
     Sats asked,
     RobosatsCurrency currency, {

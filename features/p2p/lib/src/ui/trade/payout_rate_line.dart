@@ -9,6 +9,7 @@ import '../../domain/usecases/trade/check_payout_rate_usecase.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_rate_cubit.dart';
 import '../widgets/trade_dialog_body.dart';
+import 'payout_breakdown_view.dart';
 
 /// The lines of the owner's payment rule on a maker buyer's side (#182, design note § 3.3), before « Submit » of the payout, before the chat step and in « Confirm … sent »: the comparison with the Bull wallet's price (information), the red warning beyond [TradeTolerances.walletRateGap] fewer sats (nothing blocked), one line without a figure for a currency the Bull wallet does not price, « rate not checked » with « Retry » for a price that could not be read, and « rate not checked » for a read that gives no sats: never nothing without saying it.
 class PayoutRateLines extends StatelessWidget {
@@ -21,20 +22,56 @@ class PayoutRateLines extends StatelessWidget {
   /// « Retry » after a price that could not be read; `null` shows none.
   final VoidCallback? onRetry;
 
+  /// Whether the payout panel's breakdown says the rule's check at 6 and 8 (#228, #250): its gap line, its alert in two lines and its detail ([PayoutCheck], [checkOf]); nothing of that check is then said here, no banner above the breakdown.
+  final bool comparisonInBreakdown;
+
   const PayoutRateLines({
     super.key,
     required this.state,
     required this.coordinator,
     required this.amount,
     this.onRetry,
+    this.comparisonInBreakdown = false,
   });
 
-  /// The words of [state], each with its tone, for the panel as for the dialog of « Confirm … sent »; empty where the rule says nothing.
+  /// The check of [state] as the payout panel's breakdown draws it (#228, #250), with [amount] the contract's amount written ([amountOf]): only at 6 and 8, for a comparison with the Bull wallet's price, a price that could not be read or a currency the Bull wallet does not price; `null` otherwise (a price being read, amounts that do not agree, a comparison within the threshold beside an alert, `PayoutRateAlertAlone`, the chat step).
+  static PayoutCheck? checkOf(
+    BuildContext context,
+    PayoutRateState? state, {
+    required String amount,
+  }) {
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    return switch (state) {
+      PayoutRateChecked(:final step, :final check, basis: PayoutRateAskedNow())
+          when !step.fiatSent =>
+        switch (check) {
+          WalletRateCompared() => PayoutCheckCompared(
+            given: check.asked,
+            expected: check.expected,
+            price: l10n.p2pPayoutBreakdownPrice(
+              amount,
+              check.currency.code,
+              formats.orderRate(check.price),
+            ),
+            gap: formats.gap(check.gapHundredths),
+            warns: check.warns,
+            threshold: formats.threshold(TradeTolerances.walletRateGap),
+          ),
+          WalletRateUnverified() => PayoutCheckUnverified(check.asked),
+          WalletRateNotPriced() => PayoutCheckNotPriced(check.asked),
+        },
+      _ => null,
+    };
+  }
+
+  /// The words of [state], each with its tone, for the panel as for the dialog of « Confirm … sent »; empty where the rule says nothing. With [comparisonInBreakdown], the rule's check at 6 and 8 is left to the payout panel's breakdown (#228, #250): its comparison, its alert, « rate not checked » and a currency not priced are said there, not here.
   static List<TradeDialogLine> linesOf(
     BuildContext context,
     PayoutRateState state, {
     required String coordinator,
     required String amount,
+    bool comparisonInBreakdown = false,
   }) {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
@@ -73,66 +110,67 @@ class PayoutRateLines extends StatelessWidget {
         // At 9, a contract seen late whose invoice was never seen here: said first, in the alert colour (second security review of #182, R9).
         if (basis is PayoutRateNotSeen)
           (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
-        ...switch (check) {
-          WalletRateCompared(
-            :final price,
-            :final expected,
-            :final gapHundredths,
-          ) =>
-            [
-              (
-                // At 9, the invoice this app kept compared alone beside the state machine's alert: the amount named as the one asked here, the sats as the invoice's (#211).
-                text: basis is PayoutRateAskedOnly
-                    ? l10n.p2pPayoutRateWalletAsked(
-                        formats.orderRate(price),
-                        check.currency.code,
-                        amount,
-                        formats.bigSats(expected.value),
-                        formats.bigSats(check.asked.value),
-                        formats.gap(gapHundredths),
-                      )
-                    : l10n.p2pPayoutRateWallet(
-                        formats.orderRate(price),
-                        check.currency.code,
-                        amount,
-                        formats.bigSats(expected.value),
-                        formats.bigSats(check.asked.value),
-                        formats.gap(gapHundredths),
-                      ),
-                tone: TradeDialogTone.plain,
-              ),
+        // At 6 and 8 the payout panel's breakdown says it, where it is drawn (#250).
+        if (!(comparisonInBreakdown && basis is PayoutRateAskedNow))
+          ...switch (check) {
+            WalletRateCompared(:final price, :final expected, :final gapHundredths) => [
+              // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red alert still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219).
+              if (basis is! PayoutRateAskedOnly)
+                (
+                  text: l10n.p2pPayoutRateWallet(
+                    formats.orderRate(price),
+                    check.currency.code,
+                    amount,
+                    formats.bigSats(expected.value),
+                    formats.bigSats(check.asked.value),
+                    formats.gap(gapHundredths),
+                  ),
+                  tone: TradeDialogTone.plain,
+                ),
               // At 9 with nothing kept (most often a restart between 8 and 9, a normal case): the figure compared is the coordinator's of now, said plainly, the user asked to compare it with the invoice (functional review of #182, U3, #207).
               if (basis is PayoutRateToldNow)
                 (
                   text: l10n.p2pPayoutRateToldNow(coordinator),
                   tone: TradeDialogTone.plain,
                 ),
-              if (check.warns)
+              // The red alert in the owner's two lines (validated on 2026-11-24, #250): what happens and the gap, then the two figures, each named by whom it comes from; then the validated explanation, which the breakdown keeps in its detail.
+              if (check.warns) ...[
                 (
-                  text: l10n.p2pPayoutRateWarning(
-                    formats.threshold(TradeTolerances.walletRateGap),
-                    formats.bigSats(check.asked.value),
-                    formats.bigSats(expected.value),
-                  ),
+                  text: l10n.p2pPayoutRateAgainst(formats.gap(gapHundredths)),
                   tone: TradeDialogTone.alert,
                 ),
+                (
+                  text: l10n.p2pPayoutBreakdownAgainstFigures(
+                    formats.bigSats(expected.value),
+                    formats.bigSats(check.asked.value),
+                  ),
+                  tone: TradeDialogTone.alertFigures,
+                ),
+                // Its explanation, the threshold and what to do, under it: no detail holds it here, at 9 and in « Confirm … sent », the last moment before the money is sent (security review of #250, R4).
+                (
+                  text: l10n.p2pPayoutBreakdownAgainstDetail(
+                    formats.threshold(TradeTolerances.walletRateGap),
+                  ),
+                  tone: TradeDialogTone.alertFigures,
+                ),
+              ],
             ],
-          WalletRateNotPriced() => [
-            (
-              text: l10n.p2pPayoutRateNotPriced(
-                check.currency.code,
-                coordinator,
+            WalletRateNotPriced() => [
+              (
+                text: l10n.p2pPayoutRateNotPriced(
+                  check.currency.code,
+                  coordinator,
+                ),
+                tone: TradeDialogTone.warning,
               ),
-              tone: TradeDialogTone.warning,
-            ),
-          ],
-          WalletRateUnverified() => [
-            (
-              text: l10n.p2pPayoutRateUnverified(check.currency.code),
-              tone: TradeDialogTone.warning,
-            ),
-          ],
-        },
+            ],
+            WalletRateUnverified() => [
+              (
+                text: l10n.p2pPayoutRateUnverified(check.currency.code),
+                tone: TradeDialogTone.warning,
+              ),
+            ],
+          },
       ],
     };
   }
@@ -161,6 +199,7 @@ class PayoutRateLines extends StatelessWidget {
       state,
       coordinator: coordinator,
       amount: amount,
+      comparisonInBreakdown: comparisonInBreakdown,
     );
     if (lines.isEmpty) return const SizedBox.shrink();
     final retry = switch (state) {
@@ -179,14 +218,17 @@ class PayoutRateLines extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // The figures' line of an alert under its bold line, without an icon of its own.
                 ExcludeSemantics(
-                  child: Icon(
-                    line.tone == TradeDialogTone.plain
-                        ? Icons.info_outline
-                        : Icons.warning_amber_rounded,
-                    size: 18,
-                    color: _colourOf(context, line.tone),
-                  ),
+                  child: line.tone == TradeDialogTone.alertFigures
+                      ? const SizedBox(width: 18)
+                      : Icon(
+                          line.tone == TradeDialogTone.plain
+                              ? Icons.info_outline
+                              : Icons.warning_amber_rounded,
+                          size: 18,
+                          color: _colourOf(context, line.tone),
+                        ),
                 ),
                 const Gap(BullSpacing.xs),
                 Expanded(
@@ -194,9 +236,12 @@ class PayoutRateLines extends StatelessWidget {
                     line.text,
                     style: text.bodyMedium?.copyWith(
                       color: _colourOf(context, line.tone),
-                      fontWeight: line.tone == TradeDialogTone.plain
-                          ? null
-                          : FontWeight.bold,
+                      fontWeight: switch (line.tone) {
+                        TradeDialogTone.warning ||
+                        TradeDialogTone.alert => FontWeight.bold,
+                        TradeDialogTone.plain ||
+                        TradeDialogTone.alertFigures => null,
+                      },
                     ),
                   ),
                 ),
@@ -223,6 +268,7 @@ class PayoutRateLines extends StatelessWidget {
       switch (tone) {
         TradeDialogTone.plain => context.bull.text,
         TradeDialogTone.warning => context.bull.warning,
-        TradeDialogTone.alert => context.bull.error,
+        TradeDialogTone.alert ||
+        TradeDialogTone.alertFigures => context.bull.error,
       };
 }

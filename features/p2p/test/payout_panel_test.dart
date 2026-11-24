@@ -14,6 +14,7 @@ import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
+import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart' show Bolt11TestDecoder, Bolt11TestInvoice;
@@ -473,6 +474,7 @@ void main() {
       Size size = const Size(390, 844),
       double textScale = 1,
       DateTime? now,
+      PayoutCheck? check,
     }) async {
       tester.view
         ..physicalSize = size * 3
@@ -507,6 +509,7 @@ void main() {
                       seen: seen,
                       coordinator: coordinatorName,
                       now: now ?? readAt,
+                      check: check,
                     ),
                   ),
                 ),
@@ -569,7 +572,7 @@ void main() {
           find.text('Temple of Sats does not offer swaps.'),
           findsOneWidget,
         );
-        expect(find.text('Submit invoice for 106,606 Sats'), findsOneWidget);
+        expect(invoiceRow('106,606'), findsOneWidget);
         expect(enabled(tester, submitButton()), isFalse);
 
         await tester.enterText(
@@ -630,6 +633,11 @@ void main() {
           cubit.state.submittable(PayoutKind.lightning)?.text,
           invoice.text,
         );
+        // The copy of « Your invoice », in the breakdown's detail (#250).
+        await reveal(tester, find.byKey(PayoutPanel.detailToggle));
+        await tester.tap(find.byKey(PayoutPanel.detailToggle));
+        await tester.pump();
+        await reveal(tester, find.byTooltip('Copy the amount'));
         await tester.tap(find.byTooltip('Copy the amount'));
         await tester.pump();
         expect(copied, ['106606']);
@@ -637,6 +645,119 @@ void main() {
         await tester.pump(const Duration(seconds: 3));
       },
     );
+
+    group('the rule\'s check where the breakdown cannot draw it (#250)', () {
+      PayoutCheck compared(int given, {required bool warns}) =>
+          PayoutCheckCompared(
+            given: Sats.fromInt(given),
+            expected: Sats.fromInt(130000),
+            price: '100 EUR at 91,711 EUR/BTC, premium included',
+            gap: warns ? '-17.91%' : '-0.27%',
+            warns: warns,
+            threshold: '10%',
+          );
+
+      testWidgets(
+        'a red alert of other sats than those the breakdown shows (a figure that changed while the rule compares again): said alone above the form, never left out; within the threshold, nothing',
+        (tester) async {
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106700, warns: true),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+          expect(find.text('Gap against you'), findsOneWidget);
+          expect(
+            find.text(
+              'Bull Wallet expected 130,000 sats, the coordinator pays 106,700.',
+            ),
+            findsOneWidget,
+          );
+          // Never drawn as the breakdown's own: the sats it shows are not those compared.
+          expect(
+            find.descendant(
+              of: find.byType(PayoutBreakdownView),
+              matching: find.text('Gap against you'),
+            ),
+            findsNothing,
+          );
+          expect(
+            tester.getTopLeft(find.byKey(PayoutPanel.looseCheck)).dy,
+            lessThan(tester.getTopLeft(find.byType(PayoutBreakdownView)).dy),
+          );
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106700, warns: false),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+          expect(find.text('Gap to the Bull price (indicative)'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'for the very sats shown: in the breakdown, nothing alone above it',
+        (tester) async {
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106713, warns: true),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+          expect(
+            find.descendant(
+              of: find.byType(PayoutBreakdownView),
+              matching: find.text('Gap against you'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'no form at all (a status where nothing is asked yet, the payout panel drawing no breakdown): a red alert, « Amount not checked » and « not quoted » said alone, the alert with its explanation, there being no detail to hold it',
+        (tester) async {
+          for (final (check, words, explanation) in [
+            (
+              compared(106713, warns: true),
+              'Gap against you',
+              'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a 10% gap. Check the order before going on.',
+            ),
+            (
+              PayoutCheckUnverified(Sats.fromInt(106713)),
+              'Amount not checked',
+              'Without this price, it cannot compare the coordinator\'s amount.',
+            ),
+            (PayoutCheckNotPriced(Sats.fromInt(106713)), 'not quoted', null),
+          ]) {
+            await show(tester, cubitOf(_Sender()), seven, check: check);
+            expect(find.byType(PayoutBreakdownView), findsNothing);
+            expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+            expect(find.text(words), findsOneWidget);
+            if (explanation != null) {
+              expect(find.text(explanation), findsOneWidget);
+            }
+          }
+        },
+      );
+
+      testWidgets(
+        '« Amount not checked » and « not quoted » of other sats: said alone above the form too',
+        (tester) async {
+          for (final (check, words) in [
+            (PayoutCheckUnverified(Sats.fromInt(1)), 'Amount not checked'),
+            (PayoutCheckNotPriced(Sats.fromInt(1)), 'not quoted'),
+          ]) {
+            await show(tester, cubitOf(_Sender()), six, check: check);
+            expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+            expect(find.text(words), findsOneWidget);
+          }
+        },
+      );
+    });
 
     testWidgets(
       'the routing budget changes the amount asked, and says when it is above 1 %',
@@ -649,7 +770,7 @@ void main() {
         expect(find.text('Routing Budget'), findsOneWidget);
         await tester.enterText(find.byKey(PayoutPanel.budgetField), '0');
         await tester.pump();
-        expect(find.text('Submit invoice for 106,713 Sats'), findsOneWidget);
+        expect(invoiceRow('106,713'), findsOneWidget);
         await tester.enterText(
           find.byKey(PayoutPanel.invoiceField),
           wholeAmount.text,
@@ -684,7 +805,7 @@ void main() {
         // Off: the default budget again.
         await tester.tap(find.byType(BullSwitch));
         await tester.pump();
-        expect(find.text('Submit invoice for 106,606 Sats'), findsOneWidget);
+        expect(invoiceRow('106,606'), findsOneWidget);
       },
     );
 
@@ -926,7 +1047,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Onchain'), findsNothing);
-        expect(find.text('Submit invoice for 106,606 Sats'), findsOneWidget);
+        expect(invoiceRow('106,606'), findsOneWidget);
       },
     );
 
@@ -1102,6 +1223,7 @@ void main() {
                 now: DateTime.utc(2026, 11, 13, 9, 8, 30),
               );
               if (onchainTab) {
+                await reveal(tester, find.text('Onchain'));
                 await tester.tap(find.text('Onchain'));
                 await tester.pump();
                 await tester.enterText(
@@ -1112,13 +1234,17 @@ void main() {
                 await tester.pump();
               } else if (seen != fifteenRetrying) {
                 if (seen == six) {
-                  // The advanced options open, a budget above 1 % and the copy's « Copied! ».
+                  // The advanced options open, a budget above 1 %, the breakdown's detail open and the copy's « Copied! » (the breakdown above the tabs since #228: the switch revealed first; the copy in the detail since #250).
+                  await reveal(tester, find.byType(BullSwitch));
                   await tester.tap(find.byType(BullSwitch));
                   await tester.pump();
                   await tester.enterText(
                     find.byKey(PayoutPanel.budgetField),
                     '20000',
                   );
+                  await tester.pump();
+                  await reveal(tester, find.byKey(PayoutPanel.detailToggle));
+                  await tester.tap(find.byKey(PayoutPanel.detailToggle));
                   await tester.pump();
                   await reveal(tester, find.byTooltip(_copyTooltip(locale)));
                   await tester.tap(find.byTooltip(_copyTooltip(locale)));
@@ -1202,7 +1328,7 @@ void main() {
         await tester.pump();
         expect(_fieldText(tester, PayoutPanel.budgetField), '0');
         expect(_fieldText(tester, PayoutPanel.invoiceField), wholeAmount.text);
-        expect(find.text('Submit invoice for 106,713 Sats'), findsOneWidget);
+        expect(invoiceRow('106,713'), findsOneWidget);
       },
     );
 
@@ -1944,3 +2070,9 @@ extension on PayoutCubit {
   Future<void> submitShown(PayoutKind kind) =>
       submit(kind, shown: state.submittable(kind));
 }
+
+/// The amount the invoice must be for, [sats], which replaces the reference's « Submit invoice for … sats » (#228): on arrival, « You will receive » of the lean breakdown while no invoice of this wallet is in the field (#250); « Your invoice » in its detail.
+Finder invoiceRow(String sats) => find.descendant(
+  of: find.byKey(PayoutBreakdownView.receivedRow),
+  matching: find.text(sats),
+);

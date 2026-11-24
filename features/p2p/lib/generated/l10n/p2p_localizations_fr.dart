@@ -1632,7 +1632,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutSubmitInvoiceFor(String amountSats) {
-    return 'Soumettre la facture pour $amountSats Sats';
+    return 'Soumettre la facture pour $amountSats sats';
   }
 
   @override
@@ -2895,15 +2895,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Toujours en attente du portefeuille.';
 
   @override
-  String p2pPayoutWalletReceived(String amount) {
-    return 'Montant à recevoir : $amount sats';
-  }
-
-  @override
-  String get p2pPayoutWalletFeeTaken =>
-      'Ces frais seront déduits du montant envoyé';
-
-  @override
   String get p2pPayoutWalletNoInvoice =>
       'Ce portefeuille ne peut pas créer de facture pour le moment.';
 
@@ -3810,24 +3801,91 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayoutRateWalletAsked(
-    String price,
-    String currency,
-    String amount,
-    String expected,
-    String received,
-    String gap,
-  ) {
-    return 'Au prix du portefeuille Bull, $price $currency/BTC, avec la prime de l’ordre, les $amount $currency demandés ici valent $expected sats. La facture de paiement demandée pour ce contrat, vue par cette app, est de $received sats : écart $gap.';
+  String get p2pPayoutBreakdownTitle => 'Décompte, en sats';
+
+  @override
+  String get p2pPayoutBreakdownNotCompared =>
+      'Pas de vérification Bull Wallet à cette étape';
+
+  @override
+  String get p2pPayoutBreakdownValue => 'Attendu par Bull Wallet';
+
+  @override
+  String p2pPayoutBreakdownPrice(String amount, String currency, String price) {
+    return '$amount $currency à $price $currency/BTC, prime comprise';
   }
 
   @override
-  String p2pPayoutRateWarning(
-    String threshold,
-    String received,
-    String expected,
-  ) {
-    return 'Vous recevez plus de $threshold de sats de moins que prévu : $received sats reçus, $expected sats attendus. Vérifiez avant de continuer.';
+  String get p2pPayoutBreakdownGiven => 'Versé par le coordinateur';
+
+  @override
+  String get p2pPayoutBreakdownGap => 'Écart au prix Bull (indicatif)';
+
+  @override
+  String get p2pPayoutBreakdownCoordinatorFee =>
+      'Frais du coordinateur, déjà déduits';
+
+  @override
+  String get p2pPayoutBreakdownRoutingBudget => 'Frais de routage Lightning';
+
+  @override
+  String get p2pPayoutBreakdownInvoice => 'Votre facture';
+
+  @override
+  String get p2pPayoutBreakdownSwapFee => 'Frais de swap';
+
+  @override
+  String get p2pPayoutBreakdownReceived => 'Vous recevrez';
+
+  @override
+  String get p2pPayoutBreakdownFees => 'Frais de routage et de swap';
+
+  @override
+  String get p2pPayoutBreakdownRoutingFees => 'Frais de routage';
+
+  @override
+  String get p2pPayoutBreakdownGapNotPriced => 'Écart au prix Bull';
+
+  @override
+  String get p2pPayoutBreakdownNotPriced => 'non coté';
+
+  @override
+  String get p2pPayoutBreakdownAgainst => 'Écart en votre défaveur';
+
+  @override
+  String p2pPayoutBreakdownAgainstFigures(String expected, String received) {
+    return 'Bull Wallet attendait $expected sats, le coordinateur en verse $received.';
+  }
+
+  @override
+  String p2pPayoutBreakdownAgainstDetail(String threshold) {
+    return 'Bull Wallet refait le calcul avec son propre prix, prime comprise, et vous prévient au-delà de $threshold d’écart. Vérifiez l’ordre avant de continuer.';
+  }
+
+  @override
+  String get p2pPayoutBreakdownUnverified => 'Montant non vérifié';
+
+  @override
+  String get p2pPayoutBreakdownUnverifiedLine =>
+      'Bull Wallet n’a pas pu obtenir son prix du bitcoin.';
+
+  @override
+  String get p2pPayoutBreakdownUnverifiedDetail =>
+      'Sans ce prix, il ne peut pas comparer le montant du coordinateur.';
+
+  @override
+  String get p2pPayoutBreakdownSmallGap =>
+      'Un petit écart est normal : le coordinateur a sa propre source de prix.';
+
+  @override
+  String get p2pDetailShow => 'Voir le détail';
+
+  @override
+  String get p2pDetailHide => 'Masquer le détail';
+
+  @override
+  String p2pPayoutRateAgainst(String gap) {
+    return 'Écart en votre défaveur $gap';
   }
 
   @override

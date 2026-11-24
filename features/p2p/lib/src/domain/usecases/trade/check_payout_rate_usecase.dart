@@ -3,6 +3,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show FiatAmount, RobosatsCurrency;
 
 import '../../../../public/p2p_wallet_port.dart';
+import '../../trade/payout_breakdown.dart';
 import '../../trade/shown_alerts.dart';
 import '../../trade/trade_payout.dart';
 import '../../trade/trade_status.dart';
@@ -53,15 +54,9 @@ final class CheckPayoutRateUsecase {
     PayoutRateTerms terms,
   ) => _wallet.bitcoinRate(record.network, terms.currency);
 
-  /// The warnings of the state machine that say the amounts of a contract do not agree with each other or with the terms: while one is raised, nothing is compared, the warning alone said (security review of #182, C1 bis).
-  static bool amountsDisagree(TradeStatus status) => status.warnings.any(
-    (warning) =>
-        warning is PayoutAmountMismatch ||
-        warning is MakerFeeAboveAnnounced ||
-        warning is TakerFeeAboveAnnounced ||
-        warning is TradePriceOutsideOrder ||
-        warning is InvoiceAmountMismatch,
-  );
+  /// The warnings of the state machine that say the amounts of a contract do not agree with each other or with the terms: while one is raised, nothing is compared, the warning alone said (security review of #182, C1 bis), and the payout panel says no breakdown either: one list for both ([PayoutBreakdown.amountsDisagree], #228).
+  static bool amountsDisagree(TradeStatus status) =>
+      PayoutBreakdown.amountsDisagree(status);
 
   /// For a taker buyer (#249): [amountsDisagree], or the state machine says the order read is not the order taken (`TradeTermsChanged`: its currency, type, bond size, escrow duration, premium, sats of an order priced in sats or amount): nothing is compared, the warning said alone, not even beside the invoice's sats this app kept (design note `docs/design/phase-3-taken-order-price-check.md` § 3).
   static bool takeDisagrees(TradeStatus status) =>
@@ -426,7 +421,7 @@ final class PayoutRateTold extends PayoutRateBasis {
   int get hashCode => Object.hash(told, asked);
 }
 
-/// At 9, the coordinator's figures missing or not agreeing: the invoice's sats this app kept for the contract compared alone, the state machine's warning said beside them.
+/// At 9, the coordinator's figures missing or not agreeing: the invoice's sats this app kept for the contract compared alone, the state machine's warning said beside them. Only ever beside that alert, so its neutral line is not said, only its red warning when those kept sats (« Given by the coordinator » at 6 or 8, before the routing budget) are too few (#228, the ticket's comment).
 final class PayoutRateAskedOnly extends PayoutRateBasis {
   const PayoutRateAskedOnly();
 

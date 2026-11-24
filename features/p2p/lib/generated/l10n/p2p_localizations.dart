@@ -2717,10 +2717,10 @@ abstract class P2pLocalizations {
   /// **'PPM'**
   String get p2pPayoutUnitPpm;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:558`). {amountSats} is the amount the invoice must be for.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:558`), « sats » in lower case as the owner decided for #250 (validated on 2026-11-24). {amountSats} is the amount the invoice must be for. Said only where no breakdown is drawn (amounts that do not agree), the breakdown's « Your invoice » in its place otherwise.
   ///
   /// In en, this message translates to:
-  /// **'Submit invoice for {amountSats} Sats'**
+  /// **'Submit invoice for {amountSats} sats'**
   String p2pPayoutSubmitInvoiceFor(String amountSats);
 
   /// Not in the RoboSats texts: the project's own: what a screen reader says of the copy button beside « Submit invoice for … Sats », which the reference draws as an icon only (`Forms/LightningPayout.tsx:565-576`).
@@ -4503,18 +4503,6 @@ abstract class P2pLocalizations {
   /// **'Still waiting for the wallet.'**
   String get p2pPayoutWalletStillWaiting;
 
-  /// The wallet's slot of the payout panel (#90): what arrives in Instant payments once the invoice is paid, the swap fees taken; the wallet's label (`receiveReceiveAmount`, « Receive Amount » / « Montant à recevoir »).
-  ///
-  /// In en, this message translates to:
-  /// **'Receive Amount: {amount} sats'**
-  String p2pPayoutWalletReceived(String amount);
-
-  /// The wallet's slot of the payout panel (#90): the wallet's own sentence under its receive fees (`receiveFeeExplanation`, « This fee will be deducted from the amount sent » / « Ces frais seront déduits du montant envoyé »).
-  ///
-  /// In en, this message translates to:
-  /// **'This fee will be deducted from the amount sent'**
-  String get p2pPayoutWalletFeeTaken;
-
   /// The wallet's slot of the payout panel (#90): ours, when the wallet cannot give an invoice for another reason than the swap's limits or its server (no Instant payments wallet, a wallet that cannot be read, an answer that does not fit).
   ///
   /// In en, this message translates to:
@@ -5862,28 +5850,155 @@ abstract class P2pLocalizations {
     String gap,
   );
 
-  /// Not in the RoboSats texts: the project's own: the line of p2pPayoutRateWallet at 9 when the coordinator's figures are missing or do not agree with each other and the invoice's sats this app kept for the contract at 6 or 8 are compared alone, beside the state machine's alert (`PayoutRateAskedOnly`, second security review of #182, R8): it names the amount as the one asked here and the sats as those of the invoice this app saw asked, so that neither reads as a figure of the coordinator beside that alert (#211). {price} is the Bull wallet's price of a bitcoin without the premium; {expected} the sats {amount} is worth at it with the premium, rounded down; {received} the invoice's sats kept; {gap} their gap in percent with its sign.
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): the title of the lean breakdown of the payout's sats, above the tabs of the payout panel (« Submit payout info »); the reference shows no breakdown.
   ///
   /// In en, this message translates to:
-  /// **'At the Bull wallet\'s price, {price} {currency}/BTC, with the order\'s premium, the {amount} {currency} asked here are worth {expected} sats. The payout invoice this app saw asked for this contract is of {received} sats: gap {gap}.'**
-  String p2pPayoutRateWalletAsked(
-    String price,
-    String currency,
-    String amount,
-    String expected,
-    String received,
-    String gap,
-  );
+  /// **'Breakdown, in sats'**
+  String get p2pPayoutBreakdownTitle;
 
-  /// Not in the RoboSats texts: the project's own: the red warning of the owner's payment rule on a maker buyer's side (#182), beyond the threshold, nothing blocked. {threshold} is the threshold as a percentage, such as « 10% ».
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): a discreet line under the breakdown's title at 15 (the payout failed, a new invoice asked), where the owner's payment rule does not run (it runs at 6, 8 and 9 only), so that the figures do not look checked (security review of #228, C2).
   ///
   /// In en, this message translates to:
-  /// **'You receive more than {threshold} fewer sats than that: {received} sats received, {expected} sats expected. Check it before going on.'**
-  String p2pPayoutRateWarning(
-    String threshold,
-    String received,
-    String expected,
-  );
+  /// **'No Bull Wallet check at this step'**
+  String get p2pPayoutBreakdownNotCompared;
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): in the detail, the sats the contract's amount is worth at the Bull wallet's price with the order's premium (`WalletRateCheck.ofMakerPayout`, `.ofTakenPayout`, the owner's payment rule of 2026-11-17, #182, #249), only when the rule compared at 6 or 8; never a figure of the creation's price (#234).
+  ///
+  /// In en, this message translates to:
+  /// **'Expected by Bull Wallet'**
+  String get p2pPayoutBreakdownValue;
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown), « prime » as the reference's French locale writes it, the owner's correction of 2026-11-21; the English is composed on the model of the French, as #250 gives its examples): under p2pPayoutBreakdownValue, what it is computed from: {amount} the contract's amount as asked here or taken, {price} the Bull wallet's price of a bitcoin without the premium, written as the reference's « Order current rate ».
+  ///
+  /// In en, this message translates to:
+  /// **'{amount} {currency} at {price} {currency}/BTC, premium included'**
+  String p2pPayoutBreakdownPrice(String amount, String currency, String price);
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): the sats the coordinator pays the contract for the buyer, `trade_satoshis`, its `invoice_amount` (`api/logics.py:650-669`, `api/views.py:345-371`): the trade's sats less its fee, what the rule compares; in the alert colour beside the red alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid by the coordinator'**
+  String get p2pPayoutBreakdownGiven;
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): the gap of the sats paid by the coordinator from the sats Bull Wallet expects, in percent with its sign, as the rule computes it (`WalletRateCompared.gapHundredths`); « (indicative) » is not said once the line is the red alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Gap to the Bull price (indicative)'**
+  String get p2pPayoutBreakdownGap;
+
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the coordinator's fee taken out of the payout before the sats given (`api/logics.py:650-669`): the order's `satoshis_now` (its `last_satoshis`, `api/views.py:324`) less `trade_satoshis`, two figures of the same read, never computed from the announced rate; the state machine checks it against the announced fee (`MakerFeeAboveAnnounced`, `TakerFeeAboveAnnounced`) and the breakdown is not said while it disagrees.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator\'s fee, already deducted'**
+  String get p2pPayoutBreakdownCoordinatorFee;
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): in the detail, the sats paid less the invoice: what the coordinator may spend to route the payment, the reference's « Routing Budget » of the advanced options (`routing_budget_ppm`, `api/logics.py:869-872`, `Forms/LightningPayout.tsx:110-113`).
+  ///
+  /// In en, this message translates to:
+  /// **'Lightning routing fees'**
+  String get p2pPayoutBreakdownRoutingBudget;
+
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the amount the invoice must be for, in bold: the reference's « Submit invoice for {{amountSats}} Sats » and its copy (`Forms/LightningPayout.tsx:556-577`), which the breakdown replaces.
+  ///
+  /// In en, this message translates to:
+  /// **'Your invoice'**
+  String get p2pPayoutBreakdownInvoice;
+
+  /// Not in the RoboSats texts: the project's own (#228, the owner's request after the trial of 2026-11-18): the swap service's fee of the invoice this wallet made (`P2pWalletInvoice.fee`): the wallet's label (`transactionDetailLabelSwapFees`), in French with the reference's word « swap », as `p2pPayServiceFee`.
+  ///
+  /// In en, this message translates to:
+  /// **'Swap fees'**
+  String get p2pPayoutBreakdownSwapFee;
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): in bold, the sats paid by the coordinator less the fees above: what reaches Instant payments once the invoice this wallet made is paid (`P2pWalletInvoice.received`, the swap service's announced amount, not guaranteed by an atomic exchange), or the invoice's amount while no invoice of this wallet is in the field; in the future, nothing is received yet.
+  ///
+  /// In en, this message translates to:
+  /// **'You will receive'**
+  String get p2pPayoutBreakdownReceived;
+
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): on arrival, the Lightning routing budget and the swap service's fee of the invoice this wallet made, together, taken from the sats paid by the coordinator; detailed in « Show details ».
+  ///
+  /// In en, this message translates to:
+  /// **'Routing and swap fees'**
+  String get p2pPayoutBreakdownFees;
+
+  /// Not in the RoboSats texts: the project's own (#228; the line of the red alert's mock-up of the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): on arrival, the Lightning routing budget alone, while no invoice of this wallet gives a swap fee (none made yet, or one pasted from another wallet).
+  ///
+  /// In en, this message translates to:
+  /// **'Routing fees'**
+  String get p2pPayoutBreakdownRoutingFees;
+
+  /// Not in the RoboSats texts: the project's own (#250; the owner's « not priced » line validated on 2026-11-24, « Textes à valider », a currency the wallet does not price; the English is composed on the model of the French, as #250 gives its examples): the grey line's label, with p2pPayoutBreakdownNotPriced as its value, nothing else.
+  ///
+  /// In en, this message translates to:
+  /// **'Gap to the Bull price'**
+  String get p2pPayoutBreakdownGapNotPriced;
+
+  /// Not in the RoboSats texts: the project's own (#250; the owner's « not priced » line validated on 2026-11-24; the English is composed on the model of the French, as #250 gives its examples): the value of p2pPayoutBreakdownGapNotPriced, in grey: the Bull wallet has no price for the order's currency, so no figure is compared.
+  ///
+  /// In en, this message translates to:
+  /// **'not quoted'**
+  String get p2pPayoutBreakdownNotPriced;
+
+  /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): the red alert's bold line, which takes the place of p2pPayoutBreakdownGap beyond the owner's threshold, with a warning icon before it and the gap on the right.
+  ///
+  /// In en, this message translates to:
+  /// **'Gap against you'**
+  String get p2pPayoutBreakdownAgainst;
+
+  /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English on #250's example « Bull Wallet expected X sats, the coordinator asks / pays Y »): the red alert's second line, always shown with it. {expected} is the sats the contract's amount is worth at the Bull wallet's price with the order's premium, rounded down; {received} the sats the coordinator pays the contract (`trade_satoshis`), the figure compared; also the second line of the rule's red alert at 9 and in « Confirm … sent ».
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet expected {expected} sats, the coordinator pays {received}.'**
+  String p2pPayoutBreakdownAgainstFigures(String expected, String received);
+
+  /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): the red alert's explanation, in the breakdown's detail, under the alert drawn alone above the form, and as the third line of the rule's red alert at 9 and in « Confirm … sent », where there is no detail. {threshold} is the owner's threshold as a percentage, such as « 10% ». Nothing is blocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet redoes the calculation with its own price, premium included, and warns you beyond a {threshold} gap. Check the order before going on.'**
+  String p2pPayoutBreakdownAgainstDetail(String threshold);
+
+  /// Not in the RoboSats texts: the project's own (#250; the owner's « Bull price unavailable » alert validated on 2026-11-24, « Textes à valider », screen 1, the same rule; the English is composed on the model of the French, as #250 gives its examples): the orange line in the place of the gap when the Bull wallet's price could not be read, with « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'Amount not checked'**
+  String get p2pPayoutBreakdownUnverified;
+
+  /// Not in the RoboSats texts: the project's own (#250; validated on 2026-11-24 with p2pPayoutBreakdownUnverified; the English is composed on the model of the French, as #250 gives its examples): its second line, always shown with it.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet could not get its bitcoin price.'**
+  String get p2pPayoutBreakdownUnverifiedLine;
+
+  /// Not in the RoboSats texts: the project's own (#250; the first sentence of the explanation validated on 2026-11-24 with p2pPayoutBreakdownUnverified; the English is composed on the model of the French, as #250 gives its examples): in the detail. The validated explanation's second sentence (« … or pay without this check ») speaks of paying, which a buyer does not do at the payout: left out here, to be shown to the owner.
+  ///
+  /// In en, this message translates to:
+  /// **'Without this price, it cannot compare the coordinator\'s amount.'**
+  String get p2pPayoutBreakdownUnverifiedDetail;
+
+  /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): last in the detail, only beside a comparison within the owner's threshold, never beside an alert.
+  ///
+  /// In en, this message translates to:
+  /// **'A small gap is normal: the coordinator has its own price source.'**
+  String get p2pPayoutBreakdownSmallGap;
+
+  /// Not in the RoboSats texts: the project's own (#250; the lean layout validated by the owner on 2026-11-24, « Voir le détail ⌄ », the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): in the payout breakdown's card under the gap's line, opens the detail in the card under it (the validated mock-up, the owner's decision of 2026-11-24).
+  ///
+  /// In en, this message translates to:
+  /// **'Show details'**
+  String get p2pDetailShow;
+
+  /// Not in the RoboSats texts: the project's own (#250; « Masquer le détail ⌃ », validated on 2026-11-24, the chevron drawn as an icon; the English is composed on the model of the French, as #250 gives its examples): closes the detail opened by p2pDetailShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide details'**
+  String get p2pDetailHide;
+
+  /// Not in the RoboSats texts: the project's own (#250; the red alert's bold line validated by the owner on 2026-11-24, « ⚠ Écart en votre défaveur −15,83 % », its icon drawn apart; the English is #250's own example): the first line of the rule's red alert where no breakdown is drawn (« Confirm … sent » and the chat step at 9, or the payout without its panel), followed by p2pPayoutBreakdownAgainstFigures. {gap} is the gap with its sign, such as « -15.83% ».
+  ///
+  /// In en, this message translates to:
+  /// **'Gap against you {gap}'**
+  String p2pPayoutRateAgainst(String gap);
 
   /// Not in the RoboSats texts: the project's own: the owner's payment rule on a maker buyer's side for a currency the Bull wallet does not price (#182, as `p2pPayRateNotPriced` for the bond): no figure, no « Retry ».
   ///

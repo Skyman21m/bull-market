@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
@@ -19,6 +20,8 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
+import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
+import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
@@ -385,7 +388,15 @@ final class _Journey {
     await tap(find.text(words.create));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    await tap(inForm(find.text(buy ? 'Buy' : words.sell)));
+    await tap(
+      inForm(
+        find.text(
+          buy
+              ? (words.locale.languageCode == 'en' ? 'Buy' : 'Acheter')
+              : words.sell,
+        ),
+      ),
+    );
     await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
     await settle(tester);
     await tap(inForm(find.byTooltip(words.addMethod)));
@@ -1220,8 +1231,21 @@ void main() {
         final generate = find.text('Generate Invoice');
         await journey.waitFor(generate, seconds: 60);
 
-        void unchecked() {
-          expect(find.textContaining(line), findsWidgets);
+        void unchecked({bool breakdown = false}) {
+          // At 6 the payout panel's breakdown says it (#250): « Amount not checked » or the grey « not quoted » line, no banner above it; at 9 the rule's line.
+          if (breakdown) {
+            expect(find.textContaining(line), findsNothing);
+            expect(
+              find.text(
+                rate is P2pWalletRateUnavailable
+                    ? 'Amount not checked'
+                    : 'not quoted',
+              ),
+              findsOneWidget,
+            );
+          } else {
+            expect(find.textContaining(line), findsWidgets);
+          }
           expect(
             find.textContaining('from the rate when you made it'),
             findsNothing,
@@ -1232,7 +1256,7 @@ void main() {
 
         // Before « Submit » (6): the alert alone.
         await journey.pass(2);
-        unchecked();
+        unchecked(breakdown: true);
         expect(
           find.text('Retry'),
           rate is P2pWalletRateUnavailable ? findsOneWidget : findsNothing,
@@ -1385,6 +1409,358 @@ void main() {
       },
     );
   }
+
+  // The lean breakdown of the buyer's payout (#228, #250), on the real route and composition by the user's gestures, a maker buyer, in English and in French: the Bull wallet's price as the coordinator's (within the margin), 20 % below it (the red alert), not read (« Amount not checked », then « Retry »), and a currency it does not price (the « not quoted » line).
+  for (final words in [_english, _french]) {
+    final l10n = lookupP2pLocalizations(words.locale);
+    for (final (name, rate) in [
+      (
+        'the Bull wallet\'s price as the coordinator\'s',
+        P2pWalletRateRead(50000),
+      ),
+      (
+        'the Bull wallet\'s price 20 % below the coordinator\'s',
+        P2pWalletRateRead(40000),
+      ),
+      (
+        'the Bull wallet\'s price not read',
+        const P2pWalletRateUnavailable() as P2pWalletBitcoinRate,
+      ),
+      (
+        'a currency the Bull wallet does not price',
+        const P2pWalletRateNotPriced() as P2pWalletBitcoinRate,
+      ),
+    ]) {
+      testWidgets(
+        'a maker buyer at 6, ${words.locale.languageCode}, $name: the lean breakdown on arrival, adding up to the sat, the rule\'s check in it and no banner above; « Show details » opens the detail under the buttons, which do not move; « Generate Invoice » adds the swap fee; « Submit » still offered (#228, #250)',
+        (tester) async {
+          final journey = await _Journey.start(tester, words);
+          journey.wallet.rate = rate;
+          await journey.makeSellOrder(buy: true);
+          final order = journey.order;
+          journey.coordinator.lockMakerBond(order.id);
+          await journey.waitFor(find.textContaining(words.public), seconds: 20);
+          journey.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+          final generate = find.text(l10n.p2pPayoutWalletGenerateInvoice);
+          await journey.waitFor(generate, seconds: 60);
+          await journey.pass(2);
+          String row(Key key) => [
+            for (final text in tester.widgetList<Text>(
+              find.descendant(of: find.byKey(key), matching: find.byType(Text)),
+            ))
+              text.data ?? '',
+          ].last;
+          Color? colourOf(Key key) => tester
+              .widgetList<Text>(
+                find.descendant(
+                  of: find.byKey(key),
+                  matching: find.byType(Text),
+                ),
+              )
+              .last
+              .style
+              ?.color;
+          final theme = Theme.of(
+            tester.element(find.byKey(PayoutBreakdownView.givenRow)),
+          ).extension<BullTheme>();
+          final last = order.lastSatoshis;
+          final payout = _halfEven(last - last * journey.coordinator.makerFee);
+          final asked = (payout - payout * 1000 / 1000000).truncate();
+          // On arrival: the sats paid, the routing fees (no invoice of this wallet yet) and what will be received, their difference to the sat.
+          expect(find.text(l10n.p2pPayoutBreakdownTitle), findsOneWidget);
+          expect(row(PayoutBreakdownView.givenRow), words.sats(payout));
+          expect(find.text(l10n.p2pPayoutBreakdownRoutingFees), findsOneWidget);
+          expect(
+            row(PayoutBreakdownView.feesRow),
+            words.sats(-(payout - asked)),
+          );
+          expect(row(PayoutBreakdownView.receivedRow), words.sats(asked));
+          // The detail is closed: neither what Bull Wallet expected nor « Your invoice ».
+          expect(find.byKey(PayoutPanel.detail), findsNothing);
+          expect(find.text(l10n.p2pPayoutBreakdownValue), findsNothing);
+          expect(find.text(l10n.p2pPayoutBreakdownInvoice), findsNothing);
+          // One figure of the invoice at most, never « You receive » beside « Submit invoice for … » (#249's functional review), nor the rule's sentence or banner above the breakdown.
+          for (final gone in [
+            'You receive',
+            'Vous recevez',
+            'Submit invoice for',
+            'Soumettre la facture pour',
+            'At the Bull wallet\'s price',
+            'Au prix du portefeuille Bull',
+            'rate not checked',
+            'taux non vérifié',
+          ]) {
+            expect(find.textContaining(gone), findsNothing, reason: gone);
+          }
+          final worth = switch (rate) {
+            // 100 USD at the Bull wallet's price with the order's premium of 2 %, rounded down.
+            P2pWalletRateRead(:final price) =>
+              (100 * 100000000 / (price * 1.02)).floor(),
+            _ => null,
+          };
+          final warns = rate is P2pWalletRateRead && rate.price < 50000;
+          switch (rate) {
+            case P2pWalletRateRead() when !warns:
+              expect(find.text(l10n.p2pPayoutBreakdownGap), findsOneWidget);
+              final gap = row(PayoutCheckLines.gapRow);
+              expect(gap.startsWith('-'), isTrue, reason: gap);
+              expect(colourOf(PayoutCheckLines.gapRow), theme?.text);
+              expect(colourOf(PayoutBreakdownView.givenRow), theme?.text);
+              expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsNothing);
+            case P2pWalletRateRead():
+              // The red alert in the breakdown: its bold line in the gap's place, without « (indicative) », the two figures under it, the figure paid in red; no banner above.
+              expect(find.text(l10n.p2pPayoutBreakdownGap), findsNothing);
+              expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsOneWidget);
+              final gap = row(PayoutCheckLines.alertRow);
+              expect(gap.startsWith('-'), isTrue, reason: gap);
+              expect(colourOf(PayoutCheckLines.alertRow), theme?.error);
+              expect(colourOf(PayoutBreakdownView.givenRow), theme?.error);
+              expect(colourOf(PayoutBreakdownView.receivedRow), theme?.text);
+              expect(
+                find.text(
+                  l10n.p2pPayoutBreakdownAgainstFigures(
+                    words.sats(worth ?? 0),
+                    words.sats(payout),
+                  ),
+                ),
+                findsOneWidget,
+              );
+              expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+            case P2pWalletRateUnavailable():
+              expect(
+                find.text(l10n.p2pPayoutBreakdownUnverified),
+                findsOneWidget,
+              );
+              expect(
+                tester
+                    .widget<Text>(find.text(l10n.p2pPayoutBreakdownUnverified))
+                    .style
+                    ?.color,
+                theme?.warning,
+              );
+              expect(
+                find.text(l10n.p2pPayoutBreakdownUnverifiedLine),
+                findsOneWidget,
+              );
+              expect(find.text(l10n.p2pPayoutBreakdownGap), findsNothing);
+            case _:
+              expect(
+                find.text(l10n.p2pPayoutBreakdownGapNotPriced),
+                findsOneWidget,
+              );
+              expect(
+                find.text(l10n.p2pPayoutBreakdownNotPriced),
+                findsOneWidget,
+              );
+              expect(colourOf(PayoutCheckLines.notPricedRow), theme?.textMuted);
+              expect(find.text(l10n.p2pCommonRetry), findsNothing);
+              expect(find.text(l10n.p2pPayoutBreakdownGap), findsNothing);
+          }
+          // « Show details » in the breakdown's card, under the gap's line, seen on arrival on a phone of 720 × 1280 pixels (the owner's decision of 2026-11-24: the validated mock-up); the detail opens in the card, the buttons moving down; « Hide details » puts everything back.
+          final submit = find.widgetWithText(TradeButton, l10n.p2pPayoutSubmit);
+          final toggle = find.byKey(PayoutPanel.detailToggle);
+          await _expectToggleInCard(tester);
+          final before = [
+            for (final button in [generate, submit]) tester.getTopLeft(button),
+          ];
+          await tester.tap(find.text(l10n.p2pDetailShow));
+          await tester.pump();
+          expect(find.byKey(PayoutPanel.detail), findsOneWidget);
+          expect(find.text(l10n.p2pDetailHide), findsOneWidget);
+          _expectDetailInCard(tester);
+          expect(tester.getTopLeft(generate).dy, greaterThan(before.first.dy));
+          expect(toggle, findsOneWidget);
+          expect(row(PayoutBreakdownDetail.feeRow), words.sats(last - payout));
+          expect(
+            row(PayoutBreakdownDetail.budgetRow),
+            words.sats(-(payout - asked)),
+          );
+          expect(row(PayoutBreakdownDetail.invoiceRow), words.sats(asked));
+          final small = find.text(l10n.p2pPayoutBreakdownSmallGap);
+          switch (rate) {
+            case P2pWalletRateRead():
+              expect(
+                row(PayoutBreakdownDetail.valueRow),
+                words.sats(worth ?? 0),
+              );
+              expect(
+                find.text(
+                  l10n.p2pPayoutBreakdownPrice(
+                    '100',
+                    'USD',
+                    NumberFormat.decimalPattern(
+                      words.locale.languageCode,
+                    ).format(rate.price),
+                  ),
+                ),
+                findsOneWidget,
+              );
+              // « A small gap is normal » beside a comparison within the threshold only, never beside the alert, whose explanation is there instead.
+              expect(small, warns ? findsNothing : findsOneWidget);
+              expect(
+                find.text(
+                  l10n.p2pPayoutBreakdownAgainstDetail(
+                    words.locale.languageCode == 'en' ? '10%' : '10 %',
+                  ),
+                ),
+                warns ? findsOneWidget : findsNothing,
+              );
+            case P2pWalletRateUnavailable():
+              expect(find.byKey(PayoutBreakdownDetail.valueRow), findsNothing);
+              expect(small, findsNothing);
+              expect(
+                find.text(l10n.p2pPayoutBreakdownUnverifiedDetail),
+                findsOneWidget,
+              );
+            case _:
+              expect(find.byKey(PayoutBreakdownDetail.valueRow), findsNothing);
+              expect(small, findsNothing);
+              expect(
+                find.byKey(PayoutBreakdownDetail.explanation),
+                findsNothing,
+              );
+          }
+          await tester.tap(find.text(l10n.p2pDetailHide));
+          await tester.pump();
+          expect(find.byKey(PayoutPanel.detail), findsNothing);
+          expect([
+            for (final button in [generate, submit]) tester.getTopLeft(button),
+          ], before);
+          // « Retry » of « Amount not checked »: the price read again, the gap line in its place.
+          if (rate is P2pWalletRateUnavailable) {
+            final asks = journey.wallet.ratesAsked.length;
+            journey.wallet.rate = P2pWalletRateRead(50000);
+            await journey.tap(find.text(l10n.p2pCommonRetry));
+            await journey.pass(1);
+            expect(journey.wallet.ratesAsked, hasLength(asks + 1));
+            expect(find.text(l10n.p2pPayoutBreakdownUnverified), findsNothing);
+            expect(find.text(l10n.p2pPayoutBreakdownGap), findsOneWidget);
+          }
+          // « Generate Invoice »: the swap service's fee joins the fees, what will be received is what reaches the wallet.
+          final now = journey.coordinator.clock();
+          final invoice = Bolt11TestInvoice(
+            network: Bolt11Network.testnet,
+            sats: asked,
+            seed: 78,
+            createdAt: now,
+            expiry: const Duration(hours: 24),
+            description: 'Bull wallet payout',
+          );
+          journey.coordinator.decoder.add(invoice);
+          journey.wallet.scriptInvoice(
+            Ok(
+              P2pWalletInvoice(
+                bolt11: invoice.text,
+                amount: Sats.fromInt(asked),
+                expiresAt: now.add(const Duration(hours: 24)),
+                received: Sats.fromInt(asked - 187),
+              ),
+            ),
+          );
+          await journey.tap(generate);
+          await settle(tester);
+          expect(find.text(l10n.p2pPayoutBreakdownFees), findsOneWidget);
+          expect(
+            row(PayoutBreakdownView.feesRow),
+            words.sats(-(payout - asked + 187)),
+          );
+          expect(row(PayoutBreakdownView.receivedRow), words.sats(asked - 187));
+          await journey.tap(find.text(l10n.p2pDetailShow));
+          await settle(tester);
+          expect(row(PayoutBreakdownDetail.swapRow), words.sats(-187));
+          expect(row(PayoutBreakdownDetail.invoiceRow), words.sats(asked));
+          // Nothing is stopped: « Submit » offered for the wallet's invoice.
+          await tester.ensureVisible(submit);
+          expect(tester.widget<TradeButton>(submit).onPressed, isNotNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 61));
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'a maker buyer at 6, fr, a phone of 320 points with the text at three times its size: the lean breakdown, its red alert and its detail open overflow nothing (#250)',
+    (tester) async {
+      final journey = await _Journey.start(tester, _french);
+      tester.view.physicalSize = const Size(320 * 3, 9000 * 3);
+      tester.platformDispatcher.textScaleFactorTestValue = 3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final l10n = lookupP2pLocalizations(_french.locale);
+      journey.wallet.rate = P2pWalletRateRead(40000);
+      await journey.makeSellOrder(buy: true);
+      final order = journey.order;
+      journey.coordinator.lockMakerBond(order.id);
+      await journey.waitFor(find.textContaining(_french.public), seconds: 20);
+      journey.coordinator.take(order.id, TradeHarness.robotsOf(_net)[5]);
+      await journey.waitFor(
+        find.text(l10n.p2pPayoutWalletGenerateInvoice),
+        seconds: 60,
+      );
+      await journey.pass(2);
+      expect(find.text(l10n.p2pPayoutBreakdownAgainst), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await journey.tap(find.text(l10n.p2pDetailShow));
+      await settle(tester);
+      expect(find.byKey(PayoutPanel.detail), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+  );
+}
+
+/// « Show details » in the breakdown's card, under the rule's lines, and within a phone of 720 × 1280 pixels (360 × 640 points) on arrival, without scrolling (#250, the owner's decision of 2026-11-24).
+Future<void> _expectToggleInCard(WidgetTester tester) async {
+  final toggle = find.byKey(PayoutPanel.detailToggle);
+  expect(
+    find.descendant(of: find.byType(PayoutBreakdownView), matching: toggle),
+    findsOneWidget,
+  );
+  final checks = find.descendant(
+    of: find.byType(PayoutBreakdownView),
+    matching: find.byType(PayoutCheckLines),
+  );
+  if (checks.evaluate().isNotEmpty) {
+    expect(
+      tester.getTopLeft(toggle).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(checks).dy),
+    );
+  }
+  // Seen without scrolling on a phone of 720 × 1280 pixels; with an alert's two lines, the tests' font (wider than the app's) wraps them further down, so the arrival with an alert is checked on the captures, drawn with the app's font.
+  final alert =
+      find.byKey(PayoutCheckLines.alertRow).evaluate().isNotEmpty ||
+      find.byKey(PayoutCheckLines.unverifiedRow).evaluate().isNotEmpty;
+  if (!alert) {
+    final size = tester.view.physicalSize;
+    final ratio = tester.view.devicePixelRatio;
+    tester.view
+      ..physicalSize = const Size(720, 1280)
+      ..devicePixelRatio = 2;
+    await tester.pump();
+    expect(tester.getBottomLeft(toggle).dy, lessThanOrEqualTo(640));
+    tester.view
+      ..physicalSize = size
+      ..devicePixelRatio = ratio;
+    await tester.pump();
+  }
+}
+
+/// The detail open in the breakdown's card, under « Hide details ».
+void _expectDetailInCard(WidgetTester tester) {
+  final detail = find.byKey(PayoutPanel.detail);
+  expect(
+    find.descendant(of: find.byType(PayoutBreakdownView), matching: detail),
+    findsOneWidget,
+  );
+  expect(
+    tester.getTopLeft(detail).dy,
+    greaterThanOrEqualTo(
+      tester.getBottomLeft(find.byKey(PayoutPanel.detailToggle)).dy,
+    ),
+  );
 }
 
 /// [value] rounded to the nearest whole number, a half to the even one, as Python's `round` (`Logics.payout_amount`, `api/logics.py:650-669`).
