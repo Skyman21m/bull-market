@@ -267,6 +267,15 @@ final class _Journey {
     await confirm(escrow);
   }
 
+  /// The coordinator shows the trade with another premium for a read, then puts its own back (#231): its alert comes and goes, the trace of terms shown otherwise stays, in the warning colour.
+  Future<void> termsShownOtherwise() async {
+    coordinator.premium = 9;
+    await waitFor(find.text(l10n.p2pTradeWarnTerms));
+    coordinator.premium = 3.5;
+    await waitUntil(() => find.text(l10n.p2pTradeWarnTerms).evaluate().isEmpty);
+    await settle(tester);
+  }
+
   String price() => formats.orderRate(71657);
   String sats(int value) => formats.bigSats(BigInt.from(value));
   String gap(int hundredths) => formats.gap(BigInt.from(hundredths));
@@ -503,6 +512,103 @@ void main() {
         expect(find.textContaining(journey.sats(134834)), findsNothing);
         expect(journey.wallet.paid, isEmpty);
         await journey.close();
+      },
+    );
+
+    group(
+      'beside the trace of terms shown otherwise (#231) or of a payout not given from this wallet (#204), $code: a comparison within the threshold is not drawn, a red one is (security review, C1 and C2)',
+      () {
+        testWidgets('a taker buyer\'s bond', (tester) async {
+          final journey = await _Journey.start(tester, locale);
+          await journey.take();
+          await journey.termsShownOtherwise();
+          await journey.confirmBond();
+          expect(journey.wallet.ratesAsked, hasLength(1));
+          expect(find.text(journey.bondLine(-1)), findsNothing);
+          expect(find.textContaining(journey.sats(4045)), findsWidgets);
+          expect(journey.wallet.paid, isEmpty);
+          await journey.close();
+        });
+
+        testWidgets(
+          'a taker buyer\'s bond ten times too large: the red lines stay',
+          (tester) async {
+            final journey = await _Journey.start(tester, locale, sats: 1348344);
+            await journey.take();
+            await journey.termsShownOtherwise();
+            await journey.confirmBond();
+            expect(find.text(journey.bondLine(90000)), findsOneWidget);
+            expect(find.text(journey.bondWarning(40450)), findsOneWidget);
+            await journey.close();
+          },
+        );
+
+        testWidgets('a taker seller\'s escrow', (tester) async {
+          final journey = await _Journey.start(tester, locale, seller: true);
+          await journey.take();
+          await journey.confirmBond();
+          await journey.lockBond(find.text(journey.l10n.p2pPayWithThisWallet));
+          await journey.waitUntil(
+            () => journey.coordinator.escrowInvoice != null,
+          );
+          await journey.termsShownOtherwise();
+          await journey.confirmEscrow();
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          expect(find.text(journey.escrowLine(18)), findsNothing);
+          expect(journey.wallet.paid, isEmpty);
+          await journey.close();
+        });
+
+        testWidgets('a taker buyer\'s payout before « Submit »', (
+          tester,
+        ) async {
+          final journey = await _Journey.start(tester, locale);
+          await journey.take();
+          await journey.confirmBond();
+          await journey.lockBond(find.textContaining(journey.sats(134598)));
+          await journey.waitFor(find.textContaining(journey.gap(-18)));
+          await journey.termsShownOtherwise();
+          await journey.waitUntil(
+            () => find.textContaining(journey.gap(-18)).evaluate().isEmpty,
+          );
+          expect(find.textContaining(journey.gap(-18)), findsNothing);
+          await journey.close();
+        });
+
+        testWidgets(
+          'a taker buyer at 9, its payout not given from Bull Market: no comparison within the threshold, on the screen nor in « Confirm … sent »',
+          (tester) async {
+            final journey = await _Journey.start(tester, locale);
+            await journey.take();
+            await journey.confirmBond();
+            await journey.lockBond(find.textContaining(journey.gap(-18)));
+            journey.coordinator
+              ..lockEscrow()
+              ..moveTo(9);
+            final confirm = find.text(
+              journey.l10n.p2pEndConfirmSent(
+                journey.formats.amount(_hundred),
+                'USD',
+              ),
+            );
+            await journey.waitFor(confirm);
+            await journey.waitFor(
+              find.text(journey.l10n.p2pPayoutTraceNotGivenHere),
+            );
+            await settle(tester);
+            expect(find.textContaining(journey.gap(-18)), findsNothing);
+            await journey.tap(confirm);
+            await settle(tester);
+            expect(
+              find.descendant(
+                of: find.byType(Dialog),
+                matching: find.textContaining(journey.gap(-18)),
+              ),
+              findsNothing,
+            );
+            await journey.close();
+          },
+        );
       },
     );
 

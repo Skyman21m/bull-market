@@ -131,6 +131,8 @@ final class _App {
     WidgetTester tester, {
     (double, double)? range,
     double? takenAmount,
+    bool sell = true,
+    bool taken = true,
   }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 2600 * 3)
@@ -189,7 +191,7 @@ final class _App {
     await tester.pumpWidget(routerHarness(router));
     tor.add(P2pTorState.ready);
     await app.settle();
-    final request = MakeHarness.request(sell: true, range: range);
+    final request = MakeHarness.request(sell: sell, range: range);
     app.record = switch (await app.wait(
       () => locator<MakeOrderUsecase>().execute(
         request,
@@ -204,6 +206,7 @@ final class _App {
       Ok(value: MakeStarted(:final record)) => record,
       final other => throw StateError('$other'),
     };
+    if (!taken) return app;
     coordinator
       ..lockMakerBond(app.record.orderId)
       ..take(
@@ -219,6 +222,55 @@ final class _App {
     await settle();
     await tester.pump(const Duration(seconds: 61));
   }
+}
+
+/// Waits, the clock running, until [done].
+Future<void> _until(_App app, bool Function() done) async {
+  for (var i = 0; i < 240; i++) {
+    if (done()) return;
+    app.advance(const Duration(milliseconds: 250));
+    await app.tester.pump(const Duration(milliseconds: 250));
+  }
+  fail('never done');
+}
+
+/// The coordinator shows the order with another premium for a read, then puts its own back (#231): the alert of terms changed comes and goes, the trace of terms shown otherwise stays.
+Future<void> _termsShownOtherwise(_App app) async {
+  final alert = find.text(
+    'The terms of the order are not those of the order taken.',
+  );
+  app.coordinator.orderChanges[app.record.orderId] = {'premium': '9.00'};
+  await _until(app, () => alert.evaluate().isNotEmpty);
+  app.coordinator.orderChanges.remove(app.record.orderId);
+  await _until(app, () => alert.evaluate().isEmpty);
+  await app.settle();
+}
+
+/// A quote of [invoice] scripted, then « Pay with this wallet »: its confirmation.
+Future<void> _confirm(_App app, Bolt11TestInvoice invoice) async {
+  final checked = checkedBolt11InvoiceForTesting(
+    bolt11: invoice.text,
+    amount: invoice.facts.amount,
+    network: _net,
+    paymentHash: invoice.facts.paymentHash,
+    expiresAt: invoice.facts.createdAt.add(invoice.facts.expiry),
+    now: DateTime.utc(2026, 11, 14, 9),
+  );
+  if (checked == null) fail('not a payable invoice');
+  app.wallet.scriptQuote(
+    Ok(
+      P2pWalletQuote(
+        invoice: checked,
+        payin: Sats(checked.amount.value + BigInt.from(500)),
+        networkFee: Sats.fromInt(27),
+        balance: Sats.fromInt(5000000),
+        quotedAt: DateTime.utc(2026, 11, 14, 9),
+      ),
+    ),
+  );
+  await _tap(app.tester, find.text('Pay with this wallet'));
+  await app.settle();
+  expect(find.text('Go back'), findsOneWidget);
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
@@ -382,6 +434,73 @@ void main() {
       expect(app.wallet.quoted, hasLength(1));
       expect(app.wallet.paid, hasLength(1));
       await app.close();
+    },
+  );
+
+  group(
+    'beside the trace of terms shown otherwise (#231) or of a payout not given from this wallet (#204), an order made here: no comparison within the threshold (security review of #249, C1 and C2)',
+    () {
+      testWidgets('the maker bond at 0', (tester) async {
+        final app = await _App.start(tester, taken: false);
+        await app.openTrade();
+        expect(find.text('Pay with this wallet'), findsOneWidget);
+        await _termsShownOtherwise(app);
+        final bond = app.coordinator.order(app.record.orderId).bond;
+        if (bond == null) fail('no bond');
+        await _confirm(app, bond);
+        expect(app.wallet.ratesAsked, isNotEmpty);
+        expect(find.textContaining('this bond is worth'), findsNothing);
+        expect(app.wallet.paid, isEmpty);
+        await app.close();
+      });
+
+      testWidgets('a maker seller\'s escrow', (tester) async {
+        final app = await _App.start(tester);
+        await app.openTrade();
+        expect(find.text('Pay with this wallet'), findsOneWidget);
+        await _termsShownOtherwise(app);
+        final escrow = app.coordinator.order(app.record.orderId).escrow;
+        if (escrow == null) fail('no escrow invoice');
+        await _confirm(app, escrow);
+        expect(app.wallet.ratesAsked, isNotEmpty);
+        expect(find.textContaining('100 EUR are worth'), findsNothing);
+        expect(app.wallet.paid, isEmpty);
+        await app.close();
+      });
+
+      testWidgets('a maker buyer\'s payout before « Submit »', (tester) async {
+        final app = await _App.start(tester, sell: false);
+        await app.openTrade();
+        final line = find.textContaining('At the Bull wallet\'s price');
+        await _until(app, () => line.evaluate().isNotEmpty);
+        await _termsShownOtherwise(app);
+        await _until(app, () => line.evaluate().isEmpty);
+        expect(line, findsNothing);
+        await app.close();
+      });
+
+      testWidgets('a maker buyer at 9, its payout not given from Bull Market', (
+        tester,
+      ) async {
+        final app = await _App.start(tester, sell: false);
+        await app.openTrade();
+        final line = find.textContaining('At the Bull wallet\'s price');
+        await _until(app, () => line.evaluate().isNotEmpty);
+        app.coordinator.lockEscrow(app.record.orderId);
+        app.coordinator.order(app.record.orderId).status = 9;
+        await _until(
+          app,
+          () => find
+              .text(
+                'This contract\'s payout invoice or address was not given from Bull Market: check where the sats will arrive.',
+              )
+              .evaluate()
+              .isNotEmpty,
+        );
+        await app.settle();
+        expect(line, findsNothing);
+        await app.close();
+      });
     },
   );
 

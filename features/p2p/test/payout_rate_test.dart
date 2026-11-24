@@ -270,6 +270,42 @@ void main() {
         return again;
       }
 
+      test(
+        'at 9, the payout not given from this wallet (#204): within the threshold, the alert alone; red, the comparison (security review of #249, C2)',
+        () async {
+          final (harness, record, _) = await taken();
+          harness.coordinator.lockEscrow(record.orderId);
+          await readOf(harness, record);
+          harness.coordinator.order(record.orderId).status = 9;
+          final nine = await readOf(harness, record);
+          expect(nine.status, isA<Chatting>());
+          expect(ShownAlerts.payoutTrace(nine), isTrue);
+          final quiet = cubitOf(
+            harness,
+            record,
+            wallet(P2pWalletRateRead(91711.15)),
+          );
+          await quiet.show(nine, appeared: true);
+          await harness.settle();
+          expect(quiet.state, isA<PayoutRateAlertAlone>());
+          final loud = cubitOf(
+            harness,
+            record,
+            wallet(P2pWalletRateRead(45000)),
+          );
+          await loud.show(nine, appeared: true);
+          await harness.settle();
+          expect(
+            loud.state,
+            isA<PayoutRateChecked>().having(
+              (s) => s.check.warns,
+              'warns',
+              true,
+            ),
+          );
+        },
+      );
+
       for (final (name, alerted) in [
         ('a deadline moved back', deadline),
         ('a coordinator that broke the trade\'s history', inconsistent),

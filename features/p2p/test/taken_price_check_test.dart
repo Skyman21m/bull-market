@@ -1,5 +1,6 @@
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/trade/exact_ratio.dart';
+import 'package:p2p/src/domain/trade/payout_trace.dart';
 import 'package:p2p/src/domain/trade/sats_at_price.dart';
 import 'package:p2p/src/domain/trade/shown_alerts.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
@@ -341,7 +342,7 @@ void main() {
   );
 
   group(
-    'an order priced in sats (question 3, the note\'s recommendation: compared as the others, with the coordinator\'s premium kept)',
+    'an order priced in sats (question 3, decided by the owner on 2026-11-24: compared as the others, with the coordinator\'s premium kept)',
     () {
       // The maker's 134,834 sats for 100 USD; the coordinator's rate 15 % below the Bull wallet's (60,908.45 USD/BTC) gives a premium of +21.76 % (21.7651… truncated, `api/logics.py:277-295`), 15 % above (82,405.55) one of −9.99 %.
       test(
@@ -451,57 +452,60 @@ void main() {
     },
   );
 
-  group('the two points the owner has not decided (design note § 7)', () {
-    test(
-      'question 2, a currency the Bull wallet does not price: the « not priced » line alone, no figure, no warning, for each step',
-      () {
-        const notPriced = P2pWalletRateNotPriced();
-        final checks = [
-          WalletRateCheck.ofTakerBond(
-            taken(),
-            asked: Sats.fromInt(40450),
-            wallet: notPriced,
-          ),
-          WalletRateCheck.ofTakerEscrow(
-            taken(),
-            asked: Sats.fromInt(1350704),
-            wallet: notPriced,
-          ),
-          WalletRateCheck.ofTakerPayout(
-            taken(role: TradeRole.buyer),
-            received: Sats.fromInt(1000),
-            wallet: notPriced,
-          ),
-        ];
-        for (final check in checks) {
-          expect(check, isA<WalletRateNotPriced>());
-          expect(check, isNot(isA<WalletRateCompared>()));
-          expect(check.warns, isFalse);
-        }
-        expect(
-          TakenRateRules.notPriced(
-            Sats.fromInt(1),
-            usd,
-            side: WalletRateSide.pays,
-            amount: some(FiatAmount.tryCreate(100)),
-          ),
-          isA<WalletRateNotPriced>(),
-        );
-      },
-    );
+  group(
+    'the two points the owner decided on 2026-11-24 (design note § 7, questions 2 and 3)',
+    () {
+      test(
+        'question 2, a currency the Bull wallet does not price: the « not priced » line alone, no figure, no warning, for each step',
+        () {
+          const notPriced = P2pWalletRateNotPriced();
+          final checks = [
+            WalletRateCheck.ofTakerBond(
+              taken(),
+              asked: Sats.fromInt(40450),
+              wallet: notPriced,
+            ),
+            WalletRateCheck.ofTakerEscrow(
+              taken(),
+              asked: Sats.fromInt(1350704),
+              wallet: notPriced,
+            ),
+            WalletRateCheck.ofTakerPayout(
+              taken(role: TradeRole.buyer),
+              received: Sats.fromInt(1000),
+              wallet: notPriced,
+            ),
+          ];
+          for (final check in checks) {
+            expect(check, isA<WalletRateNotPriced>());
+            expect(check, isNot(isA<WalletRateCompared>()));
+            expect(check.warns, isFalse);
+          }
+          expect(
+            TakenRateRules.notPriced(
+              Sats.fromInt(1),
+              usd,
+              side: WalletRateSide.pays,
+              amount: some(FiatAmount.tryCreate(100)),
+            ),
+            isA<WalletRateNotPriced>(),
+          );
+        },
+      );
 
-    test(
-      'question 3, an order priced in sats: compared at the payments as the others',
-      () {
-        expect(TakenRateRules.comparesOrdersPricedInSats, isTrue);
-        expect(
-          TakenRateRules.compares(taken(explicitSatoshis: 134834)),
-          isTrue,
-        );
-        expect(TakenRateRules.compares(taken()), isTrue);
-      },
-    );
-  });
+      test(
+        'question 3, an order priced in sats: compared at the payments as the others',
+        () {
+          expect(TakenRateRules.comparesOrdersPricedInSats, isTrue);
+          expect(
+            TakenRateRules.compares(taken(explicitSatoshis: 134834)),
+            isTrue,
+          );
+          expect(TakenRateRules.compares(taken()), isTrue);
+        },
+      );
+    },
+  );
 
   group(
     'a taker buyer\'s payout, what is compared at each step (the state machine\'s statuses of a sell order taken: 100 EUR, +2 %, 106,900 sats)',
@@ -756,6 +760,72 @@ void main() {
               },
             );
           }
+          test(
+            'at 9, the trace of a payout not given from this wallet (#204): within the threshold, the alert alone; the payout given from this wallet, the comparison (security review, C2)',
+            () async {
+              final nine = await statuses.chatting();
+              expect(ShownAlerts.payoutTrace(nine), isTrue);
+              final quiet = cubitOf(91711.15);
+              await quiet.show(nine, appeared: true);
+              await pumpEventQueue();
+              expect(quiet.state, isA<PayoutRateAlertAlone>());
+              final given = nine.withPayout(
+                PayoutFromThisWallet(PayoutTraceKind.invoice, tradeNow),
+              );
+              expect(ShownAlerts.any(given), isFalse);
+              final drawn = cubitOf(91711.15);
+              await drawn.show(given, appeared: true);
+              await pumpEventQueue();
+              expect(drawn.state, isA<PayoutRateChecked>());
+              final red = cubitOf(58823.53);
+              await red.show(nine, appeared: true);
+              await pumpEventQueue();
+              expect(
+                red.state,
+                isA<PayoutRateChecked>().having(
+                  (s) => s.check.warns,
+                  'warns',
+                  true,
+                ),
+              );
+            },
+          );
+
+          test(
+            'at 9, « the figure moved since the invoice » within the threshold beside a deadline moved back: still said, an alert of its own (security review, C4)',
+            () async {
+              final nine = await statuses.read(
+                await statuses.chatting(),
+                orderJson(9, expiresAt: tradeNow),
+              );
+              expect(nine.status.has<DeadlineMovedBack>(), isTrue);
+              final memory = PayoutRateMemory()
+                ..keepAsked(record, 0, Sats.fromInt(106000));
+              final cubit = PayoutRateCubit(
+                record,
+                terms: (_) async => TakerPayoutTerms(terms()),
+                price: (_, _) async => P2pWalletRateRead(91711.15),
+                memory: memory,
+                now: () => tradeNow,
+              );
+              addTearDown(cubit.close);
+              await cubit.show(nine, appeared: true);
+              await pumpEventQueue();
+              expect(
+                cubit.state,
+                isA<PayoutRateChecked>()
+                    .having(
+                      (s) => s.basis,
+                      'basis',
+                      PayoutRateTold(
+                        told: Sats.fromInt(106713),
+                        asked: Sats.fromInt(106000),
+                      ),
+                    )
+                    .having((s) => s.check.warns, 'warns', false),
+              );
+            },
+          );
 
           test(
             'without an alert, the comparison within the threshold is drawn',

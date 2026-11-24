@@ -128,7 +128,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The order's currency, the reference's id (`currency`, 2 for EUR by default, 1 for USD), in the book and in every read (#249: a currency the Bull wallet prices or not).
   int currency = 2;
 
-  /// The order's premium in percent (#249): the maker's, as the book and every read give it (`premium`, two decimals), and the one the coordinator gives a robot that reads the order without taking part or holds its pre-take (`premium_now`, `api/views.py:288`, and from public to 6 `:300-302`, the maker's for an order not priced in sats, `Logics.price_and_premium_now`, `api/logics.py:277-295`); for an order priced in sats, what the test makes the coordinator compute at its own price.
+  /// The order's premium in percent (#249): the maker's, as the book and every read give it (`premium`, two decimals), and the one the coordinator gives a robot that reads the order without taking part or holds its pre-take (`premium_now`, `api/views.py:288`, and at statuses 1 to 5 `:300-302`, the maker's for an order not priced in sats, `Logics.price_and_premium_now`, `api/logics.py:277-295`); for an order priced in sats, what the test makes the coordinator compute at its own price.
   double premium = 2;
 
   /// The coordinator's price of a bitcoin with the premium, as the book (`price`) and those reads (`price_now`) give it, rounded to 5 significant digits (`Logics.price_and_premium_now`, `api/logics.py:290-293`): the test keeps it with [satoshisNow] and [premium] (#249); the app computes nothing from it.

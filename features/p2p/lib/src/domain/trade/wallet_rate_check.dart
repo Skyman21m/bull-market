@@ -232,16 +232,16 @@ sealed class WalletRateCheck {
   bool get warns => false;
 }
 
-/// The two points of the owner's payment rule for an order taken here that the owner has not decided yet (design note `docs/design/phase-3-taken-order-price-check.md` § 7, questions 2 and 3): each coded as the note recommends, here and nowhere else, so that a contrary answer changes this class and its tests (`taken_price_check_test.dart`, group « the two points the owner has not decided »).
+/// The two points of the owner's payment rule for an order taken here that his rules of 2026-11-17 and 2026-11-20 did not settle (design note `docs/design/phase-3-taken-order-price-check.md` § 7, questions 2 and 3), decided by the owner on 2026-11-24 as the note recommended: each here and nowhere else, pinned by `taken_price_check_test.dart`, group « the two points the owner decided on 2026-11-24 ».
 abstract final class TakenRateRules {
-  /// Question 3, an order priced in sats (its sats chosen by the maker, `TakenSide.explicitSatoshis`): `true`, compared at the payments as the other orders, with the premium the coordinator computed for it at its own price (`premium_now`, kept in the terms), the note's recommendation; the owner has not answered yet. `false` would compare nothing at the payments for such an order ([compares]).
+  /// Question 3, an order priced in sats (its sats chosen by the maker, `TakenSide.explicitSatoshis`): `true`, compared at the payments as the other orders, with the premium the coordinator computed for it at its own price (`premium_now`, kept in the terms), decided by the owner on 2026-11-24 (question 3). `false` would compare nothing at the payments for such an order ([compares]).
   static const bool comparesOrdersPricedInSats = true;
 
   /// Whether the payments of the take of [terms] are compared with the Bull wallet's price at all: every take, but an order priced in sats only as [comparesOrdersPricedInSats] says.
   static bool compares(TradeTerms<TakenSide> terms) =>
       terms.explicitSatoshis == null || comparesOrdersPricedInSats;
 
-  /// Question 2, a currency the Bull wallet does not price, for a taken order: the « not priced » line alone ([WalletRateNotPriced]: no figure, no « Retry »), the note's recommendation; the owner has not answered yet. For an order made here the owner decided on 2026-11-20 a grey « not priced » line and an orange alert when the rate at the take is more than 10 % worse than at the creation (#250, not applied yet); for a taker the note recommends the line alone, the state machine already warning from 2 % when the bond or the trade's sats move from the read the take was made on (`BondAmountOutsideOrder`, `TradePriceOutsideOrder`), beside which nothing is compared. A contrary answer would build that alert here, with its words from #250.
+  /// Question 2, a currency the Bull wallet does not price, for a taken order: the « not priced » line alone ([WalletRateNotPriced]: no figure, no « Retry »), decided by the owner on 2026-11-24 (question 2). For an order made here the owner decided on 2026-11-20 a grey « not priced » line and an orange alert when the rate at the take is more than 10 % worse than at the creation (#250, not applied yet); for a taker the line alone, the state machine already warning from 2 % when the bond or the trade's sats move from the read the take was made on (`BondAmountOutsideOrder`, `TradePriceOutsideOrder`), beside which nothing is compared.
   static WalletRateCheck notPriced(
     Sats asked,
     RobosatsCurrency currency, {
