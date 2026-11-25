@@ -197,13 +197,20 @@ void main() {
     );
 
     test(
-      'a read that ends in an error (a bug, not a failure the service answers) is « Price not checked »: « Continue » no longer waits on it, « Retry » reads again (#270)',
+      'a read that ends in an error (a bug, not a failure the service answers) is « Price not checked », the error reported to the zone with its stack: « Continue » no longer waits on it, « Retry » reads again (#270)',
       () async {
+        final bug = StateError('a bug of the read');
         prices
-          ..error = StateError('a bug of the read')
+          ..error = bug
           ..held = Completer();
-        unawaited(cubit.take());
+        final reported = <(Object, StackTrace)>[];
+        // The take started in a zone of the test's, which receives what the cubit reports.
+        runZonedGuarded(
+          () => unawaited(cubit.take()),
+          (error, stack) => reported.add((error, stack)),
+        );
         await pumpEventQueue();
+        expect(reported, isEmpty);
         expect(cubit.state.price, isA<TakePriceReading>());
         var settled = false;
         unawaited(cubit.priceSettled().then((_) => settled = true));
@@ -213,6 +220,13 @@ void main() {
         expect(cubit.state.price, isA<TakePriceChecked>());
         expect(cubit.state.price.shownCheck, isA<MakePriceUnverified>());
         expect(cubit.priceShown, TakenPriceShown.unverified);
+        // Reported once, as thrown, with the stack of the read that threw.
+        expect(reported, hasLength(1));
+        expect(reported.single.$1, same(bug));
+        expect(
+          '${reported.single.$2}',
+          contains('take_order_price_cubit_test.dart'),
+        );
         // Nothing runs any more: at once.
         await cubit.priceSettled();
         prices

@@ -538,7 +538,9 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     );
   }
 
-  /// [check] of [coordinatorPrice] for [currency], a read that ends in an error (a bug of the price's service, never a failure it answers) taken as a price that could not be read: « Price not checked », with « Retry », and « Continue » never waiting on it again (#270). Caught here only, and nothing of it is logged.
+  /// [check] of [coordinatorPrice] for [currency], a read that throws (an `Error`, a bug of the price's service, or anything else it never answers with) taken as a price that could not be read: « Price not checked », with « Retry », and « Continue » never waiting on it again (#270).
+  ///
+  /// A declared exception to the rule that an `Error` is never caught (`AGENTS.md`, rule 11): « Continue » must never stay waiting on a read that failed. What was thrown is caught here only and reported to the zone with its stack, as is, nothing added to it, as the trade's use cases report what a callback throws, so that the bug still surfaces.
   Future<MakePriceCheck> _checked(
     CheckTakePrice check,
     RobosatsCurrency currency,
@@ -546,7 +548,8 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   ) async {
     try {
       return await check(network, currency, coordinatorPrice);
-    } on Object {
+    } on Object catch (error, stack) {
+      Zone.current.handleUncaughtError(error, stack);
       return MakePriceCheck.of(
         currency: currency,
         coordinatorPrice: coordinatorPrice,

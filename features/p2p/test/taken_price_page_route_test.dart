@@ -246,6 +246,29 @@ final class _Journey {
     await settle(tester);
   }
 
+  /// [prepare] in a zone of the test's, which receives what the take's cubit reports to its zone from then on, as the app's zone does (#270): the [wallet]'s `rateError` only, which the list returned collects, whenever it is thrown; anything else fails the test.
+  Future<List<(Object, StackTrace)>> prepareReporting() async {
+    final reported = <(Object, StackTrace)>[];
+    final done = Completer<void>();
+    runZonedGuarded(
+      () async {
+        await prepare();
+        done.complete();
+      },
+      (error, stack) {
+        if (identical(error, wallet.rateError)) {
+          reported.add((error, stack));
+        } else if (!done.isCompleted) {
+          done.completeError(error, stack);
+        } else {
+          Zone.root.handleUncaughtError(error, stack);
+        }
+      },
+    );
+    await done.future;
+    return reported;
+  }
+
   Finder get continueButton => find.byKey(TakeOrderSection.continueButton);
 
   /// « Continue » then « Done »: the trade's screen.
@@ -963,10 +986,15 @@ void main() {
         (tester) async {
           final journey = await _Journey.start(tester, locale);
           final l10n = journey.l10n;
-          journey.wallet.rateError = StateError('a bug of the price');
+          final bug = journey.wallet.rateError = StateError(
+            'a bug of the price',
+          );
           await journey.open(byUrl: false);
-          await journey.prepare();
+          final reported = await journey.prepareReporting();
           expect(journey.wallet.ratesAsked, hasLength(1));
+          // Reported to the zone once, as thrown, never silenced.
+          expect(reported, hasLength(1));
+          expect(reported.single.$1, same(bug));
           expect(
             journey.lines(),
             [
@@ -997,15 +1025,20 @@ void main() {
         (tester) async {
           final journey = await _Journey.start(tester, locale);
           final l10n = journey.l10n;
-          journey.wallet.rateError = StateError('a bug of the price');
+          final bug = journey.wallet.rateError = StateError(
+            'a bug of the price',
+          );
           final held = journey.wallet.rateHeld = Completer();
           await journey.open(byUrl: false);
-          await journey.prepare();
+          final reported = await journey.prepareReporting();
           await journey.tap(journey.continueButton);
           await settle(tester);
           expect(find.byType(StoreTokenDialog), findsNothing);
+          expect(reported, isEmpty);
           held.complete();
           await settle(tester);
+          expect(reported, hasLength(1));
+          expect(reported.single.$1, same(bug));
           expect(find.byType(StoreTokenDialog), findsNothing);
           expect(find.byKey(TakeOrderSection.pageChangedBlock), findsOneWidget);
           expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
