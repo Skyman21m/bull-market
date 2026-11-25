@@ -428,6 +428,26 @@ unit-test:
 	@fvm dart run melos exec --flutter --dir-exists=test --concurrency 1 --fail-fast -- fvm flutter test --reporter=compact
 	@fvm dart run melos exec --no-flutter --dir-exists=test --concurrency 1 --fail-fast -- fvm dart test --reporter=compact
 
+# The unit tests in shards, as CI runs them (#212): one job per shard of the `tests` matrix of analyze_and_test.yml, `make unit-test-shard SHARD=p2p-1` to replay one. The shards and their rules (a whole package, part k of n of a package's test files, or the default `*` for every other member) are in tools/test_shards.sh; `make unit-test-shards-check` fails unless together they run exactly what `make unit-test` runs, and `make unit-test-shards-test` tests that script without the SDK. `make unit-test` itself is unchanged.
+.PHONY: unit-test-shard unit-test-shards-check unit-test-shards-test p2p-screen-captures
+unit-test-shard:
+	@bash tools/test_shards.sh run "$(SHARD)"
+
+unit-test-shards-check:
+	@echo "🧩 test shards should cover every unit test exactly once"
+	@bash tools/test_shards.sh check
+
+unit-test-shards-test:
+	@bash tools/test_shards_test.sh
+
+# The screen captures of the P2P tab (#258), which `make unit-test` skips: renders PNG files into P2P_CAPTURE_DIR, which must be set, and fails when the run wrote none (a skipped run passes with nothing rendered). The hidden `.capture-start` file left there marks the start of the last run. CI runs it in its own job, `captures`.
+p2p-screen-captures:
+	@test -n "$$P2P_CAPTURE_DIR" || { echo "Set P2P_CAPTURE_DIR to the folder to write the captures to"; exit 1; }
+	@echo "📸 P2P screen captures into $$P2P_CAPTURE_DIR"
+	@mkdir -p "$$P2P_CAPTURE_DIR" && touch "$$P2P_CAPTURE_DIR/.capture-start"
+	@fvm flutter test --reporter=compact test/features/p2p/p2p_screens_capture_test.dart
+	@count=$$(find "$$P2P_CAPTURE_DIR" -name '*.png' -newer "$$P2P_CAPTURE_DIR/.capture-start" | wc -l); echo "📸 $$count captures written"; test "$$count" -gt 0
+
 # integration_test/all_test.dart is a single aggregator entrypoint: it runs
 # Bull.init() once, then every test file's main(isInitialized: true). On the
 # Linux desktop device the app can only be launched once per `flutter test`

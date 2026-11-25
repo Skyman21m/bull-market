@@ -58,3 +58,28 @@ the key set or a generated string. Run `fvm dart run tools/arb.dart help` for th
 full reference.
 
 > First run is slow (cold package build hooks); subsequent runs are sub-second.
+
+## test_shards.sh — the unit tests in parallel shards (CI)
+
+The CI's `tests` matrix (`.github/workflows/analyze_and_test.yml`) runs the unit
+tests as parallel jobs, one per shard; together the shards run exactly what
+`make unit-test` runs. The shards are the `SHARDS` table at the top of the
+script: a whole workspace member, part k of n of a member's test files (sorted,
+the i-th file going to part (i mod n) + 1), or the default `*`, which takes every
+member with a `test/` directory that no shard names. A new member or a new test
+file therefore always lands in a shard.
+
+```
+bash tools/test_shards.sh names          # the shard names, as JSON (no SDK)
+bash tools/test_shards.sh check          # make unit-test-shards-check
+bash tools/test_shards.sh plan <shard>   # what a shard runs
+bash tools/test_shards.sh run <shard>    # make unit-test-shard SHARD=<shard>
+```
+
+`check` (run by the `checks` job) fails when a member, or a test file of a
+split member, is in no shard or in two, or when a shard would run nothing;
+`run` refuses a shard with nothing to run, since `melos exec` with no package
+left exits 0. `test_shards_test.sh` tests the script over fake workspaces with a
+fake `fvm` (`make unit-test-shards-test`, run by the `test-plan` job). To move
+the cut, edit the table; `check` tells whether the result still covers every
+test exactly once.
