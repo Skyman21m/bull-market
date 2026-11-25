@@ -277,6 +277,24 @@ void main() {
     );
 
     test(
+      'the preparation gone at the confirmation: the new read compared anew, from the price already read',
+      () async {
+        final dearer = await preparedTake(changes: {'satoshis_now': 89083});
+        take
+          ..prepared = [Ok(read), Ok(dearer)]
+          ..answer = () => const Err(TakePreparationGone());
+        await cubit.take();
+        expect(cubit.priceShown, TakenPriceShown.nothing);
+        await cubit.confirm();
+        final state = cubit.state as TakeReady;
+        expect(identical(state.prepared, dearer), isTrue);
+        expect(state.price, isA<TakePriceChecked>());
+        expect(cubit.priceShown, TakenPriceShown.against);
+        expect(prices.asked, hasLength(1));
+      },
+    );
+
+    test(
       'a comparison never stops the take: « Continue » and « Done » send it, red or not checked',
       () async {
         prices.rate = const P2pWalletRateUnavailable();

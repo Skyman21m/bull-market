@@ -19,6 +19,7 @@ import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/order_detail_row.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
+import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart' show FakeTransport, bookOrder, parseOrders;
@@ -119,6 +120,7 @@ Future<(List<TradeRecord>, TakeOrderCubit)> _show(
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
   double textScale = 1,
+  TakeOrderCubit Function(TakeCalls calls, HasGarageKey keys)? cubit,
 }) async {
   tester.view
     ..physicalSize = size * 3
@@ -135,12 +137,12 @@ Future<(List<TradeRecord>, TakeOrderCubit)> _show(
   );
   addTearDown(details.close);
   if (withFees) await tester.runAsync(details.load);
-  final taking = TakeOrderCubit(
-    order,
-    RobosatsNetwork.mainnet,
-    (take ?? _Take()).calls,
-    (network) => vault?.call() ?? Future.value(keys),
-  );
+  final calls = (take ?? _Take()).calls;
+  Future<Result<bool, P2pFailure>> hasKey(RobosatsNetwork network) =>
+      vault?.call() ?? Future.value(keys);
+  final taking =
+      cubit?.call(calls, hasKey) ??
+      TakeOrderCubit(order, RobosatsNetwork.mainnet, calls, hasKey);
   addTearDown(taking.close);
   final taken = <TradeRecord>[];
   await tester.pumpWidget(
@@ -1640,4 +1642,54 @@ void main() {
       }
     }
   });
+
+  testWidgets(
+    'a read of the Bull wallet\'s price that ends in an error while « Continue » waits: « Continue » is busy no more (security review of #249\'s slice 4, R3)',
+    (tester) async {
+      final order = await _order();
+      final (_, cubit) = await _show(
+        tester,
+        order,
+        cubit: (calls, hasKey) =>
+            _FailingPriceCubit(order, RobosatsNetwork.mainnet, calls, hasKey),
+      );
+      await _prepare(tester);
+      (cubit as _FailingPriceCubit).reading();
+      await settle(tester);
+      await _reveal(tester, _continueButton);
+      // The error is the price service's bug, never caught by the page: it is caught here, in the zone the tap starts « Continue » in.
+      Object? caught;
+      final pressed = tester
+          .widget<TradeButton>(
+            find.ancestor(
+              of: _continueButton,
+              matching: find.byType(TradeButton),
+            ),
+          )
+          .onPressed;
+      expect(pressed, isNotNull);
+      runZonedGuarded(() => pressed?.call(), (error, _) => caught = error);
+      await tester.pump();
+      await settle(tester);
+      expect(caught, isA<StateError>());
+      expect(find.byType(StoreTokenDialog), findsNothing);
+      final button = tester.widget<TradeButton>(
+        find.ancestor(of: _continueButton, matching: find.byType(TradeButton)),
+      );
+      expect(button.busy, isFalse);
+    },
+  );
+}
+
+/// A take whose Bull wallet's price is said read, and whose read ends in an error (an `Error`, a bug, as the price's service would throw one).
+final class _FailingPriceCubit extends TakeOrderCubit {
+  _FailingPriceCubit(super.order, super.network, super.calls, super.hasKey);
+
+  /// The read shown, its price said being read.
+  void reading() => emit(
+    TakeReady((state as TakeReady).prepared, price: const TakePriceReading()),
+  );
+
+  @override
+  Future<void> priceSettled() async => throw StateError('a bug of the read');
 }

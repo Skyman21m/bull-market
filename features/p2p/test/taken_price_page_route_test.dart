@@ -23,6 +23,7 @@ import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/unlisted_order_screen.dart';
 import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
+import 'package:p2p/src/ui/widgets/order_detail_row.dart';
 import 'package:p2p/src/ui/widgets/price_check_lines.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
 import 'package:p2p/testing.dart';
@@ -142,6 +143,7 @@ final class _Journey {
     int currency = 1,
     P2pWalletBitcoinRate? rate,
     bool byUrl = false,
+    int? explicit,
   }) async {
     tester.view
       ..physicalSize = const Size(390 * 3, 3200 * 3)
@@ -159,7 +161,8 @@ final class _Journey {
           ..currency = currency
           ..premium = 3.5
           ..satoshisNow = sats
-          ..price = double.parse((1e10 / sats).toStringAsPrecision(5));
+          ..price = double.parse((1e10 / sats).toStringAsPrecision(5))
+          ..explicitSatoshis = explicit;
     final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)))
       ..rate = rate ?? P2pWalletRateRead(_bull);
     final locator = GetIt.asNewInstance();
@@ -315,6 +318,22 @@ final class _Journey {
     );
   }
 
+  /// The « Price and premium » row of the read, and whether it is marked as changed.
+  OrderDetailRow priceRow() => tester.widget<OrderDetailRow>(
+    find.ancestor(
+      of: find.text(l10n.p2pOrderPriceAndPremium),
+      matching: find.byType(OrderDetailRow),
+    ),
+  );
+
+  /// The value « Price and premium » shows for a price with the premium of [price] and [premium] %.
+  String priceValue(double price, double premium) =>
+      l10n.p2pOrderPriceAndPremiumValue(
+        formats.price(price),
+        'USD',
+        formats.premiumNumber(some(Premium.tryCreate(premium))),
+      );
+
   Future<void> close() async {
     await tester.pumpWidget(const SizedBox.shrink());
     await settle(tester);
@@ -403,6 +422,77 @@ void main() {
           );
         }
       }
+
+      testWidgets(
+        'a market order\'s read: « Price and premium » from the terms, the alert\'s coordinator price that price without the premium',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale, sats: 112362);
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          final row = journey.priceRow();
+          expect(row.value, journey.priceValue(1e10 / 112362, 3.5));
+          expect(row.changed, isFalse);
+          // The figure the alert names is the one shown, the premium taken off.
+          journey.expectRed();
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'an order priced in sats whose robot\'s read gives no price and a premium of 39.55 % where the book said 3.5 %: « Price and premium » shows it, marked; nothing is compared beyond the threshold; « Continue » stays offered',
+        (tester) async {
+          // 100 USD for 100,000 sats: 100,000 USD/BTC, 39.55 % above the Bull wallet's 71,657; without that premium, 71,659: within the threshold.
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            sats: 100000,
+            explicit: 100000,
+          );
+          journey.coordinator.robotView
+            ..['price_now'] = null
+            ..['premium_now'] = 39.55;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          final row = journey.priceRow();
+          expect(row.value, journey.priceValue(100000, 39.55));
+          expect(row.changed, isTrue);
+          expect(
+            find.text(journey.l10n.p2pOrderAmountOfSatoshis),
+            findsOneWidget,
+          );
+          expect(find.text(journey.formats.sats(100000)), findsWidgets);
+          journey.expectNothing();
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.send();
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'an honest order priced in sats: its premium shown with its price, not marked, its sats under them, nothing else',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            sats: 134834,
+            explicit: 134834,
+          );
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          final row = journey.priceRow();
+          expect(row.value, journey.priceValue(1e10 / 134834, 3.5));
+          expect(row.changed, isFalse);
+          expect(
+            find.text(journey.l10n.p2pOrderAmountOfSatoshis),
+            findsOneWidget,
+          );
+          journey.expectNothing();
+          await journey.send();
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
 
       testWidgets(
         'an order public again, taken from its trade screen: compared as from the book and by its URL, once at its « Take Order »',

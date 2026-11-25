@@ -1,9 +1,10 @@
-import 'package:robosats/robosats.dart' show OrderType;
+import 'package:robosats/robosats.dart' show OrderType, Premium;
 
 import 'exact_ratio.dart';
 import 'make_price_check.dart';
 import 'sats_at_price.dart';
 import 'trade_terms.dart';
+import 'trade_tolerances.dart';
 
 /// The owner's payment rule on the order page, before a take is sent (#249, slice 4; design note `docs/design/phase-3-taken-order-price-check.md` § 3, first row, and § 8, point 4; option B of § 7, question 1, decided by the owner on 2026-11-24: the alert only).
 ///
@@ -24,6 +25,24 @@ abstract final class TakenPriceCheck {
     if (factor <= ExactRatio.integer(0)) return null;
     final price = (exactBook / factor).toDouble();
     return TradePriceBounds.holds(price) ? price : null;
+  }
+
+  /// Whether the premium of an order priced in sats, as the robot's read gives it and the terms keep it (`premium_now`, the very premium [coordinatorPrice] takes off), moved from [shown], the premium of the order as the page showed it before « Take Order » (the book's, or for an order reached by its URL the read made when its page opened), by more than [TradeTolerances.price] (security review of #249's slice 4, C1).
+  ///
+  /// For such an order the coordinator computes the premium as the order's own rate over its exchange rate, less 1, truncated to two decimals (`Logics.price_and_premium_now`, `api/logics.py:277-296` at commit babf62e): between two reads only its exchange rate moves, so (1 + premium read) ÷ (1 + premium shown) is the inverse of that move, which the trade's checks let move by [TradeTolerances.price] within a few minutes; the two decimals are far within it. Always `false` for an order priced against the market, whose premium is the maker's and must be the book's exactly (`TakeOrderUsecase`). A premium of −100 % or below on either side is said moved when the two differ.
+  static bool premiumMovedFrom(TradeTerms<TakenSide> terms, Premium shown) {
+    if (terms.side.explicitSatoshis == null) return false;
+    final read = ExactRatio.ofDouble(terms.premium.percent);
+    final before = ExactRatio.ofDouble(shown.percent);
+    if (read == null || before == null) return true;
+    final hundred = ExactRatio.integer(100);
+    final zero = ExactRatio.integer(0);
+    final readFactor = hundred + read;
+    final beforeFactor = hundred + before;
+    if (readFactor <= zero || beforeFactor <= zero) return read != before;
+    final tolerance = ExactRatio.ofDouble(TradeTolerances.price) ?? zero;
+    return (readFactor / beforeFactor - ExactRatio.integer(1)).abs() >
+        tolerance;
   }
 
   /// The side [MakePriceCheck.warnsFor] is given for a taker of [role]: the order type whose maker stands where the taker stands, a buyer as `OrderType.buy`, a seller as `OrderType.sell`. Never the order's own type, which is the other side (`tradeRoleTaking`).

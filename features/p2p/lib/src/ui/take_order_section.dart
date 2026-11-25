@@ -166,9 +166,13 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       if (atPress.price is TakePriceReading) {
         final shown = cubit.priceShown;
         setState(() => _waitingPrice = true);
-        await cubit.priceSettled();
+        try {
+          await cubit.priceSettled();
+        } finally {
+          // Even when the read ends in an error (a bug of the price's service, never caught here): « Continue » never stays busy for good (security review of #249's slice 4, R3).
+          if (mounted) setState(() => _waitingPrice = false);
+        }
         if (!mounted) return;
-        setState(() => _waitingPrice = false);
         final now = cubit.state;
         // Gone back, or the read moved on meanwhile: nothing goes on.
         if (now is! TakeReady || !identical(now.prepared, atPress.prepared)) {

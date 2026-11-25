@@ -175,6 +175,75 @@ void main() {
     );
   });
 
+  group(
+    'the premium of an order priced in sats, read by the robot, against the one shown',
+    () {
+      Premium premium(double percent) => some(Premium.tryCreate(percent));
+
+      test('an order priced against the market: never said moved here', () {
+        expect(
+          TakenPriceCheck.premiumMovedFrom(
+            taken(premium: 39.55, bookPrice: 100000),
+            premium(3.5),
+          ),
+          isFalse,
+        );
+      });
+
+      test(
+        'within the trade\'s price tolerance of 2 %, (1 + premium read) ÷ (1 + premium shown): not moved; beyond: moved',
+        () {
+          TradeTerms<TakenSide> read(double percent) => taken(
+            premium: percent,
+            bookPrice: 100000,
+            explicitSatoshis: 100000,
+          );
+          // 102 ÷ 100 = 1.02 exactly: within.
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(2), premium(0)),
+            isFalse,
+          );
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(2.01), premium(0)),
+            isTrue,
+          );
+          // 98 ÷ 100: within; 97.99 ÷ 100: beyond.
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(-2), premium(0)),
+            isFalse,
+          );
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(-2.01), premium(0)),
+            isTrue,
+          );
+          // The same premium, and the market moving a little: not moved.
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(3.5), premium(3.5)),
+            isFalse,
+          );
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(4.2), premium(3.5)),
+            isFalse,
+          );
+          // The security review's case: 3.5 % shown, 39.55 % read.
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(39.55), premium(3.5)),
+            isTrue,
+          );
+          // A premium of −100 % on one side: moved when they differ.
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(-100), premium(3.5)),
+            isTrue,
+          );
+          expect(
+            TakenPriceCheck.premiumMovedFrom(read(-100), premium(-100)),
+            isFalse,
+          );
+        },
+      );
+    },
+  );
+
   group('the taker\'s side', () {
     test('a buyer is warned as a maker buyer, a seller as a maker seller', () {
       expect(TakenPriceCheck.sideOf(TradeRole.buyer), OrderType.buy);
