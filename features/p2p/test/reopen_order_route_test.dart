@@ -1097,8 +1097,9 @@ void main() {
     );
 
     testWidgets(
-      'the arrows leave the Garage by hand, left and opened again included, until an order\'s bond is seen locked (#251)',
+      'a change of #251: the arrows leave the Garage by hand, left and opened again included, and an order\'s bond seen locked while the Garage is under its page now moves it to that order\'s robot (on main the arrows kept it where it was until the Garage was left)',
       (tester) async {
+        // On main (#227) this test was « the arrows stop the following until the Garage is left »: after the arrows, an order's bond locked while the Garage was shown did not move it, and only a new visit opened on that order's robot. Since #251 the hand is kept across visits, and a trade of the key whose bond is seen locked after the move gives the hand back to the rule at once, for the arrows as for a « Last order #N » tap, so that the Garage shows the robot of the trade that has just started; the reference stays where the arrows left it, but is already on that robot since its take and make use the robot shown. Kept by the coordinator's decision on the functional review of PR 274 (C1, option b), to confirm with the owner.
         final app = await _App.start(tester, torKnown: true);
         await app.openGarage();
         final made = await makeOther(app);

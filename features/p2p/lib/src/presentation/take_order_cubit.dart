@@ -566,10 +566,15 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
 
     final unlisted = this.unlisted;
     // Read before the preparation, so before any robot it reserves (#251, § 4.2): the use case keeps it with a robot reserved now, never takes its robot from it.
-    final garageRobot = switch (_calls.garageRobot) {
-      final read? => await read(network),
-      null => null,
-    };
+    RobotSlot? garageRobot;
+    if (_calls.garageRobot case final read?) {
+      garageRobot = await read(network);
+      // The page was left during that read: nothing is prepared, no robot reserved.
+      if (isClosed) {
+        _stillWaiting?.cancel();
+        return state;
+      }
+    }
     final prepareUnlisted = _calls.prepareUnlisted;
     final result = unlisted != null && prepareUnlisted != null
         ? await prepareUnlisted(

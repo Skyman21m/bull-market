@@ -1812,6 +1812,44 @@ void main() {
         expect(events, ['garage mainnet', 'prepare 4']);
       },
     );
+
+    testWidgets(
+      'the page left while the Garage\'s robot is read: nothing prepared, so no robot reserved and no order read',
+      (tester) async {
+        final events = <String>[];
+        final reading = Completer<RobotSlot?>();
+        final order = await _order();
+        final cubit = TakeOrderCubit(
+          order,
+          RobosatsNetwork.mainnet,
+          TakeCalls(
+            prepare:
+                (shown, {required network, amount, onStep, garageRobot}) async {
+                  events.add('prepare');
+                  return Ok(_read);
+                },
+            confirm: (prepared, {password, onStep}) =>
+                throw StateError('not taken'),
+            abandon: (_) => events.add('abandon'),
+            abandonOrder: (shown, {required network}) =>
+                events.add('abandon order'),
+            garageRobot: (network) {
+              events.add('garage');
+              return reading.future;
+            },
+          ),
+          (network) async => const Ok(true),
+        );
+        final taking = cubit.take();
+        await tester.pump();
+        expect(events, ['garage']);
+        await cubit.close();
+        reading.complete(null);
+        await taking;
+        await tester.pump(const Duration(minutes: 1));
+        expect(events, isNot(contains('prepare')));
+      },
+    );
   });
 }
 

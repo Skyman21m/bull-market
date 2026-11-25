@@ -1947,7 +1947,8 @@ void main() {
             recordsOf(
               drawnHere: false,
               fresh: null,
-              ended: [(3, TradePosition.expired)],
+              // An open record of the robot it opens on, made here: only the guard on the key's history stops the read.
+              locked: [3],
             ),
             recordsOf(ended: [(3, TradePosition.expired)]),
             const Err<GarageRecords, P2pFailure>(P2pStorageFailure()),
@@ -1959,6 +1960,9 @@ void main() {
               readOnce: readOnce,
             );
             await again.load();
+            if (start case Ok(value: GarageRecords(keyDrawnHereOnly: false))) {
+              expect(shown(again), 3);
+            }
             again.robotWithoutActiveOrder(shown(again));
             expect(read, [3], reason: '$start');
             await again.close();
