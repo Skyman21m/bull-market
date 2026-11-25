@@ -20,6 +20,7 @@ import '../presentation/take_order_cubit.dart';
 import '../presentation/trade_l10n.dart';
 import 'order_details_screen.dart';
 import 'widgets/amount_row.dart';
+import 'widgets/detail_toggle.dart';
 import 'widgets/moved_tap_guard.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/order_detail_row.dart';
@@ -355,7 +356,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
 ///
 /// The read is shown from its arrival to the trade's screen, and stays shown while the order is read again because it changed, the rows that differ marked once the new read arrives; the card is scrolled into view when a read arrives, so that its description and figures are seen before « Continue ».
 ///
-/// Under « Price and premium » of a read, the owner's payment rule before the take (#249, slice 4, option B decided by the owner on 2026-11-24, the alert only; [TakenPriceShown]): nothing while the coordinator's price, without the premium, is within the threshold of the Bull wallet's or while it is read; beyond it on the taker's side, the red alert in two lines and its explanation; « Price not checked » in orange with « Retry » when the Bull wallet's price could not be read; the grey « not quoted » line for a currency the Bull wallet does not price.
+/// Under « Price and premium » of a read, the owner's payment rule before the take (#249, slice 4, option B decided by the owner on 2026-11-24, the alert only; [TakenPriceShown]): nothing while the coordinator's price, without the premium, is within the threshold of the Bull wallet's or while it is read; beyond it on the taker's side, the red alert in two lines; « Price not checked » in orange with « Retry » and its second line when the Bull wallet's price could not be read; the explanation of either behind « Show details » under its lines (#270); the grey « not quoted » line for a currency the Bull wallet does not price.
 class TakeOrderDetailsCard extends StatelessWidget {
   final PublicOrder order;
   final TakerEstimate? estimate;
@@ -372,6 +373,9 @@ class TakeOrderDetailsCard extends StatelessWidget {
 
   /// The comparison's lines under « Price and premium », when there are any.
   static const priceAlert = ValueKey('take-price-alert');
+
+  /// « Show details » / « Hide details » of the alert's explanation, just under its lines (#270).
+  static const priceDetailToggle = ValueKey('take-price-detail-toggle');
 
   /// The read of [state] the order details show, if any.
   static PreparedTake? readOf(TakeOrderState state) => switch (state) {
@@ -428,7 +432,9 @@ class TakeOrderDetailsCard extends StatelessWidget {
 }
 
 /// The comparison of the read's price with the Bull wallet's, when it says something ([TakenPriceShown] other than nothing), in the lines of #250 ([PriceCheckLines]) with the order page's own bold lines; never a reassuring line.
-class _TakePriceLines extends StatelessWidget {
+///
+/// The alert's lines are drawn without a tap: the bold line and the two prices of the red alert, the bold line with « Retry » and its second line of « Price not checked ». Its explanation is behind « Show details » just under them, in the same frame, opening under the link as in the invoice's breakdown (the owner's decision of 2026-11-25, #270); the grey « not quoted » line has none, and no link. A new alert arrives folded, and the detail never opens by itself.
+class _TakePriceLines extends StatefulWidget {
   final TakenPriceShown shown;
   final MakePriceCheck? check;
   final String currency;
@@ -445,41 +451,102 @@ class _TakePriceLines extends StatelessWidget {
   });
 
   @override
+  State<_TakePriceLines> createState() => _TakePriceLinesState();
+}
+
+class _TakePriceLinesState extends State<_TakePriceLines> {
+  /// Whether the alert's explanation is shown; folded at first.
+  var _open = false;
+
+  @override
+  void didUpdateWidget(covariant _TakePriceLines old) {
+    super.didUpdateWidget(old);
+    // A new alert arrives folded: another line, or a new comparison (a read compared anew, « Retry » answered). The same comparison, still drawn while « Retry » reads again, keeps its detail as the user left it.
+    if (old.shown != widget.shown || !identical(old.check, widget.check)) {
+      _open = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    final check = this.check;
-    switch (shown) {
-      case TakenPriceShown.against || TakenPriceShown.farBelow
-          when check is MakePriceCompared:
-        return PriceCheckLines.against(
+    final colors = context.bull;
+    final check = widget.check;
+    final shown = widget.shown;
+    final (Widget lines, String? explanation, Color tone) = switch (shown) {
+      TakenPriceShown.against ||
+      TakenPriceShown.farBelow when check is MakePriceCompared => (
+        PriceCheckLines.against(
           formats.gap(check.gapHundredths),
           label: shown == TakenPriceShown.farBelow
               ? l10n.p2pTakePriceFarBelow
               : l10n.p2pTakePriceAgainst,
           figures: l10n.p2pTakePriceFigures(
             formats.orderRate(check.walletPrice),
-            currency,
+            widget.currency,
             formats.orderRate(check.coordinatorPrice),
           ),
-          explanation: l10n.p2pTakePriceDetail(
-            formats.threshold(TradeTolerances.walletRateGap),
-          ),
-        );
-      case TakenPriceShown.unverified:
-        return PriceCheckLines.unverified(
+        ),
+        l10n.p2pTakePriceDetail(
+          formats.threshold(TradeTolerances.walletRateGap),
+        ),
+        colors.error,
+      ),
+      TakenPriceShown.unverified => (
+        PriceCheckLines.unverified(
           label: l10n.p2pTakePriceUnverified,
-          explanation: l10n.p2pTakePriceUnverifiedDetail,
-          retrying: retrying,
+          retrying: widget.retrying,
           onRetry: () => unawaited(context.read<TakeOrderCubit>().retryPrice()),
-        );
-      case TakenPriceShown.notPriced:
-        return const PriceCheckLines.notPriced();
-      case TakenPriceShown.against ||
-          TakenPriceShown.farBelow ||
-          TakenPriceShown.nothing:
-        return const SizedBox.shrink();
-    }
+        ),
+        l10n.p2pTakePriceUnverifiedDetail,
+        colors.warning,
+      ),
+      TakenPriceShown.notPriced => (
+        const PriceCheckLines.notPriced(),
+        null,
+        colors.textMuted,
+      ),
+      TakenPriceShown.against ||
+      TakenPriceShown.farBelow ||
+      TakenPriceShown.nothing => (
+        const SizedBox.shrink(),
+        null,
+        colors.textMuted,
+      ),
+    };
+    if (explanation == null) return lines;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        lines,
+        // One node for a screen reader, the button with its state: « Show details » folded, « Hide details » open.
+        MergeSemantics(
+          child: Semantics(
+            expanded: _open,
+            child: DetailToggle(
+              key: TakeOrderDetailsCard.priceDetailToggle,
+              open: _open,
+              onPressed: () => setState(() => _open = !_open),
+            ),
+          ),
+        ),
+        if (_open)
+          Semantics(
+            container: true,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: BullSpacing.xxs / 2),
+              child: WordFitText(
+                explanation,
+                key: PriceCheckLines.explanationLine,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: tone),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 
