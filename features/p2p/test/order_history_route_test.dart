@@ -19,6 +19,7 @@ import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/coordinator_text.dart';
+import 'package:p2p/src/presentation/order_history_cubit.dart';
 import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/garage/account_navigator.dart';
@@ -244,6 +245,7 @@ final class _App {
     double width = 390,
     double textScale = 1,
     bool databaseUnavailable = false,
+    bool history = true,
   }) async {
     tester.view
       ..physicalSize = Size(width * 3, 2600 * 3)
@@ -270,6 +272,8 @@ final class _App {
       robotKeys: HarnessKeys(),
       databaseUnavailable: databaseUnavailable,
     );
+    // Without the history's cubit, the Garage draws no history at all (`P2pRouter`): the Garage as it was before #253.
+    if (!history) locator.unregister<OrderHistoryCubit>();
     final router = GoRouter(
       initialLocation: P2pFeature.path,
       routes: [const P2pFeature().route(locator, network: (_) => _net)],
@@ -366,7 +370,33 @@ void _expectNoWordBroken(WidgetTester tester, String reason) {
   }
 }
 
+/// The requests sent to the coordinators, one line each (method, host, path), sorted: what two Garages may be compared on, whatever the order the requests left in.
+List<String> _sentLines(FakeTransport transport) => [
+  for (final request in transport.requests)
+    '${request.method.name} ${request.url.host}${request.url.path}',
+]..sort();
+
 void main() {
+  testWidgets(
+    'reading the history when the Garage opens asks nothing of any coordinator: the same requests as a Garage without the history (#273)',
+    (tester) async {
+      final sent = <bool, List<String>>{};
+      for (final history in [false, true]) {
+        final app = await _App.start(tester, history: history);
+        await app.write(_finished);
+        await app.openGarage();
+        await app.settle(20);
+        expect(app.seeHistory, history ? findsOneWidget : findsNothing);
+        sent[history] = _sentLines(app.transport);
+        await app.close();
+        // Its database closed before the next Garage opens its own.
+        await app.wait(() => app.locator.reset());
+      }
+      expect(sent[false], isNotNull);
+      expect(sent[true], sent[false]);
+    },
+  );
+
   for (final locale in const [Locale('en'), Locale('fr')]) {
     final language = locale.languageCode;
 
@@ -487,6 +517,45 @@ void main() {
           await app.tap(app.seeHistory);
           expect(app.lines(), hasLength(10));
           expect(app.transport.requests.length, sent);
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'the day a line shows is the day its end was read, not the day of the take (#273)',
+        (tester) async {
+          final app = await _App.start(tester, locale: locale);
+          await app.write(_finished.sublist(10));
+          // Taken on one day, its end read three days later.
+          final taken = app.now.add(const Duration(days: 1));
+          app.now = taken;
+          final record = await app.wait(
+            () => app.records.taken(
+              app.robot(40),
+              orderId: 48001,
+              position: 'succeeded',
+              beforeClose: () => app.now = app.now.add(const Duration(days: 3)),
+            ),
+          );
+          app.finished.insert(0, record);
+          final formats = P2pFormats(app.l10n);
+          final closedAt = record.closedAt ?? DateTime(0);
+          expect(formats.day(record.takenAt), isNot(formats.day(closedAt)));
+          await app.openGarage();
+          await app.tap(app.seeHistory);
+          final line = app.line(record);
+          Finder facts(DateTime day) => find.descendant(
+            of: line,
+            matching: find.text(
+              app.l10n.p2pHistoryFacts(
+                app.l10n.p2pHistoryBuy,
+                app.l10n.p2pHistoryTakenHere,
+                formats.day(day),
+              ),
+            ),
+          );
+          expect(facts(closedAt), findsOneWidget);
+          expect(facts(record.takenAt), findsNothing);
           await app.close();
         },
       );

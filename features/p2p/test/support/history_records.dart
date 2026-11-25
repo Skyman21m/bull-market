@@ -56,7 +56,7 @@ final class HistoryRecords {
     historyUnknown: false,
   );
 
-  /// Order [orderId] taken here by [robot] on [alias] as [role], its terms recorded and its trail stored at [position] (none for `null`), confirmed unless [confirmed] is false, then closed unless [closed] is false.
+  /// Order [orderId] taken here by [robot] on [alias] as [role], its terms recorded and its trail stored at [position] (none for `null`), confirmed unless [confirmed] is false, then closed unless [closed] is false, [beforeClose] run just before, as a test moves its clock so that the end is read on another day than the take.
   Future<TradeRecord> taken(
     RobotSlot robot, {
     required int orderId,
@@ -65,6 +65,7 @@ final class HistoryRecords {
     String? position = 'succeeded',
     bool confirmed = true,
     bool closed = true,
+    void Function()? beforeClose,
   }) async {
     var record = _value(
       await trades.recordPendingTake(
@@ -101,6 +102,7 @@ final class HistoryRecords {
       );
     }
     if (confirmed) record = _value(await trades.confirmTake(record));
+    beforeClose?.call();
     if (closed) record = _value(await trades.closeTrade(record));
     return record;
   }
