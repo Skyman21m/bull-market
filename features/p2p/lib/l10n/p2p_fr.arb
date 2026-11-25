@@ -1065,5 +1065,13 @@
   "p2pMapTilesClose": "Fermer",
   "p2pMapTilesAcknowledged": "Confirmer",
   "p2pMapTilesCredit": "© OpenStreetMap contributors",
-  "p2pMapTilesUnavailable": "Tuiles de la carte indisponibles"
+  "p2pMapTilesUnavailable": "Tuiles de la carte indisponibles",
+  "p2pTakePriceAgainst": "Prix en votre défaveur",
+  "p2pTakePriceFarBelow": "Prix très en dessous du prix Bull",
+  "p2pTakePriceFigures": "Bull Wallet compte {wallet} {currency}/BTC, le coordinateur {coordinator}.",
+  "p2pTakePriceDetail": "Bull Wallet compare le prix du coordinateur, hors prime, à son propre prix et vous prévient au-delà de {threshold} d’écart. Vérifiez l’ordre avant de le prendre.",
+  "p2pTakePriceUnverified": "Prix non vérifié",
+  "p2pTakePriceUnverifiedDetail": "Sans ce prix, il ne peut pas comparer le prix du coordinateur. Vous pouvez réessayer, ou prendre l’ordre sans cette vérification.",
+  "p2pTakePageChangedTitle": "La fiche a changé",
+  "p2pTakePageChangedLine": "Relisez la ligne du prix, puis continuez à nouveau."
 }

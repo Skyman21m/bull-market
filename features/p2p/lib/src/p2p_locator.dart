@@ -603,12 +603,19 @@ final class P2pLocator {
       );
     }
 
+    // The owner's payment rule before the take (#249, slice 4): the read shown compared with the Bull wallet's price, only where the wallet's port was lent.
+    CheckTakePrice? takePrice() => paysBondFromWallet(locator)
+        ? locator<CheckMakePriceUsecase>().execute
+        : null;
+
     locator.registerFactoryParam<TakeOrderCubit, PublicOrder, RobosatsNetwork>(
       (order, network) => TakeOrderCubit(
         order,
         network,
         takeCalls(),
         locator<HasGarageKeyUsecase>().execute,
+        checkPrice: takePrice(),
+        now: clock,
       ),
     );
     // The take of an order no book received, reached by its URL and read by its robot (#245): a password-protected one, or a public one the book in memory does not hold yet; and the read itself.
@@ -617,6 +624,8 @@ final class P2pLocator {
         order,
         takeCalls(),
         locator<HasGarageKeyUsecase>().execute,
+        checkPrice: takePrice(),
+        now: clock,
       ),
       instanceName: TakeOrderCubit.unlistedOrder,
     );
@@ -643,6 +652,8 @@ final class P2pLocator {
         takeCalls(),
         locator<HasGarageKeyUsecase>().execute,
         shownTrade: shown,
+        checkPrice: takePrice(),
+        now: clock,
       ),
       instanceName: TakeOrderCubit.fromTrade,
     );

@@ -8,7 +8,10 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/taker_estimate.dart';
+import '../domain/trade/make_price_check.dart';
+import '../domain/trade/taken_price_check.dart';
 import '../domain/trade/trade_take.dart';
+import '../domain/trade/trade_tolerances.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
@@ -16,10 +19,14 @@ import '../presentation/take_amount_input.dart';
 import '../presentation/take_order_cubit.dart';
 import '../presentation/trade_l10n.dart';
 import 'order_details_screen.dart';
+import 'widgets/amount_row.dart';
+import 'widgets/moved_tap_guard.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/order_detail_row.dart';
+import 'widgets/price_check_lines.dart';
 import 'widgets/store_token_dialog.dart';
 import 'widgets/trade_button.dart';
+import 'widgets/word_fit_text.dart';
 
 /// « Take Order » at the foot of the order details, as the official client's take button (`components/OrderDetails/TakeButton.tsx` at commit ff1998c).
 ///
@@ -30,6 +37,7 @@ import 'widgets/trade_button.dart';
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
 /// - A password-protected order reached by its URL (#245, `TakeOrderCubit.unlisted` with `UnlistedOrder.hasPassword`; an order without a password reached so has no field): « Password » above the button, as the reference puts it above its take button (`components/OrderDetails/index.tsx:546-571`), typed hidden, with a short line above it that its description and location come with the take; its text stays in this field, and « Done » hands the cubit its hash only ([OrderPassword]); « Take Order » or « Continue » pressed with the field empty starts nothing and says so under the button, where the reference would send the take and be refused (error 1045); a wrong password is said there with the coordinator's message (« Wrong password », `api/errors.py:52`), the field kept to be corrected.
+/// - The owner's payment rule before the take (#249, slice 4): « Continue » pressed while the Bull wallet's price is read waits for it, the button busy, then stops once, with « This page has changed » over it, when the order details now show a line of the comparison they did not show at the press (the red alert, « Price not checked » or « not quoted »), never when they show nothing new, as « Create order » stops (`MakePriceVerdict.stopsPressFor`); a press again goes on. « Continue » is never refused for what the comparison says, and a tap on it just after the comparison moved it is ignored for a moment ([MovedTapGuard]).
 ///
 /// Without [canTake] (the feature was set up without the vault's handle, so it holds no robot) a press shows « You do not have a Garage Key », as the reference does without a robot.
 class TakeOrderSection extends StatefulWidget {
@@ -50,6 +58,12 @@ class TakeOrderSection extends StatefulWidget {
     required this.onTaken,
   });
 
+  /// « Continue », once the read is shown.
+  static const continueButton = ValueKey('take-continue');
+
+  /// « This page has changed » over « Continue ».
+  static const pageChangedBlock = ValueKey('take-page-changed');
+
   @override
   State<TakeOrderSection> createState() => _TakeOrderSectionState();
 }
@@ -65,6 +79,12 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
 
   /// Whether a dialog of the take is open: a second press meanwhile opens nothing more.
   bool _asking = false;
+
+  /// Whether « Continue » waits for the Bull wallet's price being read (#249).
+  bool _waitingPrice = false;
+
+  /// The read for which « Continue » stopped because the order details came to show a line of the comparison while it waited: « This page has changed » is said while that read is shown.
+  PreparedTake? _stoppedFor;
 
   @override
   void dispose() {
@@ -132,12 +152,40 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
   /// « Continue »: « Store your garage key », whose « Done » sends the take. Its « Go back », or a tap outside, only closes it, as the reference's does (`TakeButton.tsx:380-382`): the order as read stays on the page with its take prepared, and « Go back » of the page is what abandons it.
   ///
   /// For a protected order, nothing opens while « Password » is empty; « Done » hands the cubit the hash of the password the field holds then (#245).
+  ///
+  /// Pressed while the Bull wallet's price is read for the read shown (#249), it waits for that read, then stops once, saying « This page has changed », when the order details now show a line of the comparison they did not show at the press; it goes on when they show nothing, or the line they showed (« Price not checked » read again and still not checked). A press again goes on.
   Future<void> _continue() async {
     if (_asking) return;
     if (!_passwordGiven()) return;
     _asking = true;
     try {
       final cubit = context.read<TakeOrderCubit>();
+      final atPress = cubit.state;
+      if (atPress is! TakeReady) return;
+      if (_stoppedFor != null) setState(() => _stoppedFor = null);
+      if (atPress.price is TakePriceReading) {
+        final shown = cubit.priceShown;
+        setState(() => _waitingPrice = true);
+        try {
+          await cubit.priceSettled();
+        } finally {
+          // Even when the read ends in an error (a bug of the price's service, never caught here): « Continue » never stays busy for good (security review of #249's slice 4, R3).
+          if (mounted) setState(() => _waitingPrice = false);
+        }
+        if (!mounted) return;
+        final now = cubit.state;
+        // Gone back, or the read moved on meanwhile: nothing goes on.
+        if (now is! TakeReady || !identical(now.prepared, atPress.prepared)) {
+          return;
+        }
+        // A line the press was not made on: the red alert, « Price not checked » or « not quoted ». Nothing shown now is nothing new to read.
+        final after = cubit.priceShown;
+        if (after != TakenPriceShown.nothing && after != shown) {
+          setState(() => _stoppedFor = now.prepared);
+          return;
+        }
+      }
+      if (!mounted) return;
       final done = await StoreTokenDialog.show(context);
       if (!mounted) return;
       if (done) {
@@ -191,6 +239,10 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       TakeReady(changed: true) => true,
       _ => false,
     };
+    final stopped = switch (state) {
+      TakeReady(:final prepared) => identical(prepared, _stoppedFor),
+      _ => false,
+    };
     final Widget button = read != null
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -199,10 +251,18 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
                 _Line(l10n.p2pTakeOrderChangedRead, live: true),
                 const Gap(BullSpacing.xs),
               ],
-              TradeButton(
-                label: l10n.p2pCommonContinue,
-                busy: state is! TakeReady,
-                onPressed: () => unawaited(_continue()),
+              if (stopped) ...[
+                const _PageChanged(key: TakeOrderSection.pageChangedBlock),
+                const Gap(BullSpacing.xs),
+              ],
+              // A tap aimed at what stood here before the comparison's line came or went is ignored for a moment (#249); « Continue » stays enabled and goes on at the next tap.
+              MovedTapGuard(
+                key: TakeOrderSection.continueButton,
+                builder: (context, guard) => TradeButton(
+                  label: l10n.p2pCommonContinue,
+                  busy: state is! TakeReady || _waitingPrice,
+                  onPressed: guard(() => unawaited(_continue())),
+                ),
               ),
               const Gap(BullSpacing.sm),
               TradeButton(
@@ -294,6 +354,8 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
 /// [PublicOrderDetailsCard] of the order, with the robot's read once the take is prepared (#119): with [canTake], a `TakeOrderCubit` is above it, the one of the [TakeOrderSection] under it.
 ///
 /// The read is shown from its arrival to the trade's screen, and stays shown while the order is read again because it changed, the rows that differ marked once the new read arrives; the card is scrolled into view when a read arrives, so that its description and figures are seen before « Continue ».
+///
+/// Under « Price and premium » of a read, the owner's payment rule before the take (#249, slice 4, option B decided by the owner on 2026-11-24, the alert only; [TakenPriceShown]): nothing while the coordinator's price, without the premium, is within the threshold of the Bull wallet's or while it is read; beyond it on the taker's side, the red alert in two lines and its explanation; « Price not checked » in orange with « Retry » when the Bull wallet's price could not be read; the grey « not quoted » line for a currency the Bull wallet does not price.
 class TakeOrderDetailsCard extends StatelessWidget {
   final PublicOrder order;
   final TakerEstimate? estimate;
@@ -307,6 +369,9 @@ class TakeOrderDetailsCard extends StatelessWidget {
     required this.now,
     required this.canTake,
   });
+
+  /// The comparison's lines under « Price and premium », when there are any.
+  static const priceAlert = ValueKey('take-price-alert');
 
   /// The read of [state] the order details show, if any.
   static PreparedTake? readOf(TakeOrderState state) => switch (state) {
@@ -322,8 +387,16 @@ class TakeOrderDetailsCard extends StatelessWidget {
       return PublicOrderDetailsCard(order: order, estimate: estimate, now: now);
     }
     final state = context.watch<TakeOrderCubit>().state;
+    final read = readOf(state);
+    final shown = read == null
+        ? TakenPriceShown.nothing
+        : TakenPriceCheck.shownOf(state.price.shownCheck, read.terms.role);
     return BlocListener<TakeOrderCubit, TakeOrderState>(
-      listenWhen: (_, current) => current is TakeReady,
+      // A read that arrives, not its comparison: the page is not scrolled again when an alert comes.
+      listenWhen: (previous, current) =>
+          current is TakeReady &&
+          !(previous is TakeReady &&
+              identical(previous.prepared, current.prepared)),
       listener: (context, _) => unawaited(
         Scrollable.ensureVisible(
           context,
@@ -334,11 +407,107 @@ class TakeOrderDetailsCard extends StatelessWidget {
         order: order,
         estimate: estimate,
         now: now,
-        read: readOf(state),
+        read: read,
         previous: switch (state) {
           TakeReady(:final previous) => previous,
           _ => null,
         },
+        priceAlert: read == null || shown == TakenPriceShown.nothing
+            ? null
+            : _TakePriceLines(
+                key: priceAlert,
+                shown: shown,
+                check: state.price.shownCheck,
+                currency: read.terms.currency.code,
+                retrying:
+                    state is! TakeReady || state.price is TakePriceReading,
+              ),
+      ),
+    );
+  }
+}
+
+/// The comparison of the read's price with the Bull wallet's, when it says something ([TakenPriceShown] other than nothing), in the lines of #250 ([PriceCheckLines]) with the order page's own bold lines; never a reassuring line.
+class _TakePriceLines extends StatelessWidget {
+  final TakenPriceShown shown;
+  final MakePriceCheck? check;
+  final String currency;
+
+  /// Whether « Retry » is shown but not offered: the price read again, or « Continue » moved on.
+  final bool retrying;
+
+  const _TakePriceLines({
+    super.key,
+    required this.shown,
+    required this.check,
+    required this.currency,
+    required this.retrying,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final check = this.check;
+    switch (shown) {
+      case TakenPriceShown.against || TakenPriceShown.farBelow
+          when check is MakePriceCompared:
+        return PriceCheckLines.against(
+          formats.gap(check.gapHundredths),
+          label: shown == TakenPriceShown.farBelow
+              ? l10n.p2pTakePriceFarBelow
+              : l10n.p2pTakePriceAgainst,
+          figures: l10n.p2pTakePriceFigures(
+            formats.orderRate(check.walletPrice),
+            currency,
+            formats.orderRate(check.coordinatorPrice),
+          ),
+          explanation: l10n.p2pTakePriceDetail(
+            formats.threshold(TradeTolerances.walletRateGap),
+          ),
+        );
+      case TakenPriceShown.unverified:
+        return PriceCheckLines.unverified(
+          label: l10n.p2pTakePriceUnverified,
+          explanation: l10n.p2pTakePriceUnverifiedDetail,
+          retrying: retrying,
+          onRetry: () => unawaited(context.read<TakeOrderCubit>().retryPrice()),
+        );
+      case TakenPriceShown.notPriced:
+        return const PriceCheckLines.notPriced();
+      case TakenPriceShown.against ||
+          TakenPriceShown.farBelow ||
+          TakenPriceShown.nothing:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+/// « This page has changed » over « Continue », in orange, on the model of « The amounts have changed » (#250): « Continue » stopped once because a line of the comparison came while it waited for it (#249).
+class _PageChanged extends StatelessWidget {
+  const _PageChanged({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AmountRow(
+            label: l10n.p2pTakePageChangedTitle,
+            tone: AmountRowTone.warning,
+          ),
+          WordFitText(
+            l10n.p2pTakePageChangedLine,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.warning),
+          ),
+        ],
       ),
     );
   }

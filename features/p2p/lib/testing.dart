@@ -3,7 +3,7 @@
 /// For tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
-import 'dart:async' show StreamController, StreamSubscription, Timer;
+import 'dart:async' show Completer, StreamController, StreamSubscription, Timer;
 import 'dart:io' show FileSystemException;
 
 import 'package:bull_tor/tor.dart';
@@ -468,12 +468,17 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   /// The prices asked, with their network and currency, in order.
   final List<(RobosatsNetwork, RobosatsCurrency)> ratesAsked = [];
 
+  /// While set and not completed, [bitcoinRate] waits for it before answering [rate] as it is then: a read that runs, for a test of what is pressed meanwhile.
+  Completer<void>? rateHeld;
+
   @override
   Future<P2pWalletBitcoinRate> bitcoinRate(
     RobosatsNetwork network,
     RobosatsCurrency currency,
   ) async {
     ratesAsked.add((network, currency));
+    final held = rateHeld;
+    if (held != null) await held.future;
     return rate;
   }
 }

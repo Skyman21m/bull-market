@@ -6154,5 +6154,53 @@
   "p2pMapTilesUnavailable": "Map tiles unavailable",
   "@p2pMapTilesUnavailable": {
     "description": "Not in the RoboSats texts: the project's own: one line over a map whose tiles in view failed or were refused by the provider, the countries staying in their squares; the official client shows the provider's error picture (#246)."
+  },
+  "p2pTakePriceAgainst": "Price against you",
+  "@p2pTakePriceAgainst": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of the red alert under « Price and premium » when the coordinator's price, without the premium, is more than the threshold above the Bull wallet's for a taker buyer, or below it for a taker seller; the gap, with its sign, on its right. « Continue » stays offered."
+  },
+  "p2pTakePriceFarBelow": "Price far below the Bull price",
+  "@p2pTakePriceFarBelow": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of the red alert for a taker buyer when the coordinator's price, without the premium, is more than the threshold below the Bull wallet's (a larger bond), as the create form warns a buyer both ways; the gap, with its sign, on its right."
+  },
+  "p2pTakePriceFigures": "Bull Wallet uses {wallet} {currency}/BTC, the coordinator {coordinator}.",
+  "@p2pTakePriceFigures": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the second line of the red alert: {wallet} the Bull wallet's price of a bitcoin, {coordinator} the coordinator's, both without the premium, {currency} the order's currency code.",
+    "placeholders": {
+      "wallet": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTakePriceDetail": "Bull Wallet compares the coordinator's price, premium excluded, with its own price and warns you beyond a {threshold} gap. Check the order before taking it.",
+  "@p2pTakePriceDetail": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the third line of the red alert, its explanation, said under its two lines since the order page has no detail to hold it. {threshold} the owner's threshold, such as « 10% ».",
+    "placeholders": {
+      "threshold": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTakePriceUnverified": "Price not checked",
+  "@p2pTakePriceUnverified": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of the orange block when the Bull wallet's price could not be read, with « Retry » on its right; its second line is p2pPayoutBreakdownUnverifiedLine."
+  },
+  "p2pTakePriceUnverifiedDetail": "Without this price, it cannot compare the coordinator's price. You can try again, or take the order without this check.",
+  "@p2pTakePriceUnverifiedDetail": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the third line of « Price not checked »; « Continue » stays offered."
+  },
+  "p2pTakePageChangedTitle": "This page has changed",
+  "@p2pTakePageChangedTitle": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed on 2026-11-25, after the functional review of this slice, on the model of the words the owner validated for #250, not validated; the English is composed on the model of the French: the bold line of an orange block over « Continue » when « Continue » was pressed while the Bull wallet's price was read and the page, once it was read, shows a line of the comparison it did not show at the press (the red alert, « Price not checked » or « not quoted »): nothing was sent, a press again goes on. On the model of p2pPayConfirmAgainTitle."
+  },
+  "p2pTakePageChangedLine": "Read the price line again, then continue again.",
+  "@p2pTakePageChangedLine": {
+    "description": "Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed on 2026-11-25, after the functional review of this slice, on the model of the words the owner validated for #250, not validated; the English is composed on the model of the French: the second line of p2pTakePageChangedTitle."
   }
 }

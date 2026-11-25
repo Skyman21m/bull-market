@@ -6637,6 +6637,58 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Map tiles unavailable'**
   String get p2pMapTilesUnavailable;
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of the red alert under « Price and premium » when the coordinator's price, without the premium, is more than the threshold above the Bull wallet's for a taker buyer, or below it for a taker seller; the gap, with its sign, on its right. « Continue » stays offered.
+  ///
+  /// In en, this message translates to:
+  /// **'Price against you'**
+  String get p2pTakePriceAgainst;
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of the red alert for a taker buyer when the coordinator's price, without the premium, is more than the threshold below the Bull wallet's (a larger bond), as the create form warns a buyer both ways; the gap, with its sign, on its right.
+  ///
+  /// In en, this message translates to:
+  /// **'Price far below the Bull price'**
+  String get p2pTakePriceFarBelow;
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the second line of the red alert: {wallet} the Bull wallet's price of a bitcoin, {coordinator} the coordinator's, both without the premium, {currency} the order's currency code.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet uses {wallet} {currency}/BTC, the coordinator {coordinator}.'**
+  String p2pTakePriceFigures(
+    String wallet,
+    String currency,
+    String coordinator,
+  );
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the third line of the red alert, its explanation, said under its two lines since the order page has no detail to hold it. {threshold} the owner's threshold, such as « 10% ».
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet compares the coordinator\'s price, premium excluded, with its own price and warns you beyond a {threshold} gap. Check the order before taking it.'**
+  String p2pTakePriceDetail(String threshold);
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of the orange block when the Bull wallet's price could not be read, with « Retry » on its right; its second line is p2pPayoutBreakdownUnverifiedLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Price not checked'**
+  String get p2pTakePriceUnverified;
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the third line of « Price not checked »; « Continue » stays offered.
+  ///
+  /// In en, this message translates to:
+  /// **'Without this price, it cannot compare the coordinator\'s price. You can try again, or take the order without this check.'**
+  String get p2pTakePriceUnverifiedDetail;
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed on 2026-11-25, after the functional review of this slice, on the model of the words the owner validated for #250, not validated; the English is composed on the model of the French: the bold line of an orange block over « Continue » when « Continue » was pressed while the Bull wallet's price was read and the page, once it was read, shows a line of the comparison it did not show at the press (the red alert, « Price not checked » or « not quoted »): nothing was sent, a press again goes on. On the model of p2pPayConfirmAgainTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This page has changed'**
+  String get p2pTakePageChangedTitle;
+
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed on 2026-11-25, after the functional review of this slice, on the model of the words the owner validated for #250, not validated; the English is composed on the model of the French: the second line of p2pTakePageChangedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Read the price line again, then continue again.'**
+  String get p2pTakePageChangedLine;
 }
 
 class _P2pLocalizationsDelegate

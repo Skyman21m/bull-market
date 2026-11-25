@@ -227,6 +227,9 @@ final class _Journey {
     await tap(find.text(l10n.p2pCommonDone));
     await settle(tester);
     await waitFor(find.byType(TradeScreen));
+    // The order page compared the read with the Bull wallet's price once, at « Take Order » (slice 4, `taken_price_page_route_test.dart`): the payments' own reads are counted from here.
+    expect(wallet.ratesAsked, hasLength(1));
+    wallet.ratesAsked.clear();
     await waitFor(find.text(l10n.p2pPayWithThisWallet));
   }
 

@@ -10,6 +10,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/taker_estimate.dart';
+import '../domain/trade/taken_price_check.dart';
 import '../domain/trade/trade_take.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_details_cubit.dart';
@@ -167,6 +168,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 ///
 /// With [read], the take prepared (#119), the figures are those the robot that takes the order read (`GET /api/order/`): its price and premium, its sats, its expiry and deposit time; the maker's description follows the payment methods when there is one, as plain text, the bond the take asks follows the price, and the time of the read, read out when it arrives, closes the card.
 /// With [previous], the read the user saw before, when the order changed at the confirmation, the rows that differ from it are marked as the official client marks the time left: in colour and bold.
+/// [priceAlert], under « Price and premium », is what the owner's payment rule says of the read's price before the take (#249, slice 4): an alert only, `null` when there is none.
+/// A read always shows « Price and premium » from the terms the take is sent on (the price the comparison takes the premium off, and that premium), an order priced in sats its « Amount of satoshis » under it too; for such an order a premium moved from the one shown before « Take Order » by more than the trade's price tolerance marks that row ([TakenPriceCheck.premiumMovedFrom], security review of #249's slice 4, C1).
 class PublicOrderDetailsCard extends StatelessWidget {
   final PublicOrder order;
 
@@ -180,6 +183,9 @@ class PublicOrderDetailsCard extends StatelessWidget {
   /// The read the user saw before [read], when the order changed.
   final PreparedTake? previous;
 
+  /// The comparison of [read]'s price with the Bull wallet's, when it is an alert or the « not quoted » line (#249).
+  final Widget? priceAlert;
+
   const PublicOrderDetailsCard({
     super.key,
     required this.order,
@@ -187,6 +193,7 @@ class PublicOrderDetailsCard extends StatelessWidget {
     required this.now,
     this.read,
     this.previous,
+    this.priceAlert,
   });
 
   @override
@@ -244,6 +251,10 @@ class PublicOrderDetailsCard extends StatelessWidget {
       ),
     };
     final satsChanged = differs((f) => f.sats);
+    // An order priced in sats whose premium, read by the robot, is no longer the one the page showed (#249).
+    final premiumMoved =
+        read != null &&
+        TakenPriceCheck.premiumMovedFrom(read.terms, order.premium);
     final total = shown.expiresAt.difference(
       readOrder?.createdAt ?? order.createdAt,
     );
@@ -301,8 +312,16 @@ class PublicOrderDetailsCard extends StatelessWidget {
             OrderDetailRow(
               shown.priceLabel,
               shown.priceValue,
-              changed: differs((f) => f.priceValue),
+              changed: differs((f) => f.priceValue) || premiumMoved,
             ),
+            if (shown.explicitSats case final sats?)
+              OrderDetailRow(
+                l10n.p2pOrderAmountOfSatoshis,
+                sats,
+                changed: differs((f) => f.explicitSats),
+              ),
+            // Under the price it speaks of, always visible without a tap, above « Continue » (#249).
+            if (read != null) ?priceAlert,
             if (read != null)
               OrderDetailRow(
                 l10n.p2pTakerBond,
@@ -372,6 +391,9 @@ final class _Figures {
   final String? description;
   final String? bond;
 
+  /// The sats of an order priced in sats, in a row of their own under « Price and premium » of a read; `null` otherwise.
+  final String? explicitSats;
+
   const _Figures({
     required this.methods,
     required this.sats,
@@ -381,6 +403,7 @@ final class _Figures {
     required this.deposit,
     required this.description,
     required this.bond,
+    this.explicitSats,
   });
 
   static (String, String) _price(
@@ -430,6 +453,8 @@ final class _Figures {
   }
 
   /// The robot's read (#119): its own sats (the taker fee of the terms), price, premium, expiry, deposit time, description and the bond the take asks.
+  ///
+  /// « Price and premium » is always the terms' (#249, security review of slice 4, C1): their price with the premium (`TakenSide.bookPrice`, from the read's sats, never its `price_now`) and their premium, the very figures the comparison with the Bull wallet's price takes the premium off, even for an order priced in sats and a read without `price_now`; such an order's sats follow in « Amount of satoshis ».
   static _Figures ofRead(
     PreparedTake read,
     P2pLocalizations l10n,
@@ -440,10 +465,12 @@ final class _Figures {
     final estimate = order.type == OrderType.buy
         ? TakerEstimate.ofTradeAsSeller(order, takerFee: read.terms.takerFee)
         : TakerEstimate.ofTrade(order, takerFee: read.terms.takerFee);
+    final terms = read.terms;
+    final explicit = terms.explicitSatoshis;
     final (label, value) = _price(
-      order.priceNow,
-      read.terms.premium,
-      read.terms.explicitSatoshis,
+      terms.side.bookPrice,
+      terms.premium,
+      explicit,
       order.currency.code,
       l10n,
       formats,
@@ -460,6 +487,9 @@ final class _Figures {
         formats.sats(read.expectedBond.round()),
         formats.sats(read.bondCeiling),
       ),
+      explicitSats: explicit == null
+          ? null
+          : formats.sats(explicit.value.toInt()),
     );
   }
 }
