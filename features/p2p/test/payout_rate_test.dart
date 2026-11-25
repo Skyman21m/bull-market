@@ -871,6 +871,43 @@ void main() {
 
     group('point 1: the trade\'s records cannot be opened now', () {
       test(
+        'while the terms of an order made here are being read: « reading », never « Amount not checked » (functional review of #237, R1)',
+        () async {
+          final (harness, record, six) = await taken();
+          final port = wallet(P2pWalletRateRead(91711.15));
+          final usecase = CheckPayoutRateUsecase(harness.reader, port);
+          final held = Completer<void>();
+          final cubit = PayoutRateCubit(
+            record,
+            terms: (record) async {
+              await held.future;
+              return usecase.termsOf(record);
+            },
+            price: usecase.priceOf,
+            memory: PayoutRateMemory(),
+            now: () => harness.now,
+          );
+          addTearDown(cubit.close);
+          final states = <PayoutRateState>[];
+          final sub = cubit.stream.listen(states.add);
+          addTearDown(sub.cancel);
+          final shown = cubit.show(six, appeared: true);
+          await harness.settle();
+          expect(cubit.state, isA<PayoutRateReading>());
+          expect(
+            PayoutRateCubit.verdictOf(cubit.state),
+            PayoutRateVerdict.reading,
+          );
+          held.complete();
+          await shown;
+          await harness.settle();
+          expect(cubit.state, isA<PayoutRateChecked>());
+          expect(states.whereType<PayoutRateTermsUnread>(), isEmpty);
+          expect(states.first, isA<PayoutRateReading>());
+        },
+      );
+
+      test(
         'the vault gives no Garage Key: « Amount not checked », never silence, nothing read; the watch\'s next read does not open them again; « Retry » does, and once the vault is back the step is compared and the terms kept',
         () async {
           final (harness, record, six) = await taken();

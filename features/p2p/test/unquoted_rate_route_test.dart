@@ -149,6 +149,8 @@ final class _App {
     double at = 50000,
     int? sats,
     bool taken = true,
+    (double, double)? range,
+    double? amount,
     P2pWalletBitcoinRate rate = const P2pWalletRateNotPriced(),
     Locale locale = const Locale('en'),
   }) async {
@@ -215,6 +217,7 @@ final class _App {
       sell: sell,
       premium: 0,
       currency: ofOrder,
+      range: range,
     );
     app.record = switch (await app.wait(
       () => locator<MakeOrderUsecase>().execute(
@@ -231,16 +234,16 @@ final class _App {
       final other => throw StateError('$other'),
     };
     coordinator.lockMakerBond(app.record.orderId);
-    if (taken) app.take(at: at, sats: sats);
+    if (taken) app.take(at: at, sats: sats, amount: amount);
     return app;
   }
 
-  /// Robot 5 takes the order at the coordinator's [at] for its currency, its sats [sats] when given.
-  void take({required double at, int? sats}) {
+  /// Robot 5 takes the order at the coordinator's [at] for its currency (for a range, [amount] of it), its sats [sats] when given.
+  void take({required double at, int? sats, double? amount}) {
     final made = coordinator.order(record.orderId);
     coordinator
       ..prices[made.body['currency'] as int? ?? 0] = at
-      ..take(record.orderId, TradeHarness.robotsOf(_net)[5]);
+      ..take(record.orderId, TradeHarness.robotsOf(_net)[5], amount: amount);
     if (sats != null) made.lastSatoshis = sats;
   }
 
@@ -395,7 +398,11 @@ void main() {
             expect(trace, findsOneWidget);
             expect(app.against(1072), findsOneWidget);
             expect(app.explanation, findsOneWidget);
-            expect(find.textContaining('GBP'), findsWidgets);
+            // The line of a currency not priced stays beside the orange alert: an alert never silences another (functional review of #237, R10, M13b).
+            final notPricedLine = find.text(
+              app.l10n.p2pPayoutRateNotPriced('GBP', 'Temple of Sats'),
+            );
+            expect(notPricedLine, findsOneWidget);
             final confirm = find.text(
               app.l10n.p2pEndConfirmSent(
                 app.formats.amount(FiatAmount.tryCreate(100) ?? fail('100')),
@@ -415,6 +422,57 @@ void main() {
             );
             expect(
               find.descendant(of: dialog, matching: trace),
+              findsOneWidget,
+            );
+            expect(
+              find.descendant(of: dialog, matching: notPricedLine),
+              findsOneWidget,
+            );
+            await app.close();
+          },
+        );
+
+        testWidgets(
+          'at 9 the coordinator\'s figures not agreeing, the invoice of 6 kept: the state machine\'s alert and the orange alert both said (functional review of #237, R5)',
+          (tester) async {
+            final app = await _App.start(tester, at: 56000, locale: locale);
+            await app.openTrade();
+            await app.waitFor(app.against(1072));
+            app.coordinator.lockEscrow(app.record.orderId);
+            await app.moveTo(const [8], app.against(1072));
+            // At 9 a `trade_satoshis` the reference never sends there, far from `satoshis_now`: the fee implied is not the announced one.
+            app.coordinator.orderChanges[app.record.orderId] = {
+              'trade_satoshis': 100000,
+            };
+            final amounts = find.text(
+              app.l10n.p2pTradeWarnAmounts('Temple of Sats'),
+            );
+            await app.moveTo(const [9], amounts);
+            await app.waitFor(app.against(1072));
+            await app.settle();
+            expect(amounts, findsOneWidget);
+            expect(app.against(1072), findsOneWidget);
+            expect(app.explanation, findsOneWidget);
+            await app.close();
+          },
+        );
+
+        testWidgets(
+          'a range of 50 to 150 GBP taken for 100 at 56,000: the gap of the amount the take chose, 10.72 % (security review of #237, R7)',
+          (tester) async {
+            final app = await _App.start(
+              tester,
+              at: 56000,
+              range: (50, 150),
+              amount: 100,
+              locale: locale,
+            );
+            await app.openTrade();
+            await app.waitFor(app.notQuoted);
+            await app.waitFor(app.against(1072));
+            await app.settle();
+            expect(
+              find.descendant(of: app.breakdown, matching: app.against(1072)),
               findsOneWidget,
             );
             await app.close();
@@ -495,11 +553,14 @@ void main() {
 
     group('point 1, the trade\'s records cannot be read now, $code', () {
       /// The order public, its trade screen open (the watch opened its records, the vault readable), then the vault locked and the order taken: the rule opens the records at the payout's step and is refused.
-      Future<_App> lockedAtTheTake(WidgetTester tester) async {
+      Future<_App> lockedAtTheTake(
+        WidgetTester tester, {
+        double bull = 50000,
+      }) async {
         final app = await _App.start(
           tester,
           currency: 'EUR',
-          rate: P2pWalletRateRead(50000),
+          rate: P2pWalletRateRead(bull),
           locale: locale,
           taken: false,
         );
@@ -542,9 +603,10 @@ void main() {
       );
 
       testWidgets(
-        'at 9, the vault still locked: the same lines on the screen and in « Confirm … sent », which opens: nothing blocked',
+        'at 9, the vault still locked: the same lines on the screen and in « Confirm … sent », which opens: nothing blocked; « Retry » offered, and the vault back it brings the comparison (here red, drawn beside the trace of a payout not given here)',
         (tester) async {
-          final app = await lockedAtTheTake(tester);
+          // The Bull wallet's price 40,000 for the coordinator's 50,000: 250,000 sats expected, 199,950 paid, −20.02 %.
+          final app = await lockedAtTheTake(tester, bull: 40000);
           final unread = find.text(app.l10n.p2pPayoutRateTermsUnreadLine);
           app.coordinator.lockEscrow(app.record.orderId);
           final confirm = find.text(
@@ -576,6 +638,55 @@ void main() {
             findsOneWidget,
           );
           expect(app.wallet.ratesAsked, isEmpty);
+          await app.tap(
+            find.descendant(
+              of: dialog,
+              matching: find.text(app.l10n.p2pCommonGoBack),
+            ),
+          );
+          await app.settle();
+          // « Retry » at 9 (functional review of #237, R10, M14).
+          final retry = find.text(app.l10n.p2pCommonRetry);
+          expect(retry, findsOneWidget);
+          app.vault.locked = false;
+          await app.tap(retry);
+          await app.settle();
+          await app.waitFor(
+            find.text(
+              app.l10n.p2pPayoutRateAgainst(
+                app.formats.gap(BigInt.from(-2002)),
+              ),
+            ),
+          );
+          expect(unread, findsNothing);
+          expect(app.wallet.ratesAsked, hasLength(1));
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'at 15, the vault locked and the coordinator giving no sats: « Amount not checked » above the panel, which draws nothing of it (security review of #237, R7, j)',
+        (tester) async {
+          final app = await lockedAtTheTake(tester);
+          final unread = find.text(app.l10n.p2pPayoutRateTermsUnreadLine);
+          app.coordinator.lockEscrow(app.record.orderId);
+          await app.moveTo(const [
+            9,
+            10,
+            13,
+          ], find.text(app.l10n.p2pEndSendingSats));
+          app.coordinator.orderChanges[app.record.orderId] = {
+            'trade_satoshis': null,
+          };
+          await app.failPayout();
+          await app.waitFor(unread);
+          await app.settle();
+          expect(
+            find.text(app.l10n.p2pPayoutBreakdownUnverified),
+            findsOneWidget,
+          );
+          expect(find.text(app.l10n.p2pCommonRetry), findsOneWidget);
+          expect(app.breakdown, findsNothing);
           await app.close();
         },
       );
@@ -700,6 +811,78 @@ void main() {
             findsNothing,
           );
           await gbp.close();
+        },
+      );
+
+      testWidgets(
+        'while the Bull wallet\'s price is read at 15: « No Bull Wallet check at this step » not said, the rule running there (functional review of #237, R10, M12)',
+        (tester) async {
+          final app = await _App.start(
+            tester,
+            currency: 'EUR',
+            rate: P2pWalletRateRead(40000),
+            locale: locale,
+          );
+          await app.openTrade();
+          final red = find.text(app.l10n.p2pPayoutBreakdownAgainst);
+          await app.waitFor(red);
+          app.coordinator.lockEscrow(app.record.orderId);
+          await app.moveTo(const [
+            9,
+            10,
+            13,
+          ], find.text(app.l10n.p2pEndSendingSats));
+          // The last read more than 3 minutes old: 15 reads the price again, held meanwhile.
+          app.advance(const Duration(minutes: 4));
+          final held = app.wallet.rateHeld = Completer<void>();
+          final asked = app.wallet.ratesAsked.length;
+          await app.failPayout();
+          await app.waitFor(app.breakdown);
+          await app.settle();
+          expect(app.wallet.ratesAsked, hasLength(asked + 1));
+          expect(red, findsNothing);
+          expect(
+            find.text(app.l10n.p2pPayoutBreakdownNotCompared),
+            findsNothing,
+          );
+          held.complete();
+          app.wallet.rateHeld = null;
+          await app.waitFor(red);
+          expect(
+            find.text(app.l10n.p2pPayoutBreakdownNotCompared),
+            findsNothing,
+          );
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'the invoice said expired at 15 but no sats given: « rate not checked » above the panel, which draws nothing of it (security review of #237, R7, j)',
+        (tester) async {
+          final app = await _App.start(
+            tester,
+            currency: 'EUR',
+            rate: P2pWalletRateRead(50000),
+            locale: locale,
+          );
+          await app.openTrade();
+          await app.waitFor(find.text(app.l10n.p2pPayoutBreakdownGap));
+          app.coordinator.lockEscrow(app.record.orderId);
+          await app.moveTo(const [
+            9,
+            10,
+            13,
+          ], find.text(app.l10n.p2pEndSendingSats));
+          app.coordinator.orderChanges[app.record.orderId] = {
+            'trade_satoshis': null,
+          };
+          await app.failPayout();
+          final missing = find.text(
+            app.l10n.p2pPayoutRateSatsMissing('Temple of Sats'),
+          );
+          await app.waitFor(missing);
+          expect(app.breakdown, findsNothing);
+          await app.close();
         },
       );
     });
