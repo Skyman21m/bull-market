@@ -40,9 +40,13 @@ final class PutRobotOnCoordinatorUsecase {
   /// The outer [Err] is a [P2pFailure]: a refusal of the binding, of [FetchRobotUsecase] or of the limiter, or [RobotReleasedFailure] once the robot was released, from the start of the call, the read of the binding included: nothing is then bound or sent.
   /// The inner result is what the coordinator answered, checked, its robot shown as a [RobotOnCoordinatorFace] whose [RobotOnCoordinatorFace.alreadyExisted] says that the first contact this call sent was answered with another key pair, proven: false for a robot already bound there that the first read finds, since no first contact was sent.
   Future<Result<Result<RobotOnCoordinatorFace, CoordinatorFailure>, P2pFailure>>
-  execute(NetworkRobot robot, Coordinator coordinator) async {
-    // Opened before the binding is read, so that a release of the robot during that read stops the call before it binds or sends anything (security review of step 5).
-    final requests = _limiter.open(robot.identity.sessionKey);
+  execute(
+    NetworkRobot robot,
+    Coordinator coordinator, {
+    RobotCallOwner? owner,
+  }) async {
+    // Opened before the binding is read, so that a release of the robot by [owner] during that read stops the call before it binds or sends anything (security review of step 5); without an owner, as for a take or a make, no release stops it.
+    final requests = _limiter.open(robot.identity.sessionKey, owner: owner);
     try {
       final RobotStanding standing;
       switch (await _bindings.standingOf(robot.slot)) {

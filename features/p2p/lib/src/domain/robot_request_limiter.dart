@@ -61,6 +61,9 @@ final class RobotRequestLimiter {
   /// The calls of each robot released while a request of theirs was in flight, until it has ended.
   final Map<RobotSessionKey, Set<RobotRequests>> _releasedInFlight = {};
 
+  /// What waits for each robot to be used by no call any more ([idle]).
+  final Map<RobotSessionKey, List<Completer<void>>> _idleWaiters = {};
+
   /// When each coordinator gave its busy answers, on the elapsed time, within [busyWindow].
   final Map<_Lane, List<Duration>> _busyAnswers = {};
 
@@ -77,25 +80,53 @@ final class RobotRequestLimiter {
     required this._random,
   });
 
-  /// Opens the requests of one call made for [robot], such as one use of a use case: each request goes through [RobotRequests.send], and all of them stop at a [release] of the robot.
+  /// Opens the requests of one call made for [robot], such as one use of a use case: each request goes through [RobotRequests.send].
   ///
+  /// With [owner], the call is that owner's, such as the Garage's panel of the robot, and its requests stop at a [release] of the robot by that owner; without one, as for every call of a trade (its watch, its chat, its actions), no release stops it (#251, security review of PR 274, C1).
   /// Close it with [RobotRequests.close] once the call has ended, whatever its outcome.
-  RobotRequests open(RobotSessionKey robot) {
-    final requests = RobotRequests._(this, robot);
+  RobotRequests open(RobotSessionKey robot, {RobotCallOwner? owner}) {
+    final requests = RobotRequests._(this, robot, owner);
     (_open[robot] ??= {}).add(requests);
     return requests;
   }
 
-  /// Whether a call opened for [robot] is still running: one opened after its last release counts.
+  /// Whether a call opened for [robot] is still running, whoever opened it: one opened after its last release counts, and so does every call of a trade, which no release stops.
   bool isInUse(RobotSessionKey robot) => _open[robot]?.isNotEmpty ?? false;
 
-  /// Releases [robot], whose screen is gone: its requests waiting for a place are dropped, the calls opened for it so far send nothing more and stop waiting, and what it returns tells when its requests in flight have ended.
+  /// Completes once no call opened for [robot] is running and no request of a call released is in flight: at once when that is so now. What closes the sessions of a robot whose release found calls of a trade still running (`ReleaseRobotUsecase`).
+  Future<void> idle(RobotSessionKey robot) {
+    if (_isIdle(robot)) return Future.value();
+    final waiter = Completer<void>();
+    (_idleWaiters[robot] ??= []).add(waiter);
+    return waiter.future;
+  }
+
+  bool _isIdle(RobotSessionKey robot) =>
+      !isInUse(robot) && !_releasedInFlight.containsKey(robot);
+
+  /// Completes what waits for [robot] to be idle, when it is.
+  void _noteIdle(RobotSessionKey robot) {
+    if (!_isIdle(robot)) return;
+    final waiters = _idleWaiters.remove(robot);
+    if (waiters == null) return;
+    for (final waiter in waiters) {
+      waiter.complete();
+    }
+  }
+
+  /// Releases the calls of [owner] for [robot], whose screen is gone: their requests waiting for a place are dropped, those calls send nothing more and stop waiting, and what it returns tells when the requests in flight of released calls have ended.
   ///
   /// A request in flight is not stopped: it runs to its end, and the call that sent it sends nothing after it.
   /// The requests in flight of calls an earlier release stopped are waited for too, so that a second release does not close the robot's sessions under them.
-  /// A call opened for the robot after this release is not affected.
-  RobotRelease release(RobotSessionKey robot) {
-    final released = _open.remove(robot) ?? const <RobotRequests>{};
+  /// A call of another owner, or of none, as every call of a trade, is not affected, nor a call opened after this release (#251, security review of PR 274, C1: the Garage's panel of a robot closing used to stop the watch and the chat of that robot's trade shown above it).
+  RobotRelease release(RobotSessionKey robot, {required RobotCallOwner owner}) {
+    final open = _open[robot] ?? <RobotRequests>{};
+    final released = {
+      for (final requests in open)
+        if (identical(requests._owner, owner)) requests,
+    };
+    open.removeAll(released);
+    if (open.isEmpty) _open.remove(robot);
     for (final requests in released) {
       requests._release();
     }
@@ -123,6 +154,7 @@ final class RobotRequestLimiter {
         requests._ended(),
     ];
     if (running.isEmpty) {
+      _noteIdle(robot);
       return RobotRelease._(Future.value(), Future.value(true));
     }
     final ended = Future.wait(running).then((_) {});
@@ -213,6 +245,7 @@ final class RobotRequestLimiter {
     if (released == null) return;
     released.remove(requests);
     if (released.isEmpty) _releasedInFlight.remove(requests._robot);
+    _noteIdle(requests._robot);
   }
 }
 
@@ -220,6 +253,9 @@ final class RobotRequestLimiter {
 final class RobotRequests {
   final RobotRequestLimiter _limiter;
   final RobotSessionKey _robot;
+
+  /// Whose call this is, `null` for a call no release stops.
+  final RobotCallOwner? _owner;
 
   /// Whether the robot was released since this call was opened: nothing more is sent.
   bool _released = false;
@@ -235,7 +271,7 @@ final class RobotRequests {
   /// Completes when the last request of this call in flight has ended.
   Completer<void>? _idle;
 
-  RobotRequests._(this._limiter, this._robot);
+  RobotRequests._(this._limiter, this._robot, this._owner);
 
   /// Sends [request] to [coordinator] on [network] once one of its [RobotRequestLimiter.maxInFlight] places is free, and again while the transport answers it busy, which [isBusy] reads from its answer.
   ///
@@ -284,6 +320,7 @@ final class RobotRequests {
     if (open == null) return;
     open.remove(this);
     if (open.isEmpty) _limiter._open.remove(_robot);
+    _limiter._noteIdle(_robot);
   }
 
   /// Waits [wait], or less when the robot is released meanwhile.
@@ -356,6 +393,14 @@ final class FirstContactSlot {
           (_limiter._nicknameRefusals[_lane] ?? 0) + 1;
     }
   }
+}
+
+/// Who opened a call for a robot, so that its own release stops its calls only ([RobotRequestLimiter.release]): one for each screen that releases what it opened, such as the Garage's panel of one robot. Compared by identity; it holds nothing.
+final class RobotCallOwner {
+  RobotCallOwner();
+
+  @override
+  String toString() => 'RobotCallOwner';
 }
 
 /// What a release of a robot waits for: the requests it had in flight.

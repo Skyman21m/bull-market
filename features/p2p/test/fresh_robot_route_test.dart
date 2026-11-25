@@ -442,6 +442,47 @@ void main() {
           await app.close();
         },
       );
+
+      testWidgets(
+        'step 0 not for a robot whose panel reads an active order: no read of its order when the Garage opens on it (security review of PR 274, R3)',
+        (tester) async {
+          final app = await _App.start(tester, locale);
+          int orderReads() => app.transport.sent
+              .where(
+                (request) =>
+                    request.url.path == '/api/order/' &&
+                    request.method == CoordinatorHttpMethod.get,
+              )
+              .length;
+          final made = await app.make();
+          await app.lock(made);
+          // Still public at the coordinator: its robot has an active order.
+          final before = orderReads();
+          final robotReads = app.transport.sent
+              .where((request) => request.url.path == '/api/robot/')
+              .length;
+          await app.reopenGarage();
+          await app.settle(20);
+          expect(app.shown(), made.robot.accountIndex);
+          // The panel read the robot, which has an active order: nothing more.
+          expect(
+            app.transport.sent
+                .where((request) => request.url.path == '/api/robot/')
+                .length,
+            greaterThan(robotReads),
+          );
+          expect(
+            find.text(app.l10n.p2pRobotActiveOrder('${made.orderId}')),
+            findsOneWidget,
+          );
+          expect(orderReads(), before);
+          expect(
+            (await app.active()).map((record) => record.orderId),
+            contains(made.orderId),
+          );
+          await app.close();
+        },
+      );
     });
   }
 }
