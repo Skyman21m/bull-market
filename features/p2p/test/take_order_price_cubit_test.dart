@@ -102,6 +102,18 @@ void main() {
       },
     );
 
+    test(
+      'compared on the terms the take is sent on, never on the read\'s `price_now`',
+      () async {
+        final odd = await preparedTake(changes: {'price_now': 50000.0});
+        take = _Take([Ok(odd)]);
+        cubit = build();
+        await cubit.take();
+        expect(prices.asked.single.$2, closeTo(1e10 / 106900 / 1.02, 1e-6));
+        expect(cubit.priceShown, TakenPriceShown.nothing);
+      },
+    );
+
     test('no wallet\'s port lent: nothing compared, nothing read', () async {
       cubit = build(wallet: false);
       await cubit.take();
