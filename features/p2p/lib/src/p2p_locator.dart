@@ -23,6 +23,7 @@ import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
+import 'domain/garage_opening.dart';
 import 'domain/meeting_point.dart';
 import 'domain/map_tiles.dart';
 import 'domain/p2p_clock.dart';
@@ -74,6 +75,8 @@ import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
 import 'domain/usecases/trade/follow_made_orders_usecase.dart';
+import 'domain/usecases/trade/follow_trades_usecase.dart';
+import 'domain/usecases/trade/garage_robot_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/list_last_orders_usecase.dart';
@@ -271,6 +274,8 @@ final class P2pLocator {
     locator.registerLazySingleton<UnacknowledgedGarageKeys>(
       UnacknowledgedGarageKeys.new,
     );
+    // Where the user left the Garage of each network by hand (#251), in memory, for the whole run of the app.
+    locator.registerLazySingleton<GarageNavigation>(GarageNavigation.new);
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,
@@ -478,6 +483,18 @@ final class P2pLocator {
         locator<ListActiveTradesUsecase>().execute,
         locator<ListLastOrdersUsecase>().execute,
       ),
+    );
+    // The records the Garage shows its robot from (#251): the trades in progress, the finished ones with their end, and the robot the next trade would reserve, read from the device only.
+    locator.registerFactory<FollowTradesUsecase>(
+      () => FollowTradesUsecase(
+        locator<ListActiveTradesUsecase>().execute,
+        locator<TradeRecordRepository>().watchClosedTrades,
+        locator<TradeRecordRepository>().newTradeStandingOf,
+      ),
+    );
+    // The robot the Garage would show, for the line of the order page only (#251): no trade takes its robot from it.
+    locator.registerFactory<GarageRobotUsecase>(
+      () => GarageRobotUsecase(locator(), locator(), locator()),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(

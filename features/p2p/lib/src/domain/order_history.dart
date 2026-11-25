@@ -48,6 +48,17 @@ enum OrderEnd {
     TradePosition.waitingDisputeResolution ||
     null => unknown,
   };
+
+  /// Whether the robot of a finished order whose stored trail stops at [lastPosition] has served, so that the Garage moves away from it (#251, design note `docs/design/phase-3-fresh-robot.md` § 3): as the reference's `Slot.isReusable` reads it (`models/Slot.model.ts:293-309`, commit babf62e), a trade, a dispute, a cancellation or an end not known serves, an expiry does not.
+  ///
+  /// The one distinction [of] does not make: `publicAgain` and `notAvailable`, a take that never started (a pre-take that ran out, was cancelled, or lost to another taker), have not served, as the reference leaves no last order on a pre-taker (`api/logics.py:1205-1219`, `:1326`); every other [unknown] has. Nothing the history shows depends on it.
+  static bool served(TradePosition? lastPosition) => switch (of(lastPosition)) {
+    traded || cancelled || dispute => true,
+    expired => false,
+    unknown =>
+      lastPosition != TradePosition.publicAgain &&
+          lastPosition != TradePosition.notAvailable,
+  };
 }
 
 /// A closed record of the trades with an order id, and the last position of its stored trail, as `TradeRecordRepository.watchClosedTrades` reads them in one statement.
