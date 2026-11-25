@@ -10,8 +10,7 @@ void main() {
     test('compares by satoshi value', () {
       expect(Sats.fromInt(1).compareTo(Sats.fromInt(2)), isNegative);
       expect(Sats.fromInt(2), Sats(BigInt.two));
-      // Provisional (#212): a deliberate failure in one shard, reverted next.
-      expect(1, 2);
+      expect(1, 2); // Provisional (#212): a deliberate failure in one shard, reverted next.
     });
   });
 
