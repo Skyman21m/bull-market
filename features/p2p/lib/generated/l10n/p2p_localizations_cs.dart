@@ -1127,6 +1127,11 @@ class P2pLocalizationsCs extends P2pLocalizations {
   }
 
   @override
+  String p2pTakeFreshRobot(String nickname) {
+    return 'A fresh robot for this order: $nickname.';
+  }
+
+  @override
   String p2pOrderNewValue(String value) {
     return 'New value: $value';
   }

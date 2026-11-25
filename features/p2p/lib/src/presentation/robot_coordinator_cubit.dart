@@ -10,6 +10,7 @@ import '../domain/p2p_tor_state.dart';
 import '../domain/robot_binding.dart';
 import '../domain/robot_host.dart';
 import '../domain/robot_on_coordinator_face.dart';
+import '../domain/robot_request_limiter.dart';
 import '../domain/tor_wait.dart';
 import '../domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import '../domain/usecases/list_robot_hosts_usecase.dart';
@@ -28,7 +29,7 @@ import 'robot_coordinator_state.dart';
 /// A robot that no coordinator received from this device is put on one only by [putOn], which the screen calls once the user chose a coordinator in « Select Host » and confirmed it.
 /// For a key of unknown history (pasted, or whose draw this device could not record), « Select Host » first asks the user's acknowledgement, which only [acknowledge] records, on « I understand ».
 /// A robot bound to a coordinator of its network is read back from it at once when Tor is ready, as the official client reads its robots each time it shows them; the coordinator is always the one the binding names, never one a screen gives.
-/// Closing it releases the robot ([ReleaseRobotUsecase]): its requests still waiting are dropped, one already sent ends and its answer is ignored; a closed cubit records and sends nothing more, whatever is asked of it.
+/// Closing it releases the robot ([ReleaseRobotUsecase]) for this panel's calls only: their requests still waiting are dropped, one already sent ends and its answer is ignored; a call of the robot's trade (its watch, its chat, its actions) goes on (#251, security review of PR 274, C1); a closed cubit records and sends nothing more, whatever is asked of it.
 /// The rules (binding, places, retries, refusal caps, proof of the key pair, which history needs the acknowledgement) are the use cases' and the domain's: this cubit only calls them and shows what they return.
 class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
   final NetworkGarageKey _key;
@@ -53,6 +54,9 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
 
   /// Whether a read of the database or a request is running: an action of the user meanwhile is ignored.
   bool _working = false;
+
+  /// The owner of this panel's calls: its release stops them, never a call of the robot's trade (#251, security review of PR 274, C1).
+  final RobotCallOwner _calls = RobotCallOwner();
 
   RobotCoordinatorCubit(
     this._key,
@@ -232,7 +236,10 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
     try {
       _contacting(coordinator, RobotContactKind.read);
       final _Shown result = switch (_robot()) {
-        Ok(value: final robot) => await _readOnCoordinator.execute(robot),
+        Ok(value: final robot) => await _readOnCoordinator.execute(
+          robot,
+          owner: _calls,
+        ),
         Err(:final failure) => Err(failure),
       };
       _stillWaiting?.cancel();
@@ -275,6 +282,7 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
         Ok(value: final robot) => await _putOnCoordinator.execute(
           robot,
           coordinator,
+          owner: _calls,
         ),
         Err(:final failure) => Err(failure),
       };
@@ -329,7 +337,7 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
     await super.close();
     // Closed first, so that an answer arriving during the release is ignored.
     if (_robot() case Ok(value: final robot)) {
-      await _release.execute(robot);
+      await _release.execute(robot, owner: _calls);
     }
   }
 }

@@ -1,5 +1,6 @@
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
+import '../../robot_binding.dart';
 import '../../trade/trade_take.dart';
 import '../../trade_robots.dart';
 
@@ -27,12 +28,27 @@ final class PreparedTakes {
       };
 
   /// Keeps [robot] for the preparations of that order: the order prepared before it, if another, is forgotten with its robot.
+  ///
+  /// [garageRobot] is the robot the Garage showed before [robot] was reserved (#251, § 4.2), `null` when it could not be told: whether they differ is kept with [robot], so that every preparation of the order says the same, the robot reserved being in use, and so never the fresh one, once it is.
   void keepRobot(
     RobosatsNetwork network,
     String alias,
     int orderId,
-    ReservedRobot robot,
-  ) => _current = _OrderPreparation((network, alias, orderId), robot);
+    ReservedRobot robot, {
+    required RobotSlot? garageRobot,
+  }) => _current = _OrderPreparation(
+    (network, alias, orderId),
+    robot,
+    changedRobot: garageRobot != null && robot.robot.slot != garageRobot,
+  );
+
+  /// Whether the robot kept for order [orderId] of the coordinator [alias] on [network] is not the one the Garage showed before it was reserved; `false` with none kept.
+  bool changedRobotFor(RobosatsNetwork network, String alias, int orderId) =>
+      switch (_current) {
+        final current? when current.key == (network, alias, orderId) =>
+          current.changedRobot,
+        _ => false,
+      };
 
   /// Records [prepared] as its order's current preparation, the one [robotOf] gives a robot for: any earlier one of the order can no longer be confirmed, nor abandoned.
   ///
@@ -75,12 +91,13 @@ final class PreparedTakes {
   }
 }
 
-/// The robot of one order's preparations, and the latest preparation made with it.
+/// The robot of one order's preparations, whether it is not the robot the Garage showed before it was reserved, and the latest preparation made with it.
 final class _OrderPreparation {
   final (RobosatsNetwork, String, int) key;
   final ReservedRobot robot;
+  final bool changedRobot;
   PreparedTake? latest;
   bool confirmable = false;
 
-  _OrderPreparation(this.key, this.robot);
+  _OrderPreparation(this.key, this.robot, {required this.changedRobot});
 }

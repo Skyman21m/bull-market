@@ -35,6 +35,28 @@ final class WatchTradeUsecase {
   /// The newest status this run stored for the trade of [record] while it goes on, or `null` ([TradeReader.lastStored]): what its screen shows again while its first read after a return is in flight, only when the stored trail the watch opens is that status's own (#152). In memory only; nothing is read or sent.
   TradeSeen? lastStored(TradeRecord record) => _reader.lastStored(record);
 
+  /// One read of the trade of [record], as its page reads it when it opens, then nothing more (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.1, step 0): the Garage's read of an order that ended while the app did not read it. Each answer is kept as the watch keeps it (the record closed at an end); the read is sent through the robot's places, at most once, and not at all when another subscription reads the trade already, nor while an action of the trade runs. Completes once the read and its writes ended.
+  Future<void> readOnce(TradeRecord record) async {
+    if (_registry.isWatched(record.robot)) return;
+    late final TradeWatchSession session;
+    final out = StreamController<TradeWatchState>(
+      onListen: () => unawaited(session.start()),
+      onCancel: () => session.stop(),
+    );
+    session = TradeWatchSession(
+      _reader,
+      _limiter,
+      _waits,
+      record,
+      const Stream.empty(),
+      out,
+      _registry,
+      onScreen: false,
+      once: true,
+    );
+    await out.stream.drain<void>();
+  }
+
   /// The states of the trade of [record], from its stored records then after each read, while listened to; [signals] carries what the screen says (shown or not, read now), [onScreen] whether it is shown at the start.
   Stream<TradeWatchState> execute(
     TradeRecord record, {

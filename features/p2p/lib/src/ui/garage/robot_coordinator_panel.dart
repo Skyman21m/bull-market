@@ -42,12 +42,16 @@ class RobotCoordinatorPanel extends StatefulWidget {
   /// The orders the Garage's « Last order #N » lines open (`LastOrderLines`, #216), as (coordinator's short alias, order number): the coordinator's last order of the robot shown is said here only when none of them is it, so that it is said once (functional review of #220, R4, and its verification).
   final Set<(String, int)> lastOrdersShown;
 
+  /// The orders of the robot shown, as (coordinator's short alias, order number), that this device holds finished with an end that has not served, an expiry or a take that never started (#251, `GarageWithKey.ordersNotServed`): the reference's sentence on a robot involved in a trade is not said for such a last order, as the reference says it only for a robot that is not reusable (`basic/GaragePage/GarageKeyProfile.tsx:171-179`, commit babf62e).
+  final Set<(String, int)> ordersNotServed;
+
   const RobotCoordinatorPanel({
     super.key,
     required this.nickname,
     required this.network,
     required this.coordinatorDetails,
     this.lastOrdersShown = const {},
+    this.ordersNotServed = const {},
   });
 
   @override
@@ -140,6 +144,7 @@ class _RobotCoordinatorPanelState extends State<RobotCoordinatorPanel> {
                   coordinator: coordinator,
                   activity: activity,
                   lastOrdersShown: widget.lastOrdersShown,
+                  ordersNotServed: widget.ordersNotServed,
                 ),
               RobotOnOtherNetwork(:final network) => _Line(
                 l10n.p2pRobotOnOtherNetwork(network.name),
@@ -278,11 +283,13 @@ class _OnCoordinator extends StatelessWidget {
   final Coordinator coordinator;
   final RobotActivity activity;
   final Set<(String, int)> lastOrdersShown;
+  final Set<(String, int)> ordersNotServed;
 
   const _OnCoordinator({
     required this.coordinator,
     required this.activity,
     required this.lastOrdersShown,
+    required this.ordersNotServed,
   });
 
   @override
@@ -340,6 +347,13 @@ class _OnCoordinator extends StatelessWidget {
                 )),
                 null => false,
               },
+              lastNotServed: switch (face.lastOrderId) {
+                final last? => ordersNotServed.contains((
+                  coordinator.shortAlias,
+                  last,
+                )),
+                null => false,
+              },
             ),
           ],
           RobotFailed(:final problem, :final kind) => [
@@ -372,10 +386,14 @@ class _Known extends StatelessWidget {
   /// Whether the robot's last order is one a « Last order #N » line above opens: not said again here.
   final bool lastShownAbove;
 
+  /// Whether the robot's last order is one this device holds finished with an end that has not served: the sentence on a robot involved in a trade is not said (#251).
+  final bool lastNotServed;
+
   const _Known({
     required this.face,
     required this.name,
     required this.lastShownAbove,
+    required this.lastNotServed,
   });
 
   @override
@@ -396,8 +414,8 @@ class _Known extends StatelessWidget {
           _Line(l10n.p2pRobotNoOrders, live: true)
         else if (!lastShownAbove)
           _Line(l10n.p2pRobotLastOrder('$last'), live: true),
-        // As the official client, which counts a last order of unknown status as used: Troc does not read the order yet.
-        if (active == null && last != null) ...[
+        // As the official client, which says it for a robot that is not reusable (`GarageKeyProfile.tsx:171-179`, commit babf62e): any last order but one this device holds with an end that has not served (#251), a last order of unknown status counting as used.
+        if (active == null && last != null && !lastNotServed) ...[
           if (!lastShownAbove) const Gap(BullSpacing.sm),
           BullInfoBar(
             message: l10n.p2pRobotUsedInTrade,

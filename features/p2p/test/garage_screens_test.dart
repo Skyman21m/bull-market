@@ -3253,6 +3253,7 @@ void main() {
       Set<String> offline = const {},
       bool bookSettled = true,
       Set<(String, int)> lastOrdersShown = const {},
+      Set<(String, int)> ordersNotServed = const {},
     }) async {
       // A panel shown before is gone first, with its cubit.
       await tester.pumpWidget(const SizedBox.shrink());
@@ -3331,6 +3332,7 @@ void main() {
                   nickname: robotAt(index, network).identity.nickname,
                   network: network,
                   lastOrdersShown: lastOrdersShown,
+                  ordersNotServed: ordersNotServed,
                   coordinatorDetails: (request) => CoordinatorDetailsCubit(
                     request,
                     FetchCoordinatorInfoUsecase(
@@ -3644,6 +3646,23 @@ void main() {
           );
           expect(find.text(l10n.p2pRobotLastOrder('4321')), findsNothing);
           expect(find.text(l10n.p2pRobotUsedInTrade), findsOneWidget);
+
+          // The same order held here finished with an end that has not served (an expiry, a take that never started, #251): the sentence is not said; an order of another coordinator, or another order, keeps it.
+          await showPanel(
+            tester,
+            locale: locale,
+            lastOrdersShown: {('temple', 4321)},
+            ordersNotServed: {('temple', 4321)},
+          );
+          expect(find.text(l10n.p2pRobotUsedInTrade), findsNothing);
+          for (final other in [('lake', 4321), ('temple', 4320)]) {
+            await showPanel(tester, locale: locale, ordersNotServed: {other});
+            expect(
+              find.text(l10n.p2pRobotUsedInTrade),
+              findsOneWidget,
+              reason: '$other',
+            );
+          }
         },
       );
 

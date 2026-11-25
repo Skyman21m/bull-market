@@ -1096,25 +1096,29 @@ void main() {
       },
     );
 
-    testWidgets('the arrows stop the following until the Garage is left', (
-      tester,
-    ) async {
-      final app = await _App.start(tester, torKnown: true);
-      await app.openGarage();
-      final made = await makeOther(app);
-      // Moved by hand past the new order's robot.
-      await next(app);
-      await next(app);
-      final byHand = shown(tester);
-      expect(byHand, isNot(made.robot.accountIndex));
-      await lockAndRead(app, made);
-      expect(shown(tester), byHand);
-      expect(find.text('Robot #$byHand'), findsOneWidget);
-      // Left and opened again: the robot of the order whose bond is locked.
-      await reopenGarage(app);
-      expect(find.text('Robot #${made.robot.accountIndex}'), findsOneWidget);
-      await app.close();
-    });
+    testWidgets(
+      'a change of #251: the arrows leave the Garage by hand, left and opened again included, and an order\'s bond seen locked while the Garage is under its page now moves it to that order\'s robot (on main the arrows kept it where it was until the Garage was left)',
+      (tester) async {
+        // On main (#227) this test was « the arrows stop the following until the Garage is left »: after the arrows, an order's bond locked while the Garage was shown did not move it, and only a new visit opened on that order's robot. Since #251 the hand is kept across visits, and a trade of the key whose bond is seen locked after the move gives the hand back to the rule at once, for the arrows as for a « Last order #N » tap, so that the Garage shows the robot of the trade that has just started; the reference stays where the arrows left it, but is already on that robot since its take and make use the robot shown. Kept by the coordinator's decision on the functional review of PR 274 (C1, option b), to confirm with the owner.
+        final app = await _App.start(tester, torKnown: true);
+        await app.openGarage();
+        final made = await makeOther(app);
+        // Moved by hand past the new order's robot.
+        await next(app);
+        await next(app);
+        final byHand = shown(tester);
+        expect(byHand, isNot(made.robot.accountIndex));
+        // Left and opened again: where it was left.
+        await reopenGarage(app);
+        expect(find.text('Robot #$byHand'), findsOneWidget);
+        // The order's bond locked, under its page: the Garage shows its robot, and opens on it again.
+        await lockAndRead(app, made);
+        expect(shown(tester), made.robot.accountIndex);
+        await reopenGarage(app);
+        expect(find.text('Robot #${made.robot.accountIndex}'), findsOneWidget);
+        await app.close();
+      },
+    );
 
     testWidgets(
       'two orders made, their bonds locked: the Garage opens on the newest one\'s robot',
@@ -1154,13 +1158,15 @@ void main() {
       );
     }
 
-    for (final (name, end, position)
-        in <(String, void Function(ScriptedMadeOrder order), String)>[
-          ('expired', (order) => order.status = 5, 'expired'),
-          ('cancelled', (order) => order.status = 4, 'cancelled'),
+    for (final (name, end, position, moves)
+        in <(String, void Function(ScriptedMadeOrder order), String, bool)>[
+          ('expired', (order) => order.status = 5, 'expired', false),
+          ('cancelled', (order) => order.status = 4, 'cancelled', true),
         ]) {
       testWidgets(
-        'an order public, then $name: the Garage opens on its robot, the one of the « Last order #N » line under it (review of #229, C1)',
+        moves
+            ? 'an order public, then $name: the Garage opens on the fresh robot, the « Last order #N » line still under it (#251, a cancellation serves)'
+            : 'an order public, then $name: the Garage opens on its robot, the one of the « Last order #N » line under it (review of #229, C1)',
         (tester) async {
           final app = await _App.start(tester, torKnown: true);
           final made = await makeOther(app);
@@ -1170,8 +1176,9 @@ void main() {
           await endAndRead(app, made, end);
           expect(await stored(app, made), position);
           await app.openGarage();
-          expect(shown(tester), robot);
-          expect(find.text('Robot #$robot'), findsOneWidget);
+          final opened = moves ? robot + 1 : robot;
+          expect(shown(tester), opened);
+          expect(find.text('Robot #$opened'), findsOneWidget);
           // The line under the robot is that very order's.
           expect(_lastOrder(made.orderId), findsOneWidget);
           await app.close();

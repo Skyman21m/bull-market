@@ -374,6 +374,18 @@ class PublicOrderDetailsCard extends StatelessWidget {
               style: text.labelMedium?.copyWith(color: colors.textMuted),
             ),
           ),
+          // Only when the robot of the take is not the one the Garage showed (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.2), read out when it appears; the reference has no such line, it asks before changing robot.
+          if (read.freshRobot case final nickname?) ...[
+            const Gap(BullSpacing.xxs),
+            Semantics(
+              container: true,
+              liveRegion: true,
+              child: Text(
+                l10n.p2pTakeFreshRobot(nickname),
+                style: text.labelMedium?.copyWith(color: colors.textMuted),
+              ),
+            ),
+          ],
         ],
       ],
     );

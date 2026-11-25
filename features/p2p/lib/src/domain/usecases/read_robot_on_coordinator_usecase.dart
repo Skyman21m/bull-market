@@ -33,13 +33,14 @@ final class ReadRobotOnCoordinatorUsecase {
   /// A busy answer of the transport is sent again after a growing wait, as [RobotRequestLimiter] says; [RobotCoordinatorBusyFailure] when that does not get through, and [RobotReleasedFailure] once the robot was released, from the start of the call, the read of the binding included: nothing is then bound or sent.
   /// The inner result is what the coordinator answered, checked: [RobotUnknown] for a robot bound there whose first contact never created it, or its robot shown as a [RobotOnCoordinatorFace].
   Future<Result<Result<RobotOnCoordinatorFace, CoordinatorFailure>, P2pFailure>>
-  execute(NetworkRobot robot) async => switch (await _read(robot)) {
-    Err(:final failure) => Err(failure),
-    Ok(value: Err(:final failure)) => Ok(Err(failure)),
-    Ok(value: Ok(value: final known)) => Ok(
-      Ok(RobotOnCoordinatorFace.of(known, alreadyExisted: false)),
-    ),
-  };
+  execute(NetworkRobot robot, {RobotCallOwner? owner}) async =>
+      switch (await _read(robot, owner: owner)) {
+        Err(:final failure) => Err(failure),
+        Ok(value: Err(:final failure)) => Ok(Err(failure)),
+        Ok(value: Ok(value: final known)) => Ok(
+          Ok(RobotOnCoordinatorFace.of(known, alreadyExisted: false)),
+        ),
+      };
 
   /// The key pair of [robot] as its coordinator holds it, read back exactly as [execute] reads it and proven by the robot's token, still locked: for the keyring of a trade only (`TradeKeyring`, #90, design note § 3.4), which unlocks it away from the UI isolate to sign the trade's payout.
   ///
@@ -57,9 +58,9 @@ final class ReadRobotOnCoordinatorUsecase {
 
   /// [robot] read back from the coordinator of its binding, as [execute] says.
   Future<Result<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>
-  _read(NetworkRobot robot) async {
-    // Opened before the binding is read, so that a release of the robot during that read stops the request before it binds or leaves (security review of step 5).
-    final requests = _limiter.open(robot.identity.sessionKey);
+  _read(NetworkRobot robot, {RobotCallOwner? owner}) async {
+    // Opened before the binding is read, so that a release of the robot by [owner] during that read stops the request before it binds or leaves (security review of step 5); without an owner, as for a trade's keyring, no release stops it.
+    final requests = _limiter.open(robot.identity.sessionKey, owner: owner);
     try {
       final RobotStanding standing;
       switch (await _bindings.standingOf(robot.slot)) {

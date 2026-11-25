@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/generated/l10n/p2p_localizations.dart'
+    show lookupP2pLocalizations;
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
@@ -65,7 +70,7 @@ final class _Take {
     : prepared = prepared ?? [Ok(_read)];
 
   TakeCalls get calls => TakeCalls(
-    prepare: (shown, {required network, amount, onStep}) async {
+    prepare: (shown, {required network, amount, onStep, garageRobot}) async {
       amounts.add(amount);
       preparingSteps.forEach(onStep ?? (_) {});
       final waiting = preparing;
@@ -1679,6 +1684,173 @@ void main() {
       expect(button.busy, isFalse);
     },
   );
+
+  group('« A fresh robot for this order » (#251)', () {
+    // A fictional nickname, as on the owner's mock-up: never a real robot.
+    const nickname = 'SilentOtter218';
+    PreparedTake fresh() => PreparedTake(
+      order: _read.order,
+      terms: _read.terms,
+      amount: _read.amount,
+      readAt: _read.readAt,
+      freshRobot: nickname,
+    );
+
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      testWidgets(
+        'said under « Read by your robot » only when the read says the robot changed, in ${locale.languageCode}',
+        (tester) async {
+          final l10n = lookupP2pLocalizations(locale);
+          await _show(tester, await _order(), locale: locale);
+          await _tap(tester, find.text(l10n.p2pTakeOrder));
+          expect(find.text(l10n.p2pTakeFreshRobot(nickname)), findsNothing);
+
+          await _show(
+            tester,
+            await _order(),
+            locale: locale,
+            take: _Take(prepared: [Ok(fresh())]),
+          );
+          await _tap(tester, find.text(l10n.p2pTakeOrder));
+          final line = find.text(l10n.p2pTakeFreshRobot(nickname));
+          await _reveal(tester, line);
+          expect(line, findsOneWidget);
+          final readAt = find.textContaining(l10n.p2pTakeReadAt('').trim());
+          expect(
+            tester.getTopLeft(line).dy,
+            greaterThan(tester.getTopLeft(readAt).dy),
+          );
+          // Read out when it appears.
+          expect(
+            tester
+                .widget<Semantics>(
+                  find
+                      .ancestor(of: line, matching: find.byType(Semantics))
+                      .first,
+                )
+                .properties
+                .liveRegion,
+            isTrue,
+          );
+        },
+      );
+
+      for (final scale in const [1.0, 2.0, 3.0]) {
+        testWidgets(
+          'at 320 points, text ×${scale.toInt()}, in ${locale.languageCode}: the whole line, no overflow',
+          (tester) async {
+            final l10n = lookupP2pLocalizations(locale);
+            await _show(
+              tester,
+              await _order(),
+              locale: locale,
+              size: const Size(320, 844),
+              textScale: scale,
+              take: _Take(prepared: [Ok(fresh())]),
+            );
+            await _tap(tester, find.text(l10n.p2pTakeOrder));
+            final line = find.text(l10n.p2pTakeFreshRobot(nickname));
+            await _reveal(tester, line);
+            expect(line, findsOneWidget);
+            expect(tester.takeException(), isNull);
+            final paragraph = tester.renderObject<RenderParagraph>(line);
+            expect(paragraph.didExceedMaxLines, isFalse);
+            expect(tester.getRect(line).right, lessThanOrEqualTo(320 + 0.5));
+          },
+        );
+      }
+    }
+
+    testWidgets(
+      'the Garage\'s robot read before the preparation, and handed to it',
+      (tester) async {
+        final events = <String>[];
+        final robot = RobotSlot(
+          RobosatsNetwork.mainnet,
+          switch (GarageKeyFingerprint.of(switch (GarageKey.fromBytes(
+            Uint8List.fromList(List<int>.generate(32, (i) => i + 3)),
+          )) {
+            Ok(:final value) => value,
+            Err(:final failure) => throw StateError('$failure'),
+          })) {
+            Ok(:final value) => value,
+            Err(:final failure) => throw StateError('$failure'),
+          },
+          4,
+        );
+        final order = await _order();
+        await _show(
+          tester,
+          order,
+          cubit: (calls, keys) => TakeOrderCubit(
+            order,
+            RobosatsNetwork.mainnet,
+            TakeCalls(
+              prepare:
+                  (
+                    shown, {
+                    required network,
+                    amount,
+                    onStep,
+                    garageRobot,
+                  }) async {
+                    events.add('prepare ${garageRobot?.accountIndex}');
+                    return Ok(_read);
+                  },
+              confirm: calls.confirm,
+              abandon: calls.abandon,
+              abandonOrder: calls.abandonOrder,
+              garageRobot: (network) async {
+                events.add('garage ${network.name}');
+                return robot;
+              },
+            ),
+            keys,
+          ),
+        );
+        await _tap(tester, _takeButton);
+        expect(events, ['garage mainnet', 'prepare 4']);
+      },
+    );
+
+    testWidgets(
+      'the page left while the Garage\'s robot is read: nothing prepared, so no robot reserved and no order read',
+      (tester) async {
+        final events = <String>[];
+        final reading = Completer<RobotSlot?>();
+        final order = await _order();
+        final cubit = TakeOrderCubit(
+          order,
+          RobosatsNetwork.mainnet,
+          TakeCalls(
+            prepare:
+                (shown, {required network, amount, onStep, garageRobot}) async {
+                  events.add('prepare');
+                  return Ok(_read);
+                },
+            confirm: (prepared, {password, onStep}) =>
+                throw StateError('not taken'),
+            abandon: (_) => events.add('abandon'),
+            abandonOrder: (shown, {required network}) =>
+                events.add('abandon order'),
+            garageRobot: (network) {
+              events.add('garage');
+              return reading.future;
+            },
+          ),
+          (network) async => const Ok(true),
+        );
+        final taking = cubit.take();
+        await tester.pump();
+        expect(events, ['garage']);
+        await cubit.close();
+        reading.complete(null);
+        await taking;
+        await tester.pump(const Duration(minutes: 1));
+        expect(events, isNot(contains('prepare')));
+      },
+    );
+  });
 }
 
 /// A take whose Bull wallet's price is said read, and whose read ends in an error (an `Error`, a bug, as the price's service would throw one).

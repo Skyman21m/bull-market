@@ -23,6 +23,7 @@ import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
+import 'domain/garage_opening.dart';
 import 'domain/meeting_point.dart';
 import 'domain/map_tiles.dart';
 import 'domain/p2p_clock.dart';
@@ -73,7 +74,8 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
-import 'domain/usecases/trade/follow_made_orders_usecase.dart';
+import 'domain/usecases/trade/follow_trades_usecase.dart';
+import 'domain/usecases/trade/garage_robot_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/list_last_orders_usecase.dart';
@@ -271,6 +273,8 @@ final class P2pLocator {
     locator.registerLazySingleton<UnacknowledgedGarageKeys>(
       UnacknowledgedGarageKeys.new,
     );
+    // Where the user left the Garage of each network by hand (#251), in memory, for the whole run of the app.
+    locator.registerLazySingleton<GarageNavigation>(GarageNavigation.new);
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,
@@ -280,9 +284,14 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
-        // The robot of the newest order made here whose bond is locked, then of each one seen locked (#227), where the feature holds trades.
-        madeRobots: locator.isRegistered<FollowMadeOrdersUsecase>()
-            ? locator<FollowMadeOrdersUsecase>().execute
+        // The records the robot shown follows (#227, #251), where the feature holds trades.
+        tradesOf: locator.isRegistered<FollowTradesUsecase>()
+            ? locator<FollowTradesUsecase>().execute
+            : null,
+        navigation: locator<GarageNavigation>(),
+        // One read of an open record whose robot has no active order, once per visit (#251, step 0), where the feature holds trades.
+        readOnce: locator.isRegistered<WatchTradeUsecase>()
+            ? locator<WatchTradeUsecase>().readOnce
             : null,
       ),
     );
@@ -472,12 +481,17 @@ final class P2pLocator {
       (record, _) =>
           RenewalsCubit(record, locator<MakeOrderUsecase>().renewalsOf),
     );
-    // The orders made here in progress whose bond was locked, and the « Last order #N » line, for the robot the Garage shows (#227): read from the device only.
-    locator.registerFactory<FollowMadeOrdersUsecase>(
-      () => FollowMadeOrdersUsecase(
+    // The records the Garage shows its robot from (#251): the trades in progress, the finished ones with their end, and the robot the next trade would reserve, read from the device only.
+    locator.registerFactory<FollowTradesUsecase>(
+      () => FollowTradesUsecase(
         locator<ListActiveTradesUsecase>().execute,
-        locator<ListLastOrdersUsecase>().execute,
+        locator<TradeRecordRepository>().watchClosedTrades,
+        locator<TradeRecordRepository>().newTradeStandingOf,
       ),
+    );
+    // The robot the Garage would show, for the line of the order page only (#251): no trade takes its robot from it.
+    locator.registerFactory<GarageRobotUsecase>(
+      () => GarageRobotUsecase(locator(), locator(), locator()),
     );
     // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
     locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(
@@ -602,6 +616,8 @@ final class P2pLocator {
         confirm: take.confirm,
         abandon: take.abandon,
         abandonOrder: take.abandonOrder,
+        // The robot the Garage would show, for the line of the order page only (#251).
+        garageRobot: locator<GarageRobotUsecase>().execute,
       );
     }
 
@@ -644,6 +660,7 @@ final class P2pLocator {
         network,
         take.readUnlisted,
         take.abandonRead,
+        garageRobot: locator<GarageRobotUsecase>().execute,
       );
     });
     // The same, from the trade screen of an order public again: the trade shown is given, so that a take refused for that very trade is not opened over itself.

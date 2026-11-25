@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import '../domain/robot_binding.dart';
 import '../domain/trade/trade_take.dart';
 import '../domain/trade_record.dart';
 import '../domain/usecases/trade/take_order_usecase.dart';
@@ -16,6 +17,7 @@ typedef ReadUnlistedOrder =
       int orderId, {
       required RobosatsNetwork network,
       TakeProgress? onStep,
+      RobotSlot? garageRobot,
     });
 
 /// [TakeOrderUsecase.abandonRead], which the locator gives the cubit.
@@ -76,6 +78,9 @@ class UnlistedOrderCubit extends Cubit<UnlistedOrderState> {
   final ReadUnlistedOrder _read;
   final AbandonUnlistedRead _abandon;
   final Duration _stillWaitingAfter;
+
+  /// The robot the Garage would show, read before the read reserves its robot, for the line of the order page (#251); `null` where none is read.
+  final Future<RobotSlot?> Function(RobosatsNetwork network)? _garageRobot;
   Timer? _stillWaiting;
 
   bool _slow = false;
@@ -87,6 +92,7 @@ class UnlistedOrderCubit extends Cubit<UnlistedOrderState> {
     this._read,
     this._abandon, {
     this._stillWaitingAfter = const Duration(seconds: 30),
+    this._garageRobot,
   }) : super(const UnlistedOrderReading());
 
   /// Reads the order, once.
@@ -102,10 +108,20 @@ class UnlistedOrderCubit extends Cubit<UnlistedOrderState> {
         emit(UnlistedOrderReading(step: step, slow: true));
       }
     });
+    // Read before the robot is reserved (#251, § 4.2).
+    RobotSlot? garageRobot;
+    if (_garageRobot case final read?) {
+      garageRobot = await read(network);
+      if (isClosed) {
+        _stillWaiting?.cancel();
+        return;
+      }
+    }
     final result = await _read(
       coordinator,
       orderId,
       network: network,
+      garageRobot: garageRobot,
       onStep: (step) {
         if (!isClosed && state is UnlistedOrderReading) {
           emit(UnlistedOrderReading(step: step, slow: _slow));

@@ -1144,6 +1144,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pTakeFreshRobot(String nickname) {
+    return 'Robot neuf pour cet ordre : $nickname.';
+  }
+
+  @override
   String p2pOrderNewValue(String value) {
     return 'Nouvelle valeur : $value';
   }

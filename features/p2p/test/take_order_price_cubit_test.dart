@@ -339,7 +339,7 @@ final class _Take {
   _Take(this.prepared);
 
   TakeCalls get calls => TakeCalls(
-    prepare: (shown, {required network, amount, onStep}) async {
+    prepare: (shown, {required network, amount, onStep, garageRobot}) async {
       final waiting = preparing;
       if (waiting != null) {
         preparing = null;

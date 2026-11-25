@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 import '../../p2p_failure.dart';
 import '../../repositories/trade_record_repository.dart';
 import '../../repositories/trade_trail_repository.dart';
+import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
 import '../../trade/trade_answer.dart';
@@ -86,34 +87,40 @@ final class TakeOrderUsecase {
   /// [TakePreparationGone] when the order was abandoned or another order prepared while this preparation ran.
   /// [onStep] is told [TakeStep.checkingOrder], [TakeStep.creatingRobot] when a fresh robot is reserved, then [TakeStep.readingOrder], each as it starts.
   /// An order protected by a password is not in the public book, and its robot's read is refused here ([TakeOrderGone]): [prepareUnlisted] prepares it, as an order reached by its URL that no book received (#245).
+  /// [garageRobot] is the robot the Garage showed before this call, as the take's screen read it (#251, § 4.2): only kept with a robot reserved here, to say on [PreparedTake.freshRobot] whether the two differ; the robot of the take never comes from it.
   Future<Result<PreparedTake, TakeRefusal>> prepare(
     PublicOrder shown, {
     required RobosatsNetwork network,
     TakeAmount? amount,
     TakeProgress? onStep,
+    RobotSlot? garageRobot,
   }) => _prepareLocked(
     shown,
     network: network,
     amount: amount,
     onStep: onStep,
     unlisted: null,
+    garageRobot: garageRobot,
   );
 
   /// Reads order [orderId] of [coordinator] on [network] with the robot that will take it, for an order no book received (#245): a password-protected one, which every book leaves out (`api/views.py:788-790`) and a coordinator shows only to an authenticated robot (`:232-233`), or a public one the book in memory does not hold yet; what the reference's order page does with the user's robot (`basic/OrderPage/index.tsx:75-96`).
   ///
   /// In this order, each step only once the one before it succeeded: no open trade of the order here ([TakeOrderAlreadyTraded], whose trade is opened instead: an order made here included); the robot kept for the order, or a fresh one reserved and put on the coordinator, as [prepare] does ([TakeStep.creatingRobot]); then `GET /api/order/` by that robot ([TakeStep.readingOrder]): it must be a public order that the robot takes no part in, with a password or without, which [UnlistedOrder.ofRead] reads as the book would list it ([TakeOrderGone] otherwise: taken, paused, cancelled, expired or unknown, the robot then forgotten).
   /// The robot stays kept for the order, as after a preparation: [prepareUnlisted] uses it; nothing is written in the trade records and no take is sent. The read itself leaves nothing at the coordinator but the robot's last activity (`api/views.py:226-299`).
+  /// [garageRobot] as for [prepare].
   Future<Result<UnlistedOrder, TakeRefusal>> readUnlisted(
     Coordinator coordinator,
     int orderId, {
     required RobosatsNetwork network,
     TakeProgress? onStep,
+    RobotSlot? garageRobot,
   }) => _locks.run(network, coordinator, orderId, () async {
     final read = await _readUnlisted(
       coordinator,
       orderId,
       network: network,
       onStep: onStep ?? _noStep,
+      garageRobot: garageRobot,
     );
     if (read case Err(failure: TakeOrderGone() || TakeOrderAlreadyTraded())) {
       _prepared.releaseOrder(network, coordinator.shortAlias, orderId);
@@ -124,16 +131,19 @@ final class TakeOrderUsecase {
   /// Prepares a take of [shown], an order no book received that its robot read ([readUnlisted]), for [amount] when it has a range (#245): [prepare]'s steps and checks, with [shown] in place of the book's read.
   ///
   /// No open trade of the order here; the taker fee read again, anonymously ([TakeStep.checkingOrder]); the terms of [shown] checked as [prepare] checks the book's read (the taker fee under its ceiling, sats known, the amount in the range); then the robot kept for the order, or a fresh one; then its read again, which must still be public, with a password exactly when [shown] has one ([TakeOrderGone] otherwise), and agree with [shown] as [prepare]'s read agrees with the book's (type, currency, amount or range, payment methods, maker, bond size, escrow duration, sats of an order priced in sats, premium of an order priced against the market, sats at the current price within `TradeTolerances.price`: [TakeOrderChanged] otherwise); the terms built from that read. None of [prepare]'s protections is lifted; [confirm] then reads the order a third time and sends the take, with the password's hash for a protected order. The book is not read again: a coordinator caches its book for 10 s (`api/views.py:85`, `:824`), and the robot's read of the page stands for it.
+  /// [garageRobot] as for [prepare].
   Future<Result<PreparedTake, TakeRefusal>> prepareUnlisted(
     UnlistedOrder shown, {
     TakeAmount? amount,
     TakeProgress? onStep,
+    RobotSlot? garageRobot,
   }) => _prepareLocked(
     shown.order,
     network: shown.network,
     amount: amount,
     onStep: onStep,
     unlisted: shown,
+    garageRobot: garageRobot,
   );
 
   Future<Result<PreparedTake, TakeRefusal>> _prepareLocked(
@@ -142,6 +152,7 @@ final class TakeOrderUsecase {
     required TakeAmount? amount,
     required TakeProgress? onStep,
     required UnlistedOrder? unlisted,
+    required RobotSlot? garageRobot,
   }) async {
     return _locks.run(network, shown.coordinator, shown.id, () async {
       final prepared = await _prepare(
@@ -150,6 +161,7 @@ final class TakeOrderUsecase {
         amount: amount,
         onStep: onStep ?? _noStep,
         unlisted: unlisted,
+        garageRobot: garageRobot,
       );
       if (prepared case Err(
         failure: TakeOrderGone() ||
@@ -209,6 +221,7 @@ final class TakeOrderUsecase {
     required TakeAmount? amount,
     required TakeProgress onStep,
     required UnlistedOrder? unlisted,
+    required RobotSlot? garageRobot,
   }) async {
     final coordinator = shown.coordinator;
     if (await _noOpenTrade(network, coordinator, shown.id) case Err(
@@ -258,7 +271,13 @@ final class TakeOrderUsecase {
         case Err(:final failure):
           return Err(failure);
       }
-      _prepared.keepRobot(network, coordinator.shortAlias, shown.id, reserved);
+      _prepared.keepRobot(
+        network,
+        coordinator.shortAlias,
+        shown.id,
+        reserved,
+        garageRobot: garageRobot,
+      );
     }
     onStep(TakeStep.readingOrder);
     final CoordinatorOrder read;
@@ -294,6 +313,11 @@ final class TakeOrderUsecase {
       terms: terms,
       amount: amount,
       readAt: _reader.now(),
+      // Kept with the robot when it was reserved, never computed again (#251, § 4.2).
+      freshRobot:
+          _prepared.changedRobotFor(network, coordinator.shortAlias, shown.id)
+          ? reserved.robot.identity.nickname
+          : null,
     );
     // The order abandoned, or another prepared, while this read ran: its robot is no longer kept.
     if (!identical(
@@ -420,6 +444,7 @@ final class TakeOrderUsecase {
     int orderId, {
     required RobosatsNetwork network,
     required TakeProgress onStep,
+    required RobotSlot? garageRobot,
   }) async {
     if (await _noOpenTrade(network, coordinator, orderId) case Err(
       :final failure,
@@ -442,7 +467,13 @@ final class TakeOrderUsecase {
         case Err(:final failure):
           return Err(failure);
       }
-      _prepared.keepRobot(network, coordinator.shortAlias, orderId, reserved);
+      _prepared.keepRobot(
+        network,
+        coordinator.shortAlias,
+        orderId,
+        reserved,
+        garageRobot: garageRobot,
+      );
     }
     onStep(TakeStep.readingOrder);
     switch (await _robotRead(

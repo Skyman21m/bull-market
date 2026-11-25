@@ -1075,9 +1075,21 @@ void main() {
           Err(:final failure) => fail('$failure'),
         };
         final takes = PreparedTakes()
-          ..keepRobot(app.network, coordinator.shortAlias, 42, first);
+          ..keepRobot(
+            app.network,
+            coordinator.shortAlias,
+            42,
+            first,
+            garageRobot: null,
+          );
         expect(takes.robotFor(app.network, coordinator.shortAlias, 42), first);
-        takes.keepRobot(app.network, coordinator.shortAlias, 43, second);
+        takes.keepRobot(
+          app.network,
+          coordinator.shortAlias,
+          43,
+          second,
+          garageRobot: null,
+        );
         expect(takes.robotFor(app.network, coordinator.shortAlias, 42), isNull);
         expect(takes.robotFor(app.network, coordinator.shortAlias, 43), second);
         takes.releaseOrder(app.network, coordinator.shortAlias, 42);

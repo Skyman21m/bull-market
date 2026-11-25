@@ -446,6 +446,9 @@ Matcher _sent<T>(T value) =>
 Matcher _failed<T, F>() =>
     isA<Err<T, P2pFailure>>().having((err) => err.failure, 'failure', isA<F>());
 
+/// The owner of the calls these tests release, as the Garage's panel of a robot owns its calls (#251, security review of PR 274, C1).
+final panel = RobotCallOwner();
+
 void main() {
   final robots = [for (var i = 0; i < 5; i++) _robotAt(i, _testnet)];
   final mainnetRobots = [for (var i = 0; i < 5; i++) _robotAt(i, _mainnet)];
@@ -487,7 +490,7 @@ void main() {
         final gates = List.generate(5, (_) => Completer<String>());
         final results = [
           for (var i = 0; i < 5; i++)
-            limiter.open(keyOf[i]).send(_testnet, temple, () {
+            limiter.open(keyOf[i], owner: panel).send(_testnet, temple, () {
               started.add(i);
               return gates[i].future;
             }, isBusy: never),
@@ -519,20 +522,20 @@ void main() {
         final hold = Completer<String>();
         for (var i = 0; i < 3; i++) {
           unawaited(
-            limiter.open(keyOf[i]).send(_testnet, temple, () {
+            limiter.open(keyOf[i], owner: panel).send(_testnet, temple, () {
               started.add('temple $i');
               return hold.future;
             }, isBusy: never),
           );
         }
         unawaited(
-          limiter.open(keyOf[3]).send(_testnet, lake, () {
+          limiter.open(keyOf[3], owner: panel).send(_testnet, lake, () {
             started.add('lake');
             return hold.future;
           }, isBusy: never),
         );
         unawaited(
-          limiter.open(keyOf[4]).send(_mainnet, temple, () {
+          limiter.open(keyOf[4], owner: panel).send(_mainnet, temple, () {
             started.add('mainnet temple');
             return hold.future;
           }, isBusy: never),
@@ -549,7 +552,7 @@ void main() {
     test(
       'a request that throws, or ends on a failure, gives its place back',
       () async {
-        final requests = limiter.open(keyOf[0]);
+        final requests = limiter.open(keyOf[0], owner: panel);
 
         await expectLater(
           requests.send<String>(
@@ -573,7 +576,7 @@ void main() {
         final started = <int>[];
         for (var i = 1; i < 3; i++) {
           unawaited(
-            limiter.open(keyOf[i]).send(_testnet, temple, () {
+            limiter.open(keyOf[i], owner: panel).send(_testnet, temple, () {
               started.add(i);
               return Completer<String>().future;
             }, isBusy: never),
@@ -592,7 +595,7 @@ void main() {
         final holding = [
           for (var i = 0; i < 2; i++)
             limiter
-                .open(keyOf[i + 1])
+                .open(keyOf[i + 1], owner: panel)
                 .send(_testnet, temple, () => gates[i].future, isBusy: never),
         ];
         final started = <String>[];
@@ -604,14 +607,20 @@ void main() {
           return name;
         }, isBusy: never);
         // Robot 0 waits twice, robot 3 once in between, and a call of robot 0 has not sent yet.
-        final first = ask(limiter.open(keyOf[0]), 'robot 0, first');
-        final other = ask(limiter.open(keyOf[3]), 'robot 3');
-        final second = ask(limiter.open(keyOf[0]), 'robot 0, second');
-        final idle = limiter.open(keyOf[0]);
+        final first = ask(
+          limiter.open(keyOf[0], owner: panel),
+          'robot 0, first',
+        );
+        final other = ask(limiter.open(keyOf[3], owner: panel), 'robot 3');
+        final second = ask(
+          limiter.open(keyOf[0], owner: panel),
+          'robot 0, second',
+        );
+        final idle = limiter.open(keyOf[0], owner: panel);
         await _settle();
         expect(limiter.isInUse(keyOf[0]), isTrue);
 
-        final release = limiter.release(keyOf[0]);
+        final release = limiter.release(keyOf[0], owner: panel);
 
         expect(await first, _failed<String, RobotReleasedFailure>());
         expect(await second, _failed<String, RobotReleasedFailure>());
@@ -626,12 +635,109 @@ void main() {
         // A call opened after the release is not affected.
         gates[1].complete('2');
         expect(
-          await ask(limiter.open(keyOf[0]), 'robot 0, again'),
+          await ask(limiter.open(keyOf[0], owner: panel), 'robot 0, again'),
           _sent('robot 0, again'),
         );
         expect(started, ['robot 3', 'robot 0, again']);
         expect(await holding[0], _sent('1'));
         expect(await holding[1], _sent('2'));
+      },
+    );
+
+    group(
+      'a release stops its owner\'s calls only (#251, security review of PR 274, C1)',
+      () {
+        test(
+          'the calls of a trade (no owner) and of another owner go on, in flight and waiting; the owner\'s are stopped: in flight run to their end then send nothing more, waiting dropped',
+          () async {
+            final gates = [Completer<String>(), Completer<String>()];
+            final started = <String>[];
+            Future<Result<String, P2pFailure>> ask(
+              RobotRequests requests,
+              String name, {
+              Completer<String>? gate,
+            }) => requests.send(_testnet, temple, () async {
+              started.add(name);
+              return gate == null ? name : gate.future;
+            }, isBusy: never);
+            // Two places of temple held: the panel's request and the trade's.
+            final panelCall = limiter.open(keyOf[0], owner: panel);
+            final tradeCall = limiter.open(keyOf[0]);
+            final panelInFlight = ask(panelCall, 'panel', gate: gates[0]);
+            final tradeInFlight = ask(tradeCall, 'trade', gate: gates[1]);
+            await _settle();
+            expect(started, ['panel', 'trade']);
+            // Waiting for a place: one of the panel, one of the trade, one of another screen.
+            final panelWaiting = ask(
+              limiter.open(keyOf[0], owner: panel),
+              'panel waiting',
+            );
+            final tradeWaiting = ask(limiter.open(keyOf[0]), 'trade waiting');
+            final otherOwner = RobotCallOwner();
+            final otherWaiting = ask(
+              limiter.open(keyOf[0], owner: otherOwner),
+              'other waiting',
+            );
+            await _settle();
+
+            final release = limiter.release(keyOf[0], owner: panel);
+            expect(await panelWaiting, _failed<String, RobotReleasedFailure>());
+            expect(limiter.isInUse(keyOf[0]), isTrue);
+            gates[0].complete('panel answered');
+            expect(await panelInFlight, _sent('panel answered'));
+            expect(await release.ended.then((_) => true), isTrue);
+            // The panel's call sends nothing more.
+            expect(
+              await ask(panelCall, 'panel again'),
+              _failed<String, RobotReleasedFailure>(),
+            );
+            gates[1].complete('trade answered');
+            expect(await tradeInFlight, _sent('trade answered'));
+            expect(await tradeWaiting, _sent('trade waiting'));
+            expect(await otherWaiting, _sent('other waiting'));
+            // The trade's call still sends after the release.
+            expect(await ask(tradeCall, 'trade again'), _sent('trade again'));
+            expect(started, [
+              'panel',
+              'trade',
+              'trade waiting',
+              'other waiting',
+              'trade again',
+            ]);
+          },
+        );
+
+        test(
+          'in use while a call of the trade is open; idle once it is closed and the released requests in flight have ended',
+          () async {
+            final gate = Completer<String>();
+            final panelCall = limiter.open(keyOf[0], owner: panel);
+            final inFlight = panelCall.send(
+              _testnet,
+              temple,
+              () => gate.future,
+              isBusy: never,
+            );
+            final tradeCall = limiter.open(keyOf[0]);
+            await _settle();
+            limiter.release(keyOf[0], owner: panel);
+            var idle = false;
+            unawaited(limiter.idle(keyOf[0]).then((_) => idle = true));
+            await _settle();
+            expect(limiter.isInUse(keyOf[0]), isTrue);
+            tradeCall.close();
+            await _settle();
+            expect(limiter.isInUse(keyOf[0]), isFalse);
+            // The panel's request is still in flight: not idle yet.
+            expect(idle, isFalse);
+            gate.complete('answered');
+            await inFlight;
+            await _settle();
+            expect(idle, isTrue);
+            // Idle now: at once.
+            await limiter.idle(keyOf[0]);
+          },
+        );
       },
     );
 
@@ -642,10 +748,15 @@ void main() {
         final gates = <String, Completer<String>>{};
         Future<Result<String, P2pFailure>> ask(int robot, String name) {
           final gate = gates[name] = Completer<String>();
-          return limiter.open(keyOf[robot]).send(_testnet, temple, () {
-            started.add(name);
-            return gate.future;
-          }, isBusy: never);
+          return limiter.open(keyOf[robot], owner: panel).send(
+            _testnet,
+            temple,
+            () {
+              started.add(name);
+              return gate.future;
+            },
+            isBusy: never,
+          );
         }
 
         // Robot 0 keeps two requests in flight and two waiting, and asks again each time one ends.
@@ -676,7 +787,7 @@ void main() {
 
           final result = await time
               .limiter()
-              .open(keyOf[0])
+              .open(keyOf[0], owner: panel)
               .send(
                 _testnet,
                 temple,
@@ -710,7 +821,7 @@ void main() {
         var attempts = 0;
         await time
             .limiter()
-            .open(keyOf[0])
+            .open(keyOf[0], owner: panel)
             .send(
               _testnet,
               temple,
@@ -752,16 +863,21 @@ void main() {
         time.holding = true;
         final started = <String>[];
         var attempts = 0;
-        final retried = limiter.open(keyOf[0]).send(_testnet, temple, () async {
-          started.add('robot 0');
-          return ++attempts == 1 ? 'busy' : 'answer';
-        }, isBusy: busyAnswer);
+        final retried = limiter.open(keyOf[0], owner: panel).send(
+          _testnet,
+          temple,
+          () async {
+            started.add('robot 0');
+            return ++attempts == 1 ? 'busy' : 'answer';
+          },
+          isBusy: busyAnswer,
+        );
         await _settle();
         expect(time.held, hasLength(1));
         final gates = [Completer<String>(), Completer<String>()];
         for (var i = 0; i < 2; i++) {
           unawaited(
-            limiter.open(keyOf[i + 1]).send(_testnet, temple, () {
+            limiter.open(keyOf[i + 1], owner: panel).send(_testnet, temple, () {
               started.add('robot ${i + 1}');
               return gates[i].future;
             }, isBusy: never),
@@ -784,13 +900,21 @@ void main() {
       () async {
         time.holding = true;
         var attempts = 0;
-        final retried = limiter.open(keyOf[0]).send(_testnet, temple, () async {
-          attempts++;
-          return 'busy';
-        }, isBusy: busyAnswer);
+        final retried = limiter.open(keyOf[0], owner: panel).send(
+          _testnet,
+          temple,
+          () async {
+            attempts++;
+            return 'busy';
+          },
+          isBusy: busyAnswer,
+        );
         await _settle();
 
-        expect(await limiter.release(keyOf[0]).endedInTime, isTrue);
+        expect(
+          await limiter.release(keyOf[0], owner: panel).endedInTime,
+          isTrue,
+        );
         time.held.single.complete();
 
         expect(await retried, _failed<String, RobotReleasedFailure>());
@@ -806,10 +930,15 @@ void main() {
           RobosatsNetwork network,
           Coordinator coordinator, {
           String answer = 'busy',
-        }) => limiter.open(keyOf[0]).send(network, coordinator, () async {
-          attempts++;
-          return answer;
-        }, isBusy: busyAnswer);
+        }) => limiter.open(keyOf[0], owner: panel).send(
+          network,
+          coordinator,
+          () async {
+            attempts++;
+            return answer;
+          },
+          isBusy: busyAnswer,
+        );
 
         for (var i = 0; i < 3; i++) {
           expect(
@@ -853,12 +982,17 @@ void main() {
       'a robot released in the instant its request got a place sends nothing',
       () async {
         var sent = false;
-        final asked = limiter.open(keyOf[0]).send(_testnet, temple, () async {
-          sent = true;
-          return 'answer';
-        }, isBusy: never);
+        final asked = limiter.open(keyOf[0], owner: panel).send(
+          _testnet,
+          temple,
+          () async {
+            sent = true;
+            return 'answer';
+          },
+          isBusy: never,
+        );
         // The same turn of the event loop: the place is taken, the request not run yet.
-        final release = limiter.release(keyOf[0]);
+        final release = limiter.release(keyOf[0], owner: panel);
 
         expect(await asked, _failed<String, RobotReleasedFailure>());
         expect(sent, isFalse);
@@ -867,7 +1001,7 @@ void main() {
         final started = <int>[];
         for (var i = 1; i < 3; i++) {
           unawaited(
-            limiter.open(keyOf[i]).send(_testnet, temple, () {
+            limiter.open(keyOf[i], owner: panel).send(_testnet, temple, () {
               started.add(i);
               return Completer<String>().future;
             }, isBusy: never),
@@ -884,22 +1018,27 @@ void main() {
         // Twelve busy answers already.
         for (var i = 0; i < 3; i++) {
           await limiter
-              .open(keyOf[3])
+              .open(keyOf[3], owner: panel)
               .send(_testnet, temple, () async => 'busy', isBusy: busyAnswer);
         }
         final started = <String>[];
         final gates = [Completer<String>(), Completer<String>()];
         final holding = [
           for (var i = 0; i < 2; i++)
-            limiter.open(keyOf[i + 1]).send(_testnet, temple, () {
+            limiter.open(keyOf[i + 1], owner: panel).send(_testnet, temple, () {
               started.add('robot ${i + 1}');
               return gates[i].future;
             }, isBusy: busyAnswer),
         ];
-        final waiting = limiter.open(keyOf[0]).send(_testnet, temple, () async {
-          started.add('robot 0');
-          return 'answer';
-        }, isBusy: busyAnswer);
+        final waiting = limiter.open(keyOf[0], owner: panel).send(
+          _testnet,
+          temple,
+          () async {
+            started.add('robot 0');
+            return 'answer';
+          },
+          isBusy: busyAnswer,
+        );
         await _settle();
 
         // The 13th busy answer frees a place for robot 0, and refuses the coordinator first.
@@ -969,12 +1108,17 @@ void main() {
       () async {
         time.holding = true;
         var attempts = 0;
-        final retried = limiter.open(keyOf[0]).send(_testnet, temple, () async {
-          attempts++;
-          return 'busy';
-        }, isBusy: busyAnswer);
+        final retried = limiter.open(keyOf[0], owner: panel).send(
+          _testnet,
+          temple,
+          () async {
+            attempts++;
+            return 'busy';
+          },
+          isBusy: busyAnswer,
+        );
         final later = limiter
-            .open(keyOf[0])
+            .open(keyOf[0], owner: panel)
             .send(
               _testnet,
               temple,
@@ -984,7 +1128,7 @@ void main() {
             );
         await _until(() => time.held.length == 2);
 
-        limiter.release(keyOf[0]);
+        limiter.release(keyOf[0], owner: panel);
 
         // Neither held wait is over: the release ends them.
         expect(await retried, _failed<String, RobotReleasedFailure>());
@@ -999,15 +1143,15 @@ void main() {
         // Twelve busy answers already.
         for (var i = 0; i < 3; i++) {
           await limiter
-              .open(keyOf[3])
+              .open(keyOf[3], owner: panel)
               .send(_testnet, temple, () async => 'busy', isBusy: busyAnswer);
         }
         final gate = Completer<String>();
         final inFlight = limiter
-            .open(keyOf[0])
+            .open(keyOf[0], owner: panel)
             .send(_testnet, temple, () => gate.future, isBusy: busyAnswer);
         await _settle();
-        final release = limiter.release(keyOf[0]);
+        final release = limiter.release(keyOf[0], owner: panel);
 
         gate.complete('busy');
 
@@ -1016,10 +1160,15 @@ void main() {
         // The 13th answer was counted: nothing more is sent there.
         var sent = false;
         expect(
-          await limiter.open(keyOf[1]).send(_testnet, temple, () async {
-            sent = true;
-            return 'answer';
-          }, isBusy: busyAnswer),
+          await limiter.open(keyOf[1], owner: panel).send(
+            _testnet,
+            temple,
+            () async {
+              sent = true;
+              return 'answer';
+            },
+            isBusy: busyAnswer,
+          ),
           _failed<String, RobotCoordinatorBusyFailure>(),
         );
         expect(sent, isFalse);
@@ -1032,12 +1181,12 @@ void main() {
         time.holding = true;
         final gate = Completer<String>();
         final inFlight = limiter
-            .open(keyOf[0])
+            .open(keyOf[0], owner: panel)
             .send(_testnet, temple, () => gate.future, isBusy: never);
         await _settle();
 
-        final first = limiter.release(keyOf[0]);
-        final second = limiter.release(keyOf[0]);
+        final first = limiter.release(keyOf[0], owner: panel);
+        final second = limiter.release(keyOf[0], owner: panel);
         var ended = false;
         unawaited(second.ended.then((_) => ended = true));
         await _settle();
@@ -1048,7 +1197,7 @@ void main() {
         expect(await first.endedInTime, isTrue);
         expect(await second.endedInTime, isTrue);
         // Once it has ended, a third release has nothing to wait for.
-        final third = limiter.release(keyOf[0]);
+        final third = limiter.release(keyOf[0], owner: panel);
         expect(await third.endedInTime, isTrue);
         expect(time.waits, hasLength(2));
       },
@@ -1169,7 +1318,9 @@ void main() {
       test(
         'puts a robot on the coordinator, with the pair it made and the Nostr key of the official client',
         () async {
-          final face = _face(await put.execute(robots[0], temple));
+          final face = _face(
+            await put.execute(robots[0], temple, owner: panel),
+          );
 
           expect(
             face,
@@ -1207,7 +1358,9 @@ void main() {
             fields: {'active_order_id': 41, 'earned_rewards': 1200},
           );
 
-          final face = _face(await put.execute(robots[0], temple));
+          final face = _face(
+            await put.execute(robots[0], temple, owner: panel),
+          );
 
           expect(face.alreadyExisted, isTrue);
           expect(face.activeOrderId, 41);
@@ -1234,7 +1387,11 @@ void main() {
               time.limiter(),
             );
 
-            final result = await put.execute(robots[busy], temple);
+            final result = await put.execute(
+              robots[busy],
+              temple,
+              owner: panel,
+            );
 
             if (busy < 4) {
               expect(_face(result).alreadyExisted, isFalse, reason: '$busy');
@@ -1260,7 +1417,7 @@ void main() {
           }
           // The robot that got no answer is bound all the same: its token hash may have left on an earlier attempt of the transport.
           expect(
-            await put.execute(robots[4], lake),
+            await put.execute(robots[4], lake, owner: panel),
             _refused<RobotBoundToAnotherCoordinatorFailure>(),
           );
         },
@@ -1272,7 +1429,9 @@ void main() {
           // The coordinator stored the first attempt, and the transport gave a busy answer; a second pair would not be the one it holds.
           coordinators.script.addAll([_Reply.storedThenBusy, _Reply.busy]);
 
-          final face = _face(await put.execute(robots[0], temple));
+          final face = _face(
+            await put.execute(robots[0], temple, owner: panel),
+          );
 
           expect(face.alreadyExisted, isFalse);
           expect(keys.generated, [robots[0].identity.hashId]);
@@ -1289,14 +1448,14 @@ void main() {
         coordinators.script.add(_Reply.timedOut);
 
         expect(
-          await put.execute(robots[0], temple),
+          await put.execute(robots[0], temple, owner: panel),
           _answered<CoordinatorTimedOut>(),
         );
         expect(coordinators.requests, hasLength(1));
         expect(time.waits, isEmpty);
         // The robot is bound there: the user's « Retry » reads it back first.
         expect(
-          await put.execute(robots[0], lake),
+          await put.execute(robots[0], lake, owner: panel),
           _refused<RobotBoundToAnotherCoordinatorFailure>(),
         );
       });
@@ -1312,7 +1471,9 @@ void main() {
             }
           };
 
-          final face = _face(await put.execute(robots[0], temple));
+          final face = _face(
+            await put.execute(robots[0], temple, owner: panel),
+          );
 
           expect(face.alreadyExisted, isFalse);
           expect(time.waits, [RobotRequestLimiter.nicknameRecheckWait]);
@@ -1336,12 +1497,12 @@ void main() {
               _Reply.unknown,
             ]);
             expect(
-              await put.execute(robots[i], temple),
+              await put.execute(robots[i], temple, owner: panel),
               _answered<RobotNicknameTaken>(),
             );
             // Nothing moved to another robot, and the index stays bound to that coordinator.
             expect(
-              await put.execute(robots[i], lake),
+              await put.execute(robots[i], lake, owner: panel),
               _refused<RobotBoundToAnotherCoordinatorFailure>(),
             );
           }
@@ -1353,17 +1514,22 @@ void main() {
 
           // The fourth robot is neither bound nor sent there.
           expect(
-            await put.execute(robots[3], temple),
+            await put.execute(robots[3], temple, owner: panel),
             _refused<RobotCoordinatorTooManyRefusalsFailure>(),
           );
           expect(coordinators.requests, hasLength(9));
           expect(await bindingOf(robots[3]), isNull);
           expect(
-            _face(await put.execute(robots[3], lake)).alreadyExisted,
+            _face(
+              await put.execute(robots[3], lake, owner: panel),
+            ).alreadyExisted,
             isFalse,
           );
           // Reading back a robot bound there still goes.
-          expect(await read.execute(robots[0]), _answered<RobotUnknown>());
+          expect(
+            await read.execute(robots[0], owner: panel),
+            _answered<RobotUnknown>(),
+          );
           // The same coordinator on mainnet is another one.
           expect(
             _face(await put.execute(mainnetRobots[4], temple)).alreadyExisted,
@@ -1389,7 +1555,7 @@ void main() {
               }
             };
 
-            _face(await put.execute(robots[i], temple));
+            _face(await put.execute(robots[i], temple, owner: panel));
             expect(coordinators.requests, hasLength(before + 3));
             // A robot found is no refusal: none of the three counts.
             expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
@@ -1398,7 +1564,9 @@ void main() {
 
           // A fourth robot still gets its first contact there.
           expect(
-            _face(await put.execute(robots[3], temple)).alreadyExisted,
+            _face(
+              await put.execute(robots[3], temple, owner: panel),
+            ).alreadyExisted,
             isFalse,
           );
           expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
@@ -1416,12 +1584,14 @@ void main() {
           ];
           for (final (i, (reply, outcome)) in failures.indexed) {
             coordinators.script.add(reply);
-            expect(await put.execute(robots[i], temple), outcome);
+            expect(await put.execute(robots[i], temple, owner: panel), outcome);
             expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
           }
 
           expect(
-            _face(await put.execute(robots[3], temple)).alreadyExisted,
+            _face(
+              await put.execute(robots[3], temple, owner: panel),
+            ).alreadyExisted,
             isFalse,
           );
           expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
@@ -1438,7 +1608,7 @@ void main() {
           ]);
 
           expect(
-            await put.execute(robots[0], temple),
+            await put.execute(robots[0], temple, owner: panel),
             _answered<CoordinatorTimedOut>(),
           );
           // Only a robot found clears a refusal: a coordinator that answered 7004 and then held the read would escape the cap otherwise.
@@ -1459,7 +1629,7 @@ void main() {
         coordinators.keepFor(robots[0], 'temple', _testnet, secondPair);
         // The first request is answered from the script, then the coordinator answers with what it keeps.
 
-        final face = _face(await put.execute(robots[0], temple));
+        final face = _face(await put.execute(robots[0], temple, owner: panel));
 
         expect(face.alreadyExisted, isTrue);
         expect(time.waits, [
@@ -1475,7 +1645,7 @@ void main() {
           keys.generateFailure = const RobotKeyComputeFailure();
 
           expect(
-            await put.execute(robots[0], temple),
+            await put.execute(robots[0], temple, owner: panel),
             _refused<RobotKeyComputeFailure>(),
           );
           expect(coordinators.requests, isEmpty);
@@ -1491,19 +1661,21 @@ void main() {
             coordinators.script.add(_Reply.busy);
           }
           for (var i = 0; i < 4; i++) {
-            await put.execute(robots[i], temple);
+            await put.execute(robots[i], temple, owner: panel);
           }
           expect(coordinators.requests, hasLength(13));
           expect(keys.generated, hasLength(4));
 
           expect(
-            await put.execute(robots[4], temple),
+            await put.execute(robots[4], temple, owner: panel),
             _refused<RobotCoordinatorBusyFailure>(),
           );
           expect(coordinators.requests, hasLength(13));
           expect(keys.generated, hasLength(4));
           expect(
-            _face(await put.execute(robots[4], lake)).alreadyExisted,
+            _face(
+              await put.execute(robots[4], lake, owner: panel),
+            ).alreadyExisted,
             isFalse,
           );
         },
@@ -1512,10 +1684,13 @@ void main() {
       test('a robot released during its call sends nothing more', () async {
         time.holding = true;
         coordinators.script.add(_Reply.busy);
-        final call = put.execute(robots[0], temple);
+        final call = put.execute(robots[0], temple, owner: panel);
         await _until(() => time.held.length == 1);
 
-        expect(await limiter.release(keyOf[0]).endedInTime, isTrue);
+        expect(
+          await limiter.release(keyOf[0], owner: panel).endedInTime,
+          isTrue,
+        );
         time.held.single.complete();
 
         expect(await call, _refused<RobotReleasedFailure>());
@@ -1541,11 +1716,13 @@ void main() {
           // The coordinator stored the first contact, and its answer was lost.
           coordinators.script.add(_Reply.storedThenTimedOut);
           expect(
-            await put.execute(robots[0], temple),
+            await put.execute(robots[0], temple, owner: panel),
             _answered<CoordinatorTimedOut>(),
           );
 
-          final face = _face(await put.execute(robots[0], temple));
+          final face = _face(
+            await put.execute(robots[0], temple, owner: panel),
+          );
 
           // Found by the read, with no first contact sent: this device put it there before (security review of step 5).
           expect(face.alreadyExisted, isFalse);
@@ -1562,9 +1739,11 @@ void main() {
         'a robot bound there and unknown is read, then sent one first contact',
         () async {
           coordinators.script.add(_Reply.timedOut);
-          await put.execute(robots[0], temple);
+          await put.execute(robots[0], temple, owner: panel);
 
-          final face = _face(await put.execute(robots[0], temple));
+          final face = _face(
+            await put.execute(robots[0], temple, owner: panel),
+          );
 
           expect(face.alreadyExisted, isFalse);
           expect(coordinators.requests.map(_sentPublicKey), [
@@ -1580,7 +1759,7 @@ void main() {
         'the busy and 7004 rules hold on both requests of a robot bound there',
         () async {
           coordinators.script.add(_Reply.timedOut);
-          await put.execute(robots[0], temple);
+          await put.execute(robots[0], temple, owner: panel);
           coordinators.script.addAll([
             _Reply.busy,
             _Reply.unknown,
@@ -1591,7 +1770,7 @@ void main() {
           ]);
 
           expect(
-            await put.execute(robots[0], temple),
+            await put.execute(robots[0], temple, owner: panel),
             _answered<RobotNicknameTaken>(),
           );
           expect(time.waits, [
@@ -1619,11 +1798,11 @@ void main() {
       test(
         'a robot bound there whose read fails is sent no first contact',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           coordinators.script.add(_Reply.timedOut);
 
           expect(
-            await put.execute(robots[0], temple),
+            await put.execute(robots[0], temple, owner: panel),
             _answered<CoordinatorTimedOut>(),
           );
           expect(coordinators.requests.map(_sentPublicKey), [
@@ -1675,16 +1854,16 @@ void main() {
       test(
         'a robot bound to a coordinator that changed since is sent nothing',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           final sent = coordinators.requests.length;
           final changed = _withNostrKey(temple, '1' * 64);
 
           expect(
-            await put.execute(robots[0], changed),
+            await put.execute(robots[0], changed, owner: panel),
             _refused<RobotCoordinatorChangedFailure>(),
           );
           expect(
-            await put.execute(robots[0], lake),
+            await put.execute(robots[0], lake, owner: panel),
             _refused<RobotBoundToAnotherCoordinatorFailure>(),
           );
           expect(coordinators.requests, hasLength(sent));
@@ -1716,8 +1895,8 @@ void main() {
           coordinators.script.addAll(List.filled(6, _Reply.takenOrUnknown));
 
           final results = await Future.wait([
-            put.execute(robots[0], temple),
-            put.execute(robots[1], temple),
+            put.execute(robots[0], temple, owner: panel),
+            put.execute(robots[1], temple, owner: panel),
           ]);
 
           expect(
@@ -1753,11 +1932,11 @@ void main() {
         () async {
           time.holding = true;
           coordinators.script.addAll(List.filled(2, _Reply.takenOrUnknown));
-          final call = put.execute(robots[0], temple);
+          final call = put.execute(robots[0], temple, owner: panel);
           await _until(() => time.held.length == 1);
           expect(time.waits, [RobotRequestLimiter.nicknameRecheckWait]);
 
-          limiter.release(keyOf[0]);
+          limiter.release(keyOf[0], owner: panel);
 
           // The wait of 10 s is not over: the release ends it.
           expect(await call, _refused<RobotReleasedFailure>());
@@ -1788,7 +1967,9 @@ void main() {
           );
           expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
           expect(
-            _face(await put.execute(robots[4], temple)).alreadyExisted,
+            _face(
+              await put.execute(robots[4], temple, owner: panel),
+            ).alreadyExisted,
             isFalse,
           );
         },
@@ -1802,7 +1983,7 @@ void main() {
           coordinators.script.add(reply);
 
           expect(
-            await put.execute(robots[0], temple),
+            await put.execute(robots[0], temple, owner: panel),
             reply == _Reply.unreachable
                 ? _answered<CoordinatorUnreachable>()
                 : _answered<CoordinatorTransportFailed>(),
@@ -1817,7 +1998,7 @@ void main() {
       test(
         'reads a robot back from the coordinator its binding names, with nothing held',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           coordinators.keepFor(
             robots[0],
             'temple',
@@ -1832,7 +2013,7 @@ void main() {
             },
           );
 
-          final face = _face(await read.execute(robots[0]));
+          final face = _face(await read.execute(robots[0], owner: panel));
 
           expect(
             face,
@@ -1856,7 +2037,7 @@ void main() {
       );
 
       test('a Nostr key the robot did not make is unknown', () async {
-        _face(await put.execute(robots[0], temple));
+        _face(await put.execute(robots[0], temple, owner: panel));
         coordinators.keepFor(
           robots[0],
           'temple',
@@ -1866,26 +2047,32 @@ void main() {
         );
 
         expect(
-          _face(await read.execute(robots[0])).nostrKey,
+          _face(await read.execute(robots[0], owner: panel)).nostrKey,
           RobotNostrKeyStatus.unknown,
         );
       });
 
       // S03 of the second security pass on step 5: each read closes its call in the limiter, whatever its outcome, so that a release finds no call of the robot still running but one opened since.
       test('closes its call in the limiter, whatever its outcome', () async {
-        expect(await read.execute(robots[1]), _refused<RobotNotBoundFailure>());
+        expect(
+          await read.execute(robots[1], owner: panel),
+          _refused<RobotNotBoundFailure>(),
+        );
         expect(limiter.isInUse(keyOf[1]), isFalse);
-        _face(await put.execute(robots[0], temple));
+        _face(await put.execute(robots[0], temple, owner: panel));
         expect(limiter.isInUse(keyOf[0]), isFalse);
 
-        _face(await read.execute(robots[0]));
+        _face(await read.execute(robots[0], owner: panel));
         expect(limiter.isInUse(keyOf[0]), isFalse);
         coordinators.script.add(_Reply.unknown);
-        expect(await read.execute(robots[0]), _answered<RobotUnknown>());
+        expect(
+          await read.execute(robots[0], owner: panel),
+          _answered<RobotUnknown>(),
+        );
         expect(limiter.isInUse(keyOf[0]), isFalse);
         coordinators.script.add(_Reply.unreachable);
         expect(
-          await read.execute(robots[0]),
+          await read.execute(robots[0], owner: panel),
           _answered<CoordinatorUnreachable>(),
         );
         expect(limiter.isInUse(keyOf[0]), isFalse);
@@ -1893,7 +2080,7 @@ void main() {
           List.filled(RobotRequestLimiter.maxAttempts, _Reply.busy),
         );
         expect(
-          await read.execute(robots[0]),
+          await read.execute(robots[0], owner: panel),
           _refused<RobotCoordinatorBusyFailure>(),
         );
         expect(limiter.isInUse(keyOf[0]), isFalse);
@@ -1908,7 +2095,7 @@ void main() {
         'a robot without a binding is not read, and nothing is sent or written',
         () async {
           expect(
-            await read.execute(robots[1]),
+            await read.execute(robots[1], owner: panel),
             _refused<RobotNotBoundFailure>(),
           );
           expect(coordinators.requests, isEmpty);
@@ -1920,7 +2107,7 @@ void main() {
       test(
         'a robot bound on the other network is not read on this one',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           final sent = coordinators.requests.length;
 
           expect(
@@ -1934,7 +2121,7 @@ void main() {
       test(
         'a coordinator the list no longer has on that network is a change, and nothing is sent',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           final sent = coordinators.requests.length;
 
           for (final federation in [
@@ -2022,18 +2209,24 @@ void main() {
         'a robot bound there that the coordinator does not know is RobotUnknown',
         () async {
           coordinators.script.add(_Reply.timedOut);
-          await put.execute(robots[0], temple);
+          await put.execute(robots[0], temple, owner: panel);
 
-          expect(await read.execute(robots[0]), _answered<RobotUnknown>());
+          expect(
+            await read.execute(robots[0], owner: panel),
+            _answered<RobotUnknown>(),
+          );
           expect(keys.proved, isEmpty);
         },
       );
 
       test('a busy answer is sent again', () async {
-        _face(await put.execute(robots[0], temple));
+        _face(await put.execute(robots[0], temple, owner: panel));
         coordinators.script.add(_Reply.busy);
 
-        expect(_face(await read.execute(robots[0])).alreadyExisted, isFalse);
+        expect(
+          _face(await read.execute(robots[0], owner: panel)).alreadyExisted,
+          isFalse,
+        );
         expect(time.waits, [const Duration(seconds: 2)]);
       });
 
@@ -2056,7 +2249,7 @@ void main() {
       test(
         'reads a robot from the coordinator its binding names, wherever the list puts it',
         () async {
-          _face(await put.execute(robots[1], lake));
+          _face(await put.execute(robots[1], lake, owner: panel));
           _face(await put.execute(mainnetRobots[2], lake));
           final reversed = Federation([
             ...Federation.robosats.coordinators.reversed,
@@ -2091,11 +2284,11 @@ void main() {
         (_Reply.failed, 'failed'),
       ]) {
         test('a transport that $failure is not sent again', () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           coordinators.script.add(reply);
 
           expect(
-            await read.execute(robots[0]),
+            await read.execute(robots[0], owner: panel),
             reply == _Reply.unreachable
                 ? _answered<CoordinatorUnreachable>()
                 : _answered<CoordinatorTransportFailed>(),
@@ -2121,9 +2314,44 @@ void main() {
       });
 
       test(
+        'a call of the robot\'s trade still open: the release returns without closing anything, and the sessions are closed once the trade\'s last call has ended, never under its request in flight (#251, security review of PR 274, C1)',
+        () async {
+          _face(await put.execute(robots[0], temple, owner: panel));
+          final answer = Completer<String>();
+          var sent = 0;
+          final tradeCall = limiter.open(keyOf[0]);
+          final tradeRead = tradeCall.send(_testnet, temple, () {
+            sent++;
+            return answer.future;
+          }, isBusy: (_) => false);
+          await _until(() => sent == 1);
+          await release.execute(robots[0], owner: panel);
+          // Past the release's bound too: the trade's request is in flight, its call open.
+          await _settle();
+          expect(sessions.closed, isEmpty);
+          answer.complete('answered');
+          expect(await tradeRead, _sent('answered'));
+          await _settle();
+          expect(sessions.closed, isEmpty);
+          // The trade sends again on the same sessions.
+          final again = tradeCall.send(
+            _testnet,
+            temple,
+            () async => 'read again',
+            isBusy: (_) => false,
+          );
+          expect(await again, _sent('read again'));
+          expect(sessions.closed, isEmpty);
+          tradeCall.close();
+          await _settle();
+          expect(sessions.closed, [keyOf[0]]);
+        },
+      );
+
+      test(
         'with nothing in flight, closes the sessions of the robot at once',
         () async {
-          await release.execute(robots[0]);
+          await release.execute(robots[0], owner: panel);
 
           expect(sessions.closed, [keyOf[0]]);
           expect(time.waits, isEmpty);
@@ -2133,7 +2361,7 @@ void main() {
       test(
         'closes the sessions once the request in flight has ended, whose answer still comes',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           // The bound of the release does not pass in this test.
           time.holding = true;
           final answer = Completer<void>();
@@ -2142,10 +2370,10 @@ void main() {
             await answer.future;
             events.add('answered');
           };
-          final reading = read.execute(robots[0]);
+          final reading = read.execute(robots[0], owner: panel);
           await _until(() => events.contains('sent'));
 
-          final releasing = release.execute(robots[0]);
+          final releasing = release.execute(robots[0], owner: panel);
           await _settle();
           expect(sessions.closed, isEmpty);
           answer.complete();
@@ -2164,13 +2392,14 @@ void main() {
           final answer = Completer<void>();
           coordinators.onSend = (request) => answer.future;
           final holding = [
-            for (var i = 1; i < 3; i++) put.execute(robots[i], temple),
+            for (var i = 1; i < 3; i++)
+              put.execute(robots[i], temple, owner: panel),
           ];
           await _until(() => coordinators.requests.length == 2);
-          final putting = put.execute(robots[0], temple);
+          final putting = put.execute(robots[0], temple, owner: panel);
           await _settle();
 
-          await release.execute(robots[0]);
+          await release.execute(robots[0], owner: panel);
 
           expect(await putting, _refused<RobotReleasedFailure>());
           expect(coordinators.of(robots[0]), isEmpty);
@@ -2181,7 +2410,9 @@ void main() {
           }
           // The robot dropped before its binding is free to go elsewhere.
           expect(
-            _face(await put.execute(robots[0], lake)).alreadyExisted,
+            _face(
+              await put.execute(robots[0], lake, owner: panel),
+            ).alreadyExisted,
             isFalse,
           );
         },
@@ -2190,7 +2421,7 @@ void main() {
       test(
         'closes at the bound, then again once a late request has ended',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           time.holding = true;
           final answer = Completer<void>();
           coordinators.onSend = (request) async {
@@ -2198,10 +2429,10 @@ void main() {
             await answer.future;
             events.add('answered');
           };
-          final reading = read.execute(robots[0]);
+          final reading = read.execute(robots[0], owner: panel);
           await _until(() => events.contains('sent'));
 
-          final releasing = release.execute(robots[0]);
+          final releasing = release.execute(robots[0], owner: panel);
           await _settle();
           expect(time.waits, [RobotRequestLimiter.releaseWait]);
           time.held.single.complete();
@@ -2219,7 +2450,7 @@ void main() {
       test(
         'closes again after a late request, once a read opened since has ended too',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           time.holding = true;
           final answer = Completer<void>();
           var sent = 0;
@@ -2230,15 +2461,15 @@ void main() {
             await answer.future;
             events.add('answered');
           };
-          final first = read.execute(robots[0]);
+          final first = read.execute(robots[0], owner: panel);
           await _until(() => events.contains('sent'));
 
-          final releasing = release.execute(robots[0]);
+          final releasing = release.execute(robots[0], owner: panel);
           await _settle();
           time.held.single.complete();
           await _until(() => events.contains('close'));
           // The user comes back to the robot: a read opened since, answered at once.
-          _face(await read.execute(robots[0]));
+          _face(await read.execute(robots[0], owner: panel));
           answer.complete();
           await releasing;
 
@@ -2248,17 +2479,17 @@ void main() {
       );
 
       test('leaves the sessions to a call of the robot opened since', () async {
-        _face(await put.execute(robots[0], temple));
+        _face(await put.execute(robots[0], temple, owner: panel));
         time.holding = true;
         final answers = [Completer<void>(), Completer<void>()];
         var sent = 0;
         coordinators.onSend = (request) => answers[sent++].future;
-        final first = read.execute(robots[0]);
+        final first = read.execute(robots[0], owner: panel);
         await _until(() => sent == 1);
 
-        final releasing = release.execute(robots[0]);
+        final releasing = release.execute(robots[0], owner: panel);
         // The user comes back to the robot at once.
-        final second = read.execute(robots[0]);
+        final second = read.execute(robots[0], owner: panel);
         await _until(() => sent == 2);
         answers[0].complete();
         await releasing;
@@ -2267,14 +2498,17 @@ void main() {
         answers[1].complete();
         await first;
         _face(await second);
-        await release.execute(robots[0]);
+        // Since #251 (security review of PR 274, C1) the first release closes the sessions once nothing uses the robot any more, never under the call opened since.
+        await pumpEventQueue();
         expect(sessions.closed, [keyOf[0]]);
+        await release.execute(robots[0], owner: panel);
+        expect(sessions.closed, [keyOf[0], keyOf[0]]);
       });
 
       test(
         'a second release waits too for the request the first one let run',
         () async {
-          _face(await put.execute(robots[0], temple));
+          _face(await put.execute(robots[0], temple, owner: panel));
           time.holding = true;
           final answer = Completer<void>();
           coordinators.onSend = (request) async {
@@ -2282,11 +2516,11 @@ void main() {
             await answer.future;
             events.add('answered');
           };
-          final reading = read.execute(robots[0]);
+          final reading = read.execute(robots[0], owner: panel);
           await _until(() => events.contains('sent'));
 
-          final first = release.execute(robots[0]);
-          final second = release.execute(robots[0]);
+          final first = release.execute(robots[0], owner: panel);
+          final second = release.execute(robots[0], owner: panel);
           await _settle();
           expect(events, ['sent']);
           answer.complete();
@@ -2312,15 +2546,15 @@ void main() {
             _Reply.unknown,
             _Reply.unknown,
           ]);
-          await put.execute(robots[0], temple);
+          await put.execute(robots[0], temple, owner: panel);
           coordinators.keepFor(robots[0], 'temple', _testnet, firstPair);
-          await read.execute(robots[0]);
-          await put.execute(robots[1], temple);
-          await read.execute(robots[2]);
+          await read.execute(robots[0], owner: panel);
+          await put.execute(robots[1], temple, owner: panel);
+          await read.execute(robots[2], owner: panel);
           await ReleaseRobotUsecase(
             limiter,
             CloseRobotSessionsUsecase(_Sessions(events)),
-          ).execute(robots[0]);
+          ).execute(robots[0], owner: panel);
         });
 
         expect(events, ['close']);
