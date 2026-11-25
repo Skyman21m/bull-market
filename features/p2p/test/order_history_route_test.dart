@@ -704,6 +704,19 @@ void main() {
             expect(tester.takeException(), isNull);
             expect(app.lines(), hasLength(20));
             _expectNoWordBroken(tester, '$language ×$textScale');
+            // « Robot #N » drawn whole, on one line, between the two arrows.
+            final label = tester.getRect(
+              find.text('${app.l10n.p2pGarageRobotLabel} #0'),
+            );
+            final back = tester.getRect(
+              find.byTooltip(app.l10n.p2pGaragePreviousAccount),
+            );
+            final forward = tester.getRect(
+              find.byTooltip(app.l10n.p2pGarageNextAccount),
+            );
+            expect(label.left >= back.right, isTrue, reason: '$label');
+            expect(label.right <= forward.left, isTrue, reason: '$label');
+            expect(forward.right <= 320, isTrue, reason: '$forward');
             // Every target a finger aims at stays at least 44 points each way: the arrows, the « Last order #N » lines and the history's lines.
             for (final tooltip in [
               app.l10n.p2pGaragePreviousAccount,
