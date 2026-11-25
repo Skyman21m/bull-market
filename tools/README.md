@@ -77,8 +77,9 @@ bash tools/test_shards.sh run <shard>    # make unit-test-shard SHARD=<shard>
 ```
 
 `check` (run by the `checks` job) fails when a member, or a test file of a
-split member, is in no shard or in two, or when a shard would run nothing;
-`run` refuses a shard with nothing to run, since `melos exec` with no package
+split member, is in no shard or in two, when a shard would run nothing, or when
+the members or a split member's test files cannot be listed (an empty or unread
+list never reads as green); `run` refuses a shard with nothing to run, since `melos exec` with no package
 left exits 0. `test_shards_test.sh` tests the script over fake workspaces with a
 fake `fvm` (`make unit-test-shards-test`, run by the `test-plan` job). To move
 the cut, edit the table; `check` tells whether the result still covers every

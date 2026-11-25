@@ -40,6 +40,17 @@ if [[ "$1 $2 $3 $4" == "dart run melos list" ]]; then
   for arg in "$@"; do
     case "$arg" in --flutter) flavor=flutter ;; --no-flutter) flavor=dart ;; esac
   done
+  # A "fail-list" file names the lists that fail ("flutter", "dart"); a
+  # "fail-from" file holds N: the N-th `melos list` and every later one fail.
+  if [[ -f "$root/fail-list" ]] && grep -qx "$flavor" "$root/fail-list"; then
+    echo "melos: simulated failure" >&2
+    exit 1
+  fi
+  calls=$(grep -c "^dart run melos list" "$root/fvm.log")
+  if [[ -f "$root/fail-from" ]] && ((calls >= $(cat "$root/fail-from"))); then
+    echo "melos: simulated failure from call $(cat "$root/fail-from")" >&2
+    exit 1
+  fi
   while read -r name f path; do
     [[ "$f" == "$flavor" ]] || continue
     location=$root
@@ -199,6 +210,51 @@ root=$work/red-empty
 make_workspace "$root"
 set_table "$root" "${standard_table[@]}"
 expect_fail "melos lists no member" "$root" "melos lists no workspace member" check
+
+# melos list failing, for either list, or answering nothing: never green,
+# whatever the command (a failure once printed ❌ and still exited 0).
+root=$work/red-list
+make_workspace "$root" "${standard_members[@]}"
+set_table "$root" "${standard_table[@]}"
+echo flutter >"$root/fail-list"
+expect_fail "melos list --flutter fails: check" "$root" "melos list --flutter failed" check
+expect_fail "melos list --flutter fails: plan" "$root" "melos list --flutter failed" plan packages
+expect_fail "melos list --flutter fails: run" "$root" "melos list --flutter failed" run p2p-1
+echo dart >"$root/fail-list"
+expect_fail "melos list --no-flutter fails: check" "$root" "melos list --no-flutter failed" check
+expect_fail "melos list --no-flutter fails: run" "$root" "melos list --no-flutter failed" run app
+if grep -q "melos exec" "$root/fvm.log"; then failed=$((failed + 1)); echo "❌ a shard ran although melos list failed"; else passed=$((passed + 1)); fi
+
+# The members are listed once per command, both lists at the top level: a
+# failure from the N-th call on can only be one of those two, and fails.
+rm -f "$root/fail-list"
+for from in 1 2; do
+  echo "$from" >"$root/fail-from"
+  : >"$root/fvm.log"
+  expect_fail "melos list failing from call $from: check" "$root" "failed: the workspace members cannot be read" check
+done
+rm -f "$root/fail-from"
+: >"$root/fvm.log"
+expect_pass "check lists the members" "$root" check
+[[ "$(grep -c "^dart run melos list" "$root/fvm.log")" == 2 ]] && passed=$((passed + 1)) || { failed=$((failed + 1)); echo "❌ check called melos list $(grep -c "^dart run melos list" "$root/fvm.log") times, not twice"; }
+
+root=$work/red-list-empty
+make_workspace "$root"
+set_table "$root" "${standard_table[@]}"
+expect_fail "melos lists nothing: plan" "$root" "melos lists no workspace member" plan packages
+expect_fail "melos lists nothing: run" "$root" "melos lists no workspace member" run packages
+
+# A split member whose test files cannot all be listed.
+if [[ "$(id -u)" != 0 ]]; then
+  root=$work/red-unreadable
+  make_workspace "$root" "${standard_members[@]}"
+  set_table "$root" "${standard_table[@]}"
+  mkdir -p "$root/features/p2p/test/locked" && : >"$root/features/p2p/test/locked/x_test.dart"
+  chmod 000 "$root/features/p2p/test/locked"
+  expect_fail "unreadable test files: check" "$root" "cannot list the test files of p2p" check
+  expect_fail "unreadable test files: run" "$root" "cannot list the test files of p2p" run p2p-1
+  chmod 755 "$root/features/p2p/test/locked"
+fi
 
 root=$work/red-split-empty
 make_workspace "$root" "bb_mobile flutter . test/app_test.dart" "p2p flutter features/p2p test/a_test.dart" "secrets flutter packages/secrets test/s_test.dart"

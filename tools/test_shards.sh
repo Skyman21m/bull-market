@@ -25,6 +25,9 @@
 # shard would run nothing. melos lists the members (fvm dart run melos list),
 # as `make unit-test` does through `melos exec`.
 set -euo pipefail
+# Command substitutions keep `set -e` (bash 4.4+), so a failure inside one is
+# not ignored; the callers also check each substitution that can fail.
+shopt -s inherit_errexit
 # No pathname expansion: the default member is a literal '*'.
 set -f
 
@@ -137,35 +140,35 @@ validate_table() {
 # Every workspace member with a test/ directory, as `make unit-test` selects
 # them: "<name>\t<flutter|dart>\t<location>" per line. The two lists are the two
 # `melos exec` of `make unit-test` (--flutter, then --no-flutter).
+# load_members runs once, at the top level of a command: a `die` inside a
+# command substitution would only leave that subshell, and a failed
+# substitution read by `<<<` never stops the script.
 members_cache=""
-list_members() {
-  if [[ -z "$members_cache" ]]; then
-    local flavor line out
-    for flavor in flutter dart; do
-      local flag=--flutter
-      [[ "$flavor" == dart ]] && flag=--no-flutter
-      out=$(fvm dart run melos list --dir-exists=test "$flag" --long --parsable) || die "melos list failed"
-      # --long --parsable prints "<location>:<name>:<version>:<PRIVATE?>".
-      while IFS= read -r line; do
-        [[ -n "$line" ]] || continue
-        [[ "$line" == /*:*:* ]] || die "unexpected line from melos list: '$line'"
-        local name location
-        name=$(awk -F: '{print $(NF-2)}' <<<"$line")
-        location=${line%%:"$name":*}
-        [[ -d "$location/test" ]] || die "melos lists $name at '$location', which has no test/ directory"
-        members_cache+="$name"$'\t'"$flavor"$'\t'"$location"$'\n'
-      done <<<"$out"
-    done
-    [[ -n "$members_cache" ]] || die "melos lists no workspace member with a test/ directory: an empty list must never read as green"
-    local dupes
-    dupes=$(cut -f1 <<<"$members_cache" | sort | uniq -d)
-    [[ -z "$dupes" ]] || die "melos lists these members twice: $dupes"
-  fi
-  printf '%s' "$members_cache"
+members_loaded=0
+load_members() {
+  local flavor flag line out name location dupes
+  for flavor in flutter dart; do
+    flag=--flutter
+    [[ "$flavor" == dart ]] && flag=--no-flutter
+    out=$(fvm dart run melos list --dir-exists=test "$flag" --long --parsable) || die "melos list $flag failed: the workspace members cannot be read"
+    # --long --parsable prints "<location>:<name>:<version>:<PRIVATE?>".
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      [[ "$line" == /*:*:* ]] || die "unexpected line from melos list: '$line'"
+      name=$(awk -F: '{print $(NF-2)}' <<<"$line")
+      location=${line%%:"$name":*}
+      [[ -d "$location/test" ]] || die "melos lists $name at '$location', which has no test/ directory"
+      members_cache+="$name"$'\t'"$flavor"$'\t'"$location"$'\n'
+    done <<<"$out"
+  done
+  [[ -n "$members_cache" ]] || die "melos lists no workspace member with a test/ directory: an empty list must never read as green"
+  dupes=$(cut -f1 <<<"$members_cache" | sort | uniq -d)
+  [[ -z "$dupes" ]] || die "melos lists these members twice: $dupes"
+  members_loaded=1
 }
 
 member_line() {
-  list_members | awk -F'\t' -v n="$1" '$1 == n' | head -n 1
+  awk -F'\t' -v n="$1" '$1 == n' <<<"$members_cache" | head -n 1
 }
 
 # Every member any shard names, whole or split.
@@ -179,31 +182,37 @@ named_members() {
   done | sort -u
 }
 
+# The package's *_test.dart files, sorted; fails (pipefail) if they cannot be
+# listed. Callers check its status: `files=$(test_files …) || die …`.
 test_files() {
   (cd "$1" && find test -type f -name '*_test.dart' | LC_ALL=C sort)
 }
 
 # What a shard runs, tab-separated: "whole <name> <flavor> <location>" and
-# "file <name> <flavor> <location> <path from the package>" lines.
+# "file <name> <flavor> <location> <path from the package>" lines. Called as
+# `plan=$(plan_shard …)`: every failure inside exits non-zero, which stops the
+# caller (set -e sees a failed substitution in an assignment).
 plan_shard() {
-  local shard=$1 member pkg k n line name flavor location i file
-  for member in $(shard_members "$shard"); do
+  local shard=$1 members member pkg k n line name flavor location i file files named
+  ((members_loaded)) || die "internal error: the members were not loaded"
+  members=$(shard_members "$shard") || exit 1
+  for member in $members; do
     if [[ "$member" == '*' ]]; then
-      local named
-      named=$(named_members)
+      named=$(named_members) || die "cannot list the named members"
       while IFS=$'\t' read -r name flavor location; do
         [[ -n "$name" ]] || continue
         grep -qxF "$name" <<<"$named" && continue
         printf 'whole\t%s\t%s\t%s\n' "$name" "$flavor" "$location"
-      done <<<"$(list_members)"
+      done <<<"$members_cache"
     elif [[ "$member" == *@* ]]; then
       pkg=${member%%@*}
       k=${member#*@}
       n=${k#*/}
       k=${k%/*}
-      line=$(member_line "$pkg")
+      line=$(member_line "$pkg") || die "cannot read the member $pkg"
       [[ -n "$line" ]] || die "shard '$shard' names $pkg, which is not a workspace member with a test/ directory"
       IFS=$'\t' read -r name flavor location <<<"$line"
+      files=$(test_files "$location") || die "cannot list the test files of $name in '$location'"
       i=0
       while IFS= read -r file; do
         [[ -n "$file" ]] || continue
@@ -211,9 +220,9 @@ plan_shard() {
           printf 'file\t%s\t%s\t%s\t%s\n' "$name" "$flavor" "$location" "$file"
         fi
         i=$((i + 1))
-      done <<<"$(test_files "$location")"
+      done <<<"$files"
     else
-      line=$(member_line "$member")
+      line=$(member_line "$member") || die "cannot read the member $member"
       [[ -n "$line" ]] || die "shard '$shard' names $member, which is not a workspace member with a test/ directory"
       printf 'whole\t%s\n' "$line"
     fi
@@ -222,20 +231,23 @@ plan_shard() {
 
 cmd_names() {
   validate_table
-  local first=1 name
+  local first=1 name names
+  names=$(shard_names)
   printf '['
   while IFS= read -r name; do
     ((first)) || printf ','
     printf '"%s"' "$name"
     first=0
-  done <<<"$(shard_names)"
+  done <<<"$names"
   printf ']\n'
 }
 
 cmd_check() {
   validate_table
+  load_members
   local -A member_count=() file_count=() split=() shard_of_member=()
-  local shard kind name flavor location file errors=0 total_files=0
+  local shard kind name flavor location file files names errors=0 total_files=0
+  names=$(shard_names)
 
   while IFS= read -r shard; do
     local plan
@@ -254,7 +266,7 @@ cmd_check() {
         *) die "unexpected plan line: $kind $name" ;;
       esac
     done <<<"$plan"
-  done <<<"$(shard_names)"
+  done <<<"$names"
 
   local members=0 whole_members=0
   while IFS=$'\t' read -r name flavor location; do
@@ -273,6 +285,7 @@ cmd_check() {
         errors=$((errors + 1))
       fi
       local found=0
+      files=$(test_files "$location") || die "cannot list the test files of $name in '$location'"
       while IFS= read -r file; do
         [[ -n "$file" ]] || continue
         found=$((found + 1))
@@ -281,7 +294,7 @@ cmd_check() {
           0) echo "❌ $name: $file is in no shard" >&2; errors=$((errors + 1)) ;;
           *) echo "❌ $name: $file is in ${file_count["$name $file"]} shards" >&2; errors=$((errors + 1)) ;;
         esac
-      done <<<"$(test_files "$location")"
+      done <<<"$files"
       ((found > 0)) || { echo "❌ $name is split but has no *_test.dart file" >&2; errors=$((errors + 1)); }
       total_files=$((total_files + found))
       echo "  $name ($flavor): $found test files, split across shards"
@@ -292,14 +305,16 @@ cmd_check() {
         *) echo "❌ $name is in ${member_count[$name]} shards: ${shard_of_member[$name]}" >&2; errors=$((errors + 1)) ;;
       esac
     fi
-  done <<<"$(list_members)"
+  done <<<"$members_cache"
 
+  ((members > 0)) || die "no workspace member was checked: an empty check must never read as green"
   ((errors == 0)) || die "the shards do not cover the unit tests exactly ($errors error(s))"
   echo "✅ $(shard_names | wc -l) shards cover the $members workspace members with a test/ directory exactly once ($whole_members whole, the others split file by file over $total_files test files)"
 }
 
 cmd_plan() {
   validate_table
+  load_members
   local plan
   plan=$(plan_shard "$1")
   [[ -n "$plan" ]] || die "shard '$1' would run nothing"
@@ -309,6 +324,7 @@ cmd_plan() {
 cmd_run() {
   local shard=$1
   validate_table
+  load_members
   local plan
   plan=$(plan_shard "$shard")
   [[ -n "$plan" ]] || die "shard '$shard' would run nothing: refusing to pass with no test run"
