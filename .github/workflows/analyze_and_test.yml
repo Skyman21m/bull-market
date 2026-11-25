@@ -353,6 +353,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Fork addition (#212): every result in the log, before the first refusal.
+          echo "classification=${CLASSIFICATION_RESULT} (run_app_checks=${RUN_APP_CHECKS}) action-pins=${ACTION_PINS_RESULT} test-plan=${TEST_PLAN_RESULT} checks=${CHECKS_RESULT} tests=${TESTS_RESULT}"
+
           [[ "$CLASSIFICATION_RESULT" == success ]] || {
             echo "Classification result was ${CLASSIFICATION_RESULT}, expected success" >&2
             exit 1
