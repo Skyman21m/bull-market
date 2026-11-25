@@ -234,7 +234,7 @@ class _LastOrderLinesState extends State<LastOrderLines> {
   }
 }
 
-/// One order of the history (#253), as the validated mock-up draws it: « #N · coordinator » over its side, made or taken here and the day of its end, then its robot, how it ended on the right; a tap calls [onTap].
+/// One order of the history (#253), as the validated mock-up draws it: « #N · coordinator » over its side, made or taken here and the day of its end, how it ended on the right; then its robot, on a line of its own; a tap calls [onTap].
 class _HistoryRow extends StatelessWidget {
   final FinishedOrder order;
 
@@ -287,50 +287,56 @@ class _HistoryRow extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: BullSpacing.sm),
-        child: LayoutBuilder(
-          builder: (context, box) => Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    WordFitText(
-                      l10n.p2pHistoryTitle('${record.orderId}', name),
-                      style: text.bodyLarge?.copyWith(
-                        color: colors.text,
-                        fontWeight: FontWeight.w600,
-                      ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            LayoutBuilder(
+              builder: (context, box) => Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        WordFitText(
+                          l10n.p2pHistoryTitle('${record.orderId}', name),
+                          style: text.bodyLarge?.copyWith(
+                            color: colors.text,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        WordFitText(
+                          l10n.p2pHistoryFacts(
+                            side,
+                            origin,
+                            P2pFormats(l10n).day(order.endedAt),
+                          ),
+                          style: muted,
+                        ),
+                      ],
                     ),
-                    WordFitText(
-                      l10n.p2pHistoryFacts(
-                        side,
-                        origin,
-                        P2pFormats(l10n).day(order.endedAt),
-                      ),
-                      style: muted,
-                    ),
-                    WordFitText(robot, style: muted),
-                  ],
-                ),
-              ),
-              const Gap(BullSpacing.sm),
-              // At most two fifths of the line, so that the order's own words keep the rest at every text size.
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: box.maxWidth * 0.4),
-                child: WordFitText(
-                  end,
-                  textAlign: TextAlign.end,
-                  style: text.bodyMedium?.copyWith(
-                    color: endColor,
-                    fontWeight: order.end == OrderEnd.dispute
-                        ? FontWeight.w600
-                        : null,
                   ),
-                ),
+                  const Gap(BullSpacing.sm),
+                  // At most 45 % of the line, so that the order's own words keep the rest at every text size, and « Cancelled » keeps one line at 320 points.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: box.maxWidth * 0.45),
+                    child: WordFitText(
+                      end,
+                      textAlign: TextAlign.end,
+                      style: text.bodyMedium?.copyWith(
+                        color: endColor,
+                        fontWeight: order.end == OrderEnd.dispute
+                            ? FontWeight.w600
+                            : null,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            // The robot on a line of its own, the whole width: a nickname is one long word.
+            WordFitText(robot, style: muted),
+          ],
         ),
       ),
     );
