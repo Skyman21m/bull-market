@@ -131,7 +131,7 @@ void main() {
         harness,
         await harness.shownOrder(),
         calls: TakeCalls(
-          prepare: (shown, {required network, amount, onStep}) {
+          prepare: (shown, {required network, amount, onStep, garageRobot}) {
             prepares++;
             return take.prepare(
               shown,

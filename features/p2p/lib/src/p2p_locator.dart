@@ -285,7 +285,7 @@ final class P2pLocator {
         locator(),
         locator(),
         // The records the robot shown follows (#227, #251), where the feature holds trades.
-        trades: locator.isRegistered<FollowTradesUsecase>()
+        tradesOf: locator.isRegistered<FollowTradesUsecase>()
             ? locator<FollowTradesUsecase>().execute
             : null,
         navigation: locator<GarageNavigation>(),
@@ -612,6 +612,8 @@ final class P2pLocator {
         confirm: take.confirm,
         abandon: take.abandon,
         abandonOrder: take.abandonOrder,
+        // The robot the Garage would show, for the line of the order page only (#251).
+        garageRobot: locator<GarageRobotUsecase>().execute,
       );
     }
 
@@ -654,6 +656,7 @@ final class P2pLocator {
         network,
         take.readUnlisted,
         take.abandonRead,
+        garageRobot: locator<GarageRobotUsecase>().execute,
       );
     });
     // The same, from the trade screen of an order public again: the trade shown is given, so that a take refused for that very trade is not opened over itself.

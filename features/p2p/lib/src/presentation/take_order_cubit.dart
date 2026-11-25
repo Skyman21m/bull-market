@@ -7,6 +7,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../public/p2p_wallet_port.dart';
 import '../domain/p2p_failure.dart';
+import '../domain/robot_binding.dart';
 import '../domain/trade/make_price_check.dart';
 import '../domain/trade/taken_price_check.dart';
 import '../domain/trade/trade_take.dart';
@@ -21,6 +22,7 @@ typedef PrepareTake =
       required RobosatsNetwork network,
       TakeAmount? amount,
       TakeProgress? onStep,
+      RobotSlot? garageRobot,
     });
 
 /// [TakeOrderUsecase.prepareUnlisted], which the locator gives the cubit (#245).
@@ -29,6 +31,7 @@ typedef PrepareUnlistedTake =
       UnlistedOrder shown, {
       TakeAmount? amount,
       TakeProgress? onStep,
+      RobotSlot? garageRobot,
     });
 
 /// [TakeOrderUsecase.confirm], which the locator gives the cubit.
@@ -45,6 +48,9 @@ typedef AbandonTake = void Function(PreparedTake prepared);
 /// [TakeOrderUsecase.abandonOrder], which the locator gives the cubit.
 typedef AbandonOrderTake =
     void Function(PublicOrder shown, {required RobosatsNetwork network});
+
+/// `GarageRobotUsecase.execute`, the robot the Garage of a network would show, which the locator gives the take's screens for the line of the order page only (#251).
+typedef GarageRobotOf = Future<RobotSlot?> Function(RobosatsNetwork network);
 
 /// [HasGarageKeyUsecase.execute], which the locator gives the cubit.
 typedef HasGarageKey =
@@ -106,12 +112,16 @@ final class TakeCalls {
   final AbandonTake abandon;
   final AbandonOrderTake abandonOrder;
 
+  /// The robot the Garage would show, read before each preparation, so that a robot reserved by it says whether it is another one (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.2); `null` where none is read, and no line said.
+  final GarageRobotOf? garageRobot;
+
   const TakeCalls({
     required this.prepare,
     this.prepareUnlisted,
     required this.confirm,
     required this.abandon,
     required this.abandonOrder,
+    this.garageRobot,
   });
 }
 
@@ -555,14 +565,25 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     }
 
     final unlisted = this.unlisted;
+    // Read before the preparation, so before any robot it reserves (#251, § 4.2): the use case keeps it with a robot reserved now, never takes its robot from it.
+    final garageRobot = switch (_calls.garageRobot) {
+      final read? => await read(network),
+      null => null,
+    };
     final prepareUnlisted = _calls.prepareUnlisted;
     final result = unlisted != null && prepareUnlisted != null
-        ? await prepareUnlisted(unlisted, amount: _amount, onStep: onStep)
+        ? await prepareUnlisted(
+            unlisted,
+            amount: _amount,
+            onStep: onStep,
+            garageRobot: garageRobot,
+          )
         : await _calls.prepare(
             order,
             network: network,
             amount: _amount,
             onStep: onStep,
+            garageRobot: garageRobot,
           );
     _stillWaiting?.cancel();
     if (isClosed) {

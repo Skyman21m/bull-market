@@ -124,7 +124,7 @@ void main() {
     UnacknowledgedGarageKeys? unacknowledged,
     RobotBindingRepository? bindings,
     Stream<Result<GarageRecords, P2pFailure>> Function(NetworkGarageKey key)?
-    trades,
+    tradesOf,
     GarageNavigation? navigation,
   }) {
     storage.install();
@@ -148,7 +148,7 @@ void main() {
       DeleteGarageKeyUsecase(repository),
       NeedsPinToDeleteGarageKeyUsecase(recorded),
       unacknowledged ?? UnacknowledgedGarageKeys(),
-      trades: trades,
+      tradesOf: tradesOf,
       navigation: navigation,
     );
   }
@@ -1546,7 +1546,7 @@ void main() {
           final trades = recordsStarting(recordsOf(locked: [3]));
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
           );
           await cubit.load();
           final state = cubit.state as GarageWithKey;
@@ -1573,7 +1573,7 @@ void main() {
           );
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: served.follow,
+            tradesOf: served.follow,
           );
           await cubit.load();
           expect(shown(cubit), 9);
@@ -1585,7 +1585,7 @@ void main() {
           );
           final again = cubitOver(
             holding([testnetEntry]),
-            trades: expired.follow,
+            tradesOf: expired.follow,
           );
           await again.load();
           expect(shown(again), 3);
@@ -1603,7 +1603,7 @@ void main() {
           final trades = recordsStarting(recordsOf(locked: [3]));
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
           );
           await cubit.load();
           expect(shown(cubit), 3);
@@ -1641,7 +1641,7 @@ void main() {
             final trades = recordsStarting(start);
             final cubit = cubitOver(
               holding([testnetEntry]),
-              trades: trades.follow,
+              tradesOf: trades.follow,
             );
             await cubit.load();
             expect(shown(cubit), 0, reason: '$start');
@@ -1663,7 +1663,7 @@ void main() {
           );
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
           );
           await cubit.load();
           expect(shown(cubit), 3);
@@ -1680,7 +1680,7 @@ void main() {
           final trades = recordsStarting(start);
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
             navigation: navigation,
           );
           await cubit.load();
@@ -1708,7 +1708,7 @@ void main() {
           final again = recordsStarting(start);
           final next = cubitOver(
             holding([testnetEntry]),
-            trades: again.follow,
+            tradesOf: again.follow,
             navigation: navigation,
           );
           await next.load();
@@ -1731,7 +1731,7 @@ void main() {
           final restarted = recordsStarting(start);
           final fresh = cubitOver(
             holding([testnetEntry]),
-            trades: restarted.follow,
+            tradesOf: restarted.follow,
             navigation: GarageNavigation(),
           );
           await fresh.load();
@@ -1747,7 +1747,7 @@ void main() {
           final trades = recordsStarting(recordsOf(locked: [3]));
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
           );
           unawaited(cubit.load());
           await cubit.load();
@@ -1766,7 +1766,7 @@ void main() {
           final trades = recordsStarting(recordsOf(locked: [3]));
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
             navigation: navigation,
           );
           await cubit.load();
@@ -1792,7 +1792,7 @@ void main() {
         () async {
           final trades = recordsStarting(recordsOf(locked: [3]));
           final storage = holding([testnetEntry]);
-          final cubit = cubitOver(storage, trades: trades.follow);
+          final cubit = cubitOver(storage, tradesOf: trades.follow);
           await cubit.load();
           expect(trades.records.hasListener, isTrue);
           storage.entries.remove(testnetEntry);
@@ -1813,7 +1813,7 @@ void main() {
           );
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
           );
           await cubit.load();
           expect(shown(cubit), 3);
@@ -1877,7 +1877,7 @@ void main() {
           final trades = recordsStarting(recordsOf(locked: [3], fresh: 4));
           final cubit = cubitOver(
             holding([testnetEntry]),
-            trades: trades.follow,
+            tradesOf: trades.follow,
           );
           await cubit.load();
           expect((cubit.state as GarageWithKey).ordersNotServed, isEmpty);

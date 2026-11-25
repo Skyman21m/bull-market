@@ -49,7 +49,7 @@ class GarageCubit extends Cubit<GarageState> {
   final Stream<Result<GarageRecords, P2pFailure>> Function(
     NetworkGarageKey key,
   )?
-  _trades;
+  _tradesOf;
 
   /// Where the user left the Garage by hand, for the whole run of the app: the locator's one object.
   final GarageNavigation _navigation;
@@ -77,7 +77,7 @@ class GarageCubit extends Cubit<GarageState> {
     this._delete,
     this._needsPin,
     this._unacknowledged, {
-    this._trades,
+    this._tradesOf,
     GarageNavigation? navigation,
   }) : _navigation = navigation ?? GarageNavigation(),
        super(GarageWorking(network));
@@ -311,15 +311,15 @@ class GarageCubit extends Cubit<GarageState> {
     // One following at a time: another read of the vault started meanwhile has its own (review of #229, R3).
     _stopFollowing();
     _records = null;
-    final trades = _trades;
-    if (trades == null) {
+    final tradesOf = _tradesOf;
+    if (tradesOf == null) {
       return switch (_navigation.leftByHand(key)) {
         final robot? => key.robotOf(robot),
         null => null,
       };
     }
     final start = Completer<Result<GarageRecords, P2pFailure>>();
-    _following = trades(key).listen((records) {
+    _following = tradesOf(key).listen((records) {
       if (!start.isCompleted) {
         _records = records;
         start.complete(records);

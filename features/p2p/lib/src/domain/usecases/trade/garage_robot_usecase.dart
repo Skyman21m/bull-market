@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
@@ -27,12 +29,34 @@ final class GarageRobotUsecase {
       case Err():
         return null;
     }
-    final records = await _follow.execute(key).first;
+    final records = await _firstOf(_follow.execute(key));
     if (records is Err) return null;
     if (_navigation.robotOf(key, records) case final robot?) return robot;
     return switch (key.firstUsableRobot(0)) {
       Ok(:final value) => value.slot,
       Err<NetworkRobot, P2pFailure>() => null,
     };
+  }
+
+  /// The first records [follow] gives, its watches then cancelled without waiting for them to stop, as `Stream.first` would wait (the take's screen waits for this answer).
+  static Future<Result<GarageRecords, P2pFailure>> _firstOf(
+    Stream<Result<GarageRecords, P2pFailure>> follow,
+  ) {
+    final first = Completer<Result<GarageRecords, P2pFailure>>();
+    late final StreamSubscription<Result<GarageRecords, P2pFailure>> listening;
+    listening = follow.listen(
+      (records) {
+        if (first.isCompleted) return;
+        first.complete(records);
+        unawaited(listening.cancel());
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!first.isCompleted) first.completeError(error, stackTrace);
+      },
+      onDone: () {
+        if (!first.isCompleted) first.complete(const Err(P2pStorageFailure()));
+      },
+    );
+    return first.future;
   }
 }

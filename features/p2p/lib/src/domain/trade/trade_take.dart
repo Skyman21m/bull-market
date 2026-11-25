@@ -335,11 +335,15 @@ final class PreparedTake {
   /// When [order] was read.
   final DateTime readAt;
 
+  /// The nickname of the robot that read [order] and will take it, when it is not the robot the Garage showed before the take reserved it (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.2): the order page then says « A fresh robot for this order »; `null` otherwise, or when the Garage's robot could not be told. Public, never a token.
+  final String? freshRobot;
+
   const PreparedTake({
     required this.order,
     required this.terms,
     required this.amount,
     required this.readAt,
+    this.freshRobot,
   });
 
   /// The maker's description, as the robot's read gave it: at most 240 code points, cleaned by the package (`displayText`), or `null` when there is none. The maker's own words: shown as plain text, never acted on.
