@@ -29,12 +29,15 @@ set -euo pipefail
 set -f
 
 SHARDS=(
-  # The app: about 11 min of tests on a CI runner (2026-11-25).
-  "app:bb_mobile"
-  # features/p2p: about 21 min in one go (2026-11-25), so two halves.
-  "p2p-1:p2p@1/2"
-  "p2p-2:p2p@2/2"
-  # The other members (about 6 min, secrets and robosats the longest).
+  # The app: 11 to 17 min of tests in one job on a CI runner (2026-11-25), so two parts.
+  "app-1:bb_mobile@1/2"
+  "app-2:bb_mobile@2/2"
+  # features/p2p: 21 to 25 min in one job (2026-11-25), so three parts; its
+  # slowest file, taken_price_route_test.dart, takes about 8 min alone.
+  "p2p-1:p2p@1/3"
+  "p2p-2:p2p@2/3"
+  "p2p-3:p2p@3/3"
+  # The other members: about 8 min (secrets 4 to 5 min, robosats about 1).
   "packages:*"
 )
 

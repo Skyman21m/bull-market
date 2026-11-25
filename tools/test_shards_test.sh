@@ -126,7 +126,7 @@ standard_members=(
 standard_table=("app:bb_mobile" "p2p-1:p2p@1/2" "p2p-2:p2p@2/2" "packages:*")
 
 # The repository's own table, as the CI's matrix reads it.
-[[ "$(bash "$script" names)" == '["app","p2p-1","p2p-2","packages"]' ]] && passed=$((passed + 1)) || { failed=$((failed + 1)); echo "❌ the repository's shard names changed: update this test and the CI comments"; }
+[[ "$(bash "$script" names)" == '["app-1","app-2","p2p-1","p2p-2","p2p-3","packages"]' ]] && passed=$((passed + 1)) || { failed=$((failed + 1)); echo "❌ the repository's shard names changed: update this test and the CI comments"; }
 
 root=$work/standard
 make_workspace "$root" "${standard_members[@]}"
