@@ -1073,5 +1073,20 @@
   "p2pTakePriceUnverified": "Prix non vérifié",
   "p2pTakePriceUnverifiedDetail": "Sans ce prix, il ne peut pas comparer le prix du coordinateur. Vous pouvez réessayer, ou prendre l’ordre sans cette vérification.",
   "p2pTakePageChangedTitle": "La fiche a changé",
-  "p2pTakePageChangedLine": "Relisez la ligne du prix, puis continuez à nouveau."
+  "p2pTakePageChangedLine": "Relisez la ligne du prix, puis continuez à nouveau.",
+  "p2pHistoryShow": "Voir l’historique",
+  "p2pHistoryHide": "Masquer l’historique",
+  "p2pHistorySeeMore": "Voir plus",
+  "p2pHistoryTitle": "#{orderId} · {coordinator}",
+  "p2pHistoryFacts": "{side} · {origin} · {day}",
+  "p2pHistoryRobotNamed": "{robot} · {nickname}",
+  "p2pHistorySell": "Vente",
+  "p2pHistoryBuy": "Achat",
+  "p2pHistoryMadeHere": "créé ici",
+  "p2pHistoryTakenHere": "pris ici",
+  "p2pHistoryTraded": "Échangé",
+  "p2pHistoryExpired": "Expiré",
+  "p2pHistoryCancelled": "Annulé",
+  "p2pHistoryDispute": "Litige",
+  "p2pHistoryEndUnknown": "Fin inconnue"
 }

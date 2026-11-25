@@ -12,6 +12,7 @@ import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
+import '../../presentation/order_history_cubit.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
@@ -45,6 +46,9 @@ class GarageView extends StatefulWidget {
   /// Opens the trade of « Last order #N » on the profile (#216), with a `LastOrdersCubit` above the Garage; `null` where the feature holds no trades, and the profile shows no such line.
   final Future<void> Function(TradeRecord record)? onOpenTrade;
 
+  /// Makes the cubit of the history of finished orders of a Garage Key, under « Last order #N » on the profile (#253); `null` where the feature holds no trades, and the profile shows no history.
+  final OrderHistoryCubit Function(NetworkGarageKey key)? orderHistory;
+
   const GarageView({
     super.key,
     required this.clipboard,
@@ -53,6 +57,7 @@ class GarageView extends StatefulWidget {
     required this.robotCoordinator,
     required this.coordinatorDetails,
     this.onOpenTrade,
+    this.orderHistory,
   });
 
   @override
@@ -125,6 +130,7 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
         robotCoordinator: widget.robotCoordinator,
         coordinatorDetails: widget.coordinatorDetails,
         onOpenTrade: widget.onOpenTrade,
+        orderHistory: widget.orderHistory,
       ),
       GarageWithoutKey() ||
       GarageWorking() when step != null => _wizard(state, step),

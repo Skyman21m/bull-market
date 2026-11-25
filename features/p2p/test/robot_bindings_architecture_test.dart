@@ -1737,7 +1737,6 @@ class RobotCoordinatorCubit {
         where(
           (facts) =>
               facts.names.contains('storedTradeTerms') ||
-              facts.names.contains('storedTradeTrails') ||
               facts.names.contains('storedMakerTerms'),
         ),
         {
@@ -1745,6 +1744,24 @@ class RobotCoordinatorCubit {
           if (File('lib/src/data/p2p_database.g.dart').existsSync())
             'lib/src/data/p2p_database.g.dart',
         },
+      );
+      // The trails too, and the trade records' repository, which reads their last position with the closed records in one statement for the history of the Garage (#253) and never writes them: no SQL of it writes a trail (above).
+      expect(where((facts) => facts.names.contains('storedTradeTrails')), {
+        'lib/src/data/trade_trail_repository_impl.dart',
+        'lib/src/data/trade_record_repository_impl.dart',
+        if (File('lib/src/data/p2p_database.g.dart').existsSync())
+          'lib/src/data/p2p_database.g.dart',
+      });
+      expect(
+        {
+          for (final MapEntry(key: method, value: names)
+              in (libraries['lib/src/data/trade_record_repository_impl.dart']
+                          ?.namesByMethod ??
+                      const <String, Set<String>>{})
+                  .entries)
+            if (names.contains('storedTradeTrails')) method,
+        },
+        {'watchClosedTrades'},
       );
       final trails =
           libraries['lib/src/data/trade_trail_repository_impl.dart'] ??

@@ -5,11 +5,22 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import 'word_fit_text.dart';
 
 /// « Show details » / « Hide details » with its chevron, in a lean card of #250: in the payout breakdown under the gap's line, the detail opening under it and what is under the card moving down; in the confirmation of a bond or a collateral under its buttons, the detail opening under it and the buttons never moving.
+/// With other words ([showLabel], [hideLabel]), « See history » / « Hide history » under the « Last order #N » lines of the Garage (#253).
 class DetailToggle extends StatelessWidget {
   final bool open;
   final VoidCallback onPressed;
 
-  const DetailToggle({super.key, required this.open, required this.onPressed});
+  /// The words while closed and while open, « Show details » and « Hide details » when not given.
+  final String? showLabel;
+  final String? hideLabel;
+
+  const DetailToggle({
+    super.key,
+    required this.open,
+    required this.onPressed,
+    this.showLabel,
+    this.hideLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +34,9 @@ class DetailToggle extends StatelessWidget {
           children: [
             Flexible(
               child: WordFitText(
-                open ? l10n.p2pDetailHide : l10n.p2pDetailShow,
+                open
+                    ? hideLabel ?? l10n.p2pDetailHide
+                    : showLabel ?? l10n.p2pDetailShow,
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,

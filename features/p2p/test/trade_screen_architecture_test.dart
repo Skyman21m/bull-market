@@ -56,6 +56,11 @@ void main() {
           'ListLastOrdersUsecase',
           'lib/src/presentation/last_orders_cubit.dart',
         ),
+        // The history of finished orders of the Garage (#253), read by its own cubit.
+        (
+          'ListOrderHistoryUsecase',
+          'lib/src/presentation/order_history_cubit.dart',
+        ),
         (
           'FindPublicOrderUsecase',
           'lib/src/presentation/trade_order_page_cubit.dart',
@@ -461,6 +466,7 @@ const _notForScreens = {
   'CancelTradeUsecase',
   'ListActiveTradesUsecase',
   'ListLastOrdersUsecase',
+  'ListOrderHistoryUsecase',
   'CoordinatorClient',
   'TradeRecordRepository',
   'TradeTrailRepository',
