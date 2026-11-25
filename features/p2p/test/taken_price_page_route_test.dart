@@ -292,7 +292,11 @@ final class _Journey {
     }
   }
 
-  /// The red alert in two lines, its bold line ([farBelow] for a buyer and a price far below), the gap with its sign, the two prices without the premium, then its explanation.
+  /// The red alert's explanation, behind « Show details ».
+  String get redDetail =>
+      l10n.p2pTakePriceDetail(formats.threshold(TradeTolerances.walletRateGap));
+
+  /// The red alert in two lines, its bold line ([farBelow] for a buyer and a price far below), the gap with its sign, the two prices without the premium, then « Show details » just under them, its explanation folded (#270).
   void expectRed({bool farBelow = false}) {
     final check = compared();
     expect(
@@ -305,17 +309,100 @@ final class _Journey {
           'USD',
           formats.orderRate(1e10 / sats / 1.035),
         ),
-        l10n.p2pTakePriceDetail(
-          formats.threshold(TradeTolerances.walletRateGap),
-        ),
+        l10n.p2pDetailShow,
       ].join(' | '),
     );
+    expectFolded(redDetail);
     expect(
       tester.widget<Icon>(
-        find.descendant(of: alert, matching: find.byType(Icon)),
+        find.descendant(
+          of: find.byKey(PriceCheckLines.alertRow),
+          matching: find.byType(Icon),
+        ),
       ),
       isA<Icon>().having((i) => i.icon, 'icon', Icons.warning_amber_rounded),
     );
+  }
+
+  /// « Show details » / « Hide details » of the alert.
+  Finder get toggle => find.byKey(TakeOrderDetailsCard.priceDetailToggle);
+
+  /// The alert's explanation [detail] folded: « Show details » in the alert's frame, under its lines, said folded to a screen reader; the explanation nowhere.
+  void expectFolded(String detail) {
+    expect(
+      find.descendant(of: alert, matching: toggle),
+      findsOneWidget,
+      reason: 'the link in the alert\'s frame',
+    );
+    expect(find.text(l10n.p2pDetailShow), findsOneWidget);
+    expect(find.text(l10n.p2pDetailHide), findsNothing);
+    expect(find.text(detail), findsNothing);
+    expect(find.byKey(PriceCheckLines.explanationLine), findsNothing);
+    expect(
+      tester.getSemantics(toggle),
+      isSemantics(
+        label: l10n.p2pDetailShow,
+        isButton: true,
+        hasExpandedState: true,
+        isExpanded: false,
+        hasTapAction: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        isFocusable: true,
+      ),
+    );
+  }
+
+  /// The alert's explanation [detail] open under « Hide details », the last line of the alert's frame, said open to a screen reader.
+  void expectOpen(String detail) {
+    expect(lines(), endsWith('${l10n.p2pDetailHide} | $detail'));
+    expect(find.byKey(PriceCheckLines.explanationLine), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(PriceCheckLines.explanationLine)).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(toggle).dy),
+      reason: 'the detail opens under the link',
+    );
+    expect(
+      tester.getSemantics(toggle),
+      isSemantics(
+        label: l10n.p2pDetailHide,
+        isButton: true,
+        hasExpandedState: true,
+        isExpanded: true,
+        hasTapAction: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        isFocusable: true,
+      ),
+    );
+  }
+
+  /// The alert's explanation [detail] opened by a tap on « Show details », then folded by a tap on « Hide details »: neither tap opens « Store your garage key » nor sends anything, and « Continue », moved by each, ignores a tap at once; then it goes on, once the delay of its guard is over.
+  Future<void> openAndFold(String detail) async {
+    expectFolded(detail);
+    final folded = lines();
+    expect(folded, endsWith(' | ${l10n.p2pDetailShow}'));
+    // The alert's own lines, drawn the same whether the detail is open or not.
+    final alertLines = folded.substring(
+      0,
+      folded.length - ' | ${l10n.p2pDetailShow}'.length,
+    );
+    await tap(toggle);
+    expectOpen(detail);
+    expect(lines(), '$alertLines | ${l10n.p2pDetailHide} | $detail');
+    expect(find.byType(StoreTokenDialog), findsNothing);
+    // The detail opened under the link moved « Continue » down: a tap at once was aimed at what stood there.
+    await tap(continueButton);
+    expect(find.byType(StoreTokenDialog), findsNothing);
+    await tester.pump(MovedTapGuard.afterMove);
+    await tap(toggle);
+    expectFolded(detail);
+    expect(lines(), folded);
+    expect(find.byType(StoreTokenDialog), findsNothing);
+    await tap(continueButton);
+    expect(find.byType(StoreTokenDialog), findsNothing);
+    expect(takes, isEmpty);
+    await tester.pump(MovedTapGuard.afterMove);
   }
 
   /// The « Price and premium » row of the read, and whether it is marked as changed.
@@ -432,6 +519,7 @@ void main() {
           final row = journey.priceRow();
           expect(row.value, journey.priceValue(1e10 / 112362, 3.5));
           expect(row.changed, isFalse);
+          expect(find.text(journey.l10n.p2pTakeOrderChangedRead), findsNothing);
           // The figure the alert names is the one shown, the premium taken off.
           journey.expectRed();
           await journey.close();
@@ -439,7 +527,7 @@ void main() {
       );
 
       testWidgets(
-        'an order priced in sats whose robot\'s read gives no price and a premium of 39.55 % where the book said 3.5 %: « Price and premium » shows it, marked; nothing is compared beyond the threshold; « Continue » stays offered',
+        'an order priced in sats whose robot\'s read gives no price and a premium of 39.55 % where the book said 3.5 %: « Price and premium » shows it, marked, « The order changed. » said with it; nothing is compared beyond the threshold; « Continue » stays offered',
         (tester) async {
           // 100 USD for 100,000 sats: 100,000 USD/BTC, 39.55 % above the Bull wallet's 71,657; without that premium, 71,659: within the threshold.
           final journey = await _Journey.start(
@@ -456,6 +544,17 @@ void main() {
           final row = journey.priceRow();
           expect(row.value, journey.priceValue(100000, 39.55));
           expect(row.changed, isTrue);
+          // Said in words too, above « Continue » (#270).
+          expect(
+            find.text(journey.l10n.p2pTakeOrderChangedRead),
+            findsOneWidget,
+          );
+          expect(
+            tester
+                .getTopLeft(find.text(journey.l10n.p2pTakeOrderChangedRead))
+                .dy,
+            lessThan(tester.getTopLeft(journey.continueButton).dy),
+          );
           expect(
             find.text(journey.l10n.p2pOrderAmountOfSatoshis),
             findsOneWidget,
@@ -470,7 +569,7 @@ void main() {
       );
 
       testWidgets(
-        'an honest order priced in sats: its premium shown with its price, not marked, its sats under them, nothing else',
+        'an honest order priced in sats: its premium shown with its price, not marked, its sats under them, nothing else, no « The order changed. »',
         (tester) async {
           final journey = await _Journey.start(
             tester,
@@ -483,6 +582,7 @@ void main() {
           final row = journey.priceRow();
           expect(row.value, journey.priceValue(1e10 / 134834, 3.5));
           expect(row.changed, isFalse);
+          expect(find.text(journey.l10n.p2pTakeOrderChangedRead), findsNothing);
           expect(
             find.text(journey.l10n.p2pOrderAmountOfSatoshis),
             findsOneWidget,
@@ -519,7 +619,7 @@ void main() {
       );
 
       testWidgets(
-        'the Bull wallet\'s price unreadable: « Price not checked » in orange with « Retry », in two lines and its explanation; « Retry » reads again, the alert gone within the threshold',
+        'the Bull wallet\'s price unreadable: « Price not checked » in orange with « Retry », in two lines, its explanation behind « Show details »; « Retry » reads again, the alert gone within the threshold',
         (tester) async {
           final journey = await _Journey.start(
             tester,
@@ -535,9 +635,10 @@ void main() {
               l10n.p2pTakePriceUnverified,
               l10n.p2pCommonRetry,
               l10n.p2pPayoutBreakdownUnverifiedLine,
-              l10n.p2pTakePriceUnverifiedDetail,
+              l10n.p2pDetailShow,
             ].join(' | '),
           );
+          journey.expectFolded(l10n.p2pTakePriceUnverifiedDetail);
           expect(
             tester
                 .widget<Text>(find.text(l10n.p2pPayoutBreakdownUnverifiedLine))
@@ -554,6 +655,114 @@ void main() {
           journey.expectNothing();
           await tester.pump(MovedTapGuard.afterMove);
           await journey.send();
+          await journey.close();
+        },
+      );
+
+      for (final (name, sats, rate) in [
+        ('« Price against you »', 112362, null),
+        ('« Price far below the Bull price »', 168543, null),
+        ('« Price not checked »', 134834, const P2pWalletRateUnavailable()),
+      ]) {
+        testWidgets(
+          '$name: its explanation behind « Show details », opened and folded by taps that never open the take; « Continue » goes on after the delay (#270)',
+          (tester) async {
+            final journey = await _Journey.start(
+              tester,
+              locale,
+              sats: sats,
+              rate: rate,
+            );
+            final l10n = journey.l10n;
+            await journey.open(byUrl: false);
+            await journey.prepare();
+            final detail = rate == null
+                ? journey.redDetail
+                : l10n.p2pTakePriceUnverifiedDetail;
+            if (rate == null) {
+              journey.expectRed(farBelow: sats == 168543);
+            } else {
+              expect(
+                journey.lines(),
+                [
+                  l10n.p2pTakePriceUnverified,
+                  l10n.p2pCommonRetry,
+                  l10n.p2pPayoutBreakdownUnverifiedLine,
+                  l10n.p2pDetailShow,
+                ].join(' | '),
+              );
+            }
+            // The link is not against « Continue »: rows of the order and of its maker stand between them.
+            expect(
+              tester.getTopLeft(journey.continueButton).dy -
+                  tester.getBottomLeft(journey.toggle).dy,
+              greaterThan(kMinInteractiveDimension * 2),
+            );
+            await tester.pump(MovedTapGuard.afterMove);
+            await journey.openAndFold(detail);
+            // Opened again, then « Continue » once its guard is over: the take goes on, the detail still open.
+            await journey.tap(journey.toggle);
+            journey.expectOpen(detail);
+            await tester.pump(MovedTapGuard.afterMove);
+            await journey.send();
+            expect(journey.takes, hasLength(1));
+            await journey.close();
+          },
+        );
+      }
+
+      testWidgets(
+        'a new alert arrives folded: « Price not checked » opened, « Retry » keeps it open while it reads, then the red alert that comes is folded; the detail never opens by itself (#270)',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          await journey.tap(journey.toggle);
+          journey.expectOpen(l10n.p2pTakePriceUnverifiedDetail);
+          // The Bull wallet's price 20 % below the coordinator's: red for a buyer.
+          journey.wallet.rate = P2pWalletRateRead(_bull / 1.2);
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.tap(find.byKey(PriceCheckLines.retryButton));
+          await settle(tester);
+          // The same alert, read again: as the user left it.
+          journey.expectOpen(l10n.p2pTakePriceUnverifiedDetail);
+          held.complete();
+          await settle(tester);
+          expect(find.text(l10n.p2pTakePriceAgainst), findsOneWidget);
+          journey.expectFolded(
+            l10n.p2pTakePriceDetail(
+              journey.formats.threshold(TradeTolerances.walletRateGap),
+            ),
+          );
+          await tester.pump(const Duration(seconds: 5));
+          await settle(tester);
+          expect(find.text(l10n.p2pDetailShow), findsOneWidget);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a new alert arrives folded: « Price not checked » opened, « Retry » that fails again brings a new one, folded (#270)',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          await journey.tap(journey.toggle);
+          journey.expectOpen(l10n.p2pTakePriceUnverifiedDetail);
+          await journey.tap(find.byKey(PriceCheckLines.retryButton));
+          await settle(tester);
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          journey.expectFolded(l10n.p2pTakePriceUnverifiedDetail);
           await journey.close();
         },
       );
@@ -718,6 +927,104 @@ void main() {
       );
 
       testWidgets(
+        '« Retry » that fails again, « Continue » pressed while it reads: « Price not checked » was drawn at the press and is drawn again, so it goes on with no stop and the take is sent once (#270)',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.tap(find.byKey(PriceCheckLines.retryButton));
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          // It waits for the read « Retry » started: no dialog meanwhile.
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          held.complete();
+          await settle(tester);
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsNothing);
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+          await journey.tap(find.text(l10n.p2pCommonDone));
+          await journey.waitFor(find.byType(TradeScreen));
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a read of the Bull wallet\'s price that throws (a bug of its service): « Price not checked » with « Retry », its explanation folded; « Continue » opens « Store your garage key » and the take goes on (#270)',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale);
+          final l10n = journey.l10n;
+          journey.wallet.rateError = StateError('a bug of the price');
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          expect(journey.wallet.ratesAsked, hasLength(1));
+          expect(
+            journey.lines(),
+            [
+              l10n.p2pTakePriceUnverified,
+              l10n.p2pCommonRetry,
+              l10n.p2pPayoutBreakdownUnverifiedLine,
+              l10n.p2pDetailShow,
+            ].join(' | '),
+          );
+          journey.expectFolded(l10n.p2pTakePriceUnverifiedDetail);
+          final retry = tester.widget<TextButton>(
+            find.byKey(PriceCheckLines.retryButton),
+          );
+          expect(retry.onPressed, isNotNull);
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+          await journey.tap(find.text(l10n.p2pCommonDone));
+          await journey.waitFor(find.byType(TradeScreen));
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'a read that throws while « Continue » waits for it: one stop over « Price not checked »; « Retry » then reads again, and the take goes on (#270)',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale);
+          final l10n = journey.l10n;
+          journey.wallet.rateError = StateError('a bug of the price');
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          held.complete();
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsOneWidget);
+          expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
+          // « Retry » reads again, the service mended: the alert goes.
+          journey.wallet
+            ..rateError = null
+            ..rateHeld = null;
+          await journey.tap(find.byKey(PriceCheckLines.retryButton));
+          await settle(tester);
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          journey.expectNothing();
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.send();
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
         '« Continue » pressed while the price is read, then the take gone back and prepared again meanwhile: the press is for a read no longer shown, nothing opens',
         (tester) async {
           final journey = await _Journey.start(tester, locale);
@@ -799,7 +1106,7 @@ void main() {
       );
 
       testWidgets(
-        'on a phone of 320 points, at the text size ×1, ×2 and ×3: the alerts and « This page has changed » cut nothing',
+        'on a phone of 320 points, at the text size ×1, ×2 and ×3: the alerts, their explanation opened and « This page has changed » cut nothing; « Show details » reached',
         (tester) async {
           await loadAppFont();
           final journey = await _Journey.start(tester, locale, sats: 168543);
@@ -824,13 +1131,18 @@ void main() {
               find.byKey(TakeOrderSection.pageChangedBlock),
               'changed ×$scale',
             );
+            await _expectDetailReachable(
+              journey,
+              journey.redDetail,
+              'red ×$scale',
+            );
           }
           await journey.close();
         },
       );
 
       testWidgets(
-        'on a phone of 320 points, at the text size ×1, ×2 and ×3: « Price not checked » and « Retry » cut nothing',
+        'on a phone of 320 points, at the text size ×1, ×2 and ×3: « Price not checked », « Retry » and the explanation opened cut nothing; « Show details » reached',
         (tester) async {
           await loadAppFont();
           final journey = await _Journey.start(
@@ -853,12 +1165,36 @@ void main() {
             await tester.pump();
             _expectNothingCut(tester, journey.alert, 'unverified ×$scale');
             expect(find.byKey(PriceCheckLines.retryButton), findsOneWidget);
+            await _expectDetailReachable(
+              journey,
+              journey.l10n.p2pTakePriceUnverifiedDetail,
+              'unverified ×$scale',
+            );
           }
           await journey.close();
         },
       );
     });
   }
+}
+
+/// « Show details » of the alert reached by a tap at the text size set: the explanation [detail] opened cuts nothing, then is folded again.
+Future<void> _expectDetailReachable(
+  _Journey journey,
+  String detail,
+  String reason,
+) async {
+  final tester = journey.tester;
+  await tester.ensureVisible(journey.toggle);
+  await tester.pump();
+  expect(journey.toggle.hitTestable(), findsOneWidget, reason: reason);
+  await tester.tap(journey.toggle);
+  await tester.pump();
+  journey.expectOpen(detail);
+  _expectNothingCut(tester, journey.alert, '$reason, opened');
+  await journey.tap(journey.toggle);
+  journey.expectFolded(detail);
+  expect(find.byType(StoreTokenDialog), findsNothing, reason: reason);
 }
 
 /// Nothing overflows under [scope], no paragraph exceeds its lines, and no line breaks between two letters (as `LeanConfirmation.expectNothingCut` checks the confirmations).

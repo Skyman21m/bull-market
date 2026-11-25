@@ -516,7 +516,7 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
         price: TakePriceReading(shown: current.price.shownCheck),
       ),
     );
-    final reading = check(network, currency, coordinatorPrice);
+    final reading = _checked(check, currency, coordinatorPrice);
     _priceReading = reading;
     final result = await reading;
     if (identical(_priceReading, reading)) _priceReading = null;
@@ -536,6 +536,23 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
         price: TakePriceChecked(result),
       ),
     );
+  }
+
+  /// [check] of [coordinatorPrice] for [currency], a read that ends in an error (a bug of the price's service, never a failure it answers) taken as a price that could not be read: « Price not checked », with « Retry », and « Continue » never waiting on it again (#270). Caught here only, and nothing of it is logged.
+  Future<MakePriceCheck> _checked(
+    CheckTakePrice check,
+    RobosatsCurrency currency,
+    double coordinatorPrice,
+  ) async {
+    try {
+      return await check(network, currency, coordinatorPrice);
+    } on Object {
+      return MakePriceCheck.of(
+        currency: currency,
+        coordinatorPrice: coordinatorPrice,
+        wallet: const P2pWalletRateUnavailable(),
+      );
+    }
   }
 
   /// The state after a preparation: [TakePreparing] meanwhile, with [previous], the read the user saw, when the order is read again, and [changed] when it is because it changed.

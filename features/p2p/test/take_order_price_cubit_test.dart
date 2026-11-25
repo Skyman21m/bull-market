@@ -197,6 +197,34 @@ void main() {
     );
 
     test(
+      'a read that ends in an error (a bug, not a failure the service answers) is « Price not checked »: « Continue » no longer waits on it, « Retry » reads again (#270)',
+      () async {
+        prices
+          ..error = StateError('a bug of the read')
+          ..held = Completer();
+        unawaited(cubit.take());
+        await pumpEventQueue();
+        expect(cubit.state.price, isA<TakePriceReading>());
+        var settled = false;
+        unawaited(cubit.priceSettled().then((_) => settled = true));
+        prices.held?.complete();
+        await pumpEventQueue();
+        expect(settled, isTrue);
+        expect(cubit.state.price, isA<TakePriceChecked>());
+        expect(cubit.state.price.shownCheck, isA<MakePriceUnverified>());
+        expect(cubit.priceShown, TakenPriceShown.unverified);
+        // Nothing runs any more: at once.
+        await cubit.priceSettled();
+        prices
+          ..error = null
+          ..held = null;
+        await cubit.retryPrice();
+        expect(prices.asked, hasLength(2));
+        expect(cubit.priceShown, TakenPriceShown.nothing);
+      },
+    );
+
+    test(
       '« Retry » of a comparison that is not « Price not checked » reads nothing',
       () async {
         await cubit.take();
@@ -311,6 +339,9 @@ void main() {
 final class _Prices {
   P2pWalletBitcoinRate rate = P2pWalletRateRead(91711);
   Completer<void>? held;
+
+  /// While set, the read throws it, once [held] is completed: a bug of the price's service.
+  Error? error;
   final List<(RobosatsCurrency, double)> asked = [];
 
   Future<MakePriceCheck> check(
@@ -321,6 +352,7 @@ final class _Prices {
     asked.add((currency, coordinatorPrice));
     final gate = held;
     if (gate != null) await gate.future;
+    if (error case final thrown?) throw thrown;
     return MakePriceCheck.of(
       currency: currency,
       coordinatorPrice: coordinatorPrice,
