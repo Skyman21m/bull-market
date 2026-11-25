@@ -4288,10 +4288,11 @@ class P2pLocalizationsHi extends P2pLocalizations {
       'Without this price, it cannot compare the coordinator\'s price. You can try again, or take the order without this check.';
 
   @override
-  String get p2pTakePriceChangedTitle => 'The price has changed';
+  String get p2pTakePageChangedTitle => 'This page has changed';
 
   @override
-  String get p2pTakePriceChangedLine => 'Check it, then continue again.';
+  String get p2pTakePageChangedLine =>
+      'Read the price line again, then continue again.';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

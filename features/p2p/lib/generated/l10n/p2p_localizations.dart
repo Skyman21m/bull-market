@@ -6678,17 +6678,17 @@ abstract class P2pLocalizations {
   /// **'Without this price, it cannot compare the coordinator\'s price. You can try again, or take the order without this check.'**
   String get p2pTakePriceUnverifiedDetail;
 
-  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the bold line of an orange block over « Continue » when « Continue » was pressed while the Bull wallet's price was read and what the page shows changed once it was read (an alert appeared or went, or the « not quoted » line appeared): nothing was sent, a press again goes on. On the model of p2pPayConfirmAgainTitle.
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed on 2026-11-25, after the functional review of this slice, on the model of the words the owner validated for #250, not validated; the English is composed on the model of the French: the bold line of an orange block over « Continue » when « Continue » was pressed while the Bull wallet's price was read and the page, once it was read, shows a line of the comparison it did not show at the press (the red alert, « Price not checked » or « not quoted »): nothing was sent, a press again goes on. On the model of p2pPayConfirmAgainTitle.
   ///
   /// In en, this message translates to:
-  /// **'The price has changed'**
-  String get p2pTakePriceChangedTitle;
+  /// **'This page has changed'**
+  String get p2pTakePageChangedTitle;
 
-  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed to the owner on 2026-11-24 on the model of the words he validated for #250, not validated; the English is composed on the model of the French: the second line of p2pTakePriceChangedTitle.
+  /// Not in the RoboSats texts: the project's own (#249, slice 4: the order page, once « Take Order » has shown the robot's read, before the take is sent; option B decided by the owner on 2026-11-24, the alert only). Proposed on 2026-11-25, after the functional review of this slice, on the model of the words the owner validated for #250, not validated; the English is composed on the model of the French: the second line of p2pTakePageChangedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Check it, then continue again.'**
-  String get p2pTakePriceChangedLine;
+  /// **'Read the price line again, then continue again.'**
+  String get p2pTakePageChangedLine;
 }
 
 class _P2pLocalizationsDelegate

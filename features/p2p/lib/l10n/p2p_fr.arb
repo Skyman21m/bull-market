@@ -1072,6 +1072,6 @@
   "p2pTakePriceDetail": "Bull Wallet compare le prix du coordinateur, hors prime, à son propre prix et vous prévient au-delà de {threshold} d’écart. Vérifiez l’ordre avant de le prendre.",
   "p2pTakePriceUnverified": "Prix non vérifié",
   "p2pTakePriceUnverifiedDetail": "Sans ce prix, il ne peut pas comparer le prix du coordinateur. Vous pouvez réessayer, ou prendre l’ordre sans cette vérification.",
-  "p2pTakePriceChangedTitle": "Le prix a changé",
-  "p2pTakePriceChangedLine": "Vérifiez-le, puis continuez à nouveau."
+  "p2pTakePageChangedTitle": "La fiche a changé",
+  "p2pTakePageChangedLine": "Relisez la ligne du prix, puis continuez à nouveau."
 }

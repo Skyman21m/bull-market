@@ -4346,9 +4346,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Sans ce prix, il ne peut pas comparer le prix du coordinateur. Vous pouvez réessayer, ou prendre l’ordre sans cette vérification.';
 
   @override
-  String get p2pTakePriceChangedTitle => 'Le prix a changé';
+  String get p2pTakePageChangedTitle => 'La fiche a changé';
 
   @override
-  String get p2pTakePriceChangedLine =>
-      'Vérifiez-le, puis continuez à nouveau.';
+  String get p2pTakePageChangedLine =>
+      'Relisez la ligne du prix, puis continuez à nouveau.';
 }

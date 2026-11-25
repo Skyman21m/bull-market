@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:bull_ui/bull_ui.dart' show BullTheme;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +16,7 @@ import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/trade/make_price_check.dart';
 import 'package:p2p/src/domain/trade/trade_tolerances.dart';
 import 'package:p2p/src/presentation/p2p_formats.dart';
+import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/take_order_section.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -403,6 +405,30 @@ void main() {
       }
 
       testWidgets(
+        'an order public again, taken from its trade screen: compared as from the book and by its URL, once at its « Take Order »',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale, sats: 112362);
+          final l10n = journey.l10n;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          journey.expectRed();
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.send();
+          expect(journey.wallet.ratesAsked, hasLength(1));
+          // The taker gone, the order is public again: its trade screen offers « Take Order », read anew by a fresh robot.
+          journey.coordinator.backToPublic();
+          await journey.waitFor(find.text(l10n.p2pTakeOrder));
+          expect(find.byType(TradeScreen), findsOneWidget);
+          expect(journey.alert, findsNothing);
+          expect(journey.wallet.ratesAsked, hasLength(1));
+          await journey.prepare();
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          journey.expectRed();
+          await journey.close();
+        },
+      );
+
+      testWidgets(
         'the Bull wallet\'s price unreadable: « Price not checked » in orange with « Retry », in two lines and its explanation; « Retry » reads again, the alert gone within the threshold',
         (tester) async {
           final journey = await _Journey.start(
@@ -471,7 +497,7 @@ void main() {
       );
 
       testWidgets(
-        '« Continue » pressed while the Bull wallet\'s price is read: it waits, then stops once with « The price has changed » when the red alert came; a press again goes on',
+        '« Continue » pressed while the Bull wallet\'s price is read: it waits, then stops once with « This page has changed » when the red alert came; a press again goes on',
         (tester) async {
           final journey = await _Journey.start(tester, locale);
           final l10n = journey.l10n;
@@ -489,18 +515,150 @@ void main() {
           held.complete();
           await settle(tester);
           expect(find.byType(StoreTokenDialog), findsNothing);
-          expect(
-            find.byKey(TakeOrderSection.priceChangedBlock),
-            findsOneWidget,
-          );
-          expect(find.text(l10n.p2pTakePriceChangedTitle), findsOneWidget);
-          expect(find.text(l10n.p2pTakePriceChangedLine), findsOneWidget);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsOneWidget);
+          expect(find.text(l10n.p2pTakePageChangedTitle), findsOneWidget);
+          expect(find.text(l10n.p2pTakePageChangedLine), findsOneWidget);
           expect(find.text(l10n.p2pTakePriceAgainst), findsOneWidget);
           expect(journey.takes, isEmpty);
           await tester.pump(MovedTapGuard.afterMove);
           await journey.send();
           expect(journey.takes, hasLength(1));
           expect(journey.wallet.ratesAsked, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        '« Continue » pressed while the first read fails: one stop, « This page has changed » over « Price not checked »; a press again goes on',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          held.complete();
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsOneWidget);
+          expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
+          // The stop's block is over « Continue », under the card that holds « Price not checked ».
+          expect(
+            tester.getTopLeft(find.byKey(TakeOrderSection.pageChangedBlock)).dy,
+            greaterThan(
+              tester.getTopLeft(find.text(l10n.p2pTakePriceUnverified)).dy,
+            ),
+          );
+          expect(journey.takes, isEmpty);
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.send();
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        '« Continue » pressed while the Bull wallet\'s price is read, a currency it does not price: one stop for the « not quoted » line',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            currency: 7,
+            rate: const P2pWalletRateNotPriced(),
+          );
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          held.complete();
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsOneWidget);
+          expect(
+            find.text(journey.l10n.p2pPayoutBreakdownNotPriced),
+            findsOneWidget,
+          );
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.send();
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        '« Retry », then « Continue » pressed while the price is read again: it waits; back within the threshold, nothing new to read, it goes on with no stop and the take is sent once',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          expect(
+            find.text(journey.l10n.p2pTakePriceUnverified),
+            findsOneWidget,
+          );
+          journey.wallet.rate = P2pWalletRateRead(_bull);
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.tap(find.byKey(PriceCheckLines.retryButton));
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          // It waits for the read « Retry » started: no dialog meanwhile.
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          held.complete();
+          await settle(tester);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsNothing);
+          journey.expectNothing();
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+          await journey.tap(find.text(journey.l10n.p2pCommonDone));
+          await journey.waitFor(find.byType(TradeScreen));
+          expect(journey.takes, hasLength(1));
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        '« Continue » pressed while the price is read, then the take gone back and prepared again meanwhile: the press is for a read no longer shown, nothing opens',
+        (tester) async {
+          final journey = await _Journey.start(tester, locale);
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          // The page's own « Take Order » is not offered while a « Continue » waits (one dialog of the take at a time): the take is moved on by its cubit, as any later path could move it.
+          final cubit = BlocProvider.of<TakeOrderCubit>(
+            tester.element(find.byType(TakeOrderSection)),
+          );
+          final first = (cubit.state as TakeReady).prepared;
+          cubit.back();
+          await settle(tester);
+          unawaited(cubit.take());
+          await journey.waitFor(find.text(journey.l10n.p2pTakerBond));
+          await settle(tester);
+          expect(
+            identical((cubit.state as TakeReady).prepared, first),
+            isFalse,
+          );
+          held.complete();
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsNothing);
+          expect(journey.takes, isEmpty);
+          // The new read's own « Continue » goes on.
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.send();
+          expect(journey.takes, hasLength(1));
           await journey.close();
         },
       );
@@ -518,7 +676,7 @@ void main() {
           held.complete();
           await settle(tester);
           expect(find.byType(StoreTokenDialog), findsOneWidget);
-          expect(find.byKey(TakeOrderSection.priceChangedBlock), findsNothing);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsNothing);
           await journey.tap(find.text(journey.l10n.p2pCommonDone));
           await journey.waitFor(find.byType(TradeScreen));
           await journey.close();
@@ -551,7 +709,7 @@ void main() {
       );
 
       testWidgets(
-        'on a phone of 320 points, at the text size ×1, ×2 and ×3: the alerts and « The price has changed » cut nothing',
+        'on a phone of 320 points, at the text size ×1, ×2 and ×3: the alerts and « This page has changed » cut nothing',
         (tester) async {
           await loadAppFont();
           final journey = await _Journey.start(tester, locale, sats: 168543);
@@ -562,10 +720,7 @@ void main() {
           held.complete();
           await settle(tester);
           expect(journey.alert, findsOneWidget);
-          expect(
-            find.byKey(TakeOrderSection.priceChangedBlock),
-            findsOneWidget,
-          );
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsOneWidget);
           addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
           tester.view
             ..physicalSize = const Size(320 * 3, 6000 * 3)
@@ -576,7 +731,7 @@ void main() {
             _expectNothingCut(tester, journey.alert, 'red ×$scale');
             _expectNothingCut(
               tester,
-              find.byKey(TakeOrderSection.priceChangedBlock),
+              find.byKey(TakeOrderSection.pageChangedBlock),
               'changed ×$scale',
             );
           }

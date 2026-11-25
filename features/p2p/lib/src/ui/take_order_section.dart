@@ -37,7 +37,7 @@ import 'widgets/word_fit_text.dart';
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
 /// - A password-protected order reached by its URL (#245, `TakeOrderCubit.unlisted` with `UnlistedOrder.hasPassword`; an order without a password reached so has no field): « Password » above the button, as the reference puts it above its take button (`components/OrderDetails/index.tsx:546-571`), typed hidden, with a short line above it that its description and location come with the take; its text stays in this field, and « Done » hands the cubit its hash only ([OrderPassword]); « Take Order » or « Continue » pressed with the field empty starts nothing and says so under the button, where the reference would send the take and be refused (error 1045); a wrong password is said there with the coordinator's message (« Wrong password », `api/errors.py:52`), the field kept to be corrected.
-/// - The owner's payment rule before the take (#249, slice 4): « Continue » pressed while the Bull wallet's price is read waits for it, the button busy, then stops once, with « The price has changed » over it, when what the order details show of the comparison changed meanwhile (an alert appeared or went, or « not quoted » appeared); a press again goes on. « Continue » is never refused for what the comparison says, and a tap on it just after the comparison moved it is ignored for a moment ([MovedTapGuard]).
+/// - The owner's payment rule before the take (#249, slice 4): « Continue » pressed while the Bull wallet's price is read waits for it, the button busy, then stops once, with « This page has changed » over it, when the order details now show a line of the comparison they did not show at the press (the red alert, « Price not checked » or « not quoted »), never when they show nothing new, as « Create order » stops (`MakePriceVerdict.stopsPressFor`); a press again goes on. « Continue » is never refused for what the comparison says, and a tap on it just after the comparison moved it is ignored for a moment ([MovedTapGuard]).
 ///
 /// Without [canTake] (the feature was set up without the vault's handle, so it holds no robot) a press shows « You do not have a Garage Key », as the reference does without a robot.
 class TakeOrderSection extends StatefulWidget {
@@ -61,8 +61,8 @@ class TakeOrderSection extends StatefulWidget {
   /// « Continue », once the read is shown.
   static const continueButton = ValueKey('take-continue');
 
-  /// « The price has changed » over « Continue ».
-  static const priceChangedBlock = ValueKey('take-price-changed');
+  /// « This page has changed » over « Continue ».
+  static const pageChangedBlock = ValueKey('take-page-changed');
 
   @override
   State<TakeOrderSection> createState() => _TakeOrderSectionState();
@@ -83,8 +83,8 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
   /// Whether « Continue » waits for the Bull wallet's price being read (#249).
   bool _waitingPrice = false;
 
-  /// The read for which « Continue » stopped because what the order details show of the comparison changed while it waited: « The price has changed » is said while that read is shown.
-  PreparedTake? _priceChangedFor;
+  /// The read for which « Continue » stopped because the order details came to show a line of the comparison while it waited: « This page has changed » is said while that read is shown.
+  PreparedTake? _stoppedFor;
 
   @override
   void dispose() {
@@ -153,7 +153,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
   ///
   /// For a protected order, nothing opens while « Password » is empty; « Done » hands the cubit the hash of the password the field holds then (#245).
   ///
-  /// Pressed while the Bull wallet's price is read for the read shown (#249), it waits for that read, then goes on only when the order details show of the comparison what they showed at the press; otherwise it stops once, saying « The price has changed », and a press again goes on.
+  /// Pressed while the Bull wallet's price is read for the read shown (#249), it waits for that read, then stops once, saying « This page has changed », when the order details now show a line of the comparison they did not show at the press; it goes on when they show nothing, or the line they showed (« Price not checked » read again and still not checked). A press again goes on.
   Future<void> _continue() async {
     if (_asking) return;
     if (!_passwordGiven()) return;
@@ -162,7 +162,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       final cubit = context.read<TakeOrderCubit>();
       final atPress = cubit.state;
       if (atPress is! TakeReady) return;
-      if (_priceChangedFor != null) setState(() => _priceChangedFor = null);
+      if (_stoppedFor != null) setState(() => _stoppedFor = null);
       if (atPress.price is TakePriceReading) {
         final shown = cubit.priceShown;
         setState(() => _waitingPrice = true);
@@ -174,8 +174,10 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         if (now is! TakeReady || !identical(now.prepared, atPress.prepared)) {
           return;
         }
-        if (cubit.priceShown != shown) {
-          setState(() => _priceChangedFor = now.prepared);
+        // A line the press was not made on: the red alert, « Price not checked » or « not quoted ». Nothing shown now is nothing new to read.
+        final after = cubit.priceShown;
+        if (after != TakenPriceShown.nothing && after != shown) {
+          setState(() => _stoppedFor = now.prepared);
           return;
         }
       }
@@ -233,8 +235,8 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       TakeReady(changed: true) => true,
       _ => false,
     };
-    final priceChanged = switch (state) {
-      TakeReady(:final prepared) => identical(prepared, _priceChangedFor),
+    final stopped = switch (state) {
+      TakeReady(:final prepared) => identical(prepared, _stoppedFor),
       _ => false,
     };
     final Widget button = read != null
@@ -245,11 +247,11 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
                 _Line(l10n.p2pTakeOrderChangedRead, live: true),
                 const Gap(BullSpacing.xs),
               ],
-              if (priceChanged) ...[
-                const _PriceChanged(key: TakeOrderSection.priceChangedBlock),
+              if (stopped) ...[
+                const _PageChanged(key: TakeOrderSection.pageChangedBlock),
                 const Gap(BullSpacing.xs),
               ],
-              // A tap aimed at what stood here before the comparison's alert came or went is ignored for a moment (#249); « Continue » stays enabled and goes on at the next tap.
+              // A tap aimed at what stood here before the comparison's line came or went is ignored for a moment (#249); « Continue » stays enabled and goes on at the next tap.
               MovedTapGuard(
                 key: TakeOrderSection.continueButton,
                 builder: (context, guard) => TradeButton(
@@ -477,9 +479,9 @@ class _TakePriceLines extends StatelessWidget {
   }
 }
 
-/// « The price has changed » over « Continue », in orange, on the model of « The amounts have changed » (#250): « Continue » stopped once because the comparison changed while it waited for it (#249).
-class _PriceChanged extends StatelessWidget {
-  const _PriceChanged({super.key});
+/// « This page has changed » over « Continue », in orange, on the model of « The amounts have changed » (#250): « Continue » stopped once because a line of the comparison came while it waited for it (#249).
+class _PageChanged extends StatelessWidget {
+  const _PageChanged({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -492,11 +494,11 @@ class _PriceChanged extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AmountRow(
-            label: l10n.p2pTakePriceChangedTitle,
+            label: l10n.p2pTakePageChangedTitle,
             tone: AmountRowTone.warning,
           ),
           WordFitText(
-            l10n.p2pTakePriceChangedLine,
+            l10n.p2pTakePageChangedLine,
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: colors.warning),
