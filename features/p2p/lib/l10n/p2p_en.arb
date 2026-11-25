@@ -1328,7 +1328,7 @@
   },
   "p2pRobotUsedInTrade": "This robot was involved in a trade. Navigate to a new account for fresh privacy.",
   "@p2pRobotUsedInTrade": {
-    "description": "Information when the robot has a last order and no active one: Troc does not read that order yet, so any last order counts as a trade, as RoboSats counts an unknown status. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`), French of the phase-1 catalogue."
+    "description": "Information when the robot shown has a last order and no active one, unless this device holds that order finished with an end that has not served (an expiry, or a take that never started, #251): RoboSats says it for a robot that is not reusable, a last order of unknown status counting as used. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`), French of the phase-1 catalogue."
   },
   "p2pRobotRewards": "Your compensations",
   "@p2pRobotRewards": {
@@ -1566,6 +1566,15 @@
     "description": "Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it; read out when it arrives. {time} is hours, minutes and seconds.",
     "placeholders": {
       "time": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTakeFreshRobot": "A fresh robot for this order: {nickname}.",
+  "@p2pTakeFreshRobot": {
+    "description": "Not in the RoboSats texts: the project's own (#251, the owner's decision of 2026-11-25, French as on the mock-up he accepted): under « Read by your robot at … » on the order page, only when the robot reserved for the take is not the robot the Garage would show; read out when it appears. {nickname} is the nickname of the robot that takes the order.",
+    "placeholders": {
+      "nickname": {
         "type": "String"
       }
     }

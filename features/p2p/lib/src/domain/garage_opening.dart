@@ -76,7 +76,7 @@ abstract final class GarageOpening {
   static RobotSlot? of(NetworkGarageKey key, GarageRecords records) {
     if (lockedOf(key, records).lastOrNull case final robot?) return robot;
     final line = lastOrderOf(records);
-    if (line == null || key.robotOf(line.record.robot) == null) return null;
+    if (line == null || !_isOf(key, line.record.robot)) return null;
     if (!records.keyDrawnHereOnly || !OrderEnd.served(line.lastPosition)) {
       return line.record.robot;
     }
@@ -93,7 +93,7 @@ abstract final class GarageOpening {
             record.closedAt == null &&
             standing is ActiveTradeAt &&
             standing.position.makerBondLocked &&
-            key.robotOf(record.robot) != null)
+            _isOf(key, record.robot))
           record.robot,
     ]..sort((a, b) => a.accountIndex.compareTo(b.accountIndex));
     return locked;
@@ -119,6 +119,14 @@ abstract final class GarageOpening {
     return null;
   }
 
+  /// Whether [robot] is one of [key]'s: the same network and key fingerprint, read without deriving the robot, as every record of the key holds a robot the key gave.
+  static bool _isOf(NetworkGarageKey key, RobotSlot robot) =>
+      robot.network == key.network &&
+      switch (key.fingerprint) {
+        Ok(:final value) => robot.keyFingerprint == value,
+        Err() => false,
+      };
+
   /// The robots of the trades of [key] that ended in a trade or a dispute (14, 17, 18): the ends after which the reference forgets where the user left the Garage (`contexts/GarageContext.tsx:138-141`).
   static Set<RobotSlot> endedInTradeOf(
     NetworkGarageKey key,
@@ -126,7 +134,7 @@ abstract final class GarageOpening {
   ) => {
     for (final ClosedTrade(:record, :lastPosition) in records.closed)
       if (record.confirmedAt != null &&
-          key.robotOf(record.robot) != null &&
+          _isOf(key, record.robot) &&
           switch (lastPosition) {
             TradePosition.succeeded ||
             TradePosition.makerLostDispute ||
@@ -139,7 +147,8 @@ abstract final class GarageOpening {
 
 /// Where the user left the Garage of each network by hand, with the arrows or a tap on « Last order #N » (#251, design note § 4.1, step 4): in memory only, one object for the feature, which the locator creates.
 ///
-/// As the reference's `manualNavigationActive` (`models/Garage.model.ts:247-254`, cleared at start, `contexts/GarageContext.tsx:100`, and when a trade ends at 14, 17 or 18, `:138-141`): the Garage stays on the robot left by hand for the run of the app, leaving the Garage and coming back included, until a trade of the key ends in a trade or a dispute after it was left there; and, as the « Last order #N » tap has done since #227, until a trade of the key has its bond seen locked after it, the robot that trades being then the one shown, as in the reference, whose take and make use the robot shown.
+/// As the reference's `manualNavigationActive` (`models/Garage.model.ts:247-254`, commit babf62e; cleared at start, `contexts/GarageContext.tsx:100`, and when a trade ends at 14, 17 or 18, `:138-141`): the Garage stays on the robot left by hand for the run of the app, leaving the Garage and coming back included, until a trade of the key ends in a trade or a dispute after it was left there.
+/// And until a trade of the key has its bond seen locked after it: the owner's decisions of 2026-11-19 (#227) show the robot of an order made or renewed here once its bond is locked, and a renewal is always opened from a « Last order #N » line, which leaves the Garage by hand; the reference comes to the same, its take and make using the robot shown. The design note's step 4 does not name this case: said in the pull request.
 /// It reveals nothing by itself: robot slots, no token and no key; a restart forgets it.
 final class GarageNavigation {
   final Map<RobosatsNetwork, _LeftByHand> _left = {};
@@ -153,7 +162,7 @@ final class GarageNavigation {
   ) {
     final left = _left[key.network];
     if (left != null) {
-      if (key.robotOf(left.robot) == null) {
+      if (!GarageOpening._isOf(key, left.robot)) {
         _left.remove(key.network);
       } else if (records case Ok(:final value)) {
         if (left.givesWayTo(key, value)) {
@@ -173,7 +182,7 @@ final class GarageNavigation {
 
   /// The robot left by hand on the Garage of [key]'s network, if any and still of [key].
   RobotSlot? leftByHand(NetworkGarageKey key) => switch (_left[key.network]) {
-    final left? when key.robotOf(left.robot) != null => left.robot,
+    final left? when GarageOpening._isOf(key, left.robot) => left.robot,
     _ => null,
   };
 

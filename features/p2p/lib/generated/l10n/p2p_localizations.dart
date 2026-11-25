@@ -1715,7 +1715,7 @@ abstract class P2pLocalizations {
   /// **'No existing orders found'**
   String get p2pRobotNoOrders;
 
-  /// Information when the robot has a last order and no active one: Troc does not read that order yet, so any last order counts as a trade, as RoboSats counts an unknown status. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`), French of the phase-1 catalogue.
+  /// Information when the robot shown has a last order and no active one, unless this device holds that order finished with an end that has not served (an expiry, or a take that never started, #251): RoboSats says it for a robot that is not reusable, a last order of unknown status counting as used. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`), French of the phase-1 catalogue.
   ///
   /// In en, this message translates to:
   /// **'This robot was involved in a trade. Navigate to a new account for fresh privacy.'**
@@ -1948,6 +1948,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Read by your robot at {time}'**
   String p2pTakeReadAt(String time);
+
+  /// Not in the RoboSats texts: the project's own (#251, the owner's decision of 2026-11-25, French as on the mock-up he accepted): under « Read by your robot at … » on the order page, only when the robot reserved for the take is not the robot the Garage would show; read out when it appears. {nickname} is the nickname of the robot that takes the order.
+  ///
+  /// In en, this message translates to:
+  /// **'A fresh robot for this order: {nickname}.'**
+  String p2pTakeFreshRobot(String nickname);
 
   /// Not in the RoboSats texts: the project's own: what a screen reader hears of a row of the order details whose value changed since the read the user saw before, when a confirmation found the order changed (#119, second interface review of #133).
   ///

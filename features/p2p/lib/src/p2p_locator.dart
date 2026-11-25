@@ -74,7 +74,6 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/check_payout_rate_usecase.dart';
-import 'domain/usecases/trade/follow_made_orders_usecase.dart';
 import 'domain/usecases/trade/follow_trades_usecase.dart';
 import 'domain/usecases/trade/garage_robot_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
@@ -285,10 +284,11 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
-        // The robot of the newest order made here whose bond is locked, then of each one seen locked (#227), where the feature holds trades.
-        madeRobots: locator.isRegistered<FollowMadeOrdersUsecase>()
-            ? locator<FollowMadeOrdersUsecase>().execute
+        // The records the robot shown follows (#227, #251), where the feature holds trades.
+        trades: locator.isRegistered<FollowTradesUsecase>()
+            ? locator<FollowTradesUsecase>().execute
             : null,
+        navigation: locator<GarageNavigation>(),
       ),
     );
     // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases and of the acknowledgement of a key's history.
@@ -476,13 +476,6 @@ final class P2pLocator {
     locator.registerFactoryParam<RenewalsCubit, TradeRecord, void>(
       (record, _) =>
           RenewalsCubit(record, locator<MakeOrderUsecase>().renewalsOf),
-    );
-    // The orders made here in progress whose bond was locked, and the « Last order #N » line, for the robot the Garage shows (#227): read from the device only.
-    locator.registerFactory<FollowMadeOrdersUsecase>(
-      () => FollowMadeOrdersUsecase(
-        locator<ListActiveTradesUsecase>().execute,
-        locator<ListLastOrdersUsecase>().execute,
-      ),
     );
     // The records the Garage shows its robot from (#251): the trades in progress, the finished ones with their end, and the robot the next trade would reserve, read from the device only.
     locator.registerFactory<FollowTradesUsecase>(

@@ -299,6 +299,7 @@
   "p2pTakerBond": "Caution du preneur",
   "p2pTakeBondEstimate": "{estimate} Sats, au plus {ceiling} Sats",
   "p2pTakeReadAt": "Lu par votre robot à {time}",
+  "p2pTakeFreshRobot": "Robot neuf pour cet ordre : {nickname}.",
   "p2pOrderNewValue": "Nouvelle valeur : {value}",
   "p2pTakeOrderChangedRead": "L’ordre a changé.",
   "p2pTakeStepCheckingOrder": "Vérification de l’ordre auprès de {coordinator}",

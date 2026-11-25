@@ -169,6 +169,7 @@ class _GarageProfileState extends State<GarageProfile> {
                     nickname: robot.nickname,
                     network: state.network,
                     coordinatorDetails: widget.coordinatorDetails,
+                    ordersNotServed: state.ordersNotServed,
                   )
                 // The orders the « Last order #N » lines open, so that the panel does not say them again (functional review of #220, R4).
                 : BlocBuilder<LastOrdersCubit, LastOrdersState>(
@@ -176,6 +177,7 @@ class _GarageProfileState extends State<GarageProfile> {
                       nickname: robot.nickname,
                       network: state.network,
                       coordinatorDetails: widget.coordinatorDetails,
+                      ordersNotServed: state.ordersNotServed,
                       lastOrdersShown: switch (last) {
                         LastOrdersListed(:final orders) => {
                           for (final record in orders)

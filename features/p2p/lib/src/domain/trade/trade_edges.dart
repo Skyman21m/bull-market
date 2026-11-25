@@ -84,7 +84,7 @@ enum TradePosition {
 
   /// Whether a maker's order stored at this position had its bond locked: public, paused, or taken and further on, the reference publishing an order only once its maker bond locked (`follow_invoices.py:233-240`); with its record not closed, what the Garage waits for before it shows the robot of an order made here (#227).
   ///
-  /// Never while it waits for its bond, and never at 5 or after error 1043, which may come before the bond as after it (the stored position cannot tell); never at a position a maker's trade does not take. Whether the order is still in progress is its record's, as the « Last order #N » line decides it (`FollowMadeOrdersUsecase`, review of #229, C3), not the position's.
+  /// Never while it waits for its bond, and never at 5 or after error 1043, which may come before the bond as after it (the stored position cannot tell); never at a position a maker's trade does not take. Whether the order is still in progress is its record's, as the « Last order #N » line decides it (`GarageOpening.lockedOf`, review of #229, C3), not the position's.
   bool get makerBondLocked => switch (this) {
     public ||
     paused ||

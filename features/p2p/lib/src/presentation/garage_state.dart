@@ -55,6 +55,9 @@ final class GarageWithKey extends GarageState {
   /// The cubit reads the database again when the user deletes, and decides from that read; this only greys the buttons, and is `true` unless the database said otherwise.
   final bool deletionNeedsPin;
 
+  /// The orders (coordinator's short alias, order id) of the robot shown that this device holds finished with an end that has not served, an expiry or a take that never started (#251, `GarageRecords.ordersNotServedOf`): the panel does not say the reference's sentence on a robot involved in a trade for such a last order.
+  final Set<(String, int)> ordersNotServed;
+
   const GarageWithKey(
     super.network, {
     required this.key,
@@ -65,6 +68,7 @@ final class GarageWithKey extends GarageState {
     this.failure,
     this.historyNotRecorded = false,
     this.deletionNeedsPin = true,
+    this.ordersNotServed = const {},
   });
 
   /// This state with the fields given changed; [failure] is the outcome of the action that leads to the copy, so it is replaced, by nothing when it is not given.
@@ -73,6 +77,7 @@ final class GarageWithKey extends GarageState {
     bool? awaitsBackup,
     bool? showWithoutPin,
     bool? deletionNeedsPin,
+    Set<(String, int)>? ordersNotServed,
     P2pFailure? failure,
   }) => GarageWithKey(
     network,
@@ -84,6 +89,7 @@ final class GarageWithKey extends GarageState {
     failure: failure,
     historyNotRecorded: historyNotRecorded,
     deletionNeedsPin: deletionNeedsPin ?? this.deletionNeedsPin,
+    ordersNotServed: ordersNotServed ?? this.ordersNotServed,
   );
 }
 
