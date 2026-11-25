@@ -404,35 +404,53 @@ jobs:
         run: |
           set -euo pipefail
 
-          response=$(curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-delay 1 --max-time 30 \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${REPOSITORY}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100")
-
-          jq -e '(.jobs | type == "array") and (.total_count | type == "number") and (.total_count == (.jobs | length))' >/dev/null <<<"$response" || {
-            echo "The jobs API returned an unexpected or incomplete answer" >&2
-            exit 1
-          }
           jq -e 'type == "array" and length > 0 and all(.[]; type == "string")' >/dev/null <<<"$SHARDS" || {
             echo "The test plan returned no shard: '${SHARDS}'" >&2
             exit 1
           }
-
-          failed=0
-          while IFS= read -r shard; do
-            conclusions=$(jq -r --arg name "Unit tests (${shard})" '[.jobs[] | select(.name == $name) | .conclusion // "none"] | join(" ")' <<<"$response")
-            echo "Unit tests (${shard}): ${conclusions:-no job}"
-            [[ "$conclusions" == success ]] || failed=1
-          done < <(jq -r '.[]' <<<"$SHARDS")
-
           expected=$(jq 'length' <<<"$SHARDS")
-          found=$(jq '[.jobs[] | select(.name | startswith("Unit tests ("))] | length' <<<"$response")
-          echo "Shard jobs in attempt ${RUN_ATTEMPT}: ${found}, planned: ${expected}"
-          [[ "$found" == "$expected" ]] || failed=1
 
-          (( failed == 0 )) || {
-            echo "Every planned shard must have exactly one job in this attempt, concluded success" >&2
-            exit 1
-          }
+          # The jobs a re-run copies from the previous attempt appear in the
+          # API a moment after the new attempt starts: a re-run of this job
+          # alone found 5 of the 6 shards, all 6 listed seconds later (#212).
+          # So a shard with no job yet is looked for again, for about a
+          # minute; any other answer than one job concluded success refuses at
+          # once.
+          for try in 1 2 3 4 5 6 7; do
+            response=$(curl --fail-with-body --silent --show-error \
+              --retry 2 --retry-delay 1 --max-time 30 \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100")
+
+            jq -e '(.jobs | type == "array") and (.total_count | type == "number") and (.total_count == (.jobs | length))' >/dev/null <<<"$response" || {
+              echo "The jobs API returned an unexpected or incomplete answer" >&2
+              exit 1
+            }
+
+            refused=0
+            missing=0
+            while IFS= read -r shard; do
+              conclusions=$(jq -r --arg name "Unit tests (${shard})" '[.jobs[] | select(.name == $name) | .conclusion // "none"] | join(" ")' <<<"$response")
+              echo "Unit tests (${shard}): ${conclusions:-no job yet}"
+              case "$conclusions" in
+                success) ;;
+                "") missing=1 ;;
+                *) refused=1 ;;
+              esac
+            done < <(jq -r '.[]' <<<"$SHARDS")
+
+            found=$(jq '[.jobs[] | select(.name | startswith("Unit tests ("))] | length' <<<"$response")
+            echo "Shard jobs in attempt ${RUN_ATTEMPT} (reading ${try}): ${found}, planned: ${expected}"
+            (( found <= expected )) || refused=1
+
+            if (( refused == 0 && missing == 0 )) && [[ "$found" == "$expected" ]]; then
+              exit 0
+            fi
+            (( refused == 0 )) || break
+            (( try == 7 )) || sleep 10
+          done
+
+          echo "Every planned shard must have exactly one job in this attempt, concluded success" >&2
+          exit 1
