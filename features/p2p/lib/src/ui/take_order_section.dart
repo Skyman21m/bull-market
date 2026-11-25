@@ -34,7 +34,7 @@ import 'widgets/word_fit_text.dart';
 /// - A range order first asks its amount: « Amount {{currencyCode}} », « Too low » / « Too high » under the field, « Take Order » disabled with « You must specify an amount first » until the amount fits, then « You will receive {{satoshis}} Sats (Approx) » for a sell order, whose taker buys, or « You will send {{satoshis}} Sats (Approx) » for a buy order, whose taker sells (`TakeButton.tsx:289-292`: the same figure, only the words change).
 /// - On press, the reference's order (#119, the owner's decision after the review of #133): « You do not have a Garage Key » without a key, else the take is prepared: the robot that will take the order reads it, while the button shows that it runs, a bar runs under it with a line that says each step (the order checked with the coordinator, the robot built, « Building your robot! » in the reference's words, the order read by the robot) and, after 30 s, that it still waits, as the robot panel of the Garage does.
 /// - Once the order is read, the order details show that read ([TakeOrderDetailsCard]: the maker's description and the fresh figures, which the reference shows in « Order description » with « Go back » / « Continue »), and « Take Order » gives way to « Continue » and « Go back »; « Continue » opens « Store your garage key », whose « Done » sends the take (its wait says its steps too) and whose « Go back », or a tap outside, abandons it as « Go back » does.
-/// - « The order changed. » says, from its start, that a confirmation found the order changed and reads it again: the read the user saw stays shown meanwhile, the rows that differ are marked when the new one arrives, and it waits for « Continue » and « Done » again, never confirmed by itself. When the take was sent, [onTaken] opens its trade, the read shown until then.
+/// - « The order changed. » says, from its start, that a confirmation found the order changed and reads it again: the read the user saw stays shown meanwhile, the rows that differ are marked when the new one arrives, and it waits for « Continue » and « Done » again, never confirmed by itself. When the take was sent, [onTaken] opens its trade, the read shown until then. It is said too, with no stop, while a read of an order priced in sats shows a premium moved from the one shown before « Take Order », the row « Price and premium » marked ([TakenPriceCheck.premiumMovedFrom], #270), so that the mark is not a colour only.
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
 /// - A password-protected order reached by its URL (#245, `TakeOrderCubit.unlisted` with `UnlistedOrder.hasPassword`; an order without a password reached so has no field): « Password » above the button, as the reference puts it above its take button (`components/OrderDetails/index.tsx:546-571`), typed hidden, with a short line above it that its description and location come with the take; its text stays in this field, and « Done » hands the cubit its hash only ([OrderPassword]); « Take Order » or « Continue » pressed with the field empty starts nothing and says so under the button, where the reference would send the take and be refused (error 1045); a wrong password is said there with the coordinator's message (« Wrong password », `api/errors.py:52`), the field kept to be corrected.
@@ -235,10 +235,13 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     ];
     // The read the order details show: while it is there, « Continue » and « Go back » stand in place of « Take Order », down to the trade's screen.
     final read = TakeOrderDetailsCard.readOf(state);
+    // The order found changed at a confirmation, or, for an order priced in sats, its premium read moved from the one the page showed before « Take Order », which marks « Price and premium » (#249): said in words too, once (#270).
     final changed = switch (state) {
       TakePreparing(changed: true) => true,
       TakeReady(changed: true) => true,
-      _ => false,
+      _ =>
+        read != null &&
+            TakenPriceCheck.premiumMovedFrom(read.terms, order.premium),
     };
     final stopped = switch (state) {
       TakeReady(:final prepared) => identical(prepared, _stoppedFor),

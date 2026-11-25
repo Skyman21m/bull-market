@@ -510,6 +510,7 @@ void main() {
           final row = journey.priceRow();
           expect(row.value, journey.priceValue(1e10 / 112362, 3.5));
           expect(row.changed, isFalse);
+          expect(find.text(journey.l10n.p2pTakeOrderChangedRead), findsNothing);
           // The figure the alert names is the one shown, the premium taken off.
           journey.expectRed();
           await journey.close();
@@ -517,7 +518,7 @@ void main() {
       );
 
       testWidgets(
-        'an order priced in sats whose robot\'s read gives no price and a premium of 39.55 % where the book said 3.5 %: « Price and premium » shows it, marked; nothing is compared beyond the threshold; « Continue » stays offered',
+        'an order priced in sats whose robot\'s read gives no price and a premium of 39.55 % where the book said 3.5 %: « Price and premium » shows it, marked, « The order changed. » said with it; nothing is compared beyond the threshold; « Continue » stays offered',
         (tester) async {
           // 100 USD for 100,000 sats: 100,000 USD/BTC, 39.55 % above the Bull wallet's 71,657; without that premium, 71,659: within the threshold.
           final journey = await _Journey.start(
@@ -534,6 +535,17 @@ void main() {
           final row = journey.priceRow();
           expect(row.value, journey.priceValue(100000, 39.55));
           expect(row.changed, isTrue);
+          // Said in words too, above « Continue » (#270).
+          expect(
+            find.text(journey.l10n.p2pTakeOrderChangedRead),
+            findsOneWidget,
+          );
+          expect(
+            tester
+                .getTopLeft(find.text(journey.l10n.p2pTakeOrderChangedRead))
+                .dy,
+            lessThan(tester.getTopLeft(journey.continueButton).dy),
+          );
           expect(
             find.text(journey.l10n.p2pOrderAmountOfSatoshis),
             findsOneWidget,
@@ -548,7 +560,7 @@ void main() {
       );
 
       testWidgets(
-        'an honest order priced in sats: its premium shown with its price, not marked, its sats under them, nothing else',
+        'an honest order priced in sats: its premium shown with its price, not marked, its sats under them, nothing else, no « The order changed. »',
         (tester) async {
           final journey = await _Journey.start(
             tester,
@@ -561,6 +573,7 @@ void main() {
           final row = journey.priceRow();
           expect(row.value, journey.priceValue(1e10 / 134834, 3.5));
           expect(row.changed, isFalse);
+          expect(find.text(journey.l10n.p2pTakeOrderChangedRead), findsNothing);
           expect(
             find.text(journey.l10n.p2pOrderAmountOfSatoshis),
             findsOneWidget,
