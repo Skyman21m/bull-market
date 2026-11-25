@@ -9,6 +9,7 @@ import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
 import '../../presentation/last_orders_cubit.dart';
+import '../../presentation/order_history_cubit.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
@@ -33,6 +34,7 @@ import 'robot_coordinator_panel.dart';
 /// Under the robot navigator, the panel of the robot shown ([RobotCoordinatorPanel]): the coordinator that knows it, if any, and what that coordinator says of its orders and rewards, with its own cubit for each robot, closed when the user moves to another robot.
 /// The settings of the robot (Telegram, webhook, stealth invoices) and the claim of its rewards are not shown.
 /// Under the navigator, « Last order #N » (#216, [LastOrderLines]): the reference's line of the robot shown, here read from the device's records, since each trade has a robot of its own; a tap shows that order's robot before its trade opens (#227, [GarageCubit.showOrderRobot]), so that the robot and the order on screen go together, as in the reference.
+/// Under those lines, « See history » (#253, an addition of Bull Market): the finished orders of the key shown, folded by default, each line opening its order as the lines above do.
 class GarageProfile extends StatefulWidget {
   final GarageWithKey state;
   final GarageKeyClipboard clipboard;
@@ -49,6 +51,9 @@ class GarageProfile extends StatefulWidget {
   /// Opens the trade of a « Last order #N » line (#216), read by the `LastOrdersCubit` above the Garage; `null`, and no such line, where the feature holds no trades.
   final Future<void> Function(TradeRecord record)? onOpenTrade;
 
+  /// Makes the cubit of the history of finished orders of the key shown, under the « Last order #N » lines (#253); `null`, and no history, where the feature holds no trades.
+  final OrderHistoryCubit Function(NetworkGarageKey key)? orderHistory;
+
   const GarageProfile({
     super.key,
     required this.state,
@@ -57,6 +62,7 @@ class GarageProfile extends StatefulWidget {
     required this.robotCoordinator,
     required this.coordinatorDetails,
     this.onOpenTrade,
+    this.orderHistory,
   });
 
   @override
@@ -120,12 +126,26 @@ class _GarageProfileState extends State<GarageProfile> {
           ),
           // « Last order #N » under the robot navigator, where the reference puts it (`GarageKeyProfile.tsx:214-230`), from the device's records (#216); its robot shown first, then its trade opened (#227).
           if (widget.onOpenTrade case final open?)
-            LastOrderLines(
-              onOpen: (record) {
-                cubit.showOrderRobot(record);
-                return open(record);
-              },
-            ),
+            switch (widget.orderHistory) {
+              // Under the lines, the history of the key shown (#253), with a cubit of its own for each key, made with the profile and closed with it: folded at each arrival in the Garage.
+              final history? => BlocProvider<OrderHistoryCubit>(
+                key: ValueKey(('history', state.key)),
+                create: (_) => history(state.key)..start(),
+                child: LastOrderLines(
+                  historyKey: state.key,
+                  onOpen: (record) {
+                    cubit.showOrderRobot(record);
+                    return open(record);
+                  },
+                ),
+              ),
+              null => LastOrderLines(
+                onOpen: (record) {
+                  cubit.showOrderRobot(record);
+                  return open(record);
+                },
+              ),
+            },
           if (state.failure case final failure?) ...[
             const Gap(BullSpacing.xs),
             Text(

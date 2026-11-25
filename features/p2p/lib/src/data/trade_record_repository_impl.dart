@@ -5,9 +5,12 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../domain/garage_key_fingerprint.dart';
+import '../domain/order_history.dart' show ClosedTrade;
 import '../domain/p2p_failure.dart';
 import '../domain/repositories/trade_record_repository.dart';
 import '../domain/robot_binding.dart';
+import '../domain/trade/trade_edges.dart' show TradePosition;
+import '../domain/trade/trade_storable.dart' show TradeTrailRecord;
 import '../domain/trade_record.dart';
 import 'p2p_database.dart';
 
@@ -146,6 +149,22 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   static const String _tradesSql =
       'SELECT * FROM trades WHERE network = ? AND order_id IS NOT NULL '
       'ORDER BY taken_at, key_fingerprint, robot_index';
+
+  /// Every closed record of one network that has an order id, with the columns of its trail that say which order it is of and where it stopped, named `trail_` then their column, absent when no trail is stored (#253).
+  static const String _closedSql =
+      'SELECT trades.*, trade_trails.key_fingerprint AS trail_key_fingerprint, '
+      'trade_trails.version AS trail_version, '
+      'trade_trails.network AS trail_network, '
+      'trade_trails.coordinator_alias AS trail_coordinator_alias, '
+      'trade_trails.order_id AS trail_order_id, '
+      'trade_trails.role AS trail_role, '
+      'trade_trails.position AS trail_position '
+      'FROM trades LEFT JOIN trade_trails '
+      'ON trade_trails.key_fingerprint = trades.key_fingerprint '
+      'AND trade_trails.robot_index = trades.robot_index '
+      'WHERE trades.network = ? AND trades.order_id IS NOT NULL '
+      'AND trades.closed_at IS NOT NULL '
+      'ORDER BY trades.closed_at, trades.key_fingerprint, trades.robot_index';
 
   /// The pending makes of one network, oldest first.
   static const String _pendingMakesSql =
@@ -511,6 +530,81 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   Stream<Result<List<TradeRecord>, P2pFailure>> watchTrades(
     RobosatsNetwork network,
   ) => _watchRecords(_tradesSql, network);
+
+  @override
+  Stream<Result<List<ClosedTrade>, P2pFailure>> watchClosedTrades(
+    RobosatsNetwork network,
+  ) => _database
+      .customSelect(
+        _closedSql,
+        variables: [Variable.withString(_networkValue(network))],
+        readsFrom: {_database.trades, _database.storedTradeTrails},
+      )
+      .watch()
+      .transform(
+        StreamTransformer<
+          List<QueryRow>,
+          Result<List<ClosedTrade>, P2pFailure>
+        >.fromHandlers(
+          handleData: (rows, sink) {
+            final closed = <ClosedTrade>[];
+            for (final row in rows) {
+              switch (_recordFrom(row.data, prefix: '')) {
+                case final record?:
+                  closed.add(
+                    ClosedTrade(record, _lastPositionFrom(row.data, record)),
+                  );
+                case null:
+                  sink.add(const Err(P2pStorageFailure()));
+                  return;
+              }
+            }
+            sink.add(Ok(List.unmodifiable(closed)));
+          },
+          handleError: (error, stackTrace, sink) {
+            if (error is Exception) {
+              sink.add(const Err(P2pStorageFailure()));
+            } else {
+              sink.addError(error, stackTrace);
+            }
+          },
+        ),
+      );
+
+  /// The position of the trail the columns `trail_…` of [data] hold, when it is the trail of [record]'s order as this code writes it: its version, network, coordinator, order and role those of the record, its position one of [TradePosition]; `null` for no trail and for any other.
+  static TradePosition? _lastPositionFrom(
+    Map<String, Object?> data,
+    TradeRecord record,
+  ) {
+    Object? column(String name) => data['trail_$name'];
+    if ((
+          column('key_fingerprint'),
+          column('version'),
+          column('network'),
+          column('coordinator_alias'),
+          column('order_id'),
+          column('role'),
+          column('position'),
+        )
+        case (
+          String(),
+          TradeTrailRecord.currentVersion,
+          final String network,
+          final String alias,
+          final int orderId,
+          final String role,
+          final String position,
+        )
+        when network == _networkValue(record.network) &&
+            alias == record.coordinatorAlias &&
+            orderId == record.orderId &&
+            role == record.role.name) {
+      for (final value in TradePosition.values) {
+        if (value.name == position) return value;
+      }
+    }
+    return null;
+  }
 
   /// The records [sql] selects on [network], each read back as [_recordFrom] reads it: a new list after each write of the records.
   Stream<Result<List<TradeRecord>, P2pFailure>> _watchRecords(

@@ -24,6 +24,7 @@ import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/host_rating_cubit.dart';
 import 'presentation/last_orders_cubit.dart';
+import 'presentation/order_history_cubit.dart';
 import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
@@ -794,6 +795,11 @@ class _P2pPageState extends State<_P2pPage> {
                 // « Last order #N » (#216): the trade of the last finished orders, opened above the tab as from « Active trades ».
                 onOpenTrade: lastOrders
                     ? (record) => _openTrade(context, record)
+                    : null,
+                // The history of finished orders under those lines (#253), registered with them.
+                orderHistory:
+                    lastOrders && locator.isRegistered<OrderHistoryCubit>()
+                    ? (key) => locator<OrderHistoryCubit>(param1: key)
                     : null,
               );
               return BlocProvider(

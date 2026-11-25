@@ -3,6 +3,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../garage_key_fingerprint.dart';
+import '../order_history.dart' show ClosedTrade;
 import '../p2p_failure.dart';
 import '../robot_binding.dart';
 import '../trade_record.dart';
@@ -120,6 +121,13 @@ abstract interface class TradeRecordRepository {
   ///
   /// A database that cannot be read, or a row this code never writes, gives a [P2pStorageFailure] in place of the list.
   Stream<Result<List<TradeRecord>, P2pFailure>> watchTrades(
+    RobosatsNetwork network,
+  );
+
+  /// Every closed record of [network] that has an order id, each with the last position of its stored trail, in one statement: a new list after each write of the records or of the trails (#253, design note `docs/design/phase-3-order-history.md` § 5). It reads only: the history of the Garage finds there the finished orders and how each ended.
+  ///
+  /// A database that cannot be read, or a record this code never writes, gives a [P2pStorageFailure] in place of the list; a trail it does not read back as the trail of its record's order gives that record with no position, never a failure of the whole list.
+  Stream<Result<List<ClosedTrade>, P2pFailure>> watchClosedTrades(
     RobosatsNetwork network,
   );
 }

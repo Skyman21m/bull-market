@@ -4293,4 +4293,55 @@ class P2pLocalizationsBg extends P2pLocalizations {
   @override
   String get p2pTakePageChangedLine =>
       'Read the price line again, then continue again.';
+
+  @override
+  String get p2pHistoryShow => 'See history';
+
+  @override
+  String get p2pHistoryHide => 'Hide history';
+
+  @override
+  String get p2pHistorySeeMore => 'See more';
+
+  @override
+  String p2pHistoryTitle(String orderId, String coordinator) {
+    return '#$orderId · $coordinator';
+  }
+
+  @override
+  String p2pHistoryFacts(String side, String origin, String day) {
+    return '$side · $origin · $day';
+  }
+
+  @override
+  String p2pHistoryRobotNamed(String robot, String nickname) {
+    return '$robot · $nickname';
+  }
+
+  @override
+  String get p2pHistorySell => 'Sell';
+
+  @override
+  String get p2pHistoryBuy => 'Buy';
+
+  @override
+  String get p2pHistoryMadeHere => 'made here';
+
+  @override
+  String get p2pHistoryTakenHere => 'taken here';
+
+  @override
+  String get p2pHistoryTraded => 'Traded';
+
+  @override
+  String get p2pHistoryExpired => 'Expired';
+
+  @override
+  String get p2pHistoryCancelled => 'Cancelled';
+
+  @override
+  String get p2pHistoryDispute => 'Dispute';
+
+  @override
+  String get p2pHistoryEndUnknown => 'End unknown';
 }

@@ -12,6 +12,7 @@ import 'package:p2p/src/data/trade_trail_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/order_history.dart' show ClosedTrade;
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/p2p_waits.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
@@ -544,6 +545,11 @@ final class MakeRecords implements TradeRecordRepository {
           _ => result,
         },
       );
+
+  @override
+  Stream<Result<List<ClosedTrade>, P2pFailure>> watchClosedTrades(
+    RobosatsNetwork network,
+  ) => _inner.watchClosedTrades(network);
 }
 
 /// The terms and trails, stopping the app, or failing a write, where the test says.

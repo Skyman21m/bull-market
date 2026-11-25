@@ -77,6 +77,7 @@ import 'domain/usecases/trade/follow_made_orders_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/list_last_orders_usecase.dart';
+import 'domain/usecases/trade/list_order_history_usecase.dart';
 import 'domain/usecases/trade/make_order_usecase.dart';
 import 'domain/usecases/trade/pause_order_usecase.dart';
 import 'domain/usecases/trade/pauses_in_flight.dart';
@@ -101,6 +102,7 @@ import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/last_orders_cubit.dart';
+import 'presentation/order_history_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/chat_cubit.dart';
@@ -800,6 +802,17 @@ final class P2pLocator {
     locator.registerFactoryParam<LastOrdersCubit, RobosatsNetwork, void>(
       (network, _) =>
           LastOrdersCubit(network, locator<ListLastOrdersUsecase>().execute),
+    );
+    // The history of finished orders of the Garage (#253): the orders of the Garage Key shown, read from the device only; the cubit keeps the key's fingerprint, never the key.
+    locator.registerFactory<ListOrderHistoryUsecase>(
+      () => ListOrderHistoryUsecase(locator()),
+    );
+    locator.registerFactoryParam<OrderHistoryCubit, NetworkGarageKey, void>(
+      (key, _) => OrderHistoryCubit(
+        key.network,
+        key.fingerprint,
+        locator<ListOrderHistoryUsecase>().execute,
+      ),
     );
   }
 

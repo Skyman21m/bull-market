@@ -6689,6 +6689,96 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Read the price line again, then continue again.'**
   String get p2pTakePageChangedLine;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): under the « Last order #N » lines of the Garage, opens the history of finished orders in place, with a chevron drawn as an icon; shown only when the history holds an order those lines do not show.
+  ///
+  /// In en, this message translates to:
+  /// **'See history'**
+  String get p2pHistoryShow;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): folds the history opened by p2pHistoryShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide history'**
+  String get p2pHistoryHide;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): under the tenth line of the history, and under each tenth after it: ten older orders more, while some are left.
+  ///
+  /// In en, this message translates to:
+  /// **'See more'**
+  String get p2pHistorySeeMore;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): the first line of an order of the history, in bold: its number and its coordinator's name. {orderId} is the number of the order, {coordinator} the coordinator's name.
+  ///
+  /// In en, this message translates to:
+  /// **'#{orderId} · {coordinator}'**
+  String p2pHistoryTitle(String orderId, String coordinator);
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): the second line of an order of the history, in grey: p2pHistorySell or p2pHistoryBuy, p2pHistoryMadeHere or p2pHistoryTakenHere, then the day this device read its end, in the app's short date.
+  ///
+  /// In en, this message translates to:
+  /// **'{side} · {origin} · {day}'**
+  String p2pHistoryFacts(String side, String origin, String day);
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): the third line of an order of the history, in grey, which the owner decided on 2026-11-25 each line has: its robot, « Robot #N » as the account navigator writes it, then its nickname; « Robot #N » alone when the Garage Key shown does not give the nickname. {robot} is « Robot #N », {nickname} the robot's nickname.
+  ///
+  /// In en, this message translates to:
+  /// **'{robot} · {nickname}'**
+  String p2pHistoryRobotNamed(String robot, String nickname);
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): in the history, an order where this device's robot sold bitcoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Sell'**
+  String get p2pHistorySell;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): in the history, an order where this device's robot bought bitcoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Buy'**
+  String get p2pHistoryBuy;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): in the history, an order this device made.
+  ///
+  /// In en, this message translates to:
+  /// **'made here'**
+  String get p2pHistoryMadeHere;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): in the history, an order this device took.
+  ///
+  /// In en, this message translates to:
+  /// **'taken here'**
+  String get p2pHistoryTakenHere;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): how an order of the history ended, on the right of its line: the trade went through (14).
+  ///
+  /// In en, this message translates to:
+  /// **'Traded'**
+  String get p2pHistoryTraded;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): how an order of the history ended, in grey: the order expired (5).
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get p2pHistoryExpired;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): how an order of the history ended, in grey: the order was cancelled (error 1043).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get p2pHistoryCancelled;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): how an order of the history ended, in orange: the order ended by a dispute's resolution (17 or 18), whoever won it.
+  ///
+  /// In en, this message translates to:
+  /// **'Dispute'**
+  String get p2pHistoryDispute;
+
+  /// Not in the RoboSats texts: the project's own (#253, an addition of Bull Market: the reference has no history; the words of the mock-up the owner validated on 2026-11-25; the English is composed on the model of the French): how an order of the history ended, in grey, when the records do not say it: this device's robot dropped out of the order (public again without it, or no longer shown to it, where only its own part is known to have ended), or no trail of it can be read (design note `docs/design/phase-3-order-history.md` § 4). Never an affirmative word.
+  ///
+  /// In en, this message translates to:
+  /// **'End unknown'**
+  String get p2pHistoryEndUnknown;
 }
 
 class _P2pLocalizationsDelegate
