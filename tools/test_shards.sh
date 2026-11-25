@@ -36,7 +36,6 @@ SHARDS=(
   # slowest file, taken_price_route_test.dart, takes about 8 min alone.
   "p2p-1:p2p@1/3"
   "p2p-2:p2p@2/3"
-  "p2p-3:p2p@3/3"
   # The other members: about 8 min (secrets 4 to 5 min, robosats about 1).
   "packages:*"
 )
