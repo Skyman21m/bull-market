@@ -36,6 +36,8 @@ So for a finished record written by this code since schema 4 (every APK given to
 | `notAvailable` (taken here only) | **End unknown** · « Fin inconnue » | the coordinator no longer shows the order to this robot (error 1044): another robot locked its bond first, or the order left the book otherwise (`TakenByAnother`, `BondForfeited`, `StatusUnknown`); how it ended is not known |
 | any other position, no trail, or a trail this code does not read | **End unknown** · « Fin inconnue » | see § 4 |
 
+A line says « Dispute » only when one side lost the dispute (17 or 18). A dispute the coordinator resolves otherwise ends at another status, which the line says as any order ending there: when the coordinator gives everything back to both sides, the order is cancelled and the line says « Cancelled »; when it settles the dispute as a trade, the line says « Traded ». So « Dispute » is never shown for those, though a dispute was opened (#273).
+
 The last two terminal positions fit none of the four words that say an end: this device knows that its own part ended, not how the order did. They are never given an affirmative word; « End unknown » is what is true of them, and a sixth word is the owner's to decide (the pull request asks him).
 
 A trail that recorded a breach of trust (`breached`) is drawn by its position all the same: the trade screen the line opens says the breach.
@@ -65,4 +67,4 @@ A line whose end is unknown opens its order as every line does: the trade screen
 
 - Folded at each arrival in the Garage, never remembered open: folded when the Garage is left, when a page covers it (a line tapped opens its order: coming back, it is folded), and when the app is hidden or paused, as the Garage Key shown is hidden then.
 - The whole Garage is protected from screenshots, screen recording and the recent apps' preview (`PrivacyScreen` on `GarageView`) while the wallet's « Screen Privacy » is on: the history is inside it, so it follows that setting as the Garage Key does, with nothing of its own.
-- Nothing logged: no order number, no robot name, no coordinator. The records print their robot without its key and the history's values print counts only.
+- Nothing logged: no order number, no robot name, no coordinator. The records print their robot without its key, and the history's values print counts or their type only: the cubit's state its counts, `ClosedTrade` and `FinishedOrder` their type alone (#273; they printed their record before).

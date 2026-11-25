@@ -7,6 +7,7 @@ import 'close_robot_sessions_usecase.dart';
 /// Lets go of a robot whose screen is gone: the requests of that screen's calls still waiting are dropped, those in flight are let end, and then the robot's Tor sessions are closed once nothing uses the robot any more.
 ///
 /// Only the calls of the screen's [RobotCallOwner] are stopped: a trade of the robot (its watch, its chat, its actions) goes on (#251, security review of PR 274, C1). Its sessions are then closed when the last call of the trade has ended ([RobotRequestLimiter.idle]), never under one.
+/// The Nostr copies of a chat message use the robot's sessions outside the limiter and are not waited for: one sent just before that closing may fail, the message itself having reached the coordinator (#275).
 /// Closing the sessions is not a lock (`CoordinatorSessionsPort.closeRobotSessions`): a call still running may send one more request on a new session after a close, so the sessions are closed once the requests of the robot in flight have ended, or after [RobotRequestLimiter.releaseWait] at the latest and again once they have.
 final class ReleaseRobotUsecase {
   final RobotRequestLimiter _limiter;

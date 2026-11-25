@@ -15,7 +15,7 @@ enum OrderEnd {
   /// Error 1043: the order was cancelled, by one side or by both.
   cancelled,
 
-  /// 17 or 18: the order ended by a dispute's resolution, whoever won it.
+  /// 17 or 18: the order ended by a dispute's resolution, whoever won it; a dispute the coordinator ends by giving everything back is [cancelled], one it settles as a trade [traded].
   dispute,
 
   /// Not known: this robot dropped out of the order (public again without it, or no longer shown to it), or the records do not say (no trail, a trail this code does not read back, a position that is no end).
@@ -80,8 +80,9 @@ final class ClosedTrade {
   @override
   int get hashCode => Object.hash(record, lastPosition);
 
+  /// Its type only: never the order's number, its coordinator or its robot (design note § 6).
   @override
-  String toString() => 'ClosedTrade($record, ${lastPosition?.name})';
+  String toString() => 'ClosedTrade';
 }
 
 /// An order of the history: its record, closed after its order was confirmed, and how it ended.
@@ -105,8 +106,9 @@ final class FinishedOrder {
   @override
   int get hashCode => Object.hash(record, end, endedAt);
 
+  /// Its type only: never the order's number, its coordinator or its robot (design note § 6).
   @override
-  String toString() => 'FinishedOrder($record, ${end.name})';
+  String toString() => 'FinishedOrder';
 }
 
 /// The history of finished orders of one Garage Key on one network (#253), from the device's records only.
