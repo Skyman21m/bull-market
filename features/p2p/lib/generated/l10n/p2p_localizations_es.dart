@@ -3836,6 +3836,24 @@ class P2pLocalizationsEs extends P2pLocalizations {
       'Without this price, it cannot compare the coordinator\'s amount.';
 
   @override
+  String get p2pPayoutRateTermsUnreadLine =>
+      'Bull Wallet could not read this order\'s terms on this device.';
+
+  @override
+  String get p2pPayoutRateTermsUnreadDetail =>
+      'Without them, it cannot compare the coordinator\'s amount.';
+
+  @override
+  String p2pRateAgainstSinceMade(String gap) {
+    return 'Gap of $gap against you since the order was made';
+  }
+
+  @override
+  String p2pRateAgainstSinceMadeDetail(String currency) {
+    return 'Bull Wallet does not quote $currency. It therefore compares the coordinator\'s rate at the take with its rate when the order was made. The market may have moved in between.';
+  }
+
+  @override
   String get p2pPayoutBreakdownSmallGap =>
       'A small gap is normal: the coordinator has its own price source.';
 

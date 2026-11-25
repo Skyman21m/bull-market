@@ -44,8 +44,11 @@ final class PayoutPanelRequest {
   /// A check the screen runs when « Submit » is pressed, before the payout is given, « Submit » busy meanwhile: `false` stops the press (the screen then shows what changed, and a second press goes on); `null` gives it at once.
   final Future<bool> Function()? beforeSubmit;
 
-  /// What the owner's payment rule said of the sats paid at 6 and 8, for the breakdown's gap line, its alert and its detail (#228, #250): a comparison with the Bull wallet's price, a price that could not be read, a currency the Bull wallet does not price; `null` when it said none of these (a price being read, amounts that do not agree, a comparison within the threshold beside an alert of the screen, 15, no wallet's port). An alert is drawn above the form when no breakdown can draw it ([PayoutCheck.alert]).
+  /// What the owner's payment rule said of the sats paid at 6, 8 and, since #237, 15, for the breakdown's gap line, its alert and its detail (#228, #250): a comparison with the Bull wallet's price, a price that could not be read, a currency the Bull wallet does not price, the trade's records not read; `null` when it said none of these (a price being read, amounts that do not agree, a comparison within the threshold beside an alert of the screen, no wallet's port). An alert is drawn above the form when no breakdown can draw it ([PayoutCheck.alert]).
   final PayoutCheck? check;
+
+  /// Whether the owner's payment rule runs on this page (a wallet's port lent, the app's composition): at 15 the breakdown then says nothing of a step not compared, the rule comparing it as at 6 and 8 (#237); without the rule it says « No Bull Wallet check at this step ».
+  final bool checkedByRule;
 
   /// « Retry » of « Amount not checked » ([PayoutCheckUnverified]); `null` draws none.
   final VoidCallback? onRetry;
@@ -59,6 +62,7 @@ final class PayoutPanelRequest {
     this.beforeSubmit,
     this.check,
     this.onRetry,
+    this.checkedByRule = false,
   });
 }
 
@@ -413,8 +417,8 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             check: drawn,
             lightning: lightning,
             onRetry: widget.request.onRetry,
-            // At 15 the owner's rule does not run: said, so that the figures do not look checked (security review of #228, C2).
-            notCompared: ask.isNewInvoice,
+            // At 15 on a page without the owner's rule: said, so that the figures do not look checked (security review of #228, C2); where the rule runs it compares 15 as 6 and 8 (#237).
+            notCompared: ask.isNewInvoice && !widget.request.checkedByRule,
             detailOpen: _detailOpen,
             onToggleDetail: () => setState(() => _detailOpen = !_detailOpen),
             onCopy: switch ((lightning, breakdown.invoice)) {

@@ -310,7 +310,10 @@ void main() {
         final usecase = CheckPayoutRateUsecase(buyer.app.reader, buyer.wallet);
         final terms = await usecase.termsOf(buyer.record);
         expect(terms, isA<TakerPayoutTerms>());
-        expect(terms?.currency.code, 'USD');
+        expect(switch (terms) {
+          final TakerPayoutTerms taken => taken.currency.code,
+          _ => null,
+        }, 'USD');
         final seller = await _App.start(seller: true);
         expect(
           await CheckPayoutRateUsecase(

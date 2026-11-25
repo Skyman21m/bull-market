@@ -10,7 +10,7 @@ import '../widgets/detail_toggle.dart';
 import '../widgets/price_check_lines.dart';
 import '../widgets/word_fit_text.dart';
 
-/// What the owner's payment rule said at the payout step (6 and 8) of the sats [given] by the coordinator (#182, #249), as the breakdown draws it (#228, #250): a comparison with the Bull wallet's price ([PayoutCheckCompared]), a price that could not be read ([PayoutCheckUnverified]) or a currency the Bull wallet does not price ([PayoutCheckNotPriced]).
+/// What the owner's payment rule said at the payout step (6 and 8, and since #237 15) of the sats [given] by the coordinator (#182, #249), as the breakdown draws it (#228, #250): a comparison with the Bull wallet's price ([PayoutCheckCompared]), a price that could not be read ([PayoutCheckUnverified]), a currency the Bull wallet does not price ([PayoutCheckNotPriced], with the alert of #237 for an order made here) or the trade's records that could not be read ([PayoutCheckTermsUnread], #237).
 ///
 /// The trade screen, which holds the rule, builds it from the rule's state (`PayoutRateLines.checkOf`); the payout panel only draws it. Never for a price being read, amounts that do not agree, a comparison within the threshold beside an alert of the screen (`PayoutRateAlertAlone`: the alert speaks alone), the chat step, nor a figure of the creation's price (#234).
 @immutable
@@ -77,19 +77,38 @@ final class PayoutCheckUnverified extends PayoutCheck {
   int get hashCode => Object.hash(PayoutCheckUnverified, given);
 }
 
-/// The Bull wallet does not price the order's currency: the grey « not quoted » line, nothing else (the owner's decision of 2026-11-24, #250, #249).
+/// The Bull wallet does not price the order's currency: the grey « not quoted » line (the owner's decision of 2026-11-24, #250, #249); for an order made here whose contract's sats are more than the owner's threshold against the buyer since the order was made, [against] the gap written without its sign and the currency's code, the orange alert under it and its explanation in the detail (the owner's decision of 2026-11-20, #237); never for an order taken here.
 final class PayoutCheckNotPriced extends PayoutCheck {
-  const PayoutCheckNotPriced(super.given);
+  final ({String gap, String currency})? against;
+
+  const PayoutCheckNotPriced(super.given, {this.against});
 
   @override
-  bool get alert => false;
+  bool get alert => against != null;
 
   @override
   bool operator ==(Object other) =>
-      other is PayoutCheckNotPriced && other.given == given;
+      other is PayoutCheckNotPriced &&
+      other.given == given &&
+      other.against == against;
 
   @override
-  int get hashCode => Object.hash(PayoutCheckNotPriced, given);
+  int get hashCode => Object.hash(PayoutCheckNotPriced, given, against);
+}
+
+/// This device's records of the trade could not be read, so nothing was compared (#237): « Amount not checked », in orange, with « Retry », and its own second line, the Bull wallet's price having never been asked.
+final class PayoutCheckTermsUnread extends PayoutCheck {
+  const PayoutCheckTermsUnread(super.given);
+
+  @override
+  bool get alert => true;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PayoutCheckTermsUnread && other.given == given;
+
+  @override
+  int get hashCode => Object.hash(PayoutCheckTermsUnread, given);
 }
 
 /// The lean breakdown of the payout's sats, on arrival (#228; layout and words validated by the owner on 2026-11-24, #250): « Breakdown, in sats », the sats paid by the coordinator, the fees taken from them and, in bold, what the user will receive, then the gap to the Bull price ([PayoutCheckLines]). Under them, « Show details » opens the detail ([PayoutBreakdownDetail]) in the card, as the validated mock-up draws it (the owner's decision of 2026-11-24); what is under the card moves down.
@@ -102,7 +121,7 @@ class PayoutBreakdownView extends StatelessWidget {
   final PayoutCheck? check;
   final bool lightning;
 
-  /// Whether nothing is compared at this step (15, a new invoice after a failed payout, where the owner's rule does not run): a discreet line under the title says so, so that the breakdown does not look checked (security review of #228, C2).
+  /// Whether nothing is compared at this step (15, a new invoice after a failed payout, on a page without the owner's rule, a composition the app does not use: since #237 the rule runs at 15 wherever it is on the page): a discreet line under the title says so, so that the breakdown does not look checked (security review of #228, C2).
   final bool notCompared;
 
   /// « Retry » of « Amount not checked »; `null` draws none.
@@ -269,7 +288,22 @@ class PayoutCheckLines extends StatelessWidget {
         onRetry: onRetry,
         explanation: explained ? l10n.p2pPayoutBreakdownUnverifiedDetail : null,
       ),
-      PayoutCheckNotPriced() => const PriceCheckLines.notPriced(),
+      PayoutCheckTermsUnread() => PriceCheckLines.unverified(
+        onRetry: onRetry,
+        line: l10n.p2pPayoutRateTermsUnreadLine,
+        explanation: explained ? l10n.p2pPayoutRateTermsUnreadDetail : null,
+      ),
+      PayoutCheckNotPriced(:final against) => PriceCheckLines.notPriced(
+        against: switch (against) {
+          (:final gap, currency: _) => l10n.p2pRateAgainstSinceMade(gap),
+          null => null,
+        },
+        explanation: switch (against) {
+          (gap: _, :final currency) when explained =>
+            l10n.p2pRateAgainstSinceMadeDetail(currency),
+          _ => null,
+        },
+      ),
     };
   }
 }
@@ -331,6 +365,15 @@ class PayoutBreakdownDetail extends StatelessWidget {
       ),
       PayoutCheckUnverified() => (
         l10n.p2pPayoutBreakdownUnverifiedDetail,
+        colors.warning,
+      ),
+      PayoutCheckTermsUnread() => (
+        l10n.p2pPayoutRateTermsUnreadDetail,
+        colors.warning,
+      ),
+      // The orange alert of #237: its explanation, the owner's words.
+      PayoutCheckNotPriced(against: (gap: _, :final currency)) => (
+        l10n.p2pRateAgainstSinceMadeDetail(currency),
         colors.warning,
       ),
       PayoutCheckNotPriced() || null => null,

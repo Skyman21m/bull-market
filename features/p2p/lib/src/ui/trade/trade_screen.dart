@@ -1283,8 +1283,8 @@ class _Contract extends StatelessWidget {
         ],
       ),
       (TradePrompt.payout, _) => _payoutPrompt(context, order),
-      (TradePrompt.routingFailed, _) =>
-        _payoutPanel(context) ?? const SizedBox.shrink(),
+      // 15: the payout panel, and since #237 the owner's payment rule once a new invoice is asked, as at 6 and 8: its lines above the panel where the panel does not say them.
+      (TradePrompt.routingFailed, _) => _routingFailedPrompt(context),
       (TradePrompt.escrowWait, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1442,7 +1442,8 @@ class _Contract extends StatelessWidget {
       PayoutRateChecked(:final step) ||
       PayoutRateSatsMissing(:final step) ||
       PayoutRateAmountsDisagree(:final step) ||
-      PayoutRateAlertAlone(:final step) => step,
+      PayoutRateAlertAlone(:final step) ||
+      PayoutRateTermsUnread(:final step) => step,
       _ => null,
     };
     if (step == null || step != shown) return null;
@@ -1474,6 +1475,17 @@ class _Contract extends StatelessWidget {
         ],
         ?panel,
       ],
+    );
+  }
+
+  /// 15 (`Prompts/RoutingFailed.tsx`): the payout panel and, once a new invoice is asked, the owner's payment rule (#237: the same figures as at 6 and 8, design note § 3.3 bis), said in the panel's breakdown where it is drawn and above it otherwise.
+  Widget _routingFailedPrompt(BuildContext context) {
+    final panel = _payoutPanel(context);
+    final rule = _rateLines(context, inPanel: panel != null);
+    if (rule == null) return panel ?? const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [rule, ?panel],
     );
   }
 
@@ -1672,13 +1684,15 @@ class _Contract extends StatelessWidget {
       now: now,
       cancelling: cancel is CancelRunning,
       beforeSubmit: beforeAct,
-      // The rule's check of the step shown, for the breakdown's gap line, its alert and its detail (#228, #250): only at 6 and 8.
+      // The rule's check of the step shown, for the breakdown's gap line, its alert and its detail (#228, #250): only at 6, 8 and, since #237, 15.
       check: PayoutRateLines.checkOf(
         context,
         _ruleShown,
         amount: PayoutRateLines.amountOf(context, contract.seen),
       ),
       onRetry: onRetryRate,
+      // The rule runs on this page, at 15 too since #237: the breakdown no longer says it is not compared there.
+      checkedByRule: rateCubit != null,
     ),
   )) {
     final panel? => KeyedSubtree(

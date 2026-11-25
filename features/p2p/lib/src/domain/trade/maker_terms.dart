@@ -58,11 +58,41 @@ final class TradeRateGap {
   /// How far [fixedRate] is from [createdRate], in percent of [createdRate]: positive when the coordinator fixed a higher rate, so fewer sats for the same amount (less for a buyer to receive, less for a seller to lock).
   final double percent;
 
+  /// The contract's sats fixed at the take (`last_satoshis`) and the contract's amount in sats at the rate of the creation, exactly ([MakerTerms.createdSatoshis]): what [againstFor] compares.
+  final Sats _tradeSatoshis;
+  final ExactRatio _createdSatoshis;
+
   const TradeRateGap._({
     required this.fixedRate,
     required this.createdRate,
     required this.percent,
+    required this._tradeSatoshis,
+    required this._createdSatoshis,
   });
+
+  /// For a currency the Bull wallet does not price, an order made here (#237, the owner's decision of 2026-11-20; design note `docs/design/phase-3-making-an-order.md` § 3.3 bis): how far the contract's sats fixed at the take are from its amount's sats at the rate of the creation, in hundredths of a percent of the latter without their sign, rounded away from zero, **only when** they are more than [TradeTolerances.walletRateGap] against a maker of [role] (fewer sats for a buyer to receive, more for a seller to lock), compared exactly; `null` otherwise, within the threshold or in the maker's favour, so that no figure is ever said there.
+  ///
+  /// The sats, as the owner's threshold is on the sats that cost the user (§ 3.3), not the rate: a buyer is warned when its rate is more than 11.11 % higher, a seller when it is more than 9.09 % lower. Rounded away from zero, a figure said is always above 10.00 %.
+  BigInt? againstFor(TradeRole role) {
+    final trade = ExactRatio.bigInt(_tradeSatoshis.value);
+    final created = _createdSatoshis;
+    final against = switch (role) {
+      TradeRole.buyer => trade < created * (_one - _gap),
+      TradeRole.seller => trade > created * (_one + _gap),
+    };
+    if (!against) return null;
+    final gap = (trade - created).abs() * ExactRatio.integer(10000) / created;
+    // Away from zero, for a size: its ceiling.
+    return -(ExactRatio.integer(0) - gap).floor();
+  }
+
+  static final _one = ExactRatio.integer(1);
+
+  /// [TradeTolerances.walletRateGap], exactly: the owner's one threshold, reused (#237).
+  static final ExactRatio _gap =
+      ExactRatio.ofDouble(TradeTolerances.walletRateGap) ??
+      // A constant of the code, finite: never here.
+      ExactRatio.integer(0);
 
   /// What the gap means for a maker of [role] (#178): a positive gap is fewer sats for the same amount, so less for a buyer to receive and less for a seller to lock; a negative one the reverse; none at exactly 0. A screen never shows a gap as neutral when it is not.
   RateGapEffect effectFor(TradeRole role) => switch ((percent, role)) {
@@ -384,8 +414,8 @@ final class MakerTerms {
 
   /// How far the rate the coordinator fixed for the contract of [rangeAmount] ([contractAmount]) is from [createdRate], when the take fixed [tradeSatoshis] sats (`last_satoshis`): `null` when the contract's amount is not one of these terms or [tradeSatoshis] is 0.
   ///
-  /// Shown before the escrow of a maker seller and before the payout and « Confirm … sent » of a maker buyer (design note § 3.3); information only.
-  /// Call it only with sats `package:robosats` has already bounded (an order's `satoshis_now`, at most `CoordinatorReadBounds.maxSats`): its exact arithmetic grows with the size of the figures, and a huge number makes it very slow (security review of #177). The state machine calls it so, from the order it reads (`TradeStatus`, #178), and nothing else in the feature calls it.
+  /// Shown before the escrow of a maker seller and before the payout and « Confirm … sent » of a maker buyer (design note § 3.3), where the owner's payment rule is not on the page; information only. For a currency the Bull wallet does not price, its [TradeRateGap.againstFor] is the alert of #237 (§ 3.3 bis).
+  /// Call it only with sats `package:robosats` has already bounded (an order's `satoshis_now`, at most `CoordinatorReadBounds.maxSats`): its exact arithmetic grows with the size of the figures, and a huge number makes it very slow (security review of #177). The state machine calls it so, from the order it reads (`TradeStatus`, #178), and so does the owner's payment rule on a buyer's side, from the order of the status it compares (`CheckPayoutRateUsecase.againstOf`, #237); nothing else in the feature calls it.
   TradeRateGap? rateGap({
     required FiatAmount? rangeAmount,
     required Sats tradeSatoshis,
@@ -401,6 +431,8 @@ final class MakerTerms {
       fixedRate: fixed.toDouble(),
       createdRate: created.toDouble(),
       percent: ((fixed - created) / created * _hundred).toDouble(),
+      tradeSatoshis: tradeSatoshis,
+      createdSatoshis: createdSatoshis(amount),
     );
   }
 

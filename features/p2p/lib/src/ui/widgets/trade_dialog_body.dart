@@ -179,12 +179,15 @@ class TradeDialogBody extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
         color: switch (line.tone) {
           TradeDialogTone.plain => colors.text,
-          TradeDialogTone.warning => colors.warning,
+          TradeDialogTone.warning ||
+          TradeDialogTone.warningLine => colors.warning,
           TradeDialogTone.alert || TradeDialogTone.alertFigures => colors.error,
         },
         fontWeight: switch (line.tone) {
           TradeDialogTone.warning || TradeDialogTone.alert => FontWeight.bold,
-          TradeDialogTone.plain || TradeDialogTone.alertFigures => null,
+          TradeDialogTone.plain ||
+          TradeDialogTone.alertFigures ||
+          TradeDialogTone.warningLine => null,
         },
       ),
     );
@@ -199,6 +202,9 @@ enum TradeDialogTone {
 
   /// The second line of a red alert, its two figures (the owner's two-line alerts, validated on 2026-11-24, #250): the alert's colour, not bold.
   alertFigures,
+
+  /// A line under an orange alert, its second line or its explanation where no detail holds it (#237): the warning colour, not bold.
+  warningLine,
 }
 
 /// A line of the app in a dialog, and its tone.

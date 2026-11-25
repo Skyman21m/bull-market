@@ -7,6 +7,7 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../../public/p2p_wallet_port.dart';
 import '../domain/robot_binding.dart';
+import '../domain/trade/trade_payout.dart';
 import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade/wallet_rate_check.dart';
@@ -15,7 +16,7 @@ import '../domain/usecases/trade/check_payout_rate_usecase.dart';
 
 /// [CheckPayoutRateUsecase.termsOf], which the locator gives the cubit.
 typedef PayoutRateTermsOf =
-    Future<PayoutRateTerms?> Function(TradeRecord record);
+    Future<PayoutRateTermsRead?> Function(TradeRecord record);
 
 /// [CheckPayoutRateUsecase.priceOf], which the locator gives the cubit.
 typedef PayoutRatePriceOf =
@@ -24,7 +25,7 @@ typedef PayoutRatePriceOf =
       PayoutRateTerms terms,
     );
 
-/// Which buyer's step a check is for: the payout (6 and 8) or « fiat sent » (9), of a contract ([take]).
+/// Which buyer's step a check is for: the payout (6 and 8, and since #237 15 once a new invoice is asked) or « fiat sent » (9), of a contract ([take]).
 @immutable
 final class PayoutRateStep {
   final int take;
@@ -32,11 +33,13 @@ final class PayoutRateStep {
 
   const PayoutRateStep(this.take, {required this.fiatSent});
 
-  /// The step of [status], `null` where the rule says nothing.
+  /// The step of [status], `null` where the rule says nothing: at 15 only once the failed invoice expired and a new one is asked, of the same sats as at 6 and 8 (design note `docs/design/phase-3-making-an-order.md` § 3.3 bis); before that the coordinator retries and asks nothing.
   static PayoutRateStep? of(TradeStatus status) => switch (status) {
     WaitingForBoth(role: TradeRole.buyer) ||
-    WaitingForPayout(
+    WaitingForPayout(role: TradeRole.buyer) ||
+    RoutingFailed(
       role: TradeRole.buyer,
+      invoiceExpired: true,
     ) => PayoutRateStep(status.trail.take, fiatSent: false),
     Chatting(role: TradeRole.buyer, fiatSent: false) => PayoutRateStep(
       status.trail.take,
@@ -107,17 +110,27 @@ final class PayoutRateReading extends PayoutRateState {
   const PayoutRateReading(this.step);
 }
 
-/// The check of [step], of sats coming from [basis].
+/// The check of [step], of sats coming from [basis]; for a currency the Bull wallet does not price, of an order made here, [against] the gap in hundredths of a percent of the contract's sats against the buyer since the order was made, only beyond the owner's threshold (#237, `CheckPayoutRateUsecase.againstOf`), `null` otherwise.
 final class PayoutRateChecked extends PayoutRateState {
   final PayoutRateStep step;
   final WalletRateCheck check;
   final PayoutRateBasis basis;
+  final BigInt? against;
 
   const PayoutRateChecked(
     this.step,
     this.check, {
     this.basis = const PayoutRateAskedNow(),
+    this.against,
   });
+}
+
+/// This device's records of the trade could not be opened now, so nothing of [step] was compared (#237): « Amount not checked », with « Retry », which reads them again; [given] the sats the payout panel asks at 6, 8 and 15 (`PayoutAsk.buyerSats`), for the breakdown to draw it, `null` where none is asked.
+final class PayoutRateTermsUnread extends PayoutRateState {
+  final PayoutRateStep step;
+  final Sats? given;
+
+  const PayoutRateTermsUnread(this.step, {this.given});
 }
 
 /// The read of [step] gives no sats the buyer receives: nothing compared, « rate not checked » said rather than nothing; [notSeen] for a contract seen late at 9 whose invoice this app never saw, whose alert is said too (#207).
@@ -154,6 +167,12 @@ enum PayoutRateVerdict {
   satsMissing,
   disagree,
 
+  /// A currency the Bull wallet does not price, with the alert of a gap against the buyer since the order was made (#237).
+  notPricedAgainst,
+
+  /// The trade's records could not be opened: nothing compared (#237).
+  termsUnread,
+
   /// Nothing drawn beside an alert of the state machine ([PayoutRateAlertAlone]).
   alertAlone,
 }
@@ -178,7 +197,10 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
 
   PayoutRateTerms? _terms;
   bool _termsRead = false;
-  Future<PayoutRateTerms?>? _termsReading;
+  Future<PayoutRateTermsRead?>? _termsReading;
+
+  /// Whether the last reading of the terms found this device's records unreadable (#237): tried again at « Retry » and when the step is shown anew, never at the watch's cadence, and never kept as the answer for the page's life.
+  bool _unreadable = false;
 
   /// The status shown last, its step and its kind (8 after 6 is the same step at another status).
   TradeSeen? _seen;
@@ -224,17 +246,33 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     _seen = seen;
     _step = step;
     _status = seen.status.runtimeType;
-    // « Reading » before the terms are known only for an order made here, as since #182: a taker buyer whose terms give nothing to compare never sees it (R6 of the functional review of #249); one whose terms are compared sees it once the price is asked.
-    if (!_termsRead && record.origin == TradeOrigin.madeHere) {
-      emit(PayoutRateReading(step));
+    final PayoutRateTermsRead? found;
+    if (_termsRead) {
+      found = _terms;
+    } else if (_unreadable && !(newStep || appeared || moved)) {
+      // Records that could not be read are read again only when the step is shown anew or at « Retry », never at the watch's cadence (#237).
+      found = const PayoutRateTermsUnreadable();
+    } else {
+      // « Reading » before the terms are known only for an order made here, as since #182: a taker buyer whose terms give nothing to compare never sees it (R6 of the functional review of #249); one whose terms are compared sees it once the price is asked.
+      if (record.origin == TradeOrigin.madeHere) {
+        emit(PayoutRateReading(step));
+      }
+      found = await _readTerms();
     }
-    final terms = await _readTerms();
     // A later show took over meanwhile: it does the rest.
     if (isClosed || !identical(_seen, seen)) return;
-    if (terms == null) {
-      // Nothing said: none emitted again over none.
-      if (state is! PayoutRateNone) emit(const PayoutRateNone());
-      return;
+    final PayoutRateTerms terms;
+    switch (found) {
+      case null:
+        // The rule does not compare this trade: nothing said, none emitted again over none.
+        if (state is! PayoutRateNone) emit(const PayoutRateNone());
+        return;
+      case PayoutRateTermsUnreadable():
+        // Never silent: the silence of the rule says « checked, nothing wrong » (#237).
+        emit(PayoutRateTermsUnread(step, given: _givenOf(seen)));
+        return;
+      case final PayoutRateTerms readable:
+        terms = readable;
     }
     final subject = _subjectOf(terms, seen);
     final kept = memory.priceOf(record.network, terms.currency.code);
@@ -258,10 +296,16 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     }
   }
 
-  /// « Retry »: the price read again, only after a price that could not be read.
+  /// « Retry »: the price read again, only after a price that could not be read; after records that could not be read (#237), the records opened again (nothing sent), then, when they give the terms, the step checked as when it is shown anew, which may read the price.
   Future<void> retry() async {
+    if (isClosed) return;
+    if (state is PayoutRateTermsUnread) {
+      final seen = _seen;
+      if (seen != null) await show(seen, appeared: true);
+      return;
+    }
     final terms = _terms;
-    if (terms == null || isClosed) return;
+    if (terms == null) return;
     if (state case PayoutRateChecked(check: WalletRateUnverified())) {
       await _read(terms);
     }
@@ -297,24 +341,42 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     PayoutRateSatsMissing() => PayoutRateVerdict.satsMissing,
     PayoutRateAmountsDisagree() => PayoutRateVerdict.disagree,
     PayoutRateAlertAlone() => PayoutRateVerdict.alertAlone,
-    PayoutRateChecked(:final check, :final basis) => switch (check) {
-      // A coordinator's figure that moved since the invoice is an alert of its own, whatever the price says.
-      _ when basis is PayoutRateTold || basis is PayoutRateNotSeen =>
-        PayoutRateVerdict.warns,
-      WalletRateCompared(:final warns) =>
-        warns ? PayoutRateVerdict.warns : PayoutRateVerdict.within,
-      WalletRateNotPriced() => PayoutRateVerdict.notPriced,
-      WalletRateUnverified() => PayoutRateVerdict.unverified,
-    },
+    PayoutRateTermsUnread() => PayoutRateVerdict.termsUnread,
+    PayoutRateChecked(:final check, :final basis, :final against) =>
+      switch (check) {
+        // A coordinator's figure that moved since the invoice is an alert of its own, whatever the price says.
+        _ when basis is PayoutRateTold || basis is PayoutRateNotSeen =>
+          PayoutRateVerdict.warns,
+        WalletRateCompared(:final warns) =>
+          warns ? PayoutRateVerdict.warns : PayoutRateVerdict.within,
+        WalletRateNotPriced() when against != null =>
+          PayoutRateVerdict.notPricedAgainst,
+        WalletRateNotPriced() => PayoutRateVerdict.notPriced,
+        WalletRateUnverified() => PayoutRateVerdict.unverified,
+      },
   };
 
-  Future<PayoutRateTerms?> _readTerms() async {
+  /// The terms read from this device's records, kept for the page's life once read; records that could not be read are not kept, and read again at the next call (#237).
+  Future<PayoutRateTermsRead?> _readTerms() async {
     if (_termsRead) return _terms;
-    final terms = await (_termsReading ??= _termsOf(record));
-    _terms = terms;
-    _termsRead = true;
-    return terms;
+    final read = await (_termsReading ??= _termsOf(record));
+    _termsReading = null;
+    switch (read) {
+      case PayoutRateTermsUnreadable():
+        _unreadable = true;
+      case final PayoutRateTerms? terms:
+        _unreadable = false;
+        _terms = terms;
+        _termsRead = true;
+    }
+    return read;
   }
+
+  /// The sats the payout panel asks at [seen] (6, 8 and 15), for the breakdown to draw « Amount not checked » beside them; `null` where none is asked.
+  Sats? _givenOf(TradeSeen seen) => switch (PayoutAsk.of(record, seen)) {
+    Ok(:final value) => value.buyerSats,
+    Err() => null,
+  };
 
   /// What [seen] compares, the invoice's sats it shows kept for 9.
   PayoutRateSubject? _subjectOf(PayoutRateTerms terms, TradeSeen seen) {
@@ -367,7 +429,13 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
                 compared.basis,
               ) =>
             PayoutRateAlertAlone(step),
-          final check => PayoutRateChecked(step, check, basis: compared.basis),
+          final check => PayoutRateChecked(
+            step,
+            check,
+            basis: compared.basis,
+            // A currency the Bull wallet does not price, an order made here: the gap against the buyer since the order was made, beyond the owner's threshold only (#237).
+            against: CheckPayoutRateUsecase.againstOf(terms, check, seen),
+          ),
         },
       },
     });

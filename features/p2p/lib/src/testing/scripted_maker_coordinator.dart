@@ -81,6 +81,9 @@ final class ScriptedMadeOrder {
   String? payoutHash;
   bool bondSettled = false;
 
+  /// At 15, whether the failed payout invoice expired, so that a new one is asked (`invoice_expired`, `api/views.py:472-488`), #237.
+  bool payoutExpired = false;
+
   ScriptedMadeOrder._({
     required this.id,
     required this.maker,
@@ -467,7 +470,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         'bad_request': 'Only the buyer of this order can provide it.',
       });
     }
-    if (made.status != 6 && made.status != 8) {
+    if (made.status != 6 &&
+        made.status != 8 &&
+        !(made.status == 15 && made.payoutExpired)) {
       return _json(400, {
         'error_code': 3001,
         'bad_invoice':
@@ -502,6 +507,11 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     made.payoutHash = facts.paymentHash;
     if (made.status == 6) {
       made.status = 7;
+    } else if (made.status == 15) {
+      // A new invoice after a failed payout: paid again from 13 (`Logics.move_state_updated_payout_method`, `api/logics.py:909-947`).
+      made
+        ..status = 13
+        ..payoutExpired = false;
     } else {
       // Into the chat: its deadline set from now (`Logics.update_invoice`, `api/logics.py:909-947`, `FIAT_EXCHANGE_DURATION`, 24 h in `robosats/settings.py:310`).
       _toChat(made);
@@ -607,6 +617,15 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     made
       ..status = 10
       ..fiatSent = true;
+  }
+
+  /// The buyer's invoice could not be paid (#237): 13 → 15, the attempts made (`follow_invoices.py`, `api/logics.py`, the routing's failures); with [expired] the failed invoice expired, so that the coordinator asks a new invoice of the same `invoice_amount` (`api/views.py:472-488`), which takes the order back to 13 (`Logics.move_state_updated_payout_method`, `api/logics.py:909-947`).
+  void failPayout(int id, {bool expired = true}) {
+    final made = order(id);
+    if (made.status != 13) throw StateError('not at 13');
+    made
+      ..status = 15
+      ..payoutExpired = expired;
   }
 
   /// The buyer's invoice paid: the trade succeeded, 14 (`follow_invoices.py`, the payment's success) (#182).
@@ -945,6 +964,18 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
         data
           ..['asked_for_cancel'] = false
           ..['chat_last_index'] = 0;
+      // A failed payout, to its receiver (`api/views.py:471-488`): the attempts, the next one, the reason, and once the invoice expired the amount of a new one, `Logics.payout_amount` as at 6 and 8 (#237).
+      case 15 when buyer:
+        data
+          ..['retries'] = 3
+          ..['next_retry_time'] = now.toIso8601String()
+          // `LNPayment.FailureReason.NONRECO`'s label (`api/models/ln_payment.py`).
+          ..['failure_reason'] = 'A non-recoverable error has occurred.';
+        if (made.payoutExpired) {
+          data
+            ..['invoice_expired'] = true
+            ..['trade_satoshis'] = payout;
+        }
       case 5:
         final reason = made.expiryReason ?? 0;
         data

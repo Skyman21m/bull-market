@@ -181,7 +181,7 @@ void main() {
     );
 
     test(
-      'nothing for a status not marked stored, nor for a taker\'s trade',
+      'nothing for a status not marked stored; a record said taken here over a make\'s records cannot be opened: « unreadable », never silence (#237)',
       () async {
         final (harness, record, six) = await taken();
         final maker = await termsOf(harness, record);
@@ -205,9 +205,10 @@ void main() {
           confirmedAt: record.confirmedAt,
           closedAt: null,
         );
+        // Its terms are a maker's, which a record taken here does not have: the records cannot be restored, said as unreadable (#237).
         expect(
           await CheckPayoutRateUsecase(harness.reader, port).termsOf(taker),
-          isNull,
+          isA<PayoutRateTermsUnreadable>(),
         );
         expect(port.ratesAsked, isEmpty);
       },
@@ -705,7 +706,7 @@ void main() {
     });
 
     test(
-      'a trade said taken here whose terms give nothing to compare (here a maker\'s): never the rule, not even « reading » (a taker buyer\'s own terms are compared since #249, `taken_price_usecases_test.dart`)',
+      'a trade said taken here whose records cannot be restored (a maker\'s terms): « Amount not checked », never silence, nothing read, not even « reading » (#237; a taker buyer\'s own terms are compared since #249, `taken_price_usecases_test.dart`)',
       () async {
         final (harness, record, six) = await taken();
         final taker = TradeRecord(
@@ -732,7 +733,7 @@ void main() {
         await cubit.show(six, appeared: true);
         await harness.settle();
         expect(reads, isEmpty);
-        expect(states, isEmpty);
+        expect(states, [isA<PayoutRateTermsUnread>()]);
         expect(await cubit.beforeAct(), isTrue);
       },
     );

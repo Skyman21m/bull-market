@@ -3892,6 +3892,24 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Sans ce prix, il ne peut pas comparer le montant du coordinateur.';
 
   @override
+  String get p2pPayoutRateTermsUnreadLine =>
+      'Bull Wallet n’a pas pu relire les termes de l’ordre sur cet appareil.';
+
+  @override
+  String get p2pPayoutRateTermsUnreadDetail =>
+      'Sans eux, il ne peut pas comparer le montant du coordinateur.';
+
+  @override
+  String p2pRateAgainstSinceMade(String gap) {
+    return 'Écart de $gap en votre défaveur depuis la création de l’ordre';
+  }
+
+  @override
+  String p2pRateAgainstSinceMadeDetail(String currency) {
+    return 'Bull Wallet ne cote pas le $currency. Il compare donc le taux du coordinateur au moment de la prise à celui de la création de l’ordre. Le cours a pu bouger entre-temps.';
+  }
+
+  @override
   String get p2pPayoutBreakdownSmallGap =>
       'Un petit écart est normal : le coordinateur a sa propre source de prix.';
 
