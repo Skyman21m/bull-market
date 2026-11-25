@@ -387,4 +387,140 @@ void main() {
       },
     );
   });
+
+  group(
+    '#237, for an order taken here (design note `docs/design/phase-3-making-an-order.md` § 3.3 bis)',
+    () {
+      test(
+        'status 15 once the invoice expired: the same red check as at 6 for the same sats; while the coordinator retries, nothing',
+        () async {
+          final buyer = await _App.start(sats: 112362);
+          final six = await buyer.locked();
+          final usecase = CheckPayoutRateUsecase(
+            buyer.app.reader,
+            buyer.wallet,
+          );
+          PayoutRateCubit cubitOf() => PayoutRateCubit(
+            buyer.record,
+            terms: usecase.termsOf,
+            price: usecase.priceOf,
+            memory: PayoutRateMemory(),
+            now: () => buyer.app.now,
+          );
+          final atSix = cubitOf();
+          addTearDown(atSix.close);
+          await atSix.show(six, appeared: true);
+          await buyer.app.settle();
+          final check = switch (atSix.state) {
+            PayoutRateChecked(check: final WalletRateAtWallet check) => check,
+            final other => fail('$other'),
+          };
+          expect(check.warns, isTrue);
+          Future<TradeSeen> read() async {
+            final run = buyer.app.watchOf(buyer.record);
+            await buyer.app.elapse(const Duration(seconds: 30));
+            await run.subscription.cancel();
+            return buyer.seen();
+          }
+
+          buyer.app.coordinator.lockEscrow();
+          for (final status in const [9, 10, 13, 15]) {
+            buyer.app.coordinator.moveTo(status);
+            await read();
+          }
+          final retrying = await buyer.seen();
+          expect(
+            retrying.status,
+            isA<RoutingFailed>().having(
+              (s) => s.invoiceExpired,
+              'expired',
+              isFalse,
+            ),
+          );
+          final atFifteen = cubitOf();
+          addTearDown(atFifteen.close);
+          await atFifteen.show(retrying, appeared: true);
+          await buyer.app.settle();
+          expect(atFifteen.state, isA<PayoutRateNone>());
+          buyer.app.coordinator.payoutExpired = true;
+          final fifteen = await read();
+          expect(
+            fifteen.status,
+            isA<RoutingFailed>().having(
+              (s) => s.invoiceExpired,
+              'expired',
+              isTrue,
+            ),
+          );
+          await atFifteen.show(fifteen);
+          await buyer.app.settle();
+          expect(
+            atFifteen.state,
+            isA<PayoutRateChecked>().having(
+              (s) => s.check,
+              'check',
+              isA<WalletRateAtWallet>()
+                  .having((c) => c.asked, 'asked', Sats.fromInt(112165))
+                  .having((c) => c.expected, 'expected', check.expected)
+                  .having((c) => c.gapHundredths, 'gap', check.gapHundredths)
+                  .having((c) => c.warns, 'warns', true),
+            ),
+          );
+        },
+      );
+
+      test(
+        'a currency the Bull wallet does not price: the « not priced » line alone, never the gap since the order was made, even with the trade\'s sats far from the read the take was made on (the owner\'s decision of 2026-11-24)',
+        () async {
+          final buyer = await _App.start(rate: const P2pWalletRateNotPriced());
+          final six = await buyer.locked();
+          final usecase = CheckPayoutRateUsecase(
+            buyer.app.reader,
+            buyer.wallet,
+          );
+          final cubit = PayoutRateCubit(
+            buyer.record,
+            terms: usecase.termsOf,
+            price: usecase.priceOf,
+            memory: PayoutRateMemory(),
+            now: () => buyer.app.now,
+          );
+          addTearDown(cubit.close);
+          await cubit.show(six, appeared: true);
+          await buyer.app.settle();
+          expect(
+            cubit.state,
+            isA<PayoutRateChecked>()
+                .having((s) => s.check, 'check', isA<WalletRateNotPriced>())
+                .having((s) => s.against, 'against', isNull),
+          );
+          // A take whose sats the coordinator fixed at the bond's lock a quarter below the read the take was made on (the state machine warns of it, `TradePriceOutsideOrder`, and the rule compares nothing beside it): still no gap since « the creation » for a take.
+          final other = await _App.start(rate: const P2pWalletRateNotPriced());
+          other.app.coordinator.satoshisNow = 100000;
+          final moved = await other.locked();
+          expect(moved.order?.satoshisNow, Sats.fromInt(100000));
+          final terms = await CheckPayoutRateUsecase(
+            other.app.reader,
+            other.wallet,
+          ).termsOf(other.record);
+          final taken = switch (terms) {
+            final TakerPayoutTerms taken => taken,
+            final found => fail('$found'),
+          };
+          expect(
+            CheckPayoutRateUsecase.againstOf(
+              taken,
+              WalletRateCheck.ofTakerPayout(
+                taken.terms,
+                received: Sats.fromInt(99825),
+                wallet: const P2pWalletRateNotPriced(),
+              ),
+              moved,
+            ),
+            isNull,
+          );
+        },
+      );
+    },
+  );
 }

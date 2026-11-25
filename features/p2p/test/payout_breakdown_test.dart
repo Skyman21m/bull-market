@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/public/p2p_wallet_port.dart';
+import 'package:p2p/src/domain/trade/trade_terms.dart';
+import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
+import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
+import 'package:p2p/src/presentation/payout_rate_cubit.dart';
+import 'package:p2p/src/ui/trade/payout_rate_line.dart';
+import 'package:p2p/src/ui/widgets/trade_dialog_body.dart';
 import 'package:p2p/src/domain/trade/payout_breakdown.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
@@ -11,6 +18,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/harness.dart';
+import 'support/maker_orders.dart';
 import 'support/trade_orders.dart';
 import 'support/trade_screens.dart';
 
@@ -380,6 +388,12 @@ void main() {
         compared(106713),
         PayoutCheckUnverified(Sats.fromInt(106713)),
         PayoutCheckNotPriced(Sats.fromInt(106713)),
+        // #237: the orange alert since the order was made, and the records not read.
+        PayoutCheckNotPriced(
+          Sats.fromInt(106713),
+          against: (gap: '10,72 %', currency: 'GBP'),
+        ),
+        PayoutCheckTermsUnread(Sats.fromInt(106713)),
       ]) {
         for (final scale in const [1.0, 2.0, 3.0]) {
           await tester.pumpWidget(
@@ -403,6 +417,12 @@ void main() {
                         check: check,
                         onCopy: () {},
                       ),
+                      // Alone above the form, its explanation under it (#250, #237).
+                      PayoutCheckLines(
+                        check: check,
+                        onRetry: () {},
+                        explained: true,
+                      ),
                     ],
                   ),
                 ),
@@ -415,4 +435,76 @@ void main() {
       }
     });
   });
+
+  testWidgets(
+    '#237 at 9 and in « Confirm … sent », a narrow phone with a large text: « Amount not checked » of records not read, and the orange alert since the order was made, nothing cut',
+    (tester) async {
+      tester.view
+        ..physicalSize = const Size(320, 2400) * 3
+        ..devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final maker = switch (madeTerms().side) {
+        MadeSide(:final maker) => maker,
+      };
+      final notPriced = WalletRateCheck.ofMakerPayout(
+        maker,
+        amount: FiatAmount.tryCreate(100) ?? (throw StateError('100')),
+        received: Sats.fromInt(178526),
+        wallet: const P2pWalletRateNotPriced(),
+      );
+      const step = PayoutRateStep(0, fiatSent: true);
+      for (final state in <PayoutRateState>[
+        const PayoutRateTermsUnread(step),
+        PayoutRateChecked(
+          step,
+          notPriced,
+          basis: const PayoutRateToldNow(),
+          against: BigInt.from(1072),
+        ),
+      ]) {
+        for (final scale in const [1.0, 2.0, 3.0]) {
+          await tester.pumpWidget(
+            harness(
+              MediaQuery(
+                data: MediaQueryData(
+                  size: const Size(320, 2400),
+                  textScaler: TextScaler.linear(scale),
+                ),
+                child: Builder(
+                  builder: (context) => SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        PayoutRateLines(
+                          state: state,
+                          coordinator: 'Temple of Sats',
+                          amount: '100',
+                          onRetry: () {},
+                        ),
+                        TradeDialogBody(
+                          title: 'Confirm 100 EUR sent',
+                          text: 'Confirm that you sent 100 EUR.',
+                          backLabel: 'Go back',
+                          onBack: () {},
+                          goLabel: 'Confirm',
+                          onGo: () {},
+                          lines: PayoutRateLines.linesOf(
+                            context,
+                            state,
+                            coordinator: 'Temple of Sats',
+                            amount: '100',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              locale: const Locale('fr'),
+            ),
+          );
+          expect(tester.takeException(), isNull, reason: '$state $scale');
+        }
+      }
+    },
+  );
 }

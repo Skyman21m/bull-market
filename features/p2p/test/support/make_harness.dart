@@ -255,6 +255,9 @@ final class MakeHarness {
   /// The Garage Key deleted from the vault, as the Garage's delete does.
   void deleteKey() => _vault.key = null;
 
+  /// The Garage Key of the tests back in the vault, after [deleteKey]: a vault that gave way for a while (#237).
+  void restoreKey() => _vault.key = NetworkGarageKey(network, tradeKey);
+
   /// Another Garage Key in the vault in place of the one of the tests.
   void replaceKey() => _vault.key = NetworkGarageKey(network, otherTradeKey);
 

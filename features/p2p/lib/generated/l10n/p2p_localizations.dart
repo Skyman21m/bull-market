@@ -5894,7 +5894,7 @@ abstract class P2pLocalizations {
   /// **'Breakdown, in sats'**
   String get p2pPayoutBreakdownTitle;
 
-  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): a discreet line under the breakdown's title at 15 (the payout failed, a new invoice asked), where the owner's payment rule does not run (it runs at 6, 8 and 9 only), so that the figures do not look checked (security review of #228, C2).
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): a discreet line under the breakdown's title at 15 (the payout failed, a new invoice asked) on a page where the owner's payment rule does not run (since #237 the rule runs at 15 as at 6 and 8 wherever it is on the page, so the line is said only without it), so that the figures do not look checked (security review of #228, C2).
   ///
   /// In en, this message translates to:
   /// **'No Bull Wallet check at this step'**
