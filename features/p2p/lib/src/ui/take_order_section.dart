@@ -170,7 +170,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         try {
           await cubit.priceSettled();
         } finally {
-          // Even when the read ends in an error (a bug of the price's service, never caught here): « Continue » never stays busy for good (security review of #249's slice 4, R3).
+          // Even if the wait itself ever threw: « Continue » never stays busy for good (security review of #249's slice 4, R3). A read of the price that throws is caught and reported by the cubit since #270, and settles as « Price not checked ».
           if (mounted) setState(() => _waitingPrice = false);
         }
         if (!mounted) return;

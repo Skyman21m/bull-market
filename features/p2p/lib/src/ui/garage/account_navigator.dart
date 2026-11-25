@@ -33,15 +33,21 @@ class AccountNavigator extends StatelessWidget {
           color: colors.text,
           disabledColor: colors.textMuted,
         ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 96),
-          child: Text(
-            '${l10n.p2pGarageRobotLabel} #$index',
-            textAlign: TextAlign.center,
-            style: text.bodyLarge?.copyWith(
-              color: colors.text,
-              // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
-              fontFamily: 'monospace',
+        // Within the room the two arrows leave, so that a large text never overflows (#273): the label, on one line as before, is scaled down just enough to fit when it is wider, never broken; when it fits, as at the normal size, it is laid out and drawn exactly as before.
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 96),
+              child: Text(
+                '${l10n.p2pGarageRobotLabel} #$index',
+                textAlign: TextAlign.center,
+                style: text.bodyLarge?.copyWith(
+                  color: colors.text,
+                  // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
+                  fontFamily: 'monospace',
+                ),
+              ),
             ),
           ),
         ),

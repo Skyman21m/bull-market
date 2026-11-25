@@ -206,6 +206,32 @@ void main() {
     );
   });
 
+  test(
+    'a closed trade and a finished order print their type only: no order number, coordinator or robot (#273)',
+    () {
+      final record = recordForTests(
+        robot: RobotSlot(testnet, key, 731),
+        orderId: 48213,
+        origin: TradeOrigin.takenHere,
+        confirmedAt: DateTime.utc(2026, 11, 2),
+        closedAt: DateTime.utc(2026, 11, 3),
+      );
+      final closed = ClosedTrade(record, TradePosition.succeeded);
+      final finished = OrderHistory.of([closed], key).single;
+      expect('$closed', 'ClosedTrade');
+      expect('$finished', 'FinishedOrder');
+      for (final printed in [
+        '$closed',
+        '$finished',
+        '${[finished]}',
+      ]) {
+        for (final part in ['48213', '731', 'temple', 'onion', 'buyer']) {
+          expect(printed, isNot(contains(part)), reason: printed);
+        }
+      }
+    },
+  );
+
   group('the records and the trails, read in one statement', () {
     late P2pDatabase database;
     late RobotBindingRepositoryImpl bindings;

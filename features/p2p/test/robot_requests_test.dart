@@ -2348,6 +2348,30 @@ void main() {
         },
       );
 
+      // The second check of `_closeWhenIdle` (#275, security review of PR 274, R6): the robot was idle when the wait ended, and a call opened before the closing ran.
+      test(
+        'a call of the robot opened between the end of the trade\'s last call and the deferred closing keeps the sessions',
+        () async {
+          final tradeCall = limiter.open(keyOf[0]);
+          await release.execute(robots[0], owner: panel);
+          expect(sessions.closed, isEmpty);
+          // The trade's last call ends, which tells the deferred closing the robot is idle; another call of the trade opens in the same turn, before that closing runs.
+          tradeCall.close();
+          final next = limiter.open(keyOf[0]);
+          await _settle();
+          expect(sessions.closed, isEmpty);
+          final read = next.send(
+            _testnet,
+            temple,
+            () async => 'read on the same sessions',
+            isBusy: (_) => false,
+          );
+          expect(await read, _sent('read on the same sessions'));
+          expect(sessions.closed, isEmpty);
+          next.close();
+        },
+      );
+
       test(
         'with nothing in flight, closes the sessions of the robot at once',
         () async {
