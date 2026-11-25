@@ -1756,6 +1756,14 @@ void main() {
         await waitFor(find.text(l10n.p2pTakerBond));
         // The wallet of this test gives no Bitcoin price, so the read order shows « Price not verified » (#249), which puts « Continue » below the screen: scrolled into view as a user would, on the page that holds the read.
         await capture('lecture-prix-non-verifie');
+        // Its explanation folded behind « Show details » (#270): opened, captured, folded again.
+        await tester.ensureVisible(find.text(l10n.p2pDetailShow));
+        await settle();
+        await tester.tap(find.text(l10n.p2pDetailShow));
+        await settle();
+        await capture('lecture-prix-non-verifie-detail');
+        await tester.tap(find.text(l10n.p2pDetailHide));
+        await settle();
         await tester.scrollUntilVisible(
           find.text(l10n.p2pCommonContinue),
           200,

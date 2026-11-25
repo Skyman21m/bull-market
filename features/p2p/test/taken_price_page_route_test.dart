@@ -380,8 +380,16 @@ final class _Journey {
   /// The alert's explanation [detail] opened by a tap on « Show details », then folded by a tap on « Hide details »: neither tap opens « Store your garage key » nor sends anything, and « Continue », moved by each, ignores a tap at once; then it goes on, once the delay of its guard is over.
   Future<void> openAndFold(String detail) async {
     expectFolded(detail);
+    final folded = lines();
+    expect(folded, endsWith(' | ${l10n.p2pDetailShow}'));
+    // The alert's own lines, drawn the same whether the detail is open or not.
+    final alertLines = folded.substring(
+      0,
+      folded.length - ' | ${l10n.p2pDetailShow}'.length,
+    );
     await tap(toggle);
     expectOpen(detail);
+    expect(lines(), '$alertLines | ${l10n.p2pDetailHide} | $detail');
     expect(find.byType(StoreTokenDialog), findsNothing);
     // The detail opened under the link moved « Continue » down: a tap at once was aimed at what stood there.
     await tap(continueButton);
@@ -389,6 +397,7 @@ final class _Journey {
     await tester.pump(MovedTapGuard.afterMove);
     await tap(toggle);
     expectFolded(detail);
+    expect(lines(), folded);
     expect(find.byType(StoreTokenDialog), findsNothing);
     await tap(continueButton);
     expect(find.byType(StoreTokenDialog), findsNothing);
@@ -670,6 +679,19 @@ void main() {
             final detail = rate == null
                 ? journey.redDetail
                 : l10n.p2pTakePriceUnverifiedDetail;
+            if (rate == null) {
+              journey.expectRed(farBelow: sats == 168543);
+            } else {
+              expect(
+                journey.lines(),
+                [
+                  l10n.p2pTakePriceUnverified,
+                  l10n.p2pCommonRetry,
+                  l10n.p2pPayoutBreakdownUnverifiedLine,
+                  l10n.p2pDetailShow,
+                ].join(' | '),
+              );
+            }
             // The link is not against « Continue »: rows of the order and of its maker stand between them.
             expect(
               tester.getTopLeft(journey.continueButton).dy -
