@@ -5,10 +5,12 @@ import 'package:robosats/robosats.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_text.dart';
 import '../widgets/coordinator_avatar.dart';
+import '../widgets/word_fit_text.dart';
 
 /// One trade of this device as a row: [label] (« Active order #N », « Last order #N », the official client's words in its Garage, `GaragePage/GarageKeyProfile.tsx:209`, `:226`), the coordinator's name and image under it, a chevron; a tap calls [onTap].
 ///
 /// The rows of « Active trades » (#88) and the « Last order #N » lines of the Garage (#216).
+/// Its texts break between words only ([WordFitText], #273), so that a large text never cuts an order's number or a coordinator's name.
 class TradeRecordRow extends StatelessWidget {
   final TradeRecord record;
   final String label;
@@ -45,12 +47,13 @@ class TradeRecordRow extends StatelessWidget {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                // Words never broken inside, at any text size: « #N » and a coordinator's name shrink just enough to fit the row (#273); at the normal size, plain texts as before.
                 children: [
-                  Text(
+                  WordFitText(
                     label,
                     style: text.bodyLarge?.copyWith(color: colors.text),
                   ),
-                  Text(
+                  WordFitText(
                     name,
                     style: text.labelMedium?.copyWith(color: colors.textMuted),
                   ),

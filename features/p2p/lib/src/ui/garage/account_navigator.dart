@@ -2,6 +2,7 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../widgets/word_fit_text.dart';
 
 /// « ‹ Robot #N › », the robot navigator of the official client (`basic/GaragePage/AccountNavigator.tsx` at commit ff1998c): the previous robot, disabled at robot 0, and the next one.
 ///
@@ -33,15 +34,18 @@ class AccountNavigator extends StatelessWidget {
           color: colors.text,
           disabledColor: colors.textMuted,
         ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 96),
-          child: Text(
-            '${l10n.p2pGarageRobotLabel} #$index',
-            textAlign: TextAlign.center,
-            style: text.bodyLarge?.copyWith(
-              color: colors.text,
-              // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
-              fontFamily: 'monospace',
+        // The room left by the two arrows at most, so that a large text wraps between « Robot » and its number instead of overflowing, and never breaks a word (#273); at the normal size the label keeps its own width, as before.
+        Flexible(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 96),
+            child: WordFitText(
+              '${l10n.p2pGarageRobotLabel} #$index',
+              textAlign: TextAlign.center,
+              style: text.bodyLarge?.copyWith(
+                color: colors.text,
+                // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
+                fontFamily: 'monospace',
+              ),
             ),
           ),
         ),

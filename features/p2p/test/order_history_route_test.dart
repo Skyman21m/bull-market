@@ -21,6 +21,7 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/coordinator_text.dart';
 import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
+import 'package:p2p/src/ui/garage/account_navigator.dart';
 import 'package:p2p/src/ui/garage/last_order_lines.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -330,24 +331,18 @@ final class _App {
   }
 }
 
-/// Every paragraph of the history, its link and « See more » included, breaks its lines between words only, never inside one; the « Last order #N » lines above it are not this change's (they are left as they are).
+/// Every paragraph of the robot navigator, of the « Last order #N » lines and of the history, its link and « See more » included, breaks its lines between words only, never inside one (#253; the navigator and the lines since #273): an order's number, a coordinator's name and « Robot #N » are never cut.
 void _expectNoWordBroken(WidgetTester tester, String reason) {
   final ours = find.descendant(
-    of: find.byType(LastOrderLines),
+    of: find.byWidgetPredicate(
+      (widget) => widget is LastOrderLines || widget is AccountNavigator,
+    ),
     matching: find.byType(RichText),
   );
-  final lastOrderLines = find
-      .descendant(
-        of: find.byType(TradeRecordRow),
-        matching: find.byType(RichText),
-      )
-      .evaluate()
-      .toSet();
+  expect(ours, findsWidgets);
   for (final paragraph in [
     for (final element in ours.evaluate())
-      if (!lastOrderLines.contains(element))
-        if (element.renderObject case final RenderParagraph paragraph)
-          paragraph,
+      if (element.renderObject case final RenderParagraph paragraph) paragraph,
   ]) {
     final text = paragraph.text.toPlainText();
     final style = paragraph.text.style;
@@ -621,7 +616,7 @@ void main() {
               textScale: textScale,
             );
             await app.write(_finished);
-            // Every layout error of the Garage, but the account navigator's above the lines, which overflows at 320 points from twice the text size before this change (not this change's).
+            // Every layout error of the Garage, the robot navigator's included (it overflowed at 320 points from twice the text size before #273).
             final errors = <FlutterErrorDetails>[];
             final previous = FlutterError.onError;
             FlutterError.onError = errors.add;
@@ -636,16 +631,120 @@ void main() {
             } finally {
               FlutterError.onError = previous;
             }
-            expect([
-              for (final error in errors)
-                if (!'$error'.contains('account_navigator.dart')) '$error',
-            ], isEmpty);
+            expect([for (final error in errors) '$error'], isEmpty);
+            expect(tester.takeException(), isNull);
             expect(app.lines(), hasLength(20));
             _expectNoWordBroken(tester, '$language ×$textScale');
+            // Every target a finger aims at stays at least 44 points each way: the arrows, the « Last order #N » lines and the history's lines.
+            for (final tooltip in [
+              app.l10n.p2pGaragePreviousAccount,
+              app.l10n.p2pGarageNextAccount,
+            ]) {
+              final size = tester.getSize(
+                find.ancestor(
+                  of: find.byTooltip(tooltip),
+                  matching: find.byType(IconButton),
+                ),
+              );
+              expect(
+                size.width >= 44 && size.height >= 44,
+                isTrue,
+                reason: '$tooltip $size',
+              );
+            }
+            final rows = [
+              ...find.byType(TradeRecordRow).evaluate(),
+              for (final record in app.finished.take(20))
+                app.line(record).evaluate().single,
+            ];
+            expect(rows, hasLength(22));
+            for (final row in rows) {
+              final size = (row.renderObject! as RenderBox).size;
+              expect(
+                size.width >= 44 && size.height >= 44,
+                isTrue,
+                reason: '$size',
+              );
+            }
             await app.close();
           },
         );
       }
+
+      testWidgets(
+        'at 360 points and the normal text size, the robot navigator and the « Last order #N » lines are laid out exactly as before #273',
+        (tester) async {
+          final app = await _App.start(tester, locale: locale, width: 360);
+          await app.write(_finished.sublist(18));
+          await app.openGarage();
+          expect(tester.takeException(), isNull);
+          final l10n = app.l10n;
+          // Measured on `main` at 7a15229b9, before #273, with the test font.
+          final before = _layoutBefore[language] ?? const <Rect>[];
+          final label = find.text('${l10n.p2pGarageRobotLabel} #0');
+          final lines = [
+            for (final record in app.finished)
+              if (find
+                  .text(l10n.p2pRobotLastOrder('${record.orderId}'))
+                  .evaluate()
+                  .isNotEmpty)
+                record,
+          ];
+          expect(lines, hasLength(2));
+          final now = [
+            tester.getRect(find.byTooltip(l10n.p2pGaragePreviousAccount)),
+            tester.getRect(find.byTooltip(l10n.p2pGarageNextAccount)),
+            tester.getRect(label),
+            for (final record in lines) ...[
+              tester.getRect(
+                find.ancestor(
+                  of: find.text(l10n.p2pRobotLastOrder('${record.orderId}')),
+                  matching: find.byType(TradeRecordRow),
+                ),
+              ),
+              tester.getRect(
+                find.text(l10n.p2pRobotLastOrder('${record.orderId}')),
+              ),
+              tester.getRect(
+                find.text(
+                  CoordinatorText.of(
+                    coordinator(record.coordinatorAlias).longAlias,
+                    maxCodePoints: CoordinatorText.name,
+                  ),
+                ),
+              ),
+            ],
+          ];
+          expect(now, before);
+          await app.close();
+        },
+      );
     });
   }
 }
+
+/// The places of the robot navigator's arrows and label, then of each « Last order #N » line, its label and its coordinator's name, top to bottom, at 360 points and the normal text size, as `main` drew them before #273 (7a15229b9).
+const _layoutBefore = {
+  'en': [
+    Rect.fromLTWH(78, 373, 40, 40),
+    Rect.fromLTWH(242, 373, 40, 40),
+    Rect.fromLTWH(122, 382.5, 116, 21),
+    Rect.fromLTWH(16, 429, 328, 61),
+    Rect.fromLTWH(60, 441, 246.5, 21),
+    Rect.fromLTWH(60, 462, 175, 16),
+    Rect.fromLTWH(16, 490, 328, 61),
+    Rect.fromLTWH(60, 502, 246.5, 21),
+    Rect.fromLTWH(60, 523, 125, 16),
+  ],
+  'fr': [
+    Rect.fromLTWH(78, 389, 40, 40),
+    Rect.fromLTWH(242, 389, 40, 40),
+    Rect.fromLTWH(122, 398.5, 116, 21),
+    Rect.fromLTWH(16, 445, 328, 82),
+    Rect.fromLTWH(60, 457, 260, 42),
+    Rect.fromLTWH(60, 499, 175, 16),
+    Rect.fromLTWH(16, 527, 328, 82),
+    Rect.fromLTWH(60, 539, 260, 42),
+    Rect.fromLTWH(60, 581, 125, 16),
+  ],
+};
