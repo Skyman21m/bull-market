@@ -34,7 +34,7 @@ concurrency:
 # (about 15 min: disk space and Flutter, code generation included), so a pull
 # request waits about 30 min instead of 55. The shards together run exactly
 # what `make unit-test` runs (`checks` proves it), and the `CI` gate below
-# requires `checks` and every shard (`captures` not yet, see that job).
+# requires `checks`, every shard and `captures`.
 jobs:
   classification:
     name: Detect docs-only PR
@@ -267,10 +267,6 @@ jobs:
   # #258: the screen captures of the P2P tab, which `make unit-test` skips
   # (P2P_CAPTURE_DIR unset), so that they cannot stop passing unseen. The PNG
   # files are test renders over made-up data, kept a few days for review.
-  # Not required by `CI` yet: on 2026-11-25 two of its tests failed on the code
-  # of `main` (« captures of the bond paid from this wallet », fr and en: the
-  # « Continue » of the take is not found). Once they pass again, add
-  # `captures` to the gate's `needs` and checks, as for `tests`.
   captures:
     needs: [classification, action-pins]
     if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
@@ -320,8 +316,7 @@ jobs:
 
   # Single status to require on `main`: green for docs-only PRs (application
   # checks skipped) and for application PRs whose checks passed.
-  # Fork change (#212): it requires `test-plan` and `tests` too (`captures`
-  # not yet, see that job).
+  # Fork change (#212): it requires `test-plan`, `tests` and `captures` too.
   # `needs.tests.result` is one result for the whole matrix. GitHub documents
   # its values (success, failure, cancelled or skipped:
   # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context)
@@ -336,7 +331,7 @@ jobs:
   ci:
     name: CI
     if: ${{ !cancelled() }}
-    needs: [classification, action-pins, test-plan, checks, tests]
+    needs: [classification, action-pins, test-plan, checks, tests, captures]
     runs-on: ubuntu-24.04
     # Fork addition (#212): reading this run's jobs needs `actions: read`.
     permissions:
@@ -350,11 +345,12 @@ jobs:
           TEST_PLAN_RESULT: ${{ needs.test-plan.result }}
           CHECKS_RESULT: ${{ needs.checks.result }}
           TESTS_RESULT: ${{ needs.tests.result }}
+          CAPTURES_RESULT: ${{ needs.captures.result }}
         run: |
           set -euo pipefail
 
           # Fork addition (#212): every result in the log, before the first refusal.
-          echo "classification=${CLASSIFICATION_RESULT} (run_app_checks=${RUN_APP_CHECKS}) action-pins=${ACTION_PINS_RESULT} test-plan=${TEST_PLAN_RESULT} checks=${CHECKS_RESULT} tests=${TESTS_RESULT}"
+          echo "classification=${CLASSIFICATION_RESULT} (run_app_checks=${RUN_APP_CHECKS}) action-pins=${ACTION_PINS_RESULT} test-plan=${TEST_PLAN_RESULT} checks=${CHECKS_RESULT} tests=${TESTS_RESULT} captures=${CAPTURES_RESULT}"
 
           [[ "$CLASSIFICATION_RESULT" == success ]] || {
             echo "Classification result was ${CLASSIFICATION_RESULT}, expected success" >&2
@@ -379,10 +375,14 @@ jobs:
                 echo "Unit test shards result was ${TESTS_RESULT}, expected success" >&2
                 exit 1
               }
+              [[ "$CAPTURES_RESULT" == success ]] || {
+                echo "Screen captures result was ${CAPTURES_RESULT}, expected success" >&2
+                exit 1
+              }
               ;;
             false)
-              [[ "$CHECKS_RESULT" == skipped && "$TESTS_RESULT" == skipped ]] || {
-                echo "Docs-only PR expected the application checks to be skipped; got checks=${CHECKS_RESULT}, tests=${TESTS_RESULT}" >&2
+              [[ "$CHECKS_RESULT" == skipped && "$TESTS_RESULT" == skipped && "$CAPTURES_RESULT" == skipped ]] || {
+                echo "Docs-only PR expected the application checks to be skipped; got checks=${CHECKS_RESULT}, tests=${TESTS_RESULT}, captures=${CAPTURES_RESULT}" >&2
                 exit 1
               }
               ;;
