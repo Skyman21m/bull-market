@@ -36,7 +36,7 @@ Run `make fvm-check` to install the pinned Flutter, then `make deps` to fetch de
 
 ## 3. Verifying a Change
 
-There is no SP-specific make target. `make checks` is the local entry point: it runs the strict `analyze` (`--fatal-warnings --fatal-infos`), the formatting and `dart fix` checks, and `make unit-test`, which is the same set CI runs in the `analyze_and_test.yml` workflow on every PR.
+There is no SP-specific make target. `make checks` is the local entry point: it runs the strict `analyze` (`--fatal-warnings --fatal-infos`), the formatting and `dart fix` checks, and `make unit-test`, which is the same set CI runs in the `analyze_and_test.yml` workflow on every PR (the unit tests split in parallel shards there, `make unit-test-shard`).
 
 ## 4. Tests and the Scan Policy
 

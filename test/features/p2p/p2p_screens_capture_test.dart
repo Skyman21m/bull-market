@@ -1754,8 +1754,20 @@ void main() {
         // The take in two steps (#119): « Take Order » has the robot read the order, then « Continue » and « Done ».
         await tester.tap(find.text(l10n.p2pTakeOrder));
         await waitFor(find.text(l10n.p2pTakerBond));
-        await tester.ensureVisible(find.text(l10n.p2pCommonContinue));
+        // The wallet of this test gives no Bitcoin price, so the read order shows « Price not verified » (#249), which puts « Continue » below the screen: scrolled into view as a user would, on the page that holds the read.
+        await capture('lecture-prix-non-verifie');
+        await tester.scrollUntilVisible(
+          find.text(l10n.p2pCommonContinue),
+          200,
+          scrollable: find
+              .ancestor(
+                of: find.text(l10n.p2pTakerBond),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         await settle();
+        await capture('lecture-continuer');
         await tester.tap(find.text(l10n.p2pCommonContinue));
         await settle();
         await tester.tap(find.text(l10n.p2pCommonDone));

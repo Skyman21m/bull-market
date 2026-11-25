@@ -27,6 +27,14 @@ concurrency:
 # Two cheap prechecks gate the `checks` job (analyze + fix + format + unit
 # tests). It never compiles the Rust FRB crates — unit tests run on the Dart VM
 # against the bindings' Dart side only.
+# Fork change (#212): the unit tests no longer run at the end of `checks`
+# (55 min in one job on 2026-11-25) but in the `tests` matrix, one job per
+# shard of tools/test_shards.sh, in parallel with `checks` (now static checks
+# only) and with `captures` (#258). Each of those jobs pays its own set-up
+# (about 15 min: disk space and Flutter, code generation included), so a pull
+# request waits about 30 min instead of 55. The shards together run exactly
+# what `make unit-test` runs (`checks` proves it), and the `CI` gate below
+# requires `checks`, every shard and `captures`.
 jobs:
   classification:
     name: Detect docs-only PR
@@ -117,14 +125,40 @@ jobs:
       - name: Verify external action pins
         run: bash trusted/tools/check_action_pins.sh "$GITHUB_WORKSPACE/candidate"
 
+  # The shard names, from the single table of tools/test_shards.sh, for the
+  # `tests` matrix; and the script's own tests, which need no SDK. Runs for
+  # every pull request (a few seconds), so `CI` can require its success.
+  test-plan:
+    name: Plan the test shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the shard script
+        run: bash tools/test_shards_test.sh
+
+      - name: List the shards
+        id: plan
+        run: |
+          set -euo pipefail
+          shards=$(bash tools/test_shards.sh names)
+          echo "Shards: ${shards}"
+          echo "shards=${shards}" >> "$GITHUB_OUTPUT"
+
   checks:
     needs: [classification, action-pins]
     if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
-    name: Static checks and unit tests
+    # Fork change (#212): static checks only; the unit tests moved to `tests`.
+    name: Static checks
     runs-on: ubuntu-24.04
-    # A normal run takes 50-61 min in this fork (set-up 17-22 min, of which the code generation 13 min; unit tests 32-38 min), more than upstream's 22-29 min: the fork adds the robosats and p2p test suites, which grow with each phase (3,248 p2p tests on 2026-11-18).
-    # At 45 min, then at 60 min, a run was cut during the unit tests with no test failing (the second 40 s before its end), so the limit leaves room for that.
-    timeout-minutes: 90
+    # Static checks only since #212: about 18 min (disk space 4, Flutter set-up 10-11 of which the code generation about 10, the checks 3-4). The limit is about twice that: before #212 runs were cut twice by a limit set too close to their normal duration.
+    timeout-minutes: 40
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -180,27 +214,143 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: make format-check
 
-      # Default success() gate on purpose: if any static check above is red,
-      # skip the tests — the PR needs another push anyway.
+      # Fork addition (#212): fails when a workspace member with a test/
+      # directory, or a test file of a split member, is in no shard of the
+      # `tests` matrix or in two, so that no test can stop running unseen.
+      - name: Test shards should cover every unit test exactly once
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: make unit-test-shards-check
+
+      # Upstream ran `make unit-test` here, after the static checks (skipped
+      # when one was red). Fork change (#212): the tests run in the `tests`
+      # matrix below, in parallel, even when a static check is red.
+
+  # One job per shard of tools/test_shards.sh (names from `test-plan`), each
+  # with its own set-up, together running exactly what `make unit-test` runs.
+  tests:
+    needs: [classification, action-pins, test-plan]
+    if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.test-plan.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
+    name: Unit tests (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    # A shard takes about 15 min of set-up (disk space, Flutter, code generation) then its tests: up to 17 min in a run with the app and features/p2p in one and two shards, which is why they are now in two and three (2026-11-25). The limit is about twice a shard's duration: before #212 runs were cut twice by a limit set too close to their normal duration, and the suites grow with each phase.
+    timeout-minutes: 55
+    strategy:
+      # One run shows the failures of every shard.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.test-plan.outputs.shards) }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same reason as in `checks`: the set-up needs the disk space.
+      - name: Free disk space
+        # Pinned to a commit SHA (not the mutable v1.3.1 tag): third-party action.
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Flutter setup
+        uses: ./.github/actions/flutter-setup
+
+      # The step name of upstream's `checks` job, for one shard.
       - name: Unit tests must pass
-        run: make unit-test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: make unit-test-shard SHARD="$SHARD"
+
+  # #258: the screen captures of the P2P tab, which `make unit-test` skips
+  # (P2P_CAPTURE_DIR unset), so that they cannot stop passing unseen. The PNG
+  # files are test renders over made-up data, kept a few days for review.
+  captures:
+    needs: [classification, action-pins]
+    if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
+    name: P2P screen captures
+    runs-on: ubuntu-24.04
+    # About 15 min of set-up and 11 min of captures (2026-11-25). Same margin as `tests`.
+    timeout-minutes: 55
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same reason as in `checks`: the set-up needs the disk space.
+      - name: Free disk space
+        # Pinned to a commit SHA (not the mutable v1.3.1 tag): third-party action.
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Flutter setup
+        id: setup
+        uses: ./.github/actions/flutter-setup
+
+      # A fresh folder outside the checkout (the `runner` context is not
+      # available in a job's env, hence GITHUB_ENV).
+      - name: Capture folder
+        run: echo "P2P_CAPTURE_DIR=${RUNNER_TEMP}/p2p-captures" >> "$GITHUB_ENV"
+
+      - name: P2P screen captures must render
+        id: captures
+        run: make p2p-screen-captures
+
+      # Also after a failure, with whatever was rendered, to see where it stopped.
+      - name: Upload the captures
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        # Pinned to a commit SHA (not the mutable v7 tag), as in build-android.yml.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p2p-screen-captures-${{ github.run_attempt }}
+          path: ${{ env.P2P_CAPTURE_DIR }}
+          if-no-files-found: ${{ steps.captures.outcome == 'success' && 'error' || 'warn' }}
+          retention-days: 7
 
   # Single status to require on `main`: green for docs-only PRs (application
   # checks skipped) and for application PRs whose checks passed.
+  # Fork change (#212): it requires `test-plan`, `tests` and `captures` too.
+  # `needs.tests.result` is one result for the whole matrix. GitHub documents
+  # its values (success, failure, cancelled or skipped:
+  # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#needs-context)
+  # but not how the matrix's jobs make it up; the job's `if` is evaluated
+  # once, before the matrix is applied, so the whole matrix runs or is
+  # skipped (https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idif).
+  # Seen on this repository's runs (#212, links in the pull request): one
+  # shard failing gives `failure`. Since that rule is not documented, the
+  # gate does not rest on it alone: for an application PR it also reads the
+  # conclusion of every shard's job of this run attempt through the API, and
+  # requires one job per planned shard, each `success`.
   ci:
     name: CI
     if: ${{ !cancelled() }}
-    needs: [classification, action-pins, checks]
+    needs: [classification, action-pins, test-plan, checks, tests, captures]
     runs-on: ubuntu-24.04
+    # Fork addition (#212): reading this run's jobs needs `actions: read`.
+    permissions:
+      actions: read
     steps:
       - name: Require the expected checks
         env:
           CLASSIFICATION_RESULT: ${{ needs.classification.result }}
           RUN_APP_CHECKS: ${{ needs.classification.outputs.run_app_checks }}
           ACTION_PINS_RESULT: ${{ needs.action-pins.result }}
+          TEST_PLAN_RESULT: ${{ needs.test-plan.result }}
           CHECKS_RESULT: ${{ needs.checks.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+          CAPTURES_RESULT: ${{ needs.captures.result }}
         run: |
           set -euo pipefail
+
+          # Fork addition (#212): every result in the log, before the first refusal.
+          echo "classification=${CLASSIFICATION_RESULT} (run_app_checks=${RUN_APP_CHECKS}) action-pins=${ACTION_PINS_RESULT} test-plan=${TEST_PLAN_RESULT} checks=${CHECKS_RESULT} tests=${TESTS_RESULT} captures=${CAPTURES_RESULT}"
 
           [[ "$CLASSIFICATION_RESULT" == success ]] || {
             echo "Classification result was ${CLASSIFICATION_RESULT}, expected success" >&2
@@ -210,6 +360,10 @@ jobs:
             echo "Action-pin result was ${ACTION_PINS_RESULT}, expected success" >&2
             exit 1
           }
+          [[ "$TEST_PLAN_RESULT" == success ]] || {
+            echo "Test plan result was ${TEST_PLAN_RESULT}, expected success" >&2
+            exit 1
+          }
 
           case "$RUN_APP_CHECKS" in
             true)
@@ -217,10 +371,18 @@ jobs:
                 echo "Application checks result was ${CHECKS_RESULT}, expected success" >&2
                 exit 1
               }
+              [[ "$TESTS_RESULT" == success ]] || {
+                echo "Unit test shards result was ${TESTS_RESULT}, expected success" >&2
+                exit 1
+              }
+              [[ "$CAPTURES_RESULT" == success ]] || {
+                echo "Screen captures result was ${CAPTURES_RESULT}, expected success" >&2
+                exit 1
+              }
               ;;
             false)
-              [[ "$CHECKS_RESULT" == skipped ]] || {
-                echo "Docs-only PR expected the application checks to be skipped; got checks=${CHECKS_RESULT}" >&2
+              [[ "$CHECKS_RESULT" == skipped && "$TESTS_RESULT" == skipped && "$CAPTURES_RESULT" == skipped ]] || {
+                echo "Docs-only PR expected the application checks to be skipped; got checks=${CHECKS_RESULT}, tests=${TESTS_RESULT}, captures=${CAPTURES_RESULT}" >&2
                 exit 1
               }
               ;;
@@ -229,3 +391,66 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Fork addition (#212): every planned shard ran in this attempt and passed.
+      - name: Require every test shard
+        if: ${{ needs.classification.outputs.run_app_checks == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SHARDS: ${{ needs.test-plan.outputs.shards }}
+        run: |
+          set -euo pipefail
+
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "string")' >/dev/null <<<"$SHARDS" || {
+            echo "The test plan returned no shard: '${SHARDS}'" >&2
+            exit 1
+          }
+          expected=$(jq 'length' <<<"$SHARDS")
+
+          # The jobs a re-run copies from the previous attempt appear in the
+          # API a moment after the new attempt starts: a re-run of this job
+          # alone found 5 of the 6 shards, all 6 listed seconds later (#212).
+          # So a shard with no job yet is looked for again, for about a
+          # minute; any other answer than one job concluded success refuses at
+          # once.
+          for try in 1 2 3 4 5 6 7; do
+            response=$(curl --fail-with-body --silent --show-error \
+              --retry 2 --retry-delay 1 --max-time 30 \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100")
+
+            jq -e '(.jobs | type == "array") and (.total_count | type == "number") and (.total_count == (.jobs | length))' >/dev/null <<<"$response" || {
+              echo "The jobs API returned an unexpected or incomplete answer" >&2
+              exit 1
+            }
+
+            refused=0
+            missing=0
+            while IFS= read -r shard; do
+              conclusions=$(jq -r --arg name "Unit tests (${shard})" '[.jobs[] | select(.name == $name) | .conclusion // "none"] | join(" ")' <<<"$response")
+              echo "Unit tests (${shard}): ${conclusions:-no job yet}"
+              case "$conclusions" in
+                success) ;;
+                "") missing=1 ;;
+                *) refused=1 ;;
+              esac
+            done < <(jq -r '.[]' <<<"$SHARDS")
+
+            found=$(jq '[.jobs[] | select(.name | startswith("Unit tests ("))] | length' <<<"$response")
+            echo "Shard jobs in attempt ${RUN_ATTEMPT} (reading ${try}): ${found}, planned: ${expected}"
+            (( found <= expected )) || refused=1
+
+            if (( refused == 0 && missing == 0 )) && [[ "$found" == "$expected" ]]; then
+              exit 0
+            fi
+            (( refused == 0 )) || break
+            (( try == 7 )) || sleep 10
+          done
+
+          echo "Every planned shard must have exactly one job in this attempt, concluded success" >&2
+          exit 1
