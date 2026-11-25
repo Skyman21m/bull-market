@@ -741,7 +741,10 @@ void main() {
             ];
             expect(rows, hasLength(22));
             for (final row in rows) {
-              final size = (row.renderObject! as RenderBox).size;
+              final size = switch (row.renderObject) {
+                final RenderBox box => box.size,
+                _ => Size.zero,
+              };
               expect(
                 size.width >= 44 && size.height >= 44,
                 isTrue,
