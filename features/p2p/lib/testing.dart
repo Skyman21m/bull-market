@@ -471,6 +471,9 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   /// While set and not completed, [bitcoinRate] waits for it before answering [rate] as it is then: a read that runs, for a test of what is pressed meanwhile.
   Completer<void>? rateHeld;
 
+  /// While set, [bitcoinRate] throws it in place of answering, once [rateHeld] is completed: a bug of the price's service, for a test of a read that ends in an `Error` (#270).
+  Error? rateError;
+
   @override
   Future<P2pWalletBitcoinRate> bitcoinRate(
     RobosatsNetwork network,
@@ -479,6 +482,7 @@ final class FakeP2pWalletPort implements P2pWalletPort {
     ratesAsked.add((network, currency));
     final held = rateHeld;
     if (held != null) await held.future;
+    if (rateError case final error?) throw error;
     return rate;
   }
 }
