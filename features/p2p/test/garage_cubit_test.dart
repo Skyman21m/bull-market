@@ -126,6 +126,7 @@ void main() {
     Stream<Result<GarageRecords, P2pFailure>> Function(NetworkGarageKey key)?
     tradesOf,
     GarageNavigation? navigation,
+    Future<void> Function(TradeRecord record)? readOnce,
   }) {
     storage.install();
     final repository = GarageKeyRepositoryImpl(
@@ -150,6 +151,7 @@ void main() {
       unacknowledged ?? UnacknowledgedGarageKeys(),
       tradesOf: tradesOf,
       navigation: navigation,
+      readOnce: readOnce,
     );
   }
 
@@ -1892,6 +1894,76 @@ void main() {
           expect(OrderEnd.served(TradePosition.publicAgain), isFalse);
           await cubit.close();
           await trades.records.close();
+        },
+      );
+
+      test(
+        'step 0: the open record of the robot it opened on, read once per visit when its panel says no active order; never another robot, a key from elsewhere, nor twice',
+        () async {
+          final read = <int>[];
+          Future<void> readOnce(TradeRecord record) async =>
+              read.add(record.robot.accountIndex);
+
+          final trades = recordsStarting(recordsOf(locked: [3]));
+          final cubit = cubitOver(
+            holding([testnetEntry]),
+            tradesOf: trades.follow,
+            readOnce: readOnce,
+          );
+          await cubit.load();
+          expect(shown(cubit), 3);
+          // Another robot's panel: nothing.
+          cubit.robotWithoutActiveOrder(4);
+          expect(read, isEmpty);
+          cubit.robotWithoutActiveOrder(3);
+          expect(read, [3]);
+          // Once per visit, a read of the vault included.
+          cubit.robotWithoutActiveOrder(3);
+          await cubit.load();
+          cubit.robotWithoutActiveOrder(3);
+          expect(read, [3]);
+          await cubit.close();
+          await trades.records.close();
+
+          // A robot shown by the arrows after the opening: nothing.
+          final moved = recordsStarting(recordsOf(locked: [3, 5]));
+          final byHand = cubitOver(
+            holding([testnetEntry]),
+            tradesOf: moved.follow,
+            readOnce: readOnce,
+          );
+          await byHand.load();
+          expect(shown(byHand), 5);
+          byHand.previous();
+          byHand.previous();
+          expect(shown(byHand), 3);
+          byHand.robotWithoutActiveOrder(3);
+          expect(read, [3]);
+          await byHand.close();
+          await moved.records.close();
+
+          // A key from elsewhere, a robot with no open record, records that cannot be read: nothing.
+          for (final start in [
+            recordsOf(
+              drawnHere: false,
+              fresh: null,
+              ended: [(3, TradePosition.expired)],
+            ),
+            recordsOf(ended: [(3, TradePosition.expired)]),
+            const Err<GarageRecords, P2pFailure>(P2pStorageFailure()),
+          ]) {
+            final other = recordsStarting(start);
+            final again = cubitOver(
+              holding([testnetEntry]),
+              tradesOf: other.follow,
+              readOnce: readOnce,
+            );
+            await again.load();
+            again.robotWithoutActiveOrder(shown(again));
+            expect(read, [3], reason: '$start');
+            await again.close();
+            await other.records.close();
+          }
         },
       );
     },

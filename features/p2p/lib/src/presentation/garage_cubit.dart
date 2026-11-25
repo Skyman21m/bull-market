@@ -60,6 +60,15 @@ class GarageCubit extends Cubit<GarageState> {
   /// The last records read, of the key shown; `null` before the first.
   Result<GarageRecords, P2pFailure>? _records;
 
+  /// `WatchTradeUsecase.readOnce`: one read of a trade, as its page reads it when it opens (#251, step 0); `null` where the feature holds no trades.
+  final Future<void> Function(TradeRecord record)? _readOnce;
+
+  /// The robot the Garage opened on in this visit, the one whose open record it may read once.
+  RobotSlot? _openedOn;
+
+  /// Whether this visit already read an open record once (#251, step 0): never twice in a visit.
+  bool _readOnceAsked = false;
+
   /// Whether the app was hidden or paused since the user asked for a new key: the key then arrives behind the PIN.
   bool _concealedSinceAsked = false;
 
@@ -79,6 +88,7 @@ class GarageCubit extends Cubit<GarageState> {
     this._unacknowledged, {
     this._tradesOf,
     GarageNavigation? navigation,
+    this._readOnce,
   }) : _navigation = navigation ?? GarageNavigation(),
        super(GarageWorking(network));
 
@@ -296,6 +306,32 @@ class GarageCubit extends Cubit<GarageState> {
   static bool _sameOrders(Set<(String, int)> a, Set<(String, int)> b) =>
       a.length == b.length && a.containsAll(b);
 
+  /// The panel of robot [index] read it on its coordinator with no active order (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.1, step 0, the owner's decision 5 of 2026-11-25): when it is the robot the Garage opened on in this visit and the device holds an open record of it, made or taken here with a key drawn here, that order is read once, as its page reads it when it opens, so that an order that ended while the app did not read it closes its record; the records then written apply the rule again.
+  ///
+  /// At most one such read per visit, over Tor, to the coordinator that already knows that robot and its order; nothing for a robot shown by the arrows after the opening, a key from elsewhere, or records that cannot be read.
+  void robotWithoutActiveOrder(int index) {
+    final readOnce = _readOnce;
+    final opened = _openedOn;
+    final current = state;
+    if (isClosed ||
+        _readOnceAsked ||
+        readOnce == null ||
+        opened == null ||
+        opened.accountIndex != index ||
+        current is! GarageWithKey ||
+        current.robot.index != index) {
+      return;
+    }
+    final records = _records;
+    if (records is! Ok<GarageRecords, P2pFailure>) return;
+    final value = records.value;
+    if (!value.keyDrawnHereOnly) return;
+    final record = value.openRecordOf(opened);
+    if (record == null) return;
+    _readOnceAsked = true;
+    unawaited(readOnce(record));
+  }
+
   void _stopFollowing() {
     final following = _following;
     _following = null;
@@ -375,6 +411,15 @@ class GarageCubit extends Cubit<GarageState> {
       Err() => null,
     };
     if (isClosed) return;
+    _openedOn = switch (read) {
+      Ok(value: final key) => switch (made != null
+          ? Ok<NetworkRobot, P2pFailure>(made)
+          : key.firstUsableRobot(0)) {
+        Ok(value: final robot) => robot.slot,
+        Err() => null,
+      },
+      Err() => null,
+    };
     emit(switch (read) {
       Ok(value: final key) => switch (made != null
           ? Ok<NetworkRobot, P2pFailure>(made)

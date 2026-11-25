@@ -12,6 +12,7 @@ import '../../presentation/last_orders_cubit.dart';
 import '../../presentation/order_history_cubit.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
+import '../../presentation/robot_coordinator_state.dart';
 import '../widgets/garage_key_clipboard.dart';
 import '../widgets/garage_key_view.dart';
 import '../widgets/robot_avatar.dart';
@@ -164,30 +165,39 @@ class _GarageProfileState extends State<GarageProfile> {
             key: ValueKey((state.key, robot.index)),
             create: (_) =>
                 widget.robotCoordinator(state.key, robot.index)..load(),
-            child: widget.onOpenTrade == null
-                ? RobotCoordinatorPanel(
-                    nickname: robot.nickname,
-                    network: state.network,
-                    coordinatorDetails: widget.coordinatorDetails,
-                    ordersNotServed: state.ordersNotServed,
-                  )
-                // The orders the « Last order #N » lines open, so that the panel does not say them again (functional review of #220, R4).
-                : BlocBuilder<LastOrdersCubit, LastOrdersState>(
-                    builder: (context, last) => RobotCoordinatorPanel(
+            // The panel's read with no active order: the Garage may read the order of the record of the robot it opened on, once (#251, step 0).
+            child: BlocListener<RobotCoordinatorCubit, RobotCoordinatorState>(
+              listenWhen: (_, next) => switch (next) {
+                RobotOnCoordinator(activity: RobotKnown(:final face)) =>
+                  face.activeOrderId == null,
+                _ => false,
+              },
+              listener: (_, _) => cubit.robotWithoutActiveOrder(robot.index),
+              child: widget.onOpenTrade == null
+                  ? RobotCoordinatorPanel(
                       nickname: robot.nickname,
                       network: state.network,
                       coordinatorDetails: widget.coordinatorDetails,
                       ordersNotServed: state.ordersNotServed,
-                      lastOrdersShown: switch (last) {
-                        LastOrdersListed(:final orders) => {
-                          for (final record in orders)
-                            (record.coordinatorAlias, record.orderId),
+                    )
+                  // The orders the « Last order #N » lines open, so that the panel does not say them again (functional review of #220, R4).
+                  : BlocBuilder<LastOrdersCubit, LastOrdersState>(
+                      builder: (context, last) => RobotCoordinatorPanel(
+                        nickname: robot.nickname,
+                        network: state.network,
+                        coordinatorDetails: widget.coordinatorDetails,
+                        ordersNotServed: state.ordersNotServed,
+                        lastOrdersShown: switch (last) {
+                          LastOrdersListed(:final orders) => {
+                            for (final record in orders)
+                              (record.coordinatorAlias, record.orderId),
+                          },
+                          LastOrdersLoading() ||
+                          LastOrdersUnreadable() => const {},
                         },
-                        LastOrdersLoading() ||
-                        LastOrdersUnreadable() => const {},
-                      },
+                      ),
                     ),
-                  ),
+            ),
           ),
           const Gap(BullSpacing.md),
           Container(

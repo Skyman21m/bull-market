@@ -289,6 +289,10 @@ final class P2pLocator {
             ? locator<FollowTradesUsecase>().execute
             : null,
         navigation: locator<GarageNavigation>(),
+        // One read of an open record whose robot has no active order, once per visit (#251, step 0), where the feature holds trades.
+        readOnce: locator.isRegistered<WatchTradeUsecase>()
+            ? locator<WatchTradeUsecase>().readOnce
+            : null,
       ),
     );
     // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases and of the acknowledgement of a key's history.

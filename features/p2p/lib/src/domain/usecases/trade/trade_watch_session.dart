@@ -49,6 +49,9 @@ final class TradeWatchSession {
   /// A [TradeClosedFailure] seen once stays on every later status: the record was closed while the coordinator shows this robot as the taker.
   P2pFailure? _closedButTaken;
 
+  /// Whether this subscription reads the trade once and ends (`WatchTradeUsecase.readOnce`, #251): no read is scheduled after the first.
+  final bool _once;
+
   TradeWatchSession(
     this._reader,
     this._limiter,
@@ -58,6 +61,7 @@ final class TradeWatchSession {
     this._out,
     this._registry, {
     required this._onScreen,
+    this._once = false,
   });
 
   /// Opens the trade from its stored records, emits what they give, and reads at once when the trade goes on.
@@ -233,6 +237,11 @@ final class TradeWatchSession {
       if (identical(_inFlight, inFlight)) _inFlight = null;
     }
     if (_stopped || _out.isClosed) return;
+    // One read only: what it gave is kept, and the subscription ends (#251).
+    if (_once) {
+      await _finish();
+      return;
+    }
     if (_readAgain) {
       _readAgain = false;
       unawaited(_read());

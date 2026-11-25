@@ -394,6 +394,54 @@ void main() {
           await app.close();
         },
       );
+
+      testWidgets(
+        'step 0: an order ended while the app did not read it, the Garage reads it once when it opens on its robot, then applies its rule; nothing more read when opened again',
+        (tester) async {
+          final app = await _App.start(tester, locale);
+          int orderReads() => app.transport.sent
+              .where(
+                (request) =>
+                    request.url.path == '/api/order/' &&
+                    request.method == CoordinatorHttpMethod.get,
+              )
+              .length;
+          for (final (status, moves) in [(5, false), (4, true)]) {
+            final made = await app.make(amount: 100.0 + status);
+            await app.lock(made);
+            // Ended at the coordinator, the app reading nothing.
+            if (status == 5) {
+              app.coordinator.expire(made.orderId);
+            } else {
+              app.coordinator.order(made.orderId).status = status;
+            }
+            expect(
+              (await app.active()).map((record) => record.orderId),
+              contains(made.orderId),
+            );
+            final before = orderReads();
+            await app.reopenGarage();
+            await app.settle(20);
+            // One read of that order, by its robot.
+            expect(orderReads() - before, 1, reason: '$status');
+            expect(
+              (await app.active()).map((record) => record.orderId),
+              isNot(contains(made.orderId)),
+              reason: '$status',
+            );
+            expect(
+              app.shown(),
+              moves ? made.robot.accountIndex + 1 : made.robot.accountIndex,
+              reason: '$status',
+            );
+            final after = orderReads();
+            await app.reopenGarage();
+            await app.settle(20);
+            expect(orderReads(), after, reason: '$status');
+          }
+          await app.close();
+        },
+      );
     });
   }
 }
