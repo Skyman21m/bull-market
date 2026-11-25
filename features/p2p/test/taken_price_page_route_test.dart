@@ -905,6 +905,38 @@ void main() {
       );
 
       testWidgets(
+        '« Retry » that fails again, « Continue » pressed while it reads: « Price not checked » was drawn at the press and is drawn again, so it goes on with no stop and the take is sent once (#270)',
+        (tester) async {
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            rate: const P2pWalletRateUnavailable(),
+          );
+          final l10n = journey.l10n;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
+          final held = journey.wallet.rateHeld = Completer();
+          await journey.tap(find.byKey(PriceCheckLines.retryButton));
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          // It waits for the read « Retry » started: no dialog meanwhile.
+          expect(find.byType(StoreTokenDialog), findsNothing);
+          held.complete();
+          await settle(tester);
+          expect(journey.wallet.ratesAsked, hasLength(2));
+          expect(find.text(l10n.p2pTakePriceUnverified), findsOneWidget);
+          expect(find.byKey(TakeOrderSection.pageChangedBlock), findsNothing);
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+          await journey.tap(find.text(l10n.p2pCommonDone));
+          await journey.waitFor(find.byType(TradeScreen));
+          expect(journey.takes, hasLength(1));
+          await journey.close();
+        },
+      );
+
+      testWidgets(
         'a read of the Bull wallet\'s price that throws (a bug of its service): « Price not checked » with « Retry », its explanation folded; « Continue » opens « Store your garage key » and the take goes on (#270)',
         (tester) async {
           final journey = await _Journey.start(tester, locale);
