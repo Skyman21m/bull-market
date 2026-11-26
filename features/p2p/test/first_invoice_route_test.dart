@@ -368,7 +368,7 @@ void main() {
           await app.settle();
           expect(app.fewer, findsNothing);
           await app.toSending();
-          // 182,000 sats fixed: the coordinator pays `round(182,000 − 45.5)` = 181,954, 9.02 % fewer.
+          // 182,000 sats fixed: the coordinator pays `round(182,000 − 45.5)` = 181,954, 9.00 % fewer than the 199,950 of 6 (−9.03 % from the Bull price).
           await app.failPayout(last: 182000);
           await app.waitFor(app.fewer);
           await app.settle();
@@ -435,7 +435,7 @@ void main() {
           await app.openTrade();
           await app.waitFor(app.indicative);
           await app.toSending();
-          // 178,000 sats: `round(177,955.5)` = 177,956, 11.02 % below the 200,000 expected.
+          // 178,000 sats: `round(177,955.5)` = 177,956, −11.03 % from the 200,000 expected (rounded away from zero).
           await app.failPayout(last: 178000);
           await app.waitFor(app.fewer);
           await app.settle();
