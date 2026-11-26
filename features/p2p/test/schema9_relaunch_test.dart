@@ -21,7 +21,6 @@ import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
-import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -570,8 +569,6 @@ void main() {
       );
       await run.waitFor(trace, seconds: 200);
       expect(find.textContaining('+2.004%'), findsNothing);
-      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-      await tester.pump(MovedTapGuard.afterMove);
       await run.tap(find.widgetWithText(TradeButton, 'Confirm 100 USD sent'));
       await settle(tester);
       expect(trace, findsNWidgets(2));
@@ -671,8 +668,6 @@ void main() {
         ScriptedMakerRequest.payout,
         ScriptedFault.timedOut,
       );
-      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-      await tester.pump(MovedTapGuard.afterMove);
       await run.tap(find.widgetWithText(TradeButton, 'Submit'));
       await run.pass(10);
       late PayoutTrace trace;

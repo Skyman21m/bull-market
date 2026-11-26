@@ -16,7 +16,6 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
-import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart' show Bolt11TestDecoder, Bolt11TestInvoice;
 import 'package:primitives/primitives.dart';
@@ -588,7 +587,6 @@ void main() {
         expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
 
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -964,7 +962,6 @@ void main() {
         await tester.enterText(find.byKey(PayoutPanel.feeField), '4');
         await tester.pump();
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -1031,7 +1028,6 @@ void main() {
           );
           await tester.pump();
           await reveal(tester, submitButton());
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(submitButton());
           for (var i = 0; i < 4; i++) {
             await tester.pump();
@@ -1089,7 +1085,6 @@ void main() {
         );
         await tester.pump();
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -1233,7 +1228,6 @@ void main() {
         );
         await tester.pump();
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -1381,7 +1375,6 @@ void main() {
         expect(find.text('14,000 Sats (50 Sats/vByte)'), findsOneWidget);
         expect(find.text('91,912 Sats'), findsOneWidget);
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -1438,7 +1431,6 @@ void main() {
         expect(find.text('980 Sats (3.5 Sats/vByte)'), findsOneWidget);
         expect(find.textContaining('40 Sats/vByte'), findsNothing);
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -1744,7 +1736,6 @@ void main() {
         );
         await tester.pump();
         await reveal(tester, submitButton());
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -1911,8 +1902,6 @@ void main() {
           );
           await tester.pump();
           await reveal(tester, submitButton());
-          // The invoice's check moved « Submit » down: a tap after the guard's delay, as a user's (#283).
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(submitButton());
           for (var i = 0; i < 4; i++) {
             await tester.pump();
@@ -1993,8 +1982,6 @@ void main() {
         );
         await tester.pump();
         await reveal(tester, submitButton());
-        // The invoice's check moved « Submit » down: a tap after the guard's delay, as a user's (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
           await tester.pump();
@@ -2065,7 +2052,6 @@ void main() {
       );
       await tester.pump();
       await reveal(tester, submitButton());
-      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(submitButton());
       for (var i = 0; i < 4; i++) {
         await tester.pump();

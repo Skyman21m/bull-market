@@ -13,7 +13,6 @@ import '../../domain/trade_record.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
-import '../widgets/moved_tap_guard.dart';
 import '../widgets/trade_button.dart';
 import '../widgets/trade_dialog_body.dart';
 import '../widgets/word_fit_text.dart';
@@ -437,20 +436,12 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
             else if (amount != null &&
                 (atNine || running == ChatStepAction.confirmFiatSent))
               Expanded(
-                // A tap aimed at what stood here before the rule's lines above came, went or changed is ignored for a moment (#283); the button stays enabled and opens its dialog at the next tap.
-                child: MovedTapGuard(
-                  builder: (context, guard) => TradeButton(
-                    label: l10n.p2pEndConfirmSent(amount.$1, amount.$2),
-                    busy:
-                        running == ChatStepAction.confirmFiatSent || _checking,
-                    onPressed: guard(
-                      !confirmOffered || busy || _checking
-                          ? null
-                          : () => unawaited(
-                              _confirmFiatSent(amount.$1, amount.$2),
-                            ),
-                    ),
-                  ),
+                child: TradeButton(
+                  label: l10n.p2pEndConfirmSent(amount.$1, amount.$2),
+                  busy: running == ChatStepAction.confirmFiatSent || _checking,
+                  onPressed: !confirmOffered || busy || _checking
+                      ? null
+                      : () => unawaited(_confirmFiatSent(amount.$1, amount.$2)),
                 ),
               )
             else if (undoOffered || running == ChatStepAction.undoFiatSent)

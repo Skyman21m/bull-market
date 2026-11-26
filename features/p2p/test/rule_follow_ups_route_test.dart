@@ -31,7 +31,7 @@ import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// Follow-ups of the owner's payment rule (#283; design note `docs/design/phase-3-making-an-order.md` § 3.3 bis, « As #283 wrote it ») on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`), by the user's gestures, in English and in French, on a phone of 320 points with a text at three times its size: the real router, records, use cases, state machine and trade screen; the coordinator played by `ScriptedMakerCoordinator` (never a real one), the wallet `FakeP2pWalletPort` (no price service, no swap service, no money).
 ///
-/// (1) « Submit », « Generate Invoice », « Confirm … sent » and its dialog's « Confirm » ignore a tap just after the rule's lines moved them ([MovedTapGuard]), and take the next one. (2) After a read of the Bull wallet's price that failed, a status the coordinator makes come and go (15 ↔ 13) reads it again only once that read is 3 minutes old; « Retry » always reads.
+/// (1) The « Confirm » of the dialog « Confirm … sent » ignores a tap just after the rule's lines moved it ([MovedTapGuard]) and takes the next one; « Submit » and « Confirm … sent » of the chat step have no guard and take a tap at once (review of #283, C2). (2) After a read of the Bull wallet's price that failed, a status already shown that the coordinator makes come and go (15 ↔ 13) reads it again only once the last read is 3 minutes old; « Retry » always reads.
 ///
 /// The order: 100 EUR bought at a premium of 0, made and taken at the coordinator's 50,000 per bitcoin: 200,000 sats, the maker fee 0.025 %, so the coordinator pays 199,950 at 6, an invoice of 199,750 with the default routing budget; the Bull wallet's price 50,000.
 const _net = RobosatsNetwork.testnet;
@@ -279,9 +279,6 @@ final class _App {
 
   Finder get submit => find.widgetWithText(TradeButton, l10n.p2pPayoutSubmit);
 
-  Finder get generate =>
-      find.widgetWithText(TradeButton, l10n.p2pPayoutWalletGenerateInvoice);
-
   Finder get gapLine => find.text(l10n.p2pPayoutBreakdownGap);
 
   Finder get reading => find.text(l10n.p2pPayoutRateReading);
@@ -312,9 +309,9 @@ void main() {
   for (final locale in const [Locale('en'), Locale('fr')]) {
     final code = locale.languageCode;
 
-    group('point 1, a tap just after the rule\'s lines moved a button, $code', () {
+    group('point 1, a tap just after the layout moved a button, $code', () {
       testWidgets(
-        'at 6, the Bull wallet\'s price read while an invoice waits in the field: when its answer brings the gap line into the breakdown, a tap on « Submit » at once gives nothing, the button still enabled; the next tap gives the payout',
+        'at 6, the Bull wallet\'s price read while an invoice waits in the field: when its answer brings the gap line into the breakdown, a tap on « Submit » at once gives the payout: « Submit » has no guard (review of #283, C2)',
         (tester) async {
           final app = await _App.start(
             tester,
@@ -334,13 +331,7 @@ void main() {
           expect(app.gapLine, findsOneWidget);
           expect(app.reading, findsNothing);
           expect(tester.getTopLeft(app.submit), isNot(before));
-          // Aimed at what stood there a moment before: nothing given; the button still enabled.
           await app.tapNow(app.submit);
-          await app.settle(2);
-          expect(app.order.payoutHash, isNull);
-          expect(app.order.status, 6);
-          expect(tester.widget<TradeButton>(app.submit).onPressed, isNotNull);
-          await app.tapLater(app.submit);
           await app.waitUntil(() => app.order.payoutHash != null, 'given');
           expect(app.order.status, 7);
           expect(app.wallet.paid, isEmpty);
@@ -349,38 +340,7 @@ void main() {
       );
 
       testWidgets(
-        'at 6, « Generate Invoice » just after the gap line came: the tap at once asks the wallet nothing, the next one asks it',
-        (tester) async {
-          final app = await _App.start(
-            tester,
-            rate: P2pWalletRateRead(50000),
-            locale: locale,
-          );
-          final held = Completer<void>();
-          app.wallet
-            ..rateHeld = held
-            ..scriptInvoice(const Err(P2pWalletUnavailable()));
-          await app.openTrade();
-          await app.waitFor(app.reading);
-          await tester.ensureVisible(app.generate);
-          await app.settle();
-          await tester.pump(MovedTapGuard.afterMove);
-          held.complete();
-          await tester.pump();
-          await tester.pump();
-          expect(app.gapLine, findsOneWidget);
-          await app.tapNow(app.generate);
-          await app.settle(2);
-          expect(app.wallet.invoicesAsked, isEmpty);
-          await app.tapLater(app.generate);
-          await app.settle();
-          expect(app.wallet.invoicesAsked, hasLength(1));
-          await app.close();
-        },
-      );
-
-      testWidgets(
-        'at 9 with the price read anew: when its answer takes « Reading… » away, a tap on « Confirm … sent » at once opens nothing, the next one opens the dialog; there, when the app comes back 4 minutes later and the rule\'s lines (« Reading… ») move « Confirm », a tap on it at once sends nothing, the next one sends « fiat sent »',
+        'at 9, « Confirm … sent » opens its dialog at the first tap; there, when the app comes back 4 minutes later and the rule\'s lines (« Reading… ») move « Confirm », a tap on it at once sends nothing, the dialog still open; the next one sends « fiat sent »',
         (tester) async {
           final app = await _App.start(
             tester,
@@ -390,28 +350,12 @@ void main() {
           await app.openTrade();
           await app.waitFor(app.gapLine);
           await app.enterInvoice();
-          await app.tapLater(app.submit);
+          await app.tapNow(app.submit);
           await app.waitUntil(() => app.order.payoutHash != null, 'given');
-          // The escrow locked (7 → 9), the price 4 minutes old: 9 reads it again, held.
-          app.advance(const Duration(minutes: 4));
-          final held = Completer<void>();
-          app.wallet.rateHeld = held;
           app.coordinator.lockEscrow(app.record.orderId);
-          await app.waitFor(app.reading);
           await app.waitFor(app.confirmSent);
-          // The page scrolled up to « Reading… », not at its end: the line that goes then moves the button on the screen (at the page's end the scroll would follow it, the button staying in place, #267).
-          await tester.ensureVisible(app.reading);
           await app.settle();
-          final before = tester.getTopLeft(app.confirmSent);
-          held.complete();
-          await tester.pump();
-          await tester.pump();
-          expect(app.reading, findsNothing);
-          expect(tester.getTopLeft(app.confirmSent), isNot(before));
           await app.tapNow(app.confirmSent);
-          await app.settle(2);
-          expect(app.dialog, findsNothing);
-          await app.tapLater(app.confirmSent);
           await app.waitFor(app.dialogConfirm);
           await app.settle();
           await tester.ensureVisible(app.dialogConfirm);
@@ -470,7 +414,6 @@ void main() {
           app.coordinator.lockEscrow(app.record.orderId);
           await app.waitFor(app.confirmSent);
           await app.settle();
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.ensureVisible(app.confirmSent);
           await tester.pump();
           await tester.tap(app.confirmSent);

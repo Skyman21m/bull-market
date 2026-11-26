@@ -15,7 +15,6 @@ import 'package:p2p/src/presentation/payout_wallet_cubit.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/payout_wallet_section.dart';
-import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart'
     show Bolt11TestDecoder, Bolt11TestInvoice, FakeP2pWalletPort;
@@ -344,8 +343,6 @@ void main() {
         final (payout, port) = await show(tester, six);
         port.scriptInvoice(Ok(made(walletInvoice)));
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
@@ -377,8 +374,6 @@ void main() {
       final (payout, port) = await show(tester, six);
       port.scriptInvoice(Ok(made(walletInvoice)));
       await tester.ensureVisible(generateInvoice());
-      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(generateInvoice());
       await tester.pump();
       await tester.pump();
@@ -400,8 +395,6 @@ void main() {
           Err(P2pWalletUnderMinimum(minimum: Sats.fromInt(200000))),
         );
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
@@ -419,8 +412,6 @@ void main() {
       final (payout, port) = await show(tester, six);
       port.scriptInvoice(Ok(made(walletInvoice)));
       await tester.ensureVisible(generateInvoice());
-      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(generateInvoice());
       await tester.pump();
       await tester.pump();
@@ -434,8 +425,6 @@ void main() {
       });
       sender.gate = gate.future;
       await tester.ensureVisible(submit());
-      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(submit());
       await tester.pump();
       expect(payout.state.phase, isA<PayoutSending>());
@@ -451,8 +440,6 @@ void main() {
         final (payout, port) = await show(tester, six);
         port.scriptInvoice(const Err(P2pWalletAnotherInvoiceWaiting()));
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
@@ -476,8 +463,6 @@ void main() {
         port.scriptAddress(const Ok(P2pWalletAddress(walletAddress)));
         final button = find.widgetWithText(TradeButton, 'Generate New Address');
         await tester.ensureVisible(button);
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(button);
         await tester.pump();
         await tester.pump();
@@ -496,8 +481,6 @@ void main() {
         var (payout, _) = await show(tester, six, usecase: usecase);
         port.scriptInvoice(Ok(made(walletInvoice)));
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
@@ -507,8 +490,6 @@ void main() {
         (payout, _) = await show(tester, fifteenExpired, usecase: usecase);
         port.scriptInvoice(Ok(made(walletInvoice)));
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
@@ -522,8 +503,6 @@ void main() {
         // Once that order ended, the wallet makes a new invoice, put in the field.
         port.scriptInvoice(Ok(made(secondInvoice)));
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
@@ -547,8 +526,6 @@ void main() {
           usecase: PayoutFromWalletUsecase(gated),
         );
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         payout.editInvoice(secondInvoice.text);
@@ -578,15 +555,11 @@ void main() {
         final (payout, port) = await show(tester, six);
         port.scriptInvoice(Ok(made(walletInvoice)));
         await tester.ensureVisible(generateInvoice());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
         sender.answer = Ok(PayoutGiven(record, six));
         await tester.ensureVisible(submit());
-        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(submit());
         await tester.pump();
         await tester.pump();
@@ -612,8 +585,6 @@ void main() {
       port.scriptInvoice(Ok(made(walletInvoice)));
       final button = find.widgetWithText(TradeButton, 'Générer une facture');
       await tester.ensureVisible(button);
-      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(button);
       await tester.pump();
       await tester.pump();

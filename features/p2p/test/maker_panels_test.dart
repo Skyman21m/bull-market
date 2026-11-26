@@ -41,7 +41,6 @@ import 'package:p2p/src/ui/trade/rate_gap_line.dart';
 import 'package:p2p/src/ui/trade/trade_order_details.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
-import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -2180,8 +2179,6 @@ void main() {
           expect(tester.takeException(), isNull);
           final confirm = find.textContaining('Confirmer l\'envoi de 100');
           await _reveal(tester, confirm);
-          // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(confirm);
           await tester.pumpAndSettle();
           expect(
@@ -2419,8 +2416,6 @@ void main() {
             expect(tester.widget<TradeButton>(submit).onPressed, isNotNull);
             await tester.ensureVisible(submit);
             await tester.pump();
-            // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-            await tester.pump(MovedTapGuard.afterMove);
             await tester.tap(submit);
             await tester.pump();
             await tester.pump();
@@ -2498,8 +2493,6 @@ void main() {
           final submit = find.widgetWithText(TradeButton, 'Submit');
           await tester.ensureVisible(submit);
           await tester.pump();
-          // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(submit);
           await tester.pump();
           await tester.pump();
@@ -2511,8 +2504,6 @@ void main() {
           expect(find.textContaining('has no price for EUR'), findsNothing);
           await tester.ensureVisible(submit);
           await tester.pump();
-          // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(submit);
           await tester.pump();
           await tester.pump();
@@ -2547,8 +2538,6 @@ void main() {
           final submit = find.widgetWithText(TradeButton, 'Submit');
           await tester.ensureVisible(submit);
           await tester.pump();
-          // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(submit);
           await tester.pump();
           await tester.pump();
@@ -2594,8 +2583,6 @@ void main() {
               );
               await tester.ensureVisible(submit);
               await tester.pump();
-              // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
-              await tester.pump(MovedTapGuard.afterMove);
               await tester.tap(submit);
               await tester.pump();
               await tester.pump();
