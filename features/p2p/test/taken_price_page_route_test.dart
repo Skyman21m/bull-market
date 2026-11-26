@@ -1210,7 +1210,7 @@ void main() {
     });
   }
 
-  // Follow-ups of #270, #273 and #283: « Show details » with a large text.
+  // Follow-ups of #270, #273 and #283: « Show details » with a large text, and « The order changed. » for its two causes at once.
   for (final locale in const [Locale('en'), Locale('fr')]) {
     final code = locale.languageCode;
 
@@ -1303,6 +1303,52 @@ void main() {
         },
       );
 
+      testWidgets(
+        'an order priced in sats whose premium read moved from the book\'s, found changed again at « Done » (its description): « The order changed. » is said once for its two causes at once, then still once on the new read',
+        (tester) async {
+          await loadAppFont();
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            sats: 100000,
+            explicit: 100000,
+          );
+          journey.coordinator.robotView
+            ..['price_now'] = null
+            ..['premium_now'] = 39.55;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          final said = find.text(journey.l10n.p2pTakeOrderChangedRead);
+          // The first cause alone: the premium read moved, « Price and premium » marked.
+          expect(journey.priceRow().changed, isTrue);
+          expect(said, findsOneWidget);
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+          // The second cause: the robot's read at « Done » finds another description.
+          journey.coordinator.description = 'Revolut only.';
+          await journey.tap(find.text(journey.l10n.p2pCommonDone));
+          await settle(tester);
+          await journey.waitFor(find.text('Revolut only.'));
+          await settle(tester);
+          expect(journey.takes, isEmpty);
+          expect(find.byType(TradeScreen), findsNothing);
+          expect(
+            BlocProvider.of<TakeOrderCubit>(
+              tester.element(journey.continueButton),
+            ).state,
+            isA<TakeReady>().having((s) => s.changed, 'found changed', isTrue),
+          );
+          expect(journey.priceRow().changed, isTrue);
+          expect(said, findsOneWidget);
+          expect(
+            tester.getTopLeft(said).dy,
+            lessThan(tester.getTopLeft(journey.continueButton).dy),
+          );
+          await journey.close();
+        },
+      );
     });
   }
 }
