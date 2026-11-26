@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
-/// The 32 bytes of a RoboSats Garage Key, as the package keeps them for the P2P feature.
+/// The 32 bytes of a RoboSats Garage Key, as the package keeps them for the P2P feature or derives them from a secret's words.
 ///
-/// Random, never derived from a wallet seed and never part of a wallet backup.
+/// A stored key is random, never derived from a wallet seed and never part of a wallet backup; a derived key is a BIP85 child of the words, computed on each call and never stored.
 /// Whoever holds them controls every robot derived from them, so they are key material: never log them, and read [bytes] only where the custody gate allows it.
 ///
 /// No hex getter and no equality: the only way out is [bytes], which the custody gate restricts to named files of the P2P feature.

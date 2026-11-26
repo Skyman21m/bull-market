@@ -76,6 +76,13 @@ extension type const SecretDerivation._(Secret _secret) {
   Future<Result<SwapMasterKey, SecretFailure>> swapKey({
     required BitcoinNetwork network,
   }) => _secret.swapKey(network: network);
+
+  /// A RoboSats Garage Key, derived from the words. Returns key material. See [Secret.garageKey].
+  @useResult
+  Future<Result<GarageKeyMaterial, SecretFailure>> garageKey({
+    required GarageKeySlot network,
+    required int index,
+  }) => _secret.garageKey(network: network, index: index);
 }
 
 /// Public descriptors for a wallet, per chain.

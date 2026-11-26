@@ -445,6 +445,7 @@ void main() {
       'bip85Hex': 'material',
       'bip85Mnemonic': 'material',
       'swapKey': 'material',
+      'garageKey': 'material',
       // material: the stored secret itself, and `@internal` — only the
       // package's own sealed widgets may call it
       'revealMnemonic': 'material',
@@ -537,9 +538,10 @@ void main() {
         'bip85Hex',
         'bip85Mnemonic',
         'swapKey',
+        'garageKey',
         'revealMnemonic',
       ]),
-      reason: 'the four that hand back key material; README must match',
+      reason: 'the five that hand back key material; README must match',
     );
   });
 }
