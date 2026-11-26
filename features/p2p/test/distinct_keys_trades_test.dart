@@ -10,8 +10,8 @@ import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
-import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/testing.dart' show ScriptedRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, GarageKeys, Secrets;
@@ -121,12 +121,20 @@ void main() {
           ),
           reason: '$other',
         );
+        // The app started again reads the trade once, as its page does, with its own key's robot: one more read of the order at its coordinator.
         final again = app.restart();
-        final run = again.watchOf(record);
+        final reads = again.coordinator.received
+            .where((kind) => kind == ScriptedRequest.order)
+            .length;
+        await again.watch.readOnce(record);
         await again.settle();
-        expect(run.states, isNotEmpty, reason: '$other');
-        expect(run.last, isA<TradeWatchStatus>(), reason: '$other');
-        await run.subscription.cancel();
+        expect(
+          again.coordinator.received
+              .where((kind) => kind == ScriptedRequest.order)
+              .length,
+          greaterThan(reads),
+          reason: '$other',
+        );
       }
     },
     timeout: slow,

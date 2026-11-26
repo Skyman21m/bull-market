@@ -140,6 +140,11 @@ mixin KeysFromRead implements GarageKeyRepository {
   };
 
   @override
+  Future<Result<NetworkGarageKey, P2pFailure>> external(
+    RobosatsNetwork network,
+  ) => read(network);
+
+  @override
   Future<Result<NetworkGarageKey, P2pFailure>> derived(
     RobosatsNetwork network,
     int index,

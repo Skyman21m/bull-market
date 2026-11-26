@@ -190,7 +190,7 @@ void main() {
     );
 
     test(
-      'binds a robot of a key from elsewhere too, as acknowledged, on its network or the other one (decided on 2026-11-26, #81)',
+      'binds a robot of a key from elsewhere too, as any reservation, on its network or the other one (decided on 2026-11-26, #81)',
       () async {
         Matcher boundAs(BindingProvenance provenance) =>
             isA<Ok<RobotStanding, P2pFailure>>().having(
@@ -206,7 +206,7 @@ void main() {
         );
         expect(
           await bindings.standingOf(robot),
-          boundAs(BindingProvenance.acknowledged),
+          boundAs(BindingProvenance.drawnHere),
         );
         // Imported on its network.
         expect(
@@ -217,9 +217,9 @@ void main() {
         expect(await trades.reserveForNewTrade(next, temple), reservedIs(true));
         expect(
           await bindings.standingOf(next),
-          boundAs(BindingProvenance.acknowledged),
+          boundAs(BindingProvenance.drawnHere),
         );
-        // Drawn here on its network, but imported into the other slot: the same tokens may have travelled, which the binding says.
+        // Drawn here on its network, but imported into the other slot: reserved all the same, the check at the coordinator standing in for the history.
         expect(
           await bindings.recordGeneratedKey(testnet, fingerprintB),
           isA<Ok>(),
@@ -235,7 +235,7 @@ void main() {
         );
         expect(
           await bindings.standingOf(other),
-          boundAs(BindingProvenance.acknowledged),
+          boundAs(BindingProvenance.drawnHere),
         );
         // A robot reserved is never reserved again, whatever its key.
         expect(await trades.reserveForNewTrade(robot, lake), reservedIs(false));
@@ -1172,7 +1172,7 @@ void main() {
     );
 
     test(
-      'a key drawn here on the other network only gives a reservation as acknowledged, since 2026-11-26 (M01, #81)',
+      'a key drawn here on the other network only gives a reservation too, since 2026-11-26 (M01, #81)',
       () async {
         expect(
           await bindings.recordGeneratedKey(mainnet, fingerprintA),
@@ -1187,7 +1187,7 @@ void main() {
           reservedIs(true),
         );
         expect((await bindingRows()).map((row) => row.provenance), [
-          'acknowledged',
+          'generated',
         ]);
       },
     );

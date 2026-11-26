@@ -20,6 +20,14 @@ void main() {
         'Future<Result<GarageKeyring, P2pFailure>> keyring(RobosatsNetwork network)',
     'read':
         'Future<Result<NetworkGarageKey, P2pFailure>> read(RobosatsNetwork network)',
+    'external':
+        'Future<Result<NetworkGarageKey, P2pFailure>> external(RobosatsNetwork network)',
+    'selectInternal':
+        'Future<Result<void, P2pFailure>> selectInternal(RobosatsNetwork network)',
+    'internalIndexOf':
+        'Future<Result<int?, P2pFailure>> internalIndexOf(RobosatsNetwork network, GarageKeyFingerprint fingerprint)',
+    'externalNoticeShown':
+        'Future<Result<void, P2pFailure>> externalNoticeShown()',
     'derived':
         'Future<Result<NetworkGarageKey, P2pFailure>> derived(RobosatsNetwork network, int index)',
     'forNewTrade':
@@ -108,7 +116,7 @@ void main() {
     },
   );
 
-  test('the failures carry no field but the reason of an invalid key', () {
+  test('the failures carry no field but the reason of an invalid key, and the number of an internal key imported', () {
     final unit = unitOf('lib/src/domain/p2p_failure.dart');
 
     expect(_parts(unit), isEmpty);
@@ -117,7 +125,11 @@ void main() {
         declaration.namePart.typeName.lexeme: _fieldsOf(declaration),
     };
     expect(fields, containsPair('GarageKeyMissingFailure', isEmpty));
-    expect(fields.values.expand((f) => f), ['final GarageKeyFailure reason']);
+    expect(fields.values.expand((f) => f), [
+      'final GarageKeyFailure reason',
+      'final int index',
+    ]);
+    expect(fields['GarageKeyIsInternalFailure'], ['final int index']);
     expect(fields['GarageKeyInvalidFailure'], [
       'final GarageKeyFailure reason',
     ]);

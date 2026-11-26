@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart' show P2pGarageKeyRefusalReason;
 import 'package:p2p/src/data/garage_key_book_repository_impl.dart';
@@ -93,6 +94,18 @@ void main() {
             .get())
       '${row.read<String>('network')} ${row.readNullable<int>('key_index')}',
   ];
+
+  /// A file of schema 9 at [file], with nothing in it: opened once, so that it exists.
+  Future<void> nineAt(File file) async {
+    final nine = v9.DatabaseAtV9(NativeDatabase(file));
+    await nine.customSelect('SELECT 1').get();
+    await nine.close();
+  }
+
+  Future<void> storeKeyIn(GarageKeySlot slot) async => expect(
+    await vault.import(slot: slot, bytes: drawnKey.revealBytes()),
+    isA<Ok<Object?, Failure>>(),
+  );
 
   Future<int> countOf(P2pDatabase database, String table) async =>
       (await database
@@ -379,6 +392,8 @@ void main() {
           expect(storage.entries.keys, isNot(contains(mainnetEntry)));
         }
       },
+      // Since the review of #292 the slot is read before the refusal is given (C-passphrase): an empty slot costs its full read budget at each reading.
+      timeout: const Timeout(Duration(minutes: 3)),
     );
   });
 
@@ -800,6 +815,7 @@ void main() {
         expect(await again.delete(mainnet), isOk(null));
         expect(keyOf(await again.read(mainnet)).index, 1);
         // No internal key ever selected: the highest.
+        await storeKey(drawnKey);
         final other = memory();
         final fresh = repositoryOver(other);
         expect(await fresh.activateNext(mainnet, after: 0), isOk(1));
@@ -835,7 +851,7 @@ void main() {
         );
         // The update without a key in the vault: nothing to say, then nothing after an import either.
         final emptyFile = File('${directory.path}/empty-nine.sqlite');
-        await v9.DatabaseAtV9(NativeDatabase(emptyFile)).close();
+        await nineAt(emptyFile);
         final empty = P2pDatabase.forTesting(NativeDatabase(emptyFile));
         addTearDown(empty.close);
         final withoutKey = repositoryOver(empty);
@@ -855,7 +871,7 @@ void main() {
         // The update with a key in the vault: due until shown, then never again, on any network.
         await storeKey(drawnKey);
         final file = File('${directory.path}/key-nine.sqlite');
-        await v9.DatabaseAtV9(NativeDatabase(file)).close();
+        await nineAt(file);
         final updated = P2pDatabase.forTesting(NativeDatabase(file));
         addTearDown(updated.close);
         final repository = repositoryOver(updated);
@@ -957,5 +973,209 @@ void main() {
       },
       timeout: slow,
     );
+  });
+
+  // Restored from `main` (review of #292): the vault slot of each network, which keeps the external Garage Key since #81. `create`, gone with #81, has no test any more.
+  group('the vault slot of the external Garage Key', () {
+    /// The keystore of the test made [replacement], with the vault over it; the words derived beforehand over a keystore of their own, then given from memory.
+    Future<void> keystore(FakeSecureStoragePlatform replacement) async {
+      final port = TestWordsPort();
+      FakeSecureStoragePlatform().install();
+      await port.precompute([(mainnet, 0), (testnet, 0)]);
+      storage = replacement..install();
+      vault = Secrets(scratchDirectory: () async => '.').garageKeys();
+      words = port;
+    }
+
+    Future<String> storedEntry() async {
+      final scratch = FakeSecureStoragePlatform()..install();
+      final scratchVault = Secrets(scratchDirectory: () async => '.').garageKeys();
+      expect(
+        await scratchVault.import(
+          slot: GarageKeySlot.mainnet,
+          bytes: drawnKey.revealBytes(),
+        ),
+        isA<Ok<Object?, Failure>>(),
+      );
+      return scratch.entries[mainnetEntry] ?? fail('nothing stored');
+    }
+
+    Iterable<String> garageReads() =>
+        storage.readKeys.where((key) => key.contains('/garage/'));
+
+    test(
+      'is read with the network of its slot, never the other, and of one network is never reached from the other',
+      () async {
+        await storeKeyIn(GarageKeySlot.testnet);
+        final repository = repositoryOver(memory());
+        final testnetKey = keyOf(await repository.read(testnet));
+        expect(testnetKey, NetworkGarageKey(testnet, drawnKey));
+        expect(
+          await repository.firstUsableRobot(testnet),
+          isA<Ok<NetworkRobot, P2pFailure>>().having(
+            (ok) => (ok.value.network, ok.value.slot.keyFingerprint),
+            'network and key',
+            (testnet, drawnFingerprint),
+          ),
+        );
+        // Mainnet has no external key: its internal key 0, and a delete there touches nothing of testnet.
+        expect(keyOf(await repository.read(mainnet)).index, 0);
+        expect(await repository.delete(mainnet), isOk(null));
+        expect(storage.entries[testnetEntry], isNotNull);
+        expect(keyOf(await repository.read(testnet)).key, drawnKey);
+        expect(garageReads().toSet(), {testnetEntry, mainnetEntry});
+      },
+      timeout: slow,
+    );
+
+    test(
+      'is never replaced: an import is refused while it holds a key',
+      () async {
+        await storeKeyIn(GarageKeySlot.mainnet);
+        final before = storage.entries[mainnetEntry];
+        final repository = repositoryOver(memory());
+        final example = switch (GarageKey.parse(abandonMainnet2)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(
+          await repository.import(mainnet, example),
+          isErr<GarageKeyAlreadyStoredFailure>(),
+        );
+        expect(storage.entries[mainnetEntry], before);
+        expect(keyOf(await repository.read(mainnet)).key, drawnKey);
+      },
+      timeout: slow,
+    );
+
+    test(
+      'an entry that cannot be used is reported as such, refused as a slot, and kept until deleted',
+      () async {
+        storage.entries[mainnetEntry] = 'not json at all';
+        final repository = repositoryOver(memory());
+        expect(await repository.read(mainnet), isErr<GarageKeyUnusableFailure>());
+        expect(
+          await repository.firstUsableRobot(mainnet),
+          isErr<GarageKeyUnusableFailure>(),
+        );
+        expect(await repository.exists(mainnet), isErr<GarageKeyUnusableFailure>());
+        expect(
+          await repository.import(mainnet, drawnKey),
+          isErr<GarageKeyAlreadyStoredFailure>(),
+        );
+        expect(storage.entries[mainnetEntry], 'not json at all');
+        expect(await repository.delete(mainnet), isOk(null));
+        expect(storage.entries, isNot(contains(mainnetEntry)));
+        expect(keyOf(await repository.read(mainnet)).index, 0);
+      },
+      timeout: slow,
+    );
+
+    test(
+      'an entry that keeps failing to read is unreadable, and nothing is written over it',
+      () async {
+        final entry = await storedEntry();
+        await keystore(
+          FakeSecureStoragePlatform(
+            entries: {mainnetEntry: entry},
+            scripted: List.generate(
+              20,
+              (_) => PlatformException(code: 'read failed'),
+            ),
+          ),
+        );
+        final repository = repositoryOver(memory());
+        expect(
+          await repository.keyring(mainnet),
+          isA<Ok<GarageKeyring, P2pFailure>>().having(
+            (ok) => ok.value.externalFailure,
+            'externalFailure',
+            isA<GarageKeyUnreadableFailure>(),
+          ),
+        );
+        expect(await repository.read(mainnet), isErr<GarageKeyUnreadableFailure>());
+        expect(storage.entries[mainnetEntry], entry);
+      },
+      timeout: slow,
+    );
+
+    test(
+      'a locked keystore is reported as locked, and nothing is written or deleted',
+      () async {
+        final entry = await storedEntry();
+        await keystore(
+          FakeSecureStoragePlatform(
+            entries: {mainnetEntry: entry},
+            locked: true,
+            writesFail: true,
+          ),
+        );
+        final repository = repositoryOver(memory());
+        for (final result in [
+          await repository.read(mainnet),
+          await repository.firstUsableRobot(mainnet),
+          await repository.exists(mainnet),
+          await repository.import(mainnet, drawnKey),
+        ]) {
+          expect(result, isErr<GarageKeyLockedFailure>());
+        }
+        storage
+          ..locked = false
+          ..writesFail = true;
+        expect(await repository.delete(mainnet), isErr<GarageKeyLockedFailure>());
+        expect(storage.entries[mainnetEntry], entry);
+      },
+      timeout: slow,
+    );
+
+    test('a keystore that refuses a change keeps the key when a delete fails, and stores no key when a write fails, and says so', () async {
+      final entry = await storedEntry();
+      await keystore(
+        FakeSecureStoragePlatform(
+          entries: {mainnetEntry: entry},
+          scriptedWrites: [PlatformException(code: 'delete failed')],
+        ),
+      );
+      final repository = repositoryOver(memory());
+      expect(keyOf(await repository.read(mainnet)).key, drawnKey);
+      expect(await repository.delete(mainnet), isErr<GarageKeyNotDeletedFailure>());
+      expect(storage.entries[mainnetEntry], entry);
+
+      await keystore(
+        FakeSecureStoragePlatform(
+          scriptedWrites: [PlatformException(code: 'write failed')],
+        ),
+      );
+      final empty = repositoryOver(memory());
+      expect(
+        await empty.import(mainnet, drawnKey),
+        isErr<GarageKeyNotSavedFailure>(),
+      );
+      expect(storage.entries, isNot(contains(mainnetEntry)));
+    }, timeout: slow);
+
+    test('the failures carry nothing but their type', () {
+      for (final failure in <P2pFailure>[
+        const GarageKeyMissingFailure(),
+        const GarageKeyAlreadyStoredFailure(),
+        const GarageKeyLockedFailure(),
+        const GarageKeyUnreadableFailure(),
+        const GarageKeyUnusableFailure(),
+        const GarageKeyNotSavedFailure(),
+        const GarageKeyNotDeletedFailure(),
+        const GarageKeyInvalidFailure(GarageKeyBadChecksum()),
+        const GarageRobotUnavailableFailure(),
+        const GarageKeyNoWalletFailure(),
+        const GarageKeyPassphraseFailure(),
+        const GarageKeyNoWordsFailure(),
+        const GarageKeyMismatchFailure(),
+        const GarageKeyLastIndexFailure(),
+      ]) {
+        expect(failure.logMessage, isNull);
+        expect(failure.toString(), '${failure.runtimeType}');
+      }
+      // The number of an internal key is not a secret, and is all the failure carries.
+      expect(const GarageKeyIsInternalFailure(3).logMessage, isNull);
+    });
   });
 }

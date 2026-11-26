@@ -176,7 +176,9 @@ void main() {
     );
     addTearDown(() => directory.delete(recursive: true));
     final file = File('${directory.path}/nine.sqlite');
-    await v9.DatabaseAtV9(NativeDatabase(file)).close();
+    final nine = v9.DatabaseAtV9(NativeDatabase(file));
+    await nine.customSelect('SELECT 1').get();
+    await nine.close();
     return file;
   }
 
@@ -1738,6 +1740,14 @@ void main() {
     test(
       'the key deleted: its records followed no more (review of #229, R4), and where it was left by hand forgotten',
       () async {
+        // A key drawn here, with no robot bound: deleted on the confirmation alone.
+        expect(
+          await bindings.recordGeneratedKey(
+            RobosatsNetwork.testnet,
+            fixedFingerprint,
+          ),
+          passes,
+        );
         final navigation = GarageNavigation();
         final records =
             StreamController<Result<GarageRecords, P2pFailure>>.broadcast();

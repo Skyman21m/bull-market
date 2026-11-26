@@ -481,7 +481,11 @@ class GarageCubit extends Cubit<GarageState> {
     final externalSelected = keyring.selected is SelectedExternalKey;
     final read = switch (keyring.selected) {
       SelectedWordsKey(:final index) => await _read.derived(_network, index),
-      SelectedExternalKey() => await _read.execute(_network),
+      // The keyring has just read the slot: a slot it could not read is not read again, so that the Garage says what the keyring found.
+      SelectedExternalKey() => switch (keyring.externalFailure) {
+        final failure? => Err<NetworkGarageKey, P2pFailure>(failure),
+        null => await _read.external(_network),
+      },
     };
     if (isClosed) return;
     final made = switch (read) {

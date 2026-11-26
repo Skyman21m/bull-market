@@ -59,7 +59,7 @@ class RobotBindings extends Table {
   /// When the binding was written, in milliseconds since the epoch.
   IntColumn get boundAt => integer()();
 
-  /// The origin of the key on [network] when the robot was bound, copied from `garage_key_histories` by the statement that binds: `generated` or `acknowledged` (since schema 2).
+  /// The origin of the key on [network] when the robot was bound, copied from `garage_key_histories` by the statement that binds: `generated` or `acknowledged` (since schema 2); a reservation for a new trade writes `generated` whatever the key's history (since #81, decided on 2026-11-26).
   ///
   /// Its constraints are the column's own, so that schema 2 adds it to the table without rebuilding it; its default is for the bindings of schema 1, all made under a key drawn here.
   TextColumn get provenance => text().customConstraint(

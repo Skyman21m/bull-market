@@ -133,9 +133,14 @@ final class _RecordingRepository implements GarageKeyRepository {
   Future<Result<int?, P2pFailure>> internalIndexOf(
     RobosatsNetwork network,
     GarageKeyFingerprint fingerprint,
+  ) async => const Ok(null);
+
+  @override
+  Future<Result<NetworkGarageKey, P2pFailure>> external(
+    RobosatsNetwork network,
   ) async {
-    calls.add('internalIndexOf ${network.name}');
-    return _answer(null);
+    calls.add('external ${network.name}');
+    return _answer(key);
   }
 
   @override

@@ -1368,13 +1368,16 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradeTrailsTermsTrace)',
       'm.createTrigger(schema.tradePaymentsSatsKnown)',
       'm.createTrigger(schema.tradePaymentsSatsForward)',
-      // Schema 10 (#81): the keys of the words and the key selected, and their triggers; nothing else, no row changed.
+      // Schema 10 (#81): the keys of the words and the key selected, the Garage's notices, and their triggers; nothing else, no row changed.
       'm.createTable(schema.derivedGarageKeys)',
       'm.createTable(schema.selectedGarageKeys)',
       'm.createTrigger(schema.derivedGarageKeysNeverDeleted)',
       'm.createTrigger(schema.derivedGarageKeysNeverChanged)',
       'm.createTrigger(schema.derivedGarageKeysInOrder)',
       'm.createTrigger(schema.derivedGarageKeysInsertedOnce)',
+      'm.createTable(schema.garageNotices)',
+      'm.createTrigger(schema.garageNoticesShownOnce)',
+      'm.createTrigger(schema.garageNoticesNeverDeleted)',
     ]);
     // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and their triggers and the trigger it replaces on `trade_terms` only, and turns the foreign keys off when a connection has them on; and the foreign keys of the trades, on, at each opening.
     expect(
@@ -1423,6 +1426,8 @@ class RobotCoordinatorCubit {
         'customStatement(_dropTradePayoutsOfTheirTrade)',
         'customStatement(_dropTradePayoutsInsertedOnce)',
         'customStatement(_markPayoutsUnrecorded)',
+        // The step to schema 10 (#81): « Your Garage Keys » made due, in its own new table.
+        'customStatement(_externalKeyNamedDue)',
         'customStatement(_foreignKeysOn)',
       ],
     );
@@ -1525,13 +1530,17 @@ class RobotCoordinatorCubit {
       'createTrigger(schema.tradeTrailsTermsTrace)',
       'createTrigger(schema.tradePaymentsSatsKnown)',
       'createTrigger(schema.tradePaymentsSatsForward)',
-      // Schema 10 (#81): two tables and their triggers.
+      // Schema 10 (#81): three tables and their triggers, then « Your Garage Keys » made due, the one row the step writes, in its own new table.
       'createTable(schema.derivedGarageKeys)',
       'createTable(schema.selectedGarageKeys)',
       'createTrigger(schema.derivedGarageKeysNeverDeleted)',
       'createTrigger(schema.derivedGarageKeysNeverChanged)',
       'createTrigger(schema.derivedGarageKeysInOrder)',
       'createTrigger(schema.derivedGarageKeysInsertedOnce)',
+      'createTable(schema.garageNotices)',
+      'createTrigger(schema.garageNoticesShownOnce)',
+      'createTrigger(schema.garageNoticesNeverDeleted)',
+      'customStatement(_externalKeyNamedDue)',
       'customStatement(_foreignKeysOn)',
     ]);
     // What the two checks read (an invocation is listed before the one it is made on).
@@ -1637,6 +1646,9 @@ class RobotCoordinatorCubit {
           "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL FROM trade_trails AS trail "
           "WHERE role = 'buyer' AND position NOT IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'publicAgain', 'notAvailable') "
           'AND NOT EXISTS (SELECT 1 FROM trade_payouts WHERE trade_payouts.key_fingerprint = trail.key_fingerprint AND trade_payouts.robot_index = trail.robot_index AND trade_payouts.take = trail.take)',
+      '_externalKeyNamedDue':
+          "INSERT INTO garage_notices (notice, shown) VALUES ('externalKeyNamed', 0) "
+          'ON CONFLICT (notice) DO NOTHING',
       '_foreignKeys': 'PRAGMA foreign_keys',
       '_foreignKeysOff': 'PRAGMA foreign_keys = OFF',
       '_foreignKeyCheck': 'PRAGMA foreign_key_check',
@@ -2166,17 +2178,14 @@ class RobotCoordinatorCubit {
           reason: method,
         );
       }
-      // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the reservation's network to that coordinator, under a key still recorded as drawn here only; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
+      // The statements, as written: the reservation binds only a free index with no trade, of any key (decided on 2026-11-26, #81), as `generated`; a pending take is `takenHere` and needs a binding `generated` on the reservation's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
       expect(
         trades.constants['_reserveSql'],
         'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
         'coordinator_alias, coordinator_onion, coordinator_node_keys, '
         'coordinator_nostr_key, bound_at, provenance) '
-        'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
-        'WHERE network = ? AND key_fingerprint = ? AND origin = ? '
-        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-        'WHERE key_fingerprint = ? AND origin <> ?) '
-        'AND NOT EXISTS (SELECT 1 FROM trades '
+        'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? '
+        'WHERE NOT EXISTS (SELECT 1 FROM trades '
         'WHERE key_fingerprint = ? AND robot_index = ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING robot_index',
@@ -2192,8 +2201,6 @@ class RobotCoordinatorCubit {
         'AND network = ? AND provenance = ? AND coordinator_alias = ? '
         'AND coordinator_onion = ? AND coordinator_node_keys = ? '
         'AND coordinator_nostr_key = ? '
-        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-        'WHERE key_fingerprint = ? AND origin <> ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING *',
       );
@@ -2209,8 +2216,6 @@ class RobotCoordinatorCubit {
         'AND network = ? AND provenance = ? AND coordinator_alias = ? '
         'AND coordinator_onion = ? AND coordinator_node_keys = ? '
         'AND coordinator_nostr_key = ? '
-        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-        'WHERE key_fingerprint = ? AND origin <> ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING *',
       );

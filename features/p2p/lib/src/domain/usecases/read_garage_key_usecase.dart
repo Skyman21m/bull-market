@@ -34,6 +34,12 @@ final class ReadGarageKeyUsecase {
     GarageKeySelection selection,
   ) => _repository.select(network, selection);
 
+  /// The external Garage Key of [network] ([GarageKeyRepository.external]): the Garage reads it once the keyring said it is selected.
+  @useResult
+  Future<Result<NetworkGarageKey, P2pFailure>> external(
+    RobosatsNetwork network,
+  ) => _repository.external(network);
+
   /// Selects the internal Garage Key « Back to internal Garage Keys » returns to ([GarageKeyRepository.selectInternal]).
   @useResult
   Future<Result<void, P2pFailure>> selectInternal(RobosatsNetwork network) =>

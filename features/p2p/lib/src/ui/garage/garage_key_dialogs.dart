@@ -145,18 +145,18 @@ class ExternalKeyNoticeDialog extends StatelessWidget {
 /// A tap outside closes it without deleting.
 class DeleteGarageKeyDialog extends StatelessWidget {
   /// The trades in progress of the external Garage Key: each is named.
-  final List<TradeRecord> trades;
+  final List<TradeRecord> inProgress;
 
-  const DeleteGarageKeyDialog({super.key, this.trades = const []});
+  const DeleteGarageKeyDialog({super.key, this.inProgress = const []});
 
   /// Opens the dialog; completes with `true` only when the user confirmed.
   static Future<bool> show(
     BuildContext context, {
-    List<TradeRecord> trades = const [],
+    List<TradeRecord> inProgress = const [],
   }) async =>
       await BullDialog.show<bool>(
         context: context,
-        builder: (_) => DeleteGarageKeyDialog(trades: trades),
+        builder: (_) => DeleteGarageKeyDialog(inProgress: inProgress),
       ) ??
       false;
 
@@ -166,11 +166,11 @@ class DeleteGarageKeyDialog extends StatelessWidget {
     return GarageDialogBody(
       title: l10n.p2pGarageDeleteExternalTitle,
       text: l10n.p2pGarageDeleteExternalText,
-      warning: trades.isEmpty
+      warning: inProgress.isEmpty
           ? null
           : l10n.p2pGarageDeleteExternalTrades(
-              trades.length,
-              trades.map((record) => '#${record.orderId}').join(', '),
+              inProgress.length,
+              inProgress.map((record) => '#${record.orderId}').join(', '),
             ),
       goLabel: l10n.p2pGarageDeleteConfirm,
       onGo: () => Navigator.of(context).pop(true),

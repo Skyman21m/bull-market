@@ -273,7 +273,7 @@ void main() {
   });
 
   group(
-    'a key from elsewhere gives a robot for a new trade too, as acknowledged (decided on 2026-11-26, #81)',
+    'a key from elsewhere gives a robot for a new trade too (decided on 2026-11-26, #81)',
     () {
       for (final (label, records) in <(String, List<String>)>[
         ('no record of its draw', []),
@@ -319,9 +319,9 @@ void main() {
               0,
             ),
           );
-          // The binding says that the robots of such a key may live elsewhere.
+          // A binding made for a new trade, whatever the key's history: the only kind a pending take or make accepts.
           expect((await bindingRows()).map((row) => row.provenance), [
-            'acknowledged',
+            'generated',
           ]);
         });
       }

@@ -29,7 +29,7 @@ abstract interface class TradeRecordRepository {
 
   /// Binds [robot] to [coordinator] for a new trade, in one statement, and gives the [TradeReservation] a pending take needs when this call bound it.
   ///
-  /// It writes the binding only when the robot's index has no binding, on either network, and no trade record, whatever the history of its key (decided on 2026-11-26, #81); the binding's provenance is `generated` when the key is recorded as drawn on this device for the robot's network and as nothing else on any network, and `acknowledged` otherwise.
+  /// It writes the binding only when the robot's index has no binding, on either network, and no trade record, whatever the history of its key (decided on 2026-11-26, #81); the binding's provenance is `generated`, which marks a binding made for a new trade (or under a key drawn here).
   /// `null`: nothing was written, because the robot was already bound or recorded; the caller reads [newTradeStandingOf] again and goes on to the next free index.
   /// So no other call, on this connection or another, gets a reservation of the same robot.
   /// [coordinator] must be on the robot's network, or it is a [RobotNotForNewTradeFailure] and nothing is written.
@@ -42,7 +42,7 @@ abstract interface class TradeRecordRepository {
   /// Records the pending take of order [orderId], as [role], by the robot of [reservation] on its coordinator, of origin `takenHere`: written before the take's request leaves, so that a lost answer is recoverable.
   ///
   /// It is the only write of a trade taken here, and only the take use case is to call it (#87), with the reservation the robot layer has just given.
-  /// It writes, in one statement, only when the robot has no trade record and is still bound to that coordinator on the reservation's network; where its key comes from does not matter (decided on 2026-11-26, #81).
+  /// It writes, in one statement, only when the robot has no trade record and is still bound to that coordinator on the reservation's network, by a reservation (provenance `generated`): a robot bound by « Select Host » after « Robots from elsewhere » never takes one; where its key comes from does not matter (decided on 2026-11-26, #81).
   /// The record's network and coordinator are copied from that binding by the same statement.
   /// A robot that already has a record is a [TradeAlreadyRecordedFailure]; a binding that no longer names that coordinator, as after a lost file, the failure of `RobotBinding.admits`; any other refusal a [RobotNotForNewTradeFailure].
   @useResult
