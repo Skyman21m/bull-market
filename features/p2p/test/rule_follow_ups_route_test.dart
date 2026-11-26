@@ -26,12 +26,13 @@ import 'package:secrets/testing.dart';
 
 import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
+import 'support/lean_confirmation.dart' show loadAppFont;
 import 'support/make_harness.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// Follow-ups of the owner's payment rule (#283; design note `docs/design/phase-3-making-an-order.md` § 3.3 bis, « As #283 wrote it ») on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`), by the user's gestures, in English and in French, on a phone of 320 points with a text at three times its size: the real router, records, use cases, state machine and trade screen; the coordinator played by `ScriptedMakerCoordinator` (never a real one), the wallet `FakeP2pWalletPort` (no price service, no swap service, no money).
 ///
-/// (1) The « Confirm » of the dialog « Confirm … sent » ignores a tap just after the rule's lines moved it ([MovedTapGuard]) and takes the next one; « Submit » and « Confirm … sent » of the chat step have no guard and take a tap at once (review of #283, C2). (2) After a read of the Bull wallet's price that failed, a status already shown that the coordinator makes come and go (15 ↔ 13) reads it again only once the last read is 3 minutes old; « Retry » always reads.
+/// (1) The « Confirm » of the dialog « Confirm … sent » ignores a tap just after the rule's lines moved it ([MovedTapGuard]) and takes the next one; « Submit » and « Confirm … sent » of the chat step have no guard and take a tap at once (review of #283, C2). (2) After a read of the Bull wallet's price that failed, a status already shown that the coordinator makes come and go (15 ↔ 13) reads it again only once the last read is 3 minutes old, the first 15 reading once; « Retry » always reads.
 ///
 /// The order: 100 EUR bought at a premium of 0, made and taken at the coordinator's 50,000 per bitcoin: 200,000 sats, the maker fee 0.025 %, so the coordinator pays 199,950 at 6, an invoice of 199,750 with the default routing budget; the Bull wallet's price 50,000.
 const _net = RobosatsNetwork.testnet;
@@ -458,21 +459,21 @@ void main() {
       }
 
       testWidgets(
-        'the price service failing: one read at 6, one at 9 shown for the first time, none at the first 15 (the payout\'s step, already shown at 6) within 3 minutes, one in the four minutes of round trips (before #283, one at every return to 15); « Retry » reads at once, twice in a row',
+        'the price service failing: one read at 6, one at 9 shown for the first time, one at the first 15 (the payout\'s step shown at 6, at another status; verification of the review of #283, V-R1), one in the four minutes of round trips (before #283, one at every return to 15); « Retry » reads at once, twice in a row',
         (tester) async {
           final (app, reads) = await roundTrips(
             tester,
             const P2pWalletRateUnavailable(),
           );
-          expect(reads, [1, 2, 3]);
+          expect(reads, [1, 3, 4]);
           final retry = find.text(app.l10n.p2pCommonRetry);
           expect(retry, findsOneWidget);
           await app.tapLater(retry);
           await app.settle();
-          expect(app.wallet.ratesAsked, hasLength(4));
+          expect(app.wallet.ratesAsked, hasLength(5));
           await app.tapLater(retry);
           await app.settle();
-          expect(app.wallet.ratesAsked, hasLength(5));
+          expect(app.wallet.ratesAsked, hasLength(6));
           await app.close();
         },
       );
@@ -490,5 +491,84 @@ void main() {
         },
       );
     });
+  }
+
+  // Follow-ups of #270, #273 and #283: « Show details » of the payout breakdown with a large text, in the app's font (last in the file: it stays loaded).
+  for (final locale in const [Locale('en'), Locale('fr')]) {
+    final code = locale.languageCode;
+
+    testWidgets(
+      'at 6, on a phone of 320 points at the text size ×1, ×2 and ×3, $code: « Show details » of the breakdown and « Hide details » keep the same place and size, a target of at least 44 points; two quick taps at the same place open then fold the detail',
+      (tester) async {
+        await loadAppFont();
+        final app = await _App.start(
+          tester,
+          rate: P2pWalletRateRead(50000),
+          locale: locale,
+        );
+        await app.openTrade();
+        final toggle = find.byKey(PayoutPanel.detailToggle);
+        await app.waitFor(toggle);
+        await app.settle();
+        final button = find.descendant(
+          of: toggle,
+          matching: find.byType(TextButton),
+        );
+        for (final scale in const [1.0, 2.0, 3.0]) {
+          final reason = '$code ×$scale';
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          await tester.pump();
+          await tester.ensureVisible(toggle);
+          await tester.pump();
+          expect(find.byKey(PayoutPanel.detail), findsNothing, reason: reason);
+          expect(find.text(app.l10n.p2pDetailShow), findsOneWidget);
+          final folded = tester.getRect(button);
+          expect(
+            folded.width >= 44 && folded.height >= 44,
+            isTrue,
+            reason: '$reason: $folded',
+          );
+          final finger = folded.center;
+          await tester.tapAt(finger);
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(
+            find.byKey(PayoutPanel.detail),
+            findsOneWidget,
+            reason: reason,
+          );
+          expect(find.text(app.l10n.p2pDetailHide), findsOneWidget);
+          _expectSameRoom(
+            tester.getRect(button),
+            folded,
+            finger,
+            scale,
+            reason,
+          );
+          await tester.tapAt(finger);
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(find.byKey(PayoutPanel.detail), findsNothing, reason: reason);
+          expect(find.text(app.l10n.p2pDetailShow), findsOneWidget);
+          expect(tester.getRect(button), folded, reason: reason);
+          expect(tester.takeException(), isNull, reason: reason);
+        }
+        await app.close();
+      },
+    );
+  }
+}
+
+/// « Show details » and « Hide details » at the same place: with a text larger than normal, exactly the same room; at the normal size, as before the follow-ups of #270, #273 and #283, the same top and height, each word its own width, the finger on both.
+void _expectSameRoom(
+  Rect now,
+  Rect folded,
+  Offset finger,
+  double scale,
+  String reason,
+) {
+  if (scale > 1) {
+    expect(now, folded, reason: '$reason: the link kept its room');
+  } else {
+    expect((now.top, now.height), (folded.top, folded.height), reason: reason);
+    expect(now.contains(finger), isTrue, reason: '$reason: $now');
   }
 }

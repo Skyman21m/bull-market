@@ -19,44 +19,92 @@ class WordFitText extends StatelessWidget {
     this.textAlign = TextAlign.start,
   });
 
+  /// How [text] in [style] is laid out in [maxWidth] as a [WordFitText] lays it out there: its size and its number of lines, the scale lowered as [build] lowers it. For a widget that must hold the room of another text than the one it shows (« Show details » and « Hide details », `DetailToggle`).
+  static ({Size size, int lines}) measure(
+    BuildContext context,
+    String text, {
+    TextStyle? style,
+    TextAlign textAlign = TextAlign.start,
+    required double maxWidth,
+  }) {
+    final defaults = DefaultTextStyle.of(context);
+    final direction = Directionality.of(context);
+    final merged = defaults.style.merge(style);
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: merged),
+      textAlign: textAlign,
+      textDirection: direction,
+      textScaler: _fitted(
+        text,
+        merged,
+        MediaQuery.textScalerOf(context),
+        direction,
+        maxWidth,
+      ),
+      maxLines: defaults.maxLines,
+      locale: Localizations.maybeLocaleOf(context),
+      textWidthBasis: defaults.textWidthBasis,
+      textHeightBehavior:
+          defaults.textHeightBehavior ??
+          DefaultTextHeightBehavior.maybeOf(context),
+    )..layout(maxWidth: maxWidth);
+    final measured = (
+      size: painter.size,
+      lines: painter.computeLineMetrics().length,
+    );
+    painter.dispose();
+    return measured;
+  }
+
+  /// The scale [text] is drawn at in [maxWidth]: [scaler], or lower when its longest word is wider than [maxWidth], never under the text's own size.
+  static TextScaler _fitted(
+    String text,
+    TextStyle merged,
+    TextScaler scaler,
+    TextDirection direction,
+    double maxWidth,
+  ) {
+    if (!maxWidth.isFinite) return scaler;
+    var widest = 0.0;
+    for (final word in text.split(_breakingSpaces)) {
+      if (word.isEmpty) continue;
+      final painter = TextPainter(
+        text: TextSpan(text: word, style: merged),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+      painter.dispose();
+    }
+    if (widest <= maxWidth) return scaler;
+    final size = merged.fontSize ?? 14;
+    // A little under the room, for the rounding of glyphs at another scale.
+    final ratio = maxWidth * 0.97 / widest;
+    final scale = scaler.scale(size) / size;
+    final floor = scale < 1 ? scale : 1.0;
+    final shrunk = scale * ratio;
+    return TextScaler.linear(shrunk < floor ? floor : shrunk);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
     final merged = DefaultTextStyle.of(context).style.merge(style);
     return LayoutBuilder(
-      builder: (context, constraints) {
-        var fitted = scaler;
-        if (constraints.maxWidth.isFinite) {
-          var widest = 0.0;
-          for (final word in text.split(_breakingSpaces)) {
-            if (word.isEmpty) continue;
-            final painter = TextPainter(
-              text: TextSpan(text: word, style: merged),
-              textDirection: direction,
-              textScaler: scaler,
-              maxLines: 1,
-            )..layout();
-            if (painter.width > widest) widest = painter.width;
-            painter.dispose();
-          }
-          if (widest > constraints.maxWidth) {
-            final size = merged.fontSize ?? 14;
-            // A little under the room, for the rounding of glyphs at another scale.
-            final ratio = constraints.maxWidth * 0.97 / widest;
-            final scale = scaler.scale(size) / size;
-            final floor = scale < 1 ? scale : 1.0;
-            final shrunk = scale * ratio;
-            fitted = TextScaler.linear(shrunk < floor ? floor : shrunk);
-          }
-        }
-        return Text(
+      builder: (context, constraints) => Text(
+        text,
+        textAlign: textAlign,
+        style: style,
+        textScaler: _fitted(
           text,
-          textAlign: textAlign,
-          style: style,
-          textScaler: fitted,
-        );
-      },
+          merged,
+          scaler,
+          direction,
+          constraints.maxWidth,
+        ),
+      ),
     );
   }
 }
