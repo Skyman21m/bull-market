@@ -7,6 +7,7 @@ import 'package:bull_ui/bull_ui.dart' show BullButton;
 import 'package:drift/drift.dart' show QueryExecutor;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/semantics.dart' show SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -65,6 +66,7 @@ import 'support/fakes.dart';
 import 'support/garage_words.dart';
 import 'support/harness.dart';
 import 'support/key_output.dart';
+import 'support/lean_confirmation.dart' show loadAppFont;
 import 'support/robot_bindings.dart';
 import 'support/robot_coordinators.dart';
 
@@ -351,6 +353,8 @@ void main() {
           widget.text.toPlainText().contains('robo1') &&
           // The masked field (#81) shows the prefix of every key and dots, never any part of a key.
           widget.text.toPlainText() != 'robo1••••••••••••' &&
+          // The instruction of « Robot recovery » names the prefix only.
+          !widget.text.toPlainText().contains('(robo1...)') &&
           !_isInside<GarageKeyView>(tester, widget),
     );
     expect(outside, findsNothing);
@@ -475,6 +479,8 @@ void main() {
     ) async {
       keystoreHolding({});
       await openGarage(tester);
+      // The words of the seam read the empty slot, then the keys read it again for an external key (review of #292): two read budgets.
+      await letTheVaultSettle(tester);
 
       await tester.tap(find.text('Offers'));
       await settle(tester);
@@ -727,6 +733,8 @@ void main() {
         await settle(tester);
         expect(missDialog, findsNothing);
         await letTheVaultSettle(tester);
+        // The words of the seam read the empty slot, then the keys read it again for an external key (review of #292): two read budgets.
+        await letTheVaultSettle(tester);
 
         expect(missDialog, findsNothing);
         expect(find.byType(NoRobotDialog), findsNothing);
@@ -749,7 +757,7 @@ void main() {
       expect(find.text(fixedNickname), findsOneWidget);
       expect(find.text('Robot #0'), findsOneWidget);
       // The key the vault keeps is the external key, selected at the first opening (#81).
-      expect(find.text('External Key'), findsOneWidget);
+      expect(find.text('External Garage Key'), findsOneWidget);
       expect(find.byType(GarageKeyView), findsNothing);
       expectKeyOnlyInView(tester);
 
@@ -1883,13 +1891,13 @@ void main() {
         (
           Locale('en'),
           'Robots from elsewhere',
-          'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.',
+          'This Garage Key was imported, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, go back to the internal Garage Keys.',
           'I understand',
         ),
         (
           Locale('fr'),
           'Robots venus d’ailleurs',
-          'Cette clé de garage a été collée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs\u00a0: l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Bull Market, un robot ne vit que chez un seul coordinateur\u00a0: si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, générez une nouvelle clé de garage.',
+          'Cette clé de garage a été importée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs\u00a0: l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Bull Market, un robot ne vit que chez un seul coordinateur\u00a0: si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, revenez aux clés de garage internes.',
           'Je comprends',
         ),
       ]) {
@@ -2472,7 +2480,8 @@ void main() {
         expect(clipboard == key, isTrue);
         await after(tester);
         await tester.pump(const Duration(seconds: 29));
-        expect(clipboard == key, isTrue);
+        // Still there until the 30 seconds, while the Garage is shown.
+        if (label.startsWith('if')) expect(clipboard == key, isTrue);
         await tester.pump(const Duration(seconds: 2));
         await settle(tester);
         expect(clipboard, '');
@@ -3155,6 +3164,136 @@ void main() {
         expect(find.text(fixedNickname), findsOneWidget);
       },
     );
+
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      testWidgets(
+        'in ${locale.languageCode}, on a phone of 320 points at the text size ×1, ×2 and ×3: the card on each kind of key and its dialogs overflow nothing, break no word that fits a line, and every target is 44 points high at least',
+        (tester) async {
+          await loadAppFont();
+          final opener = await updatedBook(tester);
+          await openGarage(
+            tester,
+            locale: locale,
+            words: await wordsOf(tester),
+            databaseOpener: opener,
+          );
+          final l10n = P2pLocalizations.of(tester.element(find.byType(GarageView)));
+          await tapText(tester, l10n.p2pCommonAcknowledged);
+          tester.view
+            ..physicalSize = const Size(320 * 3, 2400 * 3)
+            ..devicePixelRatio = 3;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+          /// Every text of [labels] shown: its lines break between words only.
+          void wordsWhole(List<String> labels, String reason) {
+            for (final label in labels) {
+              for (final element in find.text(label).evaluate()) {
+                final paragraph = element.renderObject;
+                if (paragraph is! RenderParagraph) continue;
+                final text = paragraph.text.toPlainText();
+                var offset = 0;
+                while (offset < text.length) {
+                  final line = paragraph.getLineBoundary(
+                    TextPosition(offset: offset),
+                  );
+                  if (line.end >= text.length || line.end <= offset) break;
+                  expect(
+                    text[line.end - 1] == ' ' || text[line.end] == ' ',
+                    isTrue,
+                    reason: '$reason: « $label » broken at ${line.end}',
+                  );
+                  offset = line.end;
+                  while (offset < text.length && text[offset] == ' ') {
+                    offset++;
+                  }
+                }
+              }
+            }
+          }
+
+          void targets(List<Finder> finders, String reason) {
+            for (final finder in finders) {
+              for (final element in finder.evaluate()) {
+                final box = element.renderObject as RenderBox;
+                expect(
+                  box.size.height >= 44,
+                  isTrue,
+                  reason: '$reason: ${box.size}',
+                );
+              }
+            }
+          }
+
+          for (final scale in const [1.0, 2.0, 3.0]) {
+            final reason = '${locale.languageCode} ×$scale';
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            await tester.pump();
+            await settle(tester);
+            // The external key, its line under the field, « Back » and its delete.
+            await tester.ensureVisible(
+              find.text(l10n.p2pGarageDeleteExternal),
+            );
+            await tester.pump();
+            expect(tester.takeException(), isNull, reason: reason);
+            wordsWhole([
+              l10n.p2pGarageKeyNotBackedUp,
+              l10n.p2pGarageBackToInternal,
+              l10n.p2pGarageDeleteExternal,
+            ], reason);
+            targets([
+              find.ancestor(
+                of: find.text(l10n.p2pGarageDeleteExternal),
+                matching: find.byType(TextButton),
+              ),
+              find.byTooltip(l10n.p2pGarageKeyExplain),
+              find.byTooltip(l10n.p2pGarageKeyReveal),
+            ], reason);
+            // Its delete, with the trade in progress named.
+            await tapText(tester, l10n.p2pGarageDeleteExternal);
+            expect(tester.takeException(), isNull, reason: reason);
+            wordsWhole([
+              l10n.p2pGarageDeleteExternalTitle,
+              l10n.p2pGarageDeleteExternalText,
+              l10n.p2pGarageDeleteExternalTrades(1, '#42'),
+              l10n.p2pGarageDeleteConfirm,
+            ], reason);
+            await tapText(tester, l10n.p2pCommonCancel);
+            // The explanation of the external key.
+            await tapTooltip(tester, l10n.p2pGarageKeyExplain);
+            expect(tester.takeException(), isNull, reason: reason);
+            wordsWhole([l10n.p2pGarageExternalKeyInfo], reason);
+            await tapText(tester, l10n.p2pCommonAcknowledged);
+            // An internal key: the arrows, the line, « New internal Garage Key », the switch, the trade of the other key.
+            await tapText(tester, l10n.p2pGarageBackToInternal);
+            await tester.ensureVisible(
+              find.text(l10n.p2pGarageSwitchToExternal),
+            );
+            await tester.pump();
+            expect(tester.takeException(), isNull, reason: reason);
+            wordsWhole([
+              l10n.p2pGarageKeyBackedUp,
+              l10n.p2pGarageNewKey,
+              l10n.p2pGarageSwitchToExternal,
+              l10n.p2pGarageTradeInProgress('42'),
+            ], reason);
+            targets([
+              find.byTooltip(l10n.p2pGaragePreviousKey),
+              find.byTooltip(l10n.p2pGarageNextKey),
+              find.byTooltip(l10n.p2pGarageKeyExplain),
+            ], reason);
+            await tapText(tester, l10n.p2pGarageNewKey);
+            expect(tester.takeException(), isNull, reason: reason);
+            wordsWhole([
+              l10n.p2pGarageNewKeyTitle,
+              l10n.p2pGarageNewKeyText(1),
+              l10n.p2pGarageNewKeyConfirm(1),
+            ], reason);
+            await tapText(tester, l10n.p2pCommonCancel);
+            await tapText(tester, l10n.p2pGarageSwitchToExternal);
+          }
+        },
+      );
+    }
 
     testWidgets(
       'an internal key, drawn here: Select Host once Tor is ready, then the sheet and the confirmation, and Cancel sends nothing',

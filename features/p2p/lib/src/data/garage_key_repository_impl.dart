@@ -169,6 +169,14 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
   ) async => switch (await keyring(network)) {
     Ok(value: GarageKeyring(selected: SelectedWordsKey(:final index))) =>
       await derived(network, index),
+    // The keyring has just read the slot: one it could not read is not read again, so that the answer is the keyring's, and an empty slot's budget is spent once.
+    Ok(
+      value: GarageKeyring(
+        selected: SelectedExternalKey(),
+        externalFailure: final failure?,
+      ),
+    ) =>
+      Err(failure),
     Ok(value: GarageKeyring(selected: SelectedExternalKey())) =>
       await _readSlot(network),
     Err(:final failure) => Err(failure),
