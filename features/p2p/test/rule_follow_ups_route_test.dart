@@ -488,5 +488,64 @@ void main() {
       );
     });
 
+    group('point 2, the price read again after a failure at 15, $code', () {
+      /// From 6 shown (the price read once), the trade to 15 a first time, then twelve round trips 15 → 13 → 15, each status shown 10 seconds: the reads of the Bull wallet's price after 6, at the first 15 and after the twelve round trips.
+      Future<(_App, List<int>)> roundTrips(
+        WidgetTester tester,
+        P2pWalletBitcoinRate rate,
+      ) async {
+        final app = await _App.start(tester, rate: rate, locale: locale);
+        await app.openTrade();
+        await app.waitUntil(() => app.wallet.ratesAsked.isNotEmpty, 'read');
+        await app.settle();
+        final reads = [app.wallet.ratesAsked.length];
+        app.coordinator.lockEscrow(app.record.orderId);
+        await app.moveTo(const [9, 10, 13]);
+        app.coordinator.failPayout(app.record.orderId);
+        await app.waitFor(find.text(app.l10n.p2pPayoutInvoiceExpiredSubmitNew));
+        await app.settle();
+        reads.add(app.wallet.ratesAsked.length);
+        for (var i = 0; i < 12; i++) {
+          await app.moveTo(const [13, 15]);
+        }
+        await app.waitFor(find.text(app.l10n.p2pPayoutInvoiceExpiredSubmitNew));
+        await app.settle();
+        reads.add(app.wallet.ratesAsked.length);
+        return (app, reads);
+      }
+
+      testWidgets(
+        'the price service failing: one read at 6, none more at 9 nor at the first 15 within 3 minutes, one in the four minutes of round trips, as with a service that answers; « Retry » reads at once, twice in a row',
+        (tester) async {
+          final (app, reads) = await roundTrips(
+            tester,
+            const P2pWalletRateUnavailable(),
+          );
+          expect(reads, [1, 1, 2]);
+          final retry = find.text(app.l10n.p2pCommonRetry);
+          expect(retry, findsOneWidget);
+          await app.tapLater(retry);
+          await app.settle();
+          expect(app.wallet.ratesAsked, hasLength(3));
+          await app.tapLater(retry);
+          await app.settle();
+          expect(app.wallet.ratesAsked, hasLength(4));
+          await app.close();
+        },
+      );
+
+      testWidgets(
+        'the price service answering: the same reads as before #283, one at 6 and one in the four minutes of round trips',
+        (tester) async {
+          final (app, reads) = await roundTrips(
+            tester,
+            P2pWalletRateRead(50000),
+          );
+          expect(reads, [1, 1, 2]);
+          expect(find.text(app.l10n.p2pCommonRetry), findsNothing);
+          await app.close();
+        },
+      );
+    });
   }
 }

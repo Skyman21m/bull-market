@@ -191,7 +191,7 @@ enum PayoutRateVerdict {
 
 /// The owner's payment rule on a buyer's side (#182, design note § 3.3), on the trade screen: the only caller of [CheckPayoutRateUsecase], for an order made here whose user buys and, since #249, for an order taken here whose user buys ([CheckPayoutRateUsecase.termsOf]; a seller's trade never sees it, not even « reading »).
 ///
-/// What is compared follows each read of the order shown, at once, with the price already read: another figure at the same step is compared again (security review of #182, C1). The Bull wallet's price is read (one request outside Tor, [CheckPayoutRateUsecase.priceOf]) only while the screen is shown (the screen does not call [show] when hidden), and only when a step has something to compare and: no price of the currency was read in this run of the app; or the step is shown for the first time, appears anew (the screen built or shown again, the app back) or moves to another status (8 after 6) while the last read is [freshFor] old (or could not be read, for a step shown for the first time); or « Submit » or « Confirm … sent » is pressed while it is [freshFor] old ([beforeAct]); or « Retry » after a price that could not be read. A new read of the same status, which the trade's watch brings at its own cadence, never reads it: never in a loop.
+/// What is compared follows each read of the order shown, at once, with the price already read: another figure at the same step is compared again (security review of #182, C1). The Bull wallet's price is read (one request outside Tor, [CheckPayoutRateUsecase.priceOf]) only while the screen is shown (the screen does not call [show] when hidden), and only when a step has something to compare and: no price of the currency was read in this run of the app; or the step is shown for the first time, appears anew (the screen built or shown again, the app back) or moves to another status (8 after 6) while the last read is [freshFor] old, answered or not (since #283 a read that failed waits [freshFor] like any other, where before a step shown anew read again at once after it: the coordinator's rhythm at 15 ↔ 13); or « Submit » or « Confirm … sent » is pressed while it is [freshFor] old ([beforeAct]); or « Retry » after a price that could not be read. A new read of the same status, which the trade's watch brings at its own cadence, never reads it: never in a loop.
 class PayoutRateCubit extends Cubit<PayoutRateState> {
   final TradeRecord record;
   final PayoutRateTermsOf _termsOf;
@@ -288,13 +288,12 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     }
     final subject = _subjectOf(terms, seen);
     final kept = memory.priceOf(record.network, terms.currency.code);
+    // A read that failed counts as a read for its age, as at « Submit » and « Confirm … sent » ([beforeAct]): a step shown anew reads again only once the last read, answered or not, is [freshFor] old, so that a step the coordinator makes come and go (15 ↔ 13, 9 ↔ 10) never reads at its rhythm while the price service fails (security review of #237, R3; #283); « Retry » always reads.
     final stale = kept == null || !now().isBefore(kept.at.add(freshFor));
-    final unread = kept?.price is P2pWalletRateUnavailable;
     final read =
         subject is PayoutRateCompared &&
         _reading == null &&
-        (kept == null ||
-            ((newStep || appeared || moved) && (stale || (newStep && unread))));
+        (kept == null || ((newStep || appeared || moved) && stale));
     if (read) {
       await _read(terms);
     } else {
