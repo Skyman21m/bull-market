@@ -5,7 +5,7 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import '../p2p_failure.dart';
 import '../repositories/garage_key_repository.dart';
 
-/// « New key » (#81, design note `docs/design/garage-key-from-the-words.md` § 6): activates the key of the words after the highest one, which every new trade takes from then on; nothing is erased, the earlier keys finish their trades and stay shown with the arrows.
+/// « New internal Garage Key » (#81, design note `docs/design/garage-key-from-the-words.md` § 6): activates the internal Garage Key after the highest one and selects it, so that new trades take it; nothing is erased, the earlier keys stay in the Garage, each finishing its trades and selectable again for new ones.
 ///
 /// Call it only from the user's explicit confirmation, never at startup or in the background.
 final class NewGarageKeyUsecase {

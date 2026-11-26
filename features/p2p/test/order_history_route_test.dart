@@ -478,17 +478,22 @@ void main() {
               findsOneWidget,
               reason: '${record.orderId}',
             );
+            // Its key on a line of its own (#81, decided on 2026-11-26): the seam's key 0 of the words is the key the test stored; then its robot.
+            expect(
+              find.descendant(
+                of: line,
+                matching: find.text(l10n.p2pGarageKeyNumber(0)),
+              ),
+              findsOneWidget,
+              reason: '${record.orderId}',
+            );
             expect(
               find.descendant(
                 of: line,
                 matching: find.text(
-                  // Its key first (#81): the seam's key 0 of the words is the key the test stored.
-                  l10n.p2pGarageHistoryKeyRobot(
-                    0,
-                    l10n.p2pHistoryRobotNamed(
-                      '${l10n.p2pGarageRobotLabel} #$index',
-                      app.nicknameOf(index),
-                    ),
+                  l10n.p2pHistoryRobotNamed(
+                    '${l10n.p2pGarageRobotLabel} #$index',
+                    app.nicknameOf(index),
                   ),
                 ),
               ),

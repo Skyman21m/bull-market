@@ -17,6 +17,7 @@ import 'package:bb_mobile/core/wallet/domain/wallet_failure.dart';
 import 'package:bb_mobile/features/p2p_garage_key/derived_garage_key_adapter.dart';
 import 'package:bb_mobile/generated/l10n/localization.dart';
 import 'package:crypto/crypto.dart';
+import 'package:drift/native.dart' show NativeDatabase;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +29,7 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/testing.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
+import 'package:sqlite3/sqlite3.dart' show sqlite3;
 
 /// The books were recorded on 2026-11-10 between 13:51 and 13:55 UTC: the screens are rendered a few minutes later.
 final _now = DateTime.utc(2026, 11, 10, 14);
@@ -1016,10 +1018,17 @@ void main() {
     );
   }
 
-  // The Garage on the keys of the words (#81), over a vault in memory, on testnet, with the public test phrase « abandon ×11 about » as the default wallet's words (never a real wallet's), derived by the app's own adapter: key 0 at the first opening, « New Garage Key », key 1, an earlier key selected (the key of new trades, whatever its number), the key shown after the PIN (the public vector of key 0), and, in a second run, the card during an update with a trade of the key drawn at random still in progress.
-  for (final locale in const [Locale('fr'), Locale('en')]) {
+  // The Garage Keys (#81), the seven plates of the mock-up decided on 2026-11-26, over a vault in memory, on testnet, with the public test phrase « abandon ×11 about » as the default wallet's words (never a real wallet's), derived by the app's own adapter, in each language, dark and light.
+  // First a new install: internal key 0 and its card, its explanation, « New Garage Key », the key shown after the PIN (the public vector of key 0), « Import an external Garage Key » and « Robot recovery », the public example key of the RoboSats frontend tests imported as the external Garage Key (never revealed), its card, its explanation, « Back to internal Garage Keys », « Switch to the external Garage Key », « Delete the external Garage Key? ».
+  // Then an update: a book of schema 9 whose key, the same public example key, has a trade in progress and finished trades, opened by the app: « Your Garage Keys » once, the line of the trade on an internal key, the history with each order's key and robot, and the delete that names the trade.
+  for (final (locale, theme) in const [
+    (Locale('fr'), AppThemeType.dark),
+    (Locale('en'), AppThemeType.dark),
+    (Locale('fr'), AppThemeType.light),
+    (Locale('en'), AppThemeType.light),
+  ]) {
     testWidgets(
-      'captures of the Garage in ${locale.languageCode}',
+      'captures of the Garage in ${locale.languageCode}, ${theme.name}',
       skip: directory == null,
       (tester) async {
         final out = Directory(directory ?? '.')..createSync(recursive: true);
@@ -1036,6 +1045,9 @@ void main() {
         addTearDown(
           () => messenger.setMockMethodCallHandler(_privacyChannel, null),
         );
+        final prefix = theme == AppThemeType.dark
+            ? locale.languageCode
+            : '${locale.languageCode}-clair';
 
         Future<void> capture(String name) async {
           await tester.pump(const Duration(milliseconds: 50));
@@ -1047,7 +1059,7 @@ void main() {
             final png = await image.toByteData(format: ui.ImageByteFormat.png);
             if (png == null) throw StateError('no PNG for $name');
             File(
-              '${out.path}/${locale.languageCode}-$name.png',
+              '${out.path}/$prefix-$name.png',
             ).writeAsBytesSync(png.buffer.asUint8List());
           });
         }
@@ -1070,10 +1082,15 @@ void main() {
           await settle();
         }
 
-        // Each reading of the keys reads the vault slot of the external key, whose empty slot the vault settles with its full budget (#81).
+        // Each reading of the keys reads the vault slot of the external Garage Key, whose empty slot the vault settles with its full budget (#81).
         Future<void> letTheVaultSettle() async {
           await tester.pump(const Duration(seconds: 6));
           await settle();
+        }
+
+        Finder needed(Finder finder, String what) {
+          if (finder.evaluate().isEmpty) throw StateError('not shown: $what');
+          return finder;
         }
 
         FakeSecureStoragePlatform().install();
@@ -1085,72 +1102,105 @@ void main() {
           Ok(:final value) => value.id.hex,
           _ => throw StateError('the test words were not stored'),
         };
-        final locator = GetIt.asNewInstance();
-        final tor = StreamController<P2pTorState>.broadcast();
-        addTearDown(tor.close);
-        addTearDown(locator.reset);
-        setUpP2pForTesting(
-          locator,
-          transport: const _RecordedTransport(RobosatsNetwork.testnet),
-          torStates: () => tor.stream,
-          clock: () => _now,
-          garageKeys: secrets.garageKeys(),
-          derivedGarageKeys: DerivedGarageKeyAdapter(
-            secrets,
-            () => _DefaultWallet(fingerprint),
-          ),
+        final books = Directory.systemTemp.createTempSync(
+          'p2p-garage-capture-',
         );
-        await tester.pumpWidget(
-          _App(
-            locale: locale,
-            locator: locator,
-            network: RobosatsNetwork.testnet,
-          ),
-        );
-        tor.add(P2pTorState.ready);
-        await settle();
+        addTearDown(() => books.deleteSync(recursive: true));
         final l10n = lookupP2pLocalizations(locale);
 
-        await tester.tap(find.text(l10n.p2pNavGarage));
+        /// The app over the book at [file], the Garage shown.
+        Future<(GetIt, StreamController<P2pTorState>)> open(File file) async {
+          final locator = GetIt.asNewInstance();
+          final tor = StreamController<P2pTorState>.broadcast();
+          setUpP2pForTesting(
+            locator,
+            transport: const _RecordedTransport(RobosatsNetwork.testnet),
+            torStates: () => tor.stream,
+            clock: () => _now,
+            garageKeys: secrets.garageKeys(),
+            derivedGarageKeys: DerivedGarageKeyAdapter(
+              secrets,
+              () => _DefaultWallet(fingerprint),
+            ),
+            databaseOpener: () => NativeDatabase(file),
+          );
+          await tester.pumpWidget(
+            _App(
+              locale: locale,
+              locator: locator,
+              network: RobosatsNetwork.testnet,
+              theme: theme,
+            ),
+          );
+          tor.add(P2pTorState.ready);
+          await settle();
+          await tester.tap(find.text(l10n.p2pNavGarage));
+          await settle();
+          tor.add(P2pTorState.ready);
+          await settle();
+          await letTheVaultSettle();
+          return (locator, tor);
+        }
+
+        Future<void> close(
+          GetIt locator,
+          StreamController<P2pTorState> tor,
+        ) async {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await settle();
+          await tor.close();
+          await tester.runAsync(locator.reset);
+        }
+
+        // A new install.
+        final fresh = File('${books.path}/fresh.sqlite');
+        var (locator, tor) = await open(fresh);
+        // Plate 1: the Garage on internal key 0, then its card, the import link under it.
+        await capture('garage-p1-cle-interne');
+        await tester.ensureVisible(
+          needed(find.text(l10n.p2pGarageKeyNumber(0)), 'internal key 0'),
+        );
         await settle();
-        tor.add(P2pTorState.ready);
-        await settle();
-        await letTheVaultSettle();
-        await capture('garage-cle-0');
-        await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(0)));
-        await settle();
-        await capture('garage-carte-cle-0');
+        await capture('garage-p1-carte-sans-externe');
+        // Plate 7: the explanation of the internal Garage Keys.
+        await tap(find.byTooltip(l10n.p2pGarageKeyExplain));
+        await capture('garage-p7-info-interne');
+        await tap(find.text(l10n.p2pCommonAcknowledged));
+        // Plate 2: « New Garage Key », then internal key 1 and back to key 0.
         await tap(find.text(l10n.p2pGarageNewKey));
-        await capture('garage-nouvelle-cle');
+        await capture('garage-p2-nouvelle-cle');
         await tap(find.text(l10n.p2pGarageNewKeyConfirm(1)));
         tor.add(P2pTorState.ready);
         await settle();
         await letTheVaultSettle();
-        await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(1)));
+        await tester.ensureVisible(
+          needed(find.text(l10n.p2pGarageKeyNumber(1)), 'internal key 1'),
+        );
         await settle();
-        await capture('garage-plusieurs-cles');
+        await capture('garage-p2-plusieurs-cles');
         await tap(find.byTooltip(l10n.p2pGaragePreviousKey));
         tor.add(P2pTorState.ready);
         await settle();
         await letTheVaultSettle();
-        await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(0)));
-        await settle();
-        await capture('garage-cle-precedente');
         await tap(find.byTooltip(l10n.p2pGarageKeyReveal));
-        await capture('garage-pin-factice');
+        await capture('garage-p2-pin-factice');
         await tester.tap(find.text('PIN'));
         await settle();
-        final shown = find.text(_abandonTestnetKey0);
-        if (shown.evaluate().isEmpty) {
-          throw StateError('the public key 0 is not shown after the PIN');
-        }
+        final shown = needed(
+          find.text(_abandonTestnetKey0),
+          'the public key 0 after the PIN',
+        );
         await tester.ensureVisible(shown);
         await settle();
-        await capture('garage-cle-affichee');
-
-        // The external key (#81): the public example key of the RoboSats frontend tests pasted in « Robot recovery », from the link of the card; the key the vault kept before #81 is shown the same way.
-        await tap(find.text(l10n.p2pGarageWelcomeRecoverHint));
-        await capture('garage-recuperation');
+        await capture('garage-p2-cle-affichee');
+        // Plate 4: « Import an external Garage Key », « Robot recovery », the key imported.
+        await tester.ensureVisible(
+          needed(find.text(l10n.p2pGarageImportExternal), 'the import link'),
+        );
+        await settle();
+        await capture('garage-p4-lien-import');
+        await tap(find.text(l10n.p2pGarageImportExternal));
+        await capture('garage-p4-recuperation');
         // The field of the dialog, drawn over the Garage: the last one.
         await tester.enterText(
           find.byType(TextField).last,
@@ -1161,17 +1211,97 @@ void main() {
         tor.add(P2pTorState.ready);
         await settle();
         await letTheVaultSettle();
-        final external = find.text(l10n.p2pGarageExternalKey);
-        if (external.evaluate().isEmpty) {
-          throw StateError('the key pasted is not shown as the external key');
-        }
-        await capture('garage-cle-externe-haut');
+        // Plate 3 and 4: the Garage on the external Garage Key, then its card.
+        final external = needed(
+          find.text(l10n.p2pGarageExternalKey),
+          'the key imported as the external Garage Key',
+        );
+        await capture('garage-p3-cle-externe');
         await tester.ensureVisible(external);
         await settle();
-        await capture('garage-cle-externe');
-        await tap(find.text(l10n.p2pDeleteKeyConfirm));
-        await capture('garage-supprimer-cle-externe');
+        await capture('garage-p4-apres-import');
+        // Plate 7: the explanation of the external Garage Key.
+        await tap(find.byTooltip(l10n.p2pGarageKeyExplain));
+        await capture('garage-p7-info-externe');
+        await tap(find.text(l10n.p2pCommonAcknowledged));
+        // Plate 4: « Delete the external Garage Key? », then « Cancel ».
+        await tap(find.text(l10n.p2pGarageDeleteExternal));
+        await capture('garage-p4-supprimer');
         await tap(find.text(l10n.p2pCommonCancel));
+        // Plate 3: back to the last internal key shown, key 0, and its button to the external one.
+        await tap(find.text(l10n.p2pGarageBackToInternal));
+        tor.add(P2pTorState.ready);
+        await settle();
+        await letTheVaultSettle();
+        await tester.ensureVisible(
+          needed(find.text(l10n.p2pGarageSwitchToExternal), 'the switch'),
+        );
+        await settle();
+        await capture('garage-p3-retour-interne');
+        await close(locator, tor);
+
+        // An update: the book of an earlier version, its key in the vault, a trade of it in progress and its finished ones.
+        final updated = File('${books.path}/updated.sqlite');
+        (locator, tor) = await open(updated);
+        await close(locator, tor);
+        // The fingerprints the app recorded: the key imported in the first book, internal key 0 in this one; never computed here.
+        String fingerprintIn(File file, String query) {
+          final database = sqlite3.open(file.path);
+          try {
+            return database.select(query).single.values.single as String;
+          } finally {
+            database.dispose();
+          }
+        }
+
+        final externalHex = fingerprintIn(
+          fresh,
+          "SELECT key_fingerprint FROM garage_key_histories WHERE network = 'testnet' AND origin = 'imported'",
+        );
+        final internalHex = fingerprintIn(
+          updated,
+          "SELECT key_fingerprint FROM derived_garage_keys WHERE network = 'testnet' AND key_index = 0",
+        );
+        _toSchema9(updated, [
+          for (final (hex, origin) in [
+            (externalHex, 'imported'),
+            (internalHex, 'generated'),
+          ])
+            "INSERT OR IGNORE INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES ('testnet', '$hex', '$origin', 1)",
+          for (final (hex, robot, order, role, closed) in [
+            (externalHex, 3, 48120, 'seller', null),
+            (externalHex, 2, 47655, 'buyer', 1764000000000),
+            (internalHex, 2, 47990, 'seller', 1764100000000),
+            (internalHex, 5, 48731, 'seller', 1764200000000),
+          ]) ...[
+            "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('testnet', '$hex', $robot, 'temple', 'http://temple.onion', '', 'nostr', 2, 'acknowledged')",
+            "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('testnet', '$hex', $robot, 'temple', 'http://temple.onion', $order, '$role', 'takenHere', ${(closed ?? 1764300000000) - 3600000}, ${(closed ?? 1764300000000) - 3500000}, ${closed ?? 'NULL'})",
+          ],
+        ]);
+        (locator, tor) = await open(updated);
+        // Plate 5: « Your Garage Keys », once, over the Garage on the external Garage Key.
+        needed(find.text(l10n.p2pGarageNoticeTitle), '« Your Garage Keys »');
+        await capture('garage-p5-vos-cles');
+        await tap(find.text(l10n.p2pCommonAcknowledged));
+        // Plate 4: its delete names its trade in progress.
+        await tap(find.text(l10n.p2pGarageDeleteExternal));
+        await capture('garage-p4-supprimer-pendant-echange');
+        await tap(find.text(l10n.p2pCommonCancel));
+        // Plate 6: on internal key 0, the line of the trade of the external Garage Key, then the history.
+        await tap(find.text(l10n.p2pGarageBackToInternal));
+        tor.add(P2pTorState.ready);
+        await settle();
+        await letTheVaultSettle();
+        needed(
+          find.text(l10n.p2pGarageTradeInProgress('48120')),
+          'the trade of another key',
+        );
+        await capture('garage-p6-echange-ailleurs');
+        await tap(find.text(l10n.p2pHistoryShow));
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
+        await settle();
+        await capture('garage-p6-historique');
+        await close(locator, tor);
       },
     );
   }
@@ -3265,10 +3395,14 @@ class _App extends StatelessWidget {
   final GetIt locator;
   final RobosatsNetwork network;
 
+  /// The app's theme, dark unless a capture asks the light one.
+  final AppThemeType theme;
+
   const _App({
     required this.locale,
     required this.locator,
     required this.network,
+    this.theme = AppThemeType.dark,
   });
 
   @override
@@ -3325,7 +3459,7 @@ class _App extends StatelessWidget {
       child: MaterialApp.router(
         routerConfig: router,
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData(AppThemeType.dark),
+        theme: AppTheme.themeData(theme),
         locale: locale,
         localizationsDelegates: [
           ...AppLocalizations.localizationsDelegates,
@@ -3489,4 +3623,28 @@ final class _DefaultWallet implements WalletRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// The book at [file], written by this version of the app, made a book of schema 9, the one an update finds: the objects of schema 10 dropped and the version set back, then [rows] written.
+void _toSchema9(File file, List<String> rows) {
+  final database = sqlite3.open(file.path);
+  try {
+    for (final statement in [
+      'DROP TRIGGER IF EXISTS derived_garage_keys_never_deleted',
+      'DROP TRIGGER IF EXISTS derived_garage_keys_never_changed',
+      'DROP TRIGGER IF EXISTS derived_garage_keys_in_order',
+      'DROP TRIGGER IF EXISTS derived_garage_keys_inserted_once',
+      'DROP TRIGGER IF EXISTS garage_notices_shown_once',
+      'DROP TRIGGER IF EXISTS garage_notices_never_deleted',
+      'DROP TABLE IF EXISTS derived_garage_keys',
+      'DROP TABLE IF EXISTS selected_garage_keys',
+      'DROP TABLE IF EXISTS garage_notices',
+      ...rows,
+      'PRAGMA user_version = 9',
+    ]) {
+      database.execute(statement);
+    }
+  } finally {
+    database.dispose();
+  }
 }

@@ -3138,6 +3138,8 @@ const _garageKeyTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_changed BEFORE UPDATE ON derived_garage_keys BEGIN SELECT RAISE(ABORT, 'an activated Garage Key never changes'); END",
   "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1) BEGIN SELECT RAISE(ABORT, 'a Garage Key out of order'); END",
   "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices WHEN NOT (OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice) BEGIN SELECT RAISE(ABORT, 'a Garage notice only turns shown'); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices BEGIN SELECT RAISE(ABORT, 'a Garage notice is kept'); END",
 ];
 
 final _garageKeyTriggers = [

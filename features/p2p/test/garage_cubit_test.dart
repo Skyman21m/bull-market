@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -16,6 +17,7 @@ import 'package:p2p/src/domain/garage_opening.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/order_history.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
@@ -32,14 +34,63 @@ import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
+import 'migrations_test/p2p_database/generated/schema_v9.dart' as v9;
+import 'support/fakes.dart';
 import 'support/garage_words.dart';
 import 'support/key_output.dart';
+import 'support/robot_bindings.dart';
+
+/// The keystore of the tests, counting the writes and the deletes that reach it.
+final class _CountingStorage extends FakeSecureStoragePlatform {
+  int writes = 0;
+  int deletes = 0;
+
+  _CountingStorage({super.entries});
+
+  @override
+  Future<void> write({
+    required String key,
+    required String value,
+    required Map<String, String> options,
+  }) {
+    writes++;
+    return super.write(key: key, value: value, options: options);
+  }
+
+  @override
+  Future<void> delete({
+    required String key,
+    required Map<String, String> options,
+  }) {
+    deletes++;
+    return super.delete(key: key, options: options);
+  }
+}
+
+/// A stand-in for the wallet's re-authentication: it records, each time it is asked, whether the slot still held a key then, and answers [answer], or waits for [pending] when it is set.
+final class _Gate {
+  final FakeSecureStoragePlatform storage;
+  final String entry;
+  bool answer;
+  Completer<bool>? pending;
+  final List<bool> heldKeyWhenAsked = [];
+
+  _Gate(this.storage, this.entry, {this.answer = true});
+
+  int get asked => heldKeyWhenAsked.length;
+
+  Future<bool> call() {
+    heldKeyWhenAsked.add(storage.entries.containsKey(entry));
+    return pending?.future ?? Future.value(answer);
+  }
+}
 
 /// The Garage of one network over the real vault of `package:secrets`, on its in-memory keystore: empty, holding a key, corrupt, locked or unreadable, and the slot of the other network never touched.
 ///
 /// The vault settles an empty slot with its full read budget, so each test that finds a slot empty waits about 4.5 s of real time.
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  const mainnetEntry = 'com.bullbitcoin.secrets/garage/p2p/mainnet';
   const testnetEntry = 'com.bullbitcoin.secrets/garage/p2p/testnet';
   const slow = Timeout(Duration(seconds: 120));
 
@@ -81,11 +132,19 @@ void main() {
     tradesOf,
     GarageNavigation? navigation,
     Future<void> Function(TradeRecord record)? readOnce,
+    RobotBindingRepository? bindings,
+    File? databaseFile,
   }) {
     storage.install();
     final vault = Secrets(scratchDirectory: () async => '.').garageKeys();
-    final database = P2pDatabase.forTesting(NativeDatabase.memory());
+    final database = P2pDatabase.forTesting(
+      databaseFile == null
+          ? NativeDatabase.memory()
+          : NativeDatabase(databaseFile),
+    );
     addTearDown(database.close);
+    final recorded =
+        bindings ?? RobotBindingRepositoryImpl(database, clock: DateTime.now);
     // The cubit's own tests: by default key 0 of the words is the fixed key the tests store in the slot of the network (`SlotAsWordsPort`).
     final repository = GarageKeyRepositoryImpl(
       vault,
@@ -96,18 +155,29 @@ void main() {
       network,
       ReadGarageKeyUsecase(repository),
       NewGarageKeyUsecase(repository),
-      ImportGarageKeyUsecase(
-        repository,
-        RobotBindingRepositoryImpl(database, clock: DateTime.now),
-      ),
+      ImportGarageKeyUsecase(repository, recorded),
       DeleteGarageKeyUsecase(repository),
-      NeedsPinToDeleteGarageKeyUsecase(
-        RobotBindingRepositoryImpl(database, clock: DateTime.now),
-      ),
+      NeedsPinToDeleteGarageKeyUsecase(recorded),
       tradesOf: tradesOf,
       navigation: navigation,
       readOnce: readOnce,
     );
+  }
+
+  /// The re-authentication of a delete that must not ask it: a key drawn here, with no robot bound.
+  Future<bool> neverAsked() async => fail('the PIN was asked');
+
+  GarageWithKey shown(GarageCubit cubit) => cubit.state as GarageWithKey;
+
+  /// A file of schema 9 with nothing in it: the book an update finds, which the step to schema 10 gives « Your Garage Keys » due.
+  Future<File> schema9File() async {
+    final directory = await Directory.systemTemp.createTemp(
+      'p2p-garage-cubit-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/nine.sqlite');
+    await v9.DatabaseAtV9(NativeDatabase(file)).close();
+    return file;
   }
 
   FakeSecureStoragePlatform holding(
@@ -124,7 +194,16 @@ void main() {
     scriptedWrites: scriptedWrites,
   );
 
+  /// The internal Garage Keys of the public test words, derived once and then given from memory, so that a test's keystore holds nothing but its Garage Key entries.
+  late TestWordsPort memoryWords;
+
   setUpAll(() async {
+    memoryWords = TestWordsPort();
+    FakeSecureStoragePlatform().install();
+    await memoryWords.precompute([
+      for (final network in RobosatsNetwork.values)
+        for (var index = 0; index < 4; index++) (network, index),
+    ]);
     final storage = FakeSecureStoragePlatform()..install();
     final vault = Secrets(scratchDirectory: () async => '.').garageKeys();
     for (final slot in GarageKeySlot.values) {
@@ -275,11 +354,9 @@ void main() {
         List<int> locked = const [],
         List<(int, TradePosition?)> ended = const [],
         int? fresh = 9,
-        bool drawnHere = true,
         GarageKeyFingerprint? key,
       }) => Ok(
         GarageRecords(
-          keyDrawnHereOnly: drawnHere,
           inProgress: [
             for (final index in locked)
               ActiveTrade(
@@ -434,14 +511,10 @@ void main() {
       );
 
       test(
-        'a key from elsewhere never moves: the robot of its line whatever its end',
+        'with no fresh robot left, the robot of its line stays whatever its end (every key alike since 2026-11-26, #81)',
         () async {
           final trades = recordsStarting(
-            recordsOf(
-              drawnHere: false,
-              fresh: null,
-              ended: [(3, TradePosition.succeeded)],
-            ),
+            recordsOf(fresh: null, ended: [(3, TradePosition.succeeded)]),
           );
           final cubit = cubitOver(
             holding([testnetEntry]),
@@ -695,14 +768,8 @@ void main() {
           await byHand.close();
           await moved.records.close();
 
-          // A key from elsewhere, a robot with no open record, records that cannot be read: nothing.
+          // A robot with no open record, records that cannot be read: nothing. Where the key comes from no longer counts (decided on 2026-11-26, #81).
           for (final start in [
-            recordsOf(
-              drawnHere: false,
-              fresh: null,
-              // An open record of the robot it opens on, made here: only the guard on the key's history stops the read.
-              locked: [3],
-            ),
             recordsOf(ended: [(3, TradePosition.expired)]),
             const Err<GarageRecords, P2pFailure>(P2pStorageFailure()),
           ]) {
@@ -713,9 +780,6 @@ void main() {
               readOnce: readOnce,
             );
             await again.load();
-            if (start case Ok(value: GarageRecords(keyDrawnHereOnly: false))) {
-              expect(shown(again), 3);
-            }
             again.robotWithoutActiveOrder(shown(again));
             expect(read, [3], reason: '$start');
             await again.close();
@@ -823,57 +887,134 @@ void main() {
     });
   });
 
-  group('the external key (#81)', () {
-    GarageWithKey shown(GarageCubit cubit) => cubit.state as GarageWithKey;
-
+  group('the external Garage Key (#81, the mock-up decided on 2026-11-26)', () {
     test(
-      'the key the vault kept is selected at the first opening, one position after the highest key of the words, and « New key » from it makes the next key of the words',
+      'the key the vault kept is selected at the first opening after the update with « Your Garage Keys » due; the arrows never reach it, a button does, and « Back » returns to the last internal key shown',
       () async {
+        final file = await schema9File();
         final cubit = cubitOver(
           holding([testnetEntry]),
-          words: TestWordsPort(),
+          words: memoryWords,
+          databaseFile: file,
         );
         await cubit.load();
         expect(shown(cubit).isExternal, isTrue);
         expect(shown(cubit).key.key, fixedKey);
         expect(shown(cubit).hasExternal, isTrue);
         expect(shown(cubit).externalKey, fixedFingerprint);
-        expect(shown(cubit).highest, 0);
-        // « › » on the last position creates nothing.
+        expect(shown(cubit).externalNoticeDue, isTrue);
+        // No arrows and no « New internal Garage Key » on the external Garage Key.
         await cubit.nextKey();
-        expect(shown(cubit).isExternal, isTrue);
         await cubit.previousKey();
+        await cubit.newKey();
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).highest, 0);
+        // « Back to internal Garage Keys »: none shown yet, so the highest, key 0.
+        await cubit.returnToInternal();
         expect(shown(cubit).key.index, 0);
         expect(shown(cubit).key.key.revealBech32(), abandonTestnet0);
-        await cubit.nextKey();
-        expect(shown(cubit).isExternal, isTrue);
         await cubit.newKey();
+        await cubit.newKey();
+        await cubit.previousKey();
         expect(shown(cubit).key.index, 1);
-        expect(shown(cubit).highest, 1);
+        // « › » stops at the highest internal key, never at the external one.
         await cubit.nextKey();
+        await cubit.nextKey();
+        expect(shown(cubit).key.index, 2);
+        await cubit.previousKey();
+        await cubit.switchToExternal();
         expect(shown(cubit).isExternal, isTrue);
+        await cubit.returnToInternal();
+        expect(shown(cubit).key.index, 1);
+        await cubit.switchToExternal();
         await cubit.close();
+        // Kept across a restart: the external key, then key 1.
+        final again = cubitOver(
+          holding([testnetEntry]),
+          words: memoryWords,
+          databaseFile: file,
+        );
+        await again.load();
+        expect(shown(again).isExternal, isTrue);
+        await again.returnToInternal();
+        expect(shown(again).key.index, 1);
+        await again.close();
       },
       timeout: slow,
     );
 
     test(
-      'a key pasted becomes the external key, selected; a text that is not a key is given back and changes nothing',
+      '« Your Garage Keys » is shown once: the state forgets it at once, and the keys read again, or a new cubit, never bring it back',
+      () async {
+        final file = await schema9File();
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          words: memoryWords,
+          databaseFile: file,
+        );
+        await cubit.load();
+        expect(shown(cubit).externalNoticeDue, isTrue);
+        await cubit.externalNoticeShown();
+        expect(shown(cubit).externalNoticeDue, isFalse);
+        await cubit.load();
+        expect(shown(cubit).externalNoticeDue, isFalse);
+        await cubit.returnToInternal();
+        await cubit.switchToExternal();
+        expect(shown(cubit).externalNoticeDue, isFalse);
+        await cubit.close();
+        final again = cubitOver(
+          holding([testnetEntry]),
+          words: memoryWords,
+          databaseFile: file,
+        );
+        await again.load();
+        expect(shown(again).externalNoticeDue, isFalse);
+        await again.close();
+        // A new install: never due, even with a key in the vault.
+        final kept = cubitOver(holding([testnetEntry]), words: memoryWords);
+        await kept.load();
+        expect(shown(kept).isExternal, isTrue);
+        expect(shown(kept).externalNoticeDue, isFalse);
+        await kept.close();
+        final fresh = cubitOver(
+          FakeSecureStoragePlatform(),
+          words: memoryWords,
+        );
+        await fresh.load();
+        expect(shown(fresh).externalNoticeDue, isFalse);
+        expect(await fresh.import(exampleText), isNull);
+        expect(shown(fresh).isExternal, isTrue);
+        expect(shown(fresh).externalNoticeDue, isFalse);
+        await fresh.close();
+      },
+      timeout: slow,
+    );
+
+    test(
+      'a key imported becomes the external key, selected; a text that is not a key, or an internal key, is given back and changes nothing',
       () async {
         final storage = FakeSecureStoragePlatform();
-        final cubit = cubitOver(storage, words: TestWordsPort());
+        final cubit = cubitOver(storage, words: memoryWords);
         await cubit.load();
         expect(shown(cubit).hasExternal, isFalse);
         expect(
           await cubit.import('${exampleText.substring(0, 20)}x'),
           isA<GarageKeyInvalidFailure>(),
         );
+        expect(
+          await cubit.import(abandonTestnet0),
+          isA<GarageKeyIsInternalFailure>().having(
+            (failure) => failure.index,
+            'index',
+            0,
+          ),
+        );
         expect(shown(cubit).key.index, 0);
         expect(storage.entries, isNot(contains(testnetEntry)));
         expect(await cubit.import(exampleText), isNull);
         expect(shown(cubit).isExternal, isTrue);
         expect(shown(cubit).key.key.revealBech32(), exampleText);
-        // One at a time: a second paste is not even tried.
+        // One at a time: a second import is not even tried.
         expect(await cubit.import(exampleText), isNull);
         await cubit.close();
       },
@@ -881,11 +1022,14 @@ void main() {
     );
 
     test(
-      'removing the external key asks the PIN when its robots may live on a coordinator, deletes only it, then shows the highest key of the words',
+      'deleting the external key asks the PIN when its robots may live on a coordinator, deletes only it, then shows the last internal key shown',
       () async {
         final storage = FakeSecureStoragePlatform();
-        final cubit = cubitOver(storage, words: TestWordsPort());
+        final cubit = cubitOver(storage, words: memoryWords);
         await cubit.load();
+        await cubit.newKey();
+        await cubit.previousKey();
+        expect(shown(cubit).key.index, 0);
         expect(await cubit.import(exampleText), isNull);
         // Without the re-authentication, a key from elsewhere is not deleted.
         await cubit.delete(reauthenticate: null);
@@ -904,14 +1048,741 @@ void main() {
         );
         expect(asked, 1);
         expect(storage.entries, isNot(contains(testnetEntry)));
+        // Back on key 0, the last internal key shown, not on key 1, the highest.
         expect(shown(cubit).key.index, 0);
         expect(shown(cubit).hasExternal, isFalse);
-        // A key of the words is never deleted.
+        // An internal key is never deleted.
         await cubit.delete(reauthenticate: () async => true);
         expect(shown(cubit).key.index, 0);
         await cubit.close();
       },
       timeout: slow,
     );
+
+    test(
+      'the trades in progress of the network come with the state: those of another key than the one shown, and those of the key shown',
+      () async {
+        final otherKey = switch (GarageKey.fromBytes(
+          Uint8List.fromList(List<int>.generate(32, (i) => i + 2)),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final other = switch (GarageKeyFingerprint.of(otherKey)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        TradeRecord recordOf(GarageKeyFingerprint key, int index, int order) =>
+            TradeRecord(
+              robot: RobotSlot(RobosatsNetwork.testnet, key, index),
+              coordinatorAlias: 'temple',
+              coordinatorOnion: 'http://temple.onion',
+              orderId: order,
+              role: TradeRole.buyer,
+              origin: TradeOrigin.takenHere,
+              takenAt: DateTime.utc(2026, 11, 26),
+              confirmedAt: DateTime.utc(2026, 11, 26),
+              closedAt: null,
+            );
+        final mine = recordOf(fixedFingerprint, 3, 48120);
+        final elsewhere = recordOf(other, 1, 48121);
+        ActiveTrade active(TradeRecord record) => ActiveTrade(
+          record,
+          const ActiveTradeAt(
+            TradePosition.chatting,
+            deadline: null,
+            breached: false,
+            historyUnknown: false,
+          ),
+        );
+        final records =
+            StreamController<Result<GarageRecords, P2pFailure>>.broadcast();
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          words: memoryWords,
+          tradesOf: (_) {
+            scheduleMicrotask(
+              () => records.add(
+                Ok(
+                  GarageRecords(
+                    inProgress: [active(mine), active(elsewhere)],
+                    closed: const [],
+                    fresh: null,
+                  ),
+                ),
+              ),
+            );
+            return records.stream;
+          },
+        );
+        await cubit.load();
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).inProgressOfKeyShown, [mine]);
+        expect(shown(cubit).inProgressElsewhere, [elsewhere]);
+        // A trade that ends leaves the lines at the next records.
+        records.add(
+          Ok(
+            GarageRecords(
+              inProgress: [active(mine)],
+              closed: const [],
+              fresh: null,
+            ),
+          ),
+        );
+        await pumpEventQueue();
+        expect(shown(cubit).inProgressElsewhere, isEmpty);
+        await cubit.close();
+        await records.close();
+      },
+      timeout: slow,
+    );
+
+    for (final reason in P2pGarageKeyRefusalReason.values) {
+      test(
+        'words that refuse (${reason.name}): the external key stays shown and usable; the internal side says why, with the way back (C-passphrase)',
+        () async {
+          final storage = holding([testnetEntry]);
+          final cubit = cubitOver(
+            storage,
+            words: TestWordsPort(refusal: reason),
+          );
+          await cubit.load();
+          expect(shown(cubit).isExternal, isTrue);
+          expect(shown(cubit).key.key, fixedKey);
+          expect(shown(cubit).highest, isNull);
+          await cubit.returnToInternal();
+          expect(
+            cubit.state,
+            isA<GarageUnknown>()
+                .having((state) => state.canSwitchToExternal, 'switch', isTrue)
+                .having((state) => state.externalSelected, 'external', isFalse),
+          );
+          // « Retry » on the internal side asks again, and says why again.
+          await cubit.returnToInternal();
+          expect(
+            cubit.state,
+            isA<GarageUnknown>().having(
+              (state) => state.canSwitchToExternal,
+              'switch',
+              isTrue,
+            ),
+          );
+          await cubit.switchToExternal();
+          expect(shown(cubit).isExternal, isTrue);
+          // Its delete stays (the PIN, a key of unknown history).
+          await cubit.delete(reauthenticate: () async => true);
+          expect(storage.entries, isNot(contains(testnetEntry)));
+          // Without it: the refusal alone, as before.
+          expect(
+            cubit.state,
+            isA<GarageUnknown>().having(
+              (state) => state.canSwitchToExternal,
+              'switch',
+              isFalse,
+            ),
+          );
+          await cubit.close();
+        },
+        timeout: slow,
+      );
+    }
   });
+
+  // Restored from `main` for the external Garage Key (review of #292): the other network, a slot the vault cannot read, and the PIN before a delete. The delete of `main` led to the welcome screen, gone with #81: here it leads back to the internal Garage Keys; « Generate new », gone with #81, has no test any more.
+  group('the other network', () {
+    test('is never read, written or deleted', () async {
+      final storage = holding([testnetEntry]);
+      final cubit = cubitOver(
+        storage,
+        network: RobosatsNetwork.mainnet,
+        words: memoryWords,
+      );
+
+      await cubit.load();
+      expect(cubit.state, isA<GarageWithKey>());
+      await cubit.delete(reauthenticate: neverAsked);
+      await cubit.switchToExternal();
+
+      expect(storage.readKeys.toSet(), {mainnetEntry});
+      expect(storage.entries[testnetEntry], storedFixedKeys[testnetEntry]);
+      expect(storage.entries.containsKey(mainnetEntry), isFalse);
+      await cubit.close();
+    }, timeout: slow);
+  });
+
+  group('a slot the vault cannot read', () {
+    test(
+      'that is corrupt offers only retry, the way back and delete',
+      () async {
+        final storage = FakeSecureStoragePlatform(
+          entries: {testnetEntry: 'not json at all'},
+        );
+        final cubit = cubitOver(storage, words: memoryWords);
+
+        await cubit.load();
+        expect(
+          cubit.state,
+          isA<GarageUnknown>()
+              .having(
+                (state) => state.failure,
+                'failure',
+                isA<GarageKeyUnusableFailure>(),
+              )
+              .having((state) => state.externalSelected, 'external', isTrue),
+        );
+        await cubit.import(exampleText);
+        expect(storage.entries, {testnetEntry: 'not json at all'});
+
+        // A slot that cannot be read always asks the PIN.
+        var asked = 0;
+        await cubit.delete(
+          reauthenticate: () async {
+            asked++;
+            return true;
+          },
+        );
+        expect(asked, 1);
+        expect(shown(cubit).key.index, 0);
+        expect(storage.entries, isEmpty);
+        await cubit.close();
+      },
+    );
+
+    test('that keeps failing to read is unreadable', () async {
+      final storage = holding([
+        testnetEntry,
+      ], scripted: List.generate(5, (_) => PlatformException(code: 'read')));
+      final cubit = cubitOver(storage, words: memoryWords);
+
+      await cubit.load();
+
+      expect(
+        cubit.state,
+        isA<GarageUnknown>().having(
+          (state) => state.failure,
+          'failure',
+          isA<GarageKeyUnreadableFailure>(),
+        ),
+      );
+      expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+      await cubit.close();
+    }, timeout: slow);
+
+    test(
+      'that is locked is said so, and nothing is written or deleted',
+      () async {
+        final storage = holding([testnetEntry], locked: true);
+        final cubit = cubitOver(storage, words: memoryWords);
+
+        await cubit.load();
+        // The screens offer no delete then; the cubit asks the PIN, and the vault refuses.
+        await cubit.delete(reauthenticate: () async => true);
+
+        expect(
+          cubit.state,
+          isA<GarageUnknown>()
+              .having(
+                (state) => state.failure,
+                'failure',
+                isA<GarageKeyLockedFailure>(),
+              )
+              .having(
+                (state) => state.actionFailure,
+                'actionFailure',
+                isA<GarageKeyLockedFailure>(),
+              ),
+        );
+        expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+        await cubit.close();
+      },
+    );
+  });
+
+  group('the PIN before a delete', () {
+    // Another key's fingerprint: fixed test bytes, 0x02 to 0x21.
+    final otherFingerprint = switch (GarageKey.fromBytes(
+      Uint8List.fromList(List<int>.generate(32, (i) => i + 2)),
+    )) {
+      Ok(:final value) => switch (GarageKeyFingerprint.of(value)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      },
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    CoordinatorIdentity identityOf(String alias, RobosatsNetwork network) =>
+        switch (CoordinatorIdentity.of(coordinator(alias), network)) {
+          final identity? => identity,
+          null => throw StateError('$alias is not on $network'),
+        };
+    final passes = isA<Ok<void, P2pFailure>>();
+
+    late RobotBindingRepositoryImpl bindings;
+
+    setUp(() => bindings = bindingsInMemory());
+
+    /// Records the fixed key as drawn here on [network], then binds its robot [index] to temple there.
+    Future<void> bindFixedRobot(
+      RobosatsNetwork network, {
+      int index = 0,
+    }) async {
+      expect(
+        await bindings.recordGeneratedKey(network, fixedFingerprint),
+        passes,
+      );
+      expect(
+        await bindings.bind(
+          RobotSlot(network, fixedFingerprint, index),
+          identityOf('temple', network),
+        ),
+        passes,
+      );
+    }
+
+    /// Loads the Garage of the testnet slot holding the fixed key, the external Garage Key, over the bindings in memory.
+    Future<(GarageCubit, _CountingStorage)> loaded({
+      RobotBindingRepository? over,
+    }) async {
+      final storage = _CountingStorage(
+        entries: {testnetEntry: storedFixedKeys[testnetEntry] ?? ''},
+      );
+      final cubit = cubitOver(
+        storage,
+        words: memoryWords,
+        bindings: over ?? bindings,
+      );
+      await cubit.load();
+      expect(shown(cubit).isExternal, isTrue);
+      return (cubit, storage);
+    }
+
+    Matcher shows({required bool needsPin}) => isA<GarageWithKey>().having(
+      (state) => state.deletionNeedsPin,
+      'deletionNeedsPin',
+      needsPin,
+    );
+
+    Matcher backOnInternal() => isA<GarageWithKey>()
+        .having((state) => state.key.index, 'index', 0)
+        .having((state) => state.hasExternal, 'hasExternal', isFalse);
+
+    test(
+      'a key drawn here, with no robot bound, is deleted on the confirmation alone',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(
+            RobosatsNetwork.testnet,
+            fixedFingerprint,
+          ),
+          passes,
+        );
+        // A robot of another key is bound: not this key's.
+        expect(
+          await bindings.recordGeneratedKey(
+            RobosatsNetwork.testnet,
+            otherFingerprint,
+          ),
+          passes,
+        );
+        expect(
+          await bindings.bind(
+            RobotSlot(RobosatsNetwork.testnet, otherFingerprint, 0),
+            identityOf('temple', RobosatsNetwork.testnet),
+          ),
+          passes,
+        );
+        final (cubit, storage) = await loaded();
+        await cubit.delete(reauthenticate: neverAsked);
+
+        expect(cubit.state, backOnInternal());
+        expect(storage.entries, isEmpty);
+        await cubit.close();
+      },
+    );
+
+    for (final (rule, prepare) in <(String, Future<void> Function())>[
+      (
+        'a robot bound on its network',
+        () => bindFixedRobot(RobosatsNetwork.testnet, index: 5),
+      ),
+      (
+        'a robot bound on the other network',
+        () async {
+          expect(
+            await bindings.recordGeneratedKey(
+              RobosatsNetwork.testnet,
+              fixedFingerprint,
+            ),
+            passes,
+          );
+          await bindFixedRobot(RobosatsNetwork.mainnet);
+        },
+      ),
+      (
+        'an imported key',
+        () async => expect(
+          await bindings.recordImportedKey(
+            RobosatsNetwork.testnet,
+            fixedFingerprint,
+          ),
+          passes,
+        ),
+      ),
+      ('a key never recorded, as one drawn before the records', () async {}),
+    ]) {
+      test(
+        '$rule: the PIN after the confirmation, before anything is deleted',
+        () async {
+          await prepare();
+          final (cubit, storage) = await loaded();
+          final gate = _Gate(storage, testnetEntry);
+
+          await cubit.delete(reauthenticate: gate.call);
+
+          // Asked once, while the key was still stored.
+          expect(gate.heldKeyWhenAsked, [true]);
+          expect(storage.deletes, 1);
+          expect(cubit.state, backOnInternal());
+          expect(storage.entries, isEmpty);
+          await cubit.close();
+        },
+      );
+    }
+
+    group('a slot that cannot be read', () {
+      Future<(GarageCubit, _CountingStorage)> unreadable() async {
+        final storage = _CountingStorage(
+          entries: {testnetEntry: 'not json at all'},
+        );
+        final cubit = cubitOver(
+          storage,
+          words: memoryWords,
+          bindings: bindings,
+        );
+        await cubit.load();
+        expect(cubit.state, isA<GarageUnknown>());
+        return (cubit, storage);
+      }
+
+      test(
+        'with no robot of any key bound, nor any history: the PIN all the same',
+        () async {
+          final (cubit, storage) = await unreadable();
+          final gate = _Gate(storage, testnetEntry, answer: false);
+
+          await cubit.delete(reauthenticate: gate.call);
+          expect(gate.heldKeyWhenAsked, [true]);
+          expect(storage.deletes, 0);
+          expect(cubit.state, isA<GarageUnknown>());
+
+          await cubit.delete(reauthenticate: null);
+          expect(storage.deletes, 0);
+
+          gate.answer = true;
+          await cubit.delete(reauthenticate: gate.call);
+          expect(gate.asked, 2);
+          expect(storage.entries, isEmpty);
+          expect(cubit.state, backOnInternal());
+          await cubit.close();
+        },
+      );
+
+      test('with a robot of any key bound: the PIN', () async {
+        expect(
+          await bindings.recordGeneratedKey(
+            RobosatsNetwork.mainnet,
+            otherFingerprint,
+          ),
+          passes,
+        );
+        expect(
+          await bindings.bind(
+            RobotSlot(RobosatsNetwork.mainnet, otherFingerprint, 1),
+            identityOf('lake', RobosatsNetwork.mainnet),
+          ),
+          passes,
+        );
+        final (cubit, storage) = await unreadable();
+        final gate = _Gate(storage, testnetEntry);
+
+        await cubit.delete(reauthenticate: gate.call);
+        expect(gate.heldKeyWhenAsked, [true]);
+        expect(storage.entries, isEmpty);
+        await cubit.close();
+      });
+
+      test(
+        '« Retry » while its delete asks the PIN reads nothing, and the PIN decides',
+        () async {
+          // An intact key, imported, that the keystore fails to read for a while: no robot of any key is bound.
+          expect(
+            await bindings.recordImportedKey(
+              RobosatsNetwork.testnet,
+              fixedFingerprint,
+            ),
+            passes,
+          );
+          final storage = _CountingStorage(
+            entries: {testnetEntry: storedFixedKeys[testnetEntry] ?? ''},
+          );
+          storage.scripted.addAll(
+            List.generate(5, (_) => PlatformException(code: 'read')),
+          );
+          final cubit = cubitOver(
+            storage,
+            words: memoryWords,
+            bindings: bindings,
+          );
+          await cubit.load();
+          expect(cubit.state, isA<GarageUnknown>());
+          final gate = _Gate(storage, testnetEntry, answer: false)
+            ..pending = Completer();
+
+          final deleting = cubit.delete(reauthenticate: gate.call);
+          await pumpEventQueue();
+          expect(gate.asked, 1);
+          // The user taps « Retry »: the keystore has recovered, but the delete under way is not swapped for another key.
+          final reads = storage.reads;
+          await cubit.load();
+          expect(storage.reads, reads);
+          expect(cubit.state, isA<GarageUnknown>());
+          gate.pending?.complete(false);
+          await deleting;
+
+          expect(storage.deletes, 0);
+          expect(storage.entries, {
+            testnetEntry: storedFixedKeys[testnetEntry],
+          });
+          // Once the delete is over, « Retry » reads the key, which asks the PIN as imported.
+          await cubit.load();
+          expect(
+            cubit.state,
+            isA<GarageWithKey>().having(
+              (state) => state.deletionNeedsPin,
+              'deletionNeedsPin',
+              isTrue,
+            ),
+          );
+          await cubit.close();
+        },
+        timeout: slow,
+      );
+    });
+
+    test(
+      'a database that cannot be read: the PIN, and none without the gate',
+      () async {
+        final broken = RecordingBindings()
+          ..readFailure = const P2pStorageFailure();
+        final (cubit, storage) = await loaded(over: broken);
+        expect(cubit.state, shows(needsPin: true));
+
+        await cubit.delete(reauthenticate: null);
+        expect(storage.deletes, 0);
+        expect(cubit.state, shows(needsPin: true));
+
+        final gate = _Gate(storage, testnetEntry);
+        await cubit.delete(reauthenticate: gate.call);
+        expect(gate.asked, 1);
+        expect(storage.entries, isEmpty);
+        await cubit.close();
+      },
+    );
+
+    test(
+      'without the gate, nothing is deleted, and the screen stays',
+      () async {
+        await bindFixedRobot(RobosatsNetwork.testnet);
+        final (cubit, storage) = await loaded();
+        cubit.next();
+        final before = cubit.state;
+        final reads = storage.reads;
+
+        await cubit.delete(reauthenticate: null);
+
+        expect(cubit.state, isA<GarageWithKey>());
+        expect(shown(cubit).robot, (before as GarageWithKey).robot);
+        expect(storage.deletes, 0);
+        expect(storage.reads, reads);
+        expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+        await cubit.close();
+      },
+    );
+
+    test(
+      'a PIN the user leaves deletes nothing and leaves the screen as it was',
+      () async {
+        await bindFixedRobot(RobosatsNetwork.testnet);
+        final (cubit, storage) = await loaded();
+        cubit
+          ..next()
+          ..next();
+        final reads = storage.reads;
+        final gate = _Gate(storage, testnetEntry, answer: false);
+
+        await cubit.delete(reauthenticate: gate.call);
+
+        expect(gate.asked, 1);
+        expect(shown(cubit).robot.index, 2);
+        expect(shown(cubit).isExternal, isTrue);
+        expect(storage.deletes, 0);
+        expect(storage.writes, 0);
+        expect(storage.reads, reads);
+        await cubit.close();
+      },
+    );
+
+    test(
+      'decides from the database when the user deletes, not when the key was read',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(
+            RobosatsNetwork.testnet,
+            fixedFingerprint,
+          ),
+          passes,
+        );
+        final (cubit, storage) = await loaded();
+        // A robot of the key is bound while the Garage shows it.
+        expect(
+          await bindings.bind(
+            RobotSlot(RobosatsNetwork.testnet, fixedFingerprint, 0),
+            identityOf('temple', RobosatsNetwork.testnet),
+          ),
+          passes,
+        );
+
+        await cubit.delete(reauthenticate: null);
+        expect(storage.deletes, 0);
+        // The state now says so, which greys the delete without the gate.
+        expect(cubit.state, shows(needsPin: true));
+
+        final gate = _Gate(storage, testnetEntry);
+        await cubit.delete(reauthenticate: gate.call);
+        expect(gate.asked, 1);
+        expect(storage.entries, isEmpty);
+        await cubit.close();
+      },
+    );
+
+    test('a second tap while the PIN is asked is ignored', () async {
+      await bindFixedRobot(RobosatsNetwork.testnet);
+      final (cubit, storage) = await loaded();
+      final gate = _Gate(storage, testnetEntry)..pending = Completer();
+
+      final first = cubit.delete(reauthenticate: gate.call);
+      // Lets the first tap read the database and open the PIN.
+      await pumpEventQueue();
+      expect(gate.asked, 1);
+      final second = cubit.delete(reauthenticate: gate.call);
+      final third = cubit.returnToInternal();
+      await pumpEventQueue();
+      gate.pending?.complete(true);
+      await Future.wait([first, second, third]);
+
+      expect(gate.asked, 1);
+      expect(storage.deletes, 1);
+      expect(storage.writes, 0);
+      expect(cubit.state, backOnInternal());
+      await cubit.close();
+    });
+
+    test(
+      'a cubit closed while the database is read for a delete asks nothing and deletes nothing',
+      () async {
+        final slowReads = RecordingBindings(
+          drawnHere: [(RobosatsNetwork.testnet, fixedFingerprint)],
+        );
+        final (cubit, storage) = await loaded(over: slowReads);
+        final reading = Completer<void>();
+        final started = Completer<void>();
+        slowReads
+          ..readsWait = reading.future
+          ..onRead = () {
+            if (!started.isCompleted) started.complete();
+          }
+          // The read now says the key has a robot bound: the PIN would be asked.
+          ..exposure = const GarageKeyExposure(
+            history: GarageKeyHistory.drawnHere,
+            hasBinding: true,
+          );
+        final gate = _Gate(storage, testnetEntry);
+
+        final deleting = cubit.delete(reauthenticate: gate.call);
+        await started.future;
+        await cubit.close();
+        reading.complete();
+        await deleting;
+
+        expect(gate.asked, 0);
+        expect(storage.deletes, 0);
+        expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+      },
+    );
+
+    test('a cubit closed while the PIN is asked deletes nothing', () async {
+      await bindFixedRobot(RobosatsNetwork.testnet);
+      final (cubit, storage) = await loaded();
+      final gate = _Gate(storage, testnetEntry)..pending = Completer();
+
+      final deleting = cubit.delete(reauthenticate: gate.call);
+      await pumpEventQueue();
+      await cubit.close();
+      gate.pending?.complete(true);
+      await deleting;
+
+      expect(gate.asked, 1);
+      expect(storage.deletes, 0);
+      expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+    });
+
+    test(
+      'the key deleted: its records followed no more (review of #229, R4), and where it was left by hand forgotten',
+      () async {
+        final navigation = GarageNavigation();
+        final records =
+            StreamController<Result<GarageRecords, P2pFailure>>.broadcast();
+        final asked = <NetworkGarageKey>[];
+        final cubit = cubitOver(
+          _CountingStorage(
+            entries: {testnetEntry: storedFixedKeys[testnetEntry] ?? ''},
+          ),
+          words: memoryWords,
+          bindings: bindings,
+          navigation: navigation,
+          tradesOf: (key) {
+            asked.add(key);
+            scheduleMicrotask(
+              () => records.add(
+                Ok(
+                  GarageRecords(
+                    inProgress: const [],
+                    closed: const [],
+                    fresh: null,
+                  ),
+                ),
+              ),
+            );
+            return records.stream;
+          },
+        );
+        await cubit.load();
+        cubit.next();
+        final key = shown(cubit).key;
+        expect(key.isExternalForTest, isTrue);
+        expect(navigation.leftByHand(key), isNotNull);
+        await cubit.delete(reauthenticate: neverAsked);
+        expect(cubit.state, backOnInternal());
+        // Only the internal key is followed now.
+        expect(asked.last.index, 0);
+        expect(navigation.leftByHand(key), isNull);
+        await cubit.close();
+        await records.close();
+      },
+      timeout: slow,
+    );
+  });
+}
+
+extension on NetworkGarageKey {
+  bool get isExternalForTest => index == null;
 }

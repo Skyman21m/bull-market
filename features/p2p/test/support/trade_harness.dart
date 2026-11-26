@@ -536,13 +536,18 @@ final class TradeHarness {
   /// The Garage Key of this run: [tradeKey] unless the test gave another one, such as a key of the public test words (#81).
   final GarageKey key;
 
+  /// The real Garage Keys of this run, when the test gave them (#81, review of #292, C-wiring): the robot layer then takes its keys from them, the internal and external Garage Keys distinct, in place of the one key of [_vault].
+  final GarageKeyRepository Function(P2pDatabase database)? _garageOver;
+
   TradeHarness._(
     this.network,
     this.database,
     this.coordinator,
     this.now, {
     GarageKey? key,
+    GarageKeyRepository Function(P2pDatabase database)? garageOver,
   }) : key = key ?? tradeKey,
+       _garageOver = garageOver,
        _vault = _Vault(NetworkGarageKey(network, key ?? tradeKey, index: 0)) {
     DateTime clock() => now;
     bindings = RobotBindingRepositoryImpl(database, clock: clock);
@@ -552,7 +557,7 @@ final class TradeHarness {
     );
     payouts = TradePayoutRepositoryImpl(database);
     trails = TestTrails(TradeTrailRepositoryImpl(database), () => kill);
-    robots = InterimTradeRobots(_vault, records);
+    robots = InterimTradeRobots(garageOver?.call(database) ?? _vault, records);
     limiter = RobotRequestLimiter(
       elapsed: () => now.difference(DateTime.utc(2026)),
       delay: (wait) async {
@@ -671,6 +676,7 @@ final class TradeHarness {
     RobotIdentity? maker,
     GarageKey? key,
     bool activatedFromWords = false,
+    GarageKeyRepository Function(P2pDatabase database)? garageOver,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
@@ -693,6 +699,7 @@ final class TradeHarness {
       coordinator,
       now,
       key: key,
+      garageOver: garageOver,
     );
     _clockOf[database] = now;
     harness._track();
@@ -715,7 +722,14 @@ final class TradeHarness {
 
   /// The app started again over the same database and coordinator, at the same time: nothing kept in memory.
   TradeHarness restart() {
-    final again = TradeHarness._(network, database, coordinator, now, key: key);
+    final again = TradeHarness._(
+      network,
+      database,
+      coordinator,
+      now,
+      key: key,
+      garageOver: _garageOver,
+    );
     again._track();
     return again;
   }

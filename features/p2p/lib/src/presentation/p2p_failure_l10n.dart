@@ -48,6 +48,9 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyUnusableFailure() => l10n.p2pGarageKeyUnusable,
       GarageKeyNotSavedFailure() => l10n.p2pGarageKeyNotSaved,
       GarageKeyNotDeletedFailure() => l10n.p2pGarageKeyNotDeleted,
+      GarageKeyIsInternalFailure(:final index) => l10n.p2pGarageKeyIsInternal(
+        index,
+      ),
       GarageKeyInvalidFailure(:final reason) => garageKeyFailureText(
         reason,
         l10n,
@@ -73,7 +76,6 @@ extension P2pFailureL10n on P2pFailure {
       // Its text names the coordinator, which only the robot panel knows: there, [toRobotText].
       RobotCoordinatorChangedFailure() => l10n.p2pBookError,
       // The failures of the trade records and of the robot of a new trade (#85): no screen shows them yet, and the trade screens give them their texts (#88).
-      GarageKeyNotForTradesFailure() ||
       TradeCoordinatorNotOnNetworkFailure() ||
       TradeKeyMissingFailure() ||
       TradeAlreadyRecordedFailure() ||
@@ -111,6 +113,7 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyNotSavedFailure() ||
       GarageKeyNotDeletedFailure() ||
       GarageKeyInvalidFailure() ||
+      GarageKeyIsInternalFailure() ||
       GarageRobotUnavailableFailure() ||
       GarageKeyNoWalletFailure() ||
       GarageKeyPassphraseFailure() ||
@@ -118,7 +121,6 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyMismatchFailure() ||
       GarageKeyLastIndexFailure() ||
       // Not a robot request: the panel never gets them.
-      GarageKeyNotForTradesFailure() ||
       TradeCoordinatorNotOnNetworkFailure() ||
       TradeKeyMissingFailure() ||
       TradeAlreadyRecordedFailure() ||

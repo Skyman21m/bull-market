@@ -18,7 +18,7 @@ import '../trade_record.dart';
 /// Never call it inside a database transaction (`transaction(…)`): a reservation, a record or a change that answered success there is undone if the transaction rolls back, after its robot may have been sent to the coordinator, and a robot whose binding was undone could go to a second coordinator.
 /// Each method is one statement that commits on its own; `robot_bindings_architecture_test.dart` pins that nothing in the feature opens a transaction (drift gives no public way to tell, at run time, that a call runs inside one).
 abstract interface class TradeRecordRepository {
-  /// What a new trade on [network] may use of the key of [key]: whether the key's history lets its robots start a trade, and its robot indexes already bound, on either network, or recorded with a trade.
+  /// What a new trade on [network] may use of the key of [key]: its robot indexes already bound, on either network, or recorded with a trade. Where the key comes from does not matter (decided on 2026-11-26, #81).
   ///
   /// It reads only, in one statement: a database that cannot be read, or a row this code never writes, is a [P2pStorageFailure].
   @useResult
@@ -29,8 +29,8 @@ abstract interface class TradeRecordRepository {
 
   /// Binds [robot] to [coordinator] for a new trade, in one statement, and gives the [TradeReservation] a pending take needs when this call bound it.
   ///
-  /// It writes the binding only when the robot's index has no binding, on either network, and no trade record, and its key is recorded as drawn on this device for the robot's network and as nothing else on any network; the binding's provenance is then `generated`.
-  /// `null`: nothing was written, because the robot was already bound or recorded, or because the key's history does not allow it; the caller reads [newTradeStandingOf] again to tell which.
+  /// It writes the binding only when the robot's index has no binding, on either network, and no trade record, whatever the history of its key (decided on 2026-11-26, #81); the binding's provenance is `generated` when the key is recorded as drawn on this device for the robot's network and as nothing else on any network, and `acknowledged` otherwise.
+  /// `null`: nothing was written, because the robot was already bound or recorded; the caller reads [newTradeStandingOf] again and goes on to the next free index.
   /// So no other call, on this connection or another, gets a reservation of the same robot.
   /// [coordinator] must be on the robot's network, or it is a [RobotNotForNewTradeFailure] and nothing is written.
   @useResult
@@ -42,7 +42,7 @@ abstract interface class TradeRecordRepository {
   /// Records the pending take of order [orderId], as [role], by the robot of [reservation] on its coordinator, of origin `takenHere`: written before the take's request leaves, so that a lost answer is recoverable.
   ///
   /// It is the only write of a trade taken here, and only the take use case is to call it (#87), with the reservation the robot layer has just given.
-  /// It writes, in one statement, only when the robot has no trade record, is still bound to that coordinator on the reservation's network under a key drawn here (provenance `generated`), and its key is still recorded as drawn here and as nothing else: a key pasted in again between the reservation and the pending take refuses it ([GarageKeyNotForTradesFailure]).
+  /// It writes, in one statement, only when the robot has no trade record and is still bound to that coordinator on the reservation's network; where its key comes from does not matter (decided on 2026-11-26, #81).
   /// The record's network and coordinator are copied from that binding by the same statement.
   /// A robot that already has a record is a [TradeAlreadyRecordedFailure]; a binding that no longer names that coordinator, as after a lost file, the failure of `RobotBinding.admits`; any other refusal a [RobotNotForNewTradeFailure].
   @useResult
@@ -55,7 +55,7 @@ abstract interface class TradeRecordRepository {
   /// Records the pending make of an order of side [role] by the robot of [reservation] on its coordinator, of origin `madeHere`, with no order id: written before the make's request leaves, so that a lost answer is recoverable (schema 8, #176; design note `docs/design/phase-3-making-an-order.md` § 3.4).
   ///
   /// It is the only write of a trade made here, and only the make use case is to call it (#179), with the reservation the robot layer has just given; no file calls it yet.
-  /// It writes under the very conditions of [recordPendingTake], in one statement, and refuses as it does: a robot that already has a record is a [TradeAlreadyRecordedFailure], a key pasted in since the reservation a [GarageKeyNotForTradesFailure], a binding that no longer names that coordinator the failure of `RobotBinding.admits`, any other refusal a [RobotNotForNewTradeFailure].
+  /// It writes under the very conditions of [recordPendingTake], in one statement, and refuses as it does: a robot that already has a record is a [TradeAlreadyRecordedFailure], a binding that no longer names that coordinator the failure of `RobotBinding.admits`, any other refusal a [RobotNotForNewTradeFailure].
   @useResult
   Future<Result<PendingMake, P2pFailure>> recordPendingMake(
     TradeReservation reservation, {

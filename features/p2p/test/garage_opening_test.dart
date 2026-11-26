@@ -141,9 +141,7 @@ void main() {
     List<ActiveTrade> active = const [],
     List<ClosedTrade> closed = const [],
     int? fresh = 9,
-    bool drawnHere = true,
   }) => GarageRecords(
-    keyDrawnHereOnly: drawnHere,
     inProgress: active,
     closed: closed,
     fresh: fresh == null ? null : slot(fresh),
@@ -353,17 +351,15 @@ void main() {
     );
 
     test(
-      'a key pasted or acknowledged never moves: only orders made here, and the line\'s robot whatever its end',
+      'a key imported or acknowledged follows the same rule since 2026-11-26 (#81): a trade taken here counts as one made here',
       () {
         final records = recordsOf(
-          drawnHere: false,
           fresh: null,
           active: [inProgress(5, TradePosition.chatting)],
           closed: [finished(3, TradePosition.succeeded)],
         );
-        expect(GarageOpening.of(key, records), slot(3));
+        expect(GarageOpening.of(key, records), slot(5));
         final made = recordsOf(
-          drawnHere: false,
           fresh: null,
           active: [
             inProgress(5, TradePosition.public, origin: TradeOrigin.madeHere),
@@ -631,16 +627,13 @@ void main() {
       },
     );
 
-    test('a key from elsewhere has none', () async {
+    test('a key from elsewhere has one too, since 2026-11-26 (#81)', () async {
       expect(
-        NextTradeRobot.of(
-          key,
-          NewTradeStanding(keyDrawnHereOnly: false, indexesInUse: const []),
-        ),
-        isA<Err<NetworkRobot, P2pFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<GarageKeyNotForTradesFailure>(),
+        NextTradeRobot.of(key, NewTradeStanding(indexesInUse: const [0])),
+        isA<Ok<NetworkRobot, P2pFailure>>().having(
+          (ok) => ok.value.accountIndex,
+          'index',
+          greaterThan(0),
         ),
       );
     });
@@ -712,7 +705,6 @@ void main() {
           Ok(:final value) => value,
           Err(:final failure) => fail('$failure'),
         };
-        expect(last.keyDrawnHereOnly, isTrue);
         expect(last.fresh, slot(1));
         expect(GarageOpening.of(key, last), slot(1));
         final navigation = GarageNavigation();

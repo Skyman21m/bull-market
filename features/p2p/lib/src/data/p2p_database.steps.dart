@@ -3576,6 +3576,9 @@ final class Schema10 extends i0.VersionedSchema {
     derivedGarageKeysNeverChanged,
     derivedGarageKeysInOrder,
     derivedGarageKeysInsertedOnce,
+    garageNotices,
+    garageNoticesShownOnce,
+    garageNoticesNeverDeleted,
     garageKeyHistories,
     robotBindings,
     trades,
@@ -3662,6 +3665,30 @@ final class Schema10 extends i0.VersionedSchema {
   final i1.Trigger derivedGarageKeysInsertedOnce = i1.Trigger(
     'CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE (IGNORE);END',
     'derived_garage_keys_inserted_once',
+  );
+  late final Shape15 garageNotices = Shape15(
+    source: i0.VersionedTable(
+      entityName: 'garage_notices',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(notice)',
+        'CHECK(typeof(notice) = \'text\' AND typeof(shown) = \'integer\')',
+        'CHECK(notice IN (\'externalKeyNamed\'))',
+        'CHECK(shown IN (0, 1))',
+      ],
+      columns: [_column_73, _column_74],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger garageNoticesShownOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices WHEN NOT(OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice)BEGIN SELECT RAISE (ABORT, \'a Garage notice only turns shown\');END',
+    'garage_notices_shown_once',
+  );
+  final i1.Trigger garageNoticesNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices BEGIN SELECT RAISE (ABORT, \'a Garage notice is kept\');END',
+    'garage_notices_never_deleted',
   );
   late final Shape0 garageKeyHistories = Shape0(
     source: i0.VersionedTable(
@@ -4015,18 +4042,20 @@ final class Schema10 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape15 selectedGarageKeys = Shape15(
+  late final Shape16 selectedGarageKeys = Shape16(
     source: i0.VersionedTable(
       entityName: 'selected_garage_keys',
       withoutRowId: false,
       isStrict: false,
       tableConstraints: [
         'PRIMARY KEY(network)',
-        'CHECK(typeof(network) = \'text\' AND(key_index IS NULL OR typeof(key_index) = \'integer\'))',
+        'CHECK(typeof(network) = \'text\' AND(key_index IS NULL OR typeof(key_index) = \'integer\')AND(last_internal_index IS NULL OR typeof(last_internal_index) = \'integer\'))',
         'CHECK(network IN (\'mainnet\', \'testnet\'))',
         'CHECK(key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)',
+        'CHECK(last_internal_index IS NULL OR last_internal_index BETWEEN 0 AND 2147483647)',
+        'CHECK(key_index IS NULL OR last_internal_index = key_index)',
       ],
-      columns: [_column_0, _column_73],
+      columns: [_column_0, _column_75, _column_76],
       attachedDatabase: database,
     ),
     alias: null,
@@ -4224,15 +4253,50 @@ i1.GeneratedColumn<int> _column_72(String aliasedName) =>
 
 class Shape15 extends i0.VersionedTable {
   Shape15({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get notice =>
+      columnsByName['notice']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get shown =>
+      columnsByName['shown']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_73(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'notice',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_74(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'shown',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+
+class Shape16 extends i0.VersionedTable {
+  Shape16({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get network =>
       columnsByName['network']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<int> get keyIndex =>
       columnsByName['key_index']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get lastInternalIndex =>
+      columnsByName['last_internal_index']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<int> _column_73(String aliasedName) =>
+i1.GeneratedColumn<int> _column_75(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'key_index',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_76(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'last_internal_index',
       aliasedName,
       true,
       type: i1.DriftSqlType.int,

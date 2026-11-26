@@ -703,63 +703,10 @@ class P2pLocalizationsFa extends P2pLocalizations {
   String get p2pCommonContinue => 'Continue';
 
   @override
-  String get p2pGarageWelcomeTagline => 'A Simple and Private LN P2P Exchange';
-
-  @override
-  String get p2pGarageWelcomeCreateRobot =>
-      'Create a new robot and learn to use RoboSats';
-
-  @override
-  String get p2pGarageWelcomeStart => 'Start';
-
-  @override
-  String get p2pGarageWelcomeRecoverHint =>
-      'Recover an existing robot using your token';
-
-  @override
-  String get p2pGarageWelcomeRecovery => 'Recovery';
-
-  @override
-  String get p2pGarageWelcomeSearchForOrders => 'Search for Orders';
-
-  @override
-  String get p2pGarageWelcomeFastGenerateOrder => 'Fast Generate Order';
-
-  @override
-  String get p2pGarageOnboardingStep1Title => '1. Generate your Garage Key';
-
-  @override
-  String get p2pGarageOnboardingStep1Text =>
-      'Your Garage Key is a master key that derives unlimited robot identities. Generate it once and use it forever.';
-
-  @override
-  String get p2pGarageOnboardingStoreItTitle => 'Store it somewhere safe!';
-
-  @override
-  String get p2pGarageOnboardingStoreItText =>
-      'This key is the master key to all your robots. Keep it secret and backed up securely.';
-
-  @override
-  String get p2pGarageKeyHelper => 'Store your Garage Key safely';
-
-  @override
   String get p2pGarageKeyInvalid => 'Invalid garage key';
 
   @override
-  String get p2pGarageOnboardingPasteExisting =>
-      'Or paste an existing Garage Key to recover your robots.';
-
-  @override
-  String get p2pGarageOnboardingGenerateNew => 'Generate new';
-
-  @override
-  String get p2pGarageOnboardingStep2Title => '2. Meet your robot identity';
-
-  @override
   String get p2pGarageTradingAvatar => 'This is your trading avatar';
-
-  @override
-  String get p2pGarageHiMyNameIs => 'Hi! My name is';
 
   @override
   String get p2pGaragePreviousAccount => 'Previous account';
@@ -771,38 +718,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
   String get p2pGarageRobotLabel => 'Robot';
 
   @override
-  String get p2pGarageOnboardingStep3Title => '3. Browse or create an order';
-
-  @override
-  String get p2pGarageOnboardingStep3Text =>
-      'RoboSats is a peer-to-peer marketplace. You can browse the public offers or create a new one.';
-
-  @override
-  String get p2pGarageOnboardingHelpIntro =>
-      'If you need help on your RoboSats journey join our public support';
-
-  @override
-  String get p2pGarageOnboardingHelpLink => 'SimpleX group';
-
-  @override
-  String get p2pGarageOnboardingHelpOutro =>
-      'or visit the robot school for documentation.';
-
-  @override
-  String get p2pGarageLearnRoboSats => 'Learn RoboSats';
-
-  @override
-  String get p2pGarageSeeProfile => 'See profile';
-
-  @override
   String get p2pGarageKeyLabel => 'Garage Key';
-
-  @override
-  String get p2pGarageProfileDeleteAllTooltip =>
-      'Delete Garage Key and all robots';
-
-  @override
-  String get p2pGarageProfileDeleteAll => 'Delete All';
 
   @override
   String get p2pRecoveryTitle => 'Robot recovery';
@@ -823,32 +739,6 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String get p2pRecoveryRecover => 'Recover';
-
-  @override
-  String get p2pDeleteKeyTitle => 'Delete Garage Key?';
-
-  @override
-  String get p2pDeleteKeyQuestion =>
-      'Are you sure you want to permanently delete this Garage Key and ALL associated robots?';
-
-  @override
-  String get p2pDeleteCannotBeUndone => '⚠️ This action cannot be undone!';
-
-  @override
-  String get p2pDeleteBeforeDeleting => 'Before deleting, make sure you have:';
-
-  @override
-  String get p2pDeleteKeyStoredKey => 'Stored your Garage Key safely';
-
-  @override
-  String get p2pDeleteKeyNoActiveOrders =>
-      'No active or pending orders in ANY robot';
-
-  @override
-  String get p2pDeleteExportedData => 'Exported any important data';
-
-  @override
-  String get p2pDeleteKeyConfirm => 'Delete Garage Key';
 
   @override
   String get p2pGarageKeyMustStartWith => 'Must start with \"robo1\"';
@@ -903,10 +793,6 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String get p2pCommonClear => 'Clear';
-
-  @override
-  String get p2pGarageKeyHistoryNotRecorded =>
-      'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.';
 
   @override
   String get p2pRobotCoordinatorTitle => 'Coordinator that knows your robot:';
@@ -1055,7 +941,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String get p2pRobotHistoryBody =>
-      'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.';
+      'This Garage Key was imported, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, go back to the internal Garage Keys.';
 
   @override
   String get p2pRobotHistoryConfirm => 'I understand';
@@ -1185,10 +1071,6 @@ class P2pLocalizationsFa extends P2pLocalizations {
   @override
   String get p2pTakeNotRecorded =>
       'Bull Market could not write its records on this device. The order was not taken.';
-
-  @override
-  String get p2pTakeKeyNotForTrades =>
-      'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.';
 
   @override
   String p2pTakeRobotNotNew(String coordinator) {
@@ -3528,10 +3410,6 @@ class P2pLocalizationsFa extends P2pLocalizations {
   }
 
   @override
-  String get p2pMakeKeyNotForTrades =>
-      'The robots of a pasted Garage Key cannot create orders here. Generate a new Garage Key in the Garage.';
-
-  @override
   String get p2pMakeTooBig => 'Your order is too big.';
 
   @override
@@ -4389,71 +4267,128 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String p2pGarageKeyNumber(int index) {
-    return 'Garage Key #$index';
+    return 'Internal Garage Key #$index';
   }
-
-  @override
-  String get p2pGarageKeyHelperWords =>
-      'Keep this key safe and do not share it. The 12 words of your Bull Wallet back up your Garage Keys.';
 
   @override
   String get p2pGarageKeyMasked => 'robo1••••••••••••';
 
   @override
-  String get p2pGaragePreviousKey => 'Previous key';
+  String get p2pGaragePreviousKey => 'Previous internal Garage Key';
 
   @override
-  String get p2pGarageNextKey => 'Next key';
+  String get p2pGarageNextKey => 'Next internal Garage Key';
 
   @override
-  String get p2pGarageNewKey => 'New key';
+  String get p2pGarageNewKey => 'New internal Garage Key';
 
   @override
   String get p2pGarageNewKeyTitle => 'New Garage Key';
 
   @override
   String p2pGarageNewKeyText(int index) {
-    return 'Your trades will use key #$index.';
+    return 'Your trades will use internal Garage Key #$index. Earlier Garage Keys stay within reach in the Garage.';
   }
 
   @override
-  String get p2pGarageNewKeyKept =>
-      'Earlier keys stay within reach in the Garage.';
-
-  @override
   String p2pGarageNewKeyConfirm(int index) {
-    return 'Create key #$index';
+    return 'Create internal Garage Key #$index';
   }
 
   @override
   String get p2pGarageKeyNoWallet =>
-      'No default Bitcoin wallet: the Garage Key comes from its 12 words.';
+      'No default Bitcoin wallet: the internal Garage Keys come from its 12 words.';
 
   @override
   String get p2pGarageKeyPassphrase =>
-      'This wallet has a passphrase: its 12 words alone cannot remake the Garage Key.';
+      'This wallet has a passphrase: its 12 words alone do not give the internal Garage Keys.';
 
   @override
   String get p2pGarageKeyNoWords =>
-      'This wallet has no words to remake the Garage Key from.';
+      'This wallet has no words: the internal Garage Keys come from them.';
 
   @override
   String get p2pGarageKeyMismatch =>
-      'The 12 words of this wallet do not give back the Garage Key recorded on this device. Nothing was signed.';
+      'The 12 words of this wallet do not give back the internal Garage Key recorded on this device. Nothing was signed.';
 
   @override
-  String get p2pGarageKeyLastIndex => 'There is no Garage Key after this one.';
+  String get p2pGarageKeyLastIndex =>
+      'There is no internal Garage Key after this one.';
 
   @override
-  String p2pGarageHistoryKeyRobot(int key, String robot) {
-    return 'Key #$key · $robot';
+  String get p2pGarageExternalKey => 'External Garage Key';
+
+  @override
+  String get p2pGarageKeyBackedUp =>
+      'Backed up by the 12 words of your Bull Wallet.';
+
+  @override
+  String get p2pGarageKeyNotBackedUp =>
+      'Not backed up by your Bull Wallet: keep a copy of it.';
+
+  @override
+  String get p2pGarageKeyExplain => 'Explanation';
+
+  @override
+  String get p2pGarageInternalKeysTitle => 'Internal Garage Keys';
+
+  @override
+  String get p2pGarageInternalKeysInfo =>
+      'Your internal Garage Keys are backed up by the 12 words of your Bull Wallet: reinstall the app with these 12 words and you find them again. Keep them safe and do not share them: whoever holds a Garage Key controls its robots.';
+
+  @override
+  String get p2pGarageExternalKeyInfo =>
+      'This Garage Key is not backed up by the 12 words of your Bull Wallet. If you lose this phone or delete the app, you will only find it again with your own copy: back it up separately. Keep it safe and do not share it.';
+
+  @override
+  String get p2pGarageSwitchToExternal => 'Switch to the external Garage Key';
+
+  @override
+  String get p2pGarageBackToInternal => 'Back to internal Garage Keys';
+
+  @override
+  String get p2pGarageImportExternal => 'Import an external Garage Key';
+
+  @override
+  String get p2pGarageDeleteExternal => 'Delete the external Garage Key';
+
+  @override
+  String get p2pGarageDeleteExternalTitle => 'Delete the external Garage Key?';
+
+  @override
+  String get p2pGarageDeleteExternalText =>
+      'It is not backed up by your Bull Wallet. Without a copy, its robots will be lost to this app.';
+
+  @override
+  String p2pGarageDeleteExternalTrades(int count, String orders) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Trades $orders use this Garage Key: without it, you will not be able to continue them.',
+      one:
+          'Trade $orders uses this Garage Key: without it, you will not be able to continue it.',
+    );
+    return '$_temp0';
   }
 
   @override
-  String get p2pGarageExternalKey => 'External Key';
+  String get p2pGarageDeleteConfirm => 'Delete';
 
   @override
-  String p2pGarageHistoryExternalRobot(String robot) {
-    return 'External key · $robot';
+  String get p2pGarageNoticeTitle => 'Your Garage Keys';
+
+  @override
+  String get p2pGarageNoticeText =>
+      'Your current Garage Key is now called « External Garage Key ». The internal Garage Keys, backed up by your Bull Wallet, are next to it: tap « Back to internal Garage Keys ».';
+
+  @override
+  String p2pGarageTradeInProgress(String orderId) {
+    return 'Trade in progress #$orderId';
+  }
+
+  @override
+  String p2pGarageKeyIsInternal(int index) {
+    return 'This is already your internal Garage Key #$index.';
   }
 }

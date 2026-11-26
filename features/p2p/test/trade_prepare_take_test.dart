@@ -682,11 +682,6 @@ void main() {
         (TradeHarness app) => app.deleteKey(),
         isA<GarageKeyMissingFailure>(),
       ),
-      (
-        'replaced by another, not drawn here',
-        (TradeHarness app) => app.replaceKey(),
-        isA<GarageKeyNotForTradesFailure>(),
-      ),
     ]) {
       test(
         '$label: a new preparation of the order does not use the robot kept for it (second review of #126, n1)',

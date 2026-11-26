@@ -120,6 +120,29 @@ final class _RecordingRepository implements GarageKeyRepository {
     calls.add('delete ${network.name}');
     return _answer(null);
   }
+
+  @override
+  Future<Result<void, P2pFailure>> selectInternal(
+    RobosatsNetwork network,
+  ) async {
+    calls.add('selectInternal ${network.name}');
+    return _answer(null);
+  }
+
+  @override
+  Future<Result<int?, P2pFailure>> internalIndexOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint fingerprint,
+  ) async {
+    calls.add('internalIndexOf ${network.name}');
+    return _answer(null);
+  }
+
+  @override
+  Future<Result<void, P2pFailure>> externalNoticeShown() async {
+    calls.add('externalNoticeShown');
+    return _answer(null);
+  }
 }
 
 const _keyring = GarageKeyring(highest: 0, selected: SelectedWordsKey(0));

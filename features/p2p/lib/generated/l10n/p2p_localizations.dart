@@ -1271,113 +1271,17 @@ abstract class P2pLocalizations {
   /// **'Continue'**
   String get p2pCommonContinue;
 
-  /// Subtitle of the Garage welcome screen, where RoboSats shows its logo.
-  ///
-  /// In en, this message translates to:
-  /// **'A Simple and Private LN P2P Exchange'**
-  String get p2pGarageWelcomeTagline;
-
-  /// Text of the box above « Start » on the Garage welcome screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Create a new robot and learn to use RoboSats'**
-  String get p2pGarageWelcomeCreateRobot;
-
-  /// Button of the Garage welcome screen: opens the three-step Garage Key wizard.
-  ///
-  /// In en, this message translates to:
-  /// **'Start'**
-  String get p2pGarageWelcomeStart;
-
-  /// Text above « Recovery » on the Garage welcome screen. RoboSats keeps « token » in Garage Key mode; the French text says « clé de garage » (decision of 2026-11-10).
-  ///
-  /// In en, this message translates to:
-  /// **'Recover an existing robot using your token'**
-  String get p2pGarageWelcomeRecoverHint;
-
-  /// Text button of the Garage welcome screen: opens « Robot recovery », where the user pastes a Garage Key.
-  ///
-  /// In en, this message translates to:
-  /// **'Recovery'**
-  String get p2pGarageWelcomeRecovery;
-
-  /// Text button of the Garage welcome screen: shows the offers (RoboSats opens its guided search, which Troc does not have).
-  ///
-  /// In en, this message translates to:
-  /// **'Search for Orders'**
-  String get p2pGarageWelcomeSearchForOrders;
-
-  /// Text button of the Garage welcome screen, disabled: creating an order comes in a later phase.
-  ///
-  /// In en, this message translates to:
-  /// **'Fast Generate Order'**
-  String get p2pGarageWelcomeFastGenerateOrder;
-
-  /// Title of the first step of the Garage Key wizard.
-  ///
-  /// In en, this message translates to:
-  /// **'1. Generate your Garage Key'**
-  String get p2pGarageOnboardingStep1Title;
-
-  /// Text of the first step of the Garage Key wizard.
-  ///
-  /// In en, this message translates to:
-  /// **'Your Garage Key is a master key that derives unlimited robot identities. Generate it once and use it forever.'**
-  String get p2pGarageOnboardingStep1Text;
-
-  /// Bold start of the alert shown with a new Garage Key: the key is never part of the wallet backup.
-  ///
-  /// In en, this message translates to:
-  /// **'Store it somewhere safe!'**
-  String get p2pGarageOnboardingStoreItTitle;
-
-  /// Rest of the alert shown with a new Garage Key.
-  ///
-  /// In en, this message translates to:
-  /// **'This key is the master key to all your robots. Keep it secret and backed up securely.'**
-  String get p2pGarageOnboardingStoreItText;
-
-  /// Helper text under the Garage Key, in the wizard and on the profile.
-  ///
-  /// In en, this message translates to:
-  /// **'Store your Garage Key safely'**
-  String get p2pGarageKeyHelper;
-
   /// Error under the Garage Key field when what was typed is not a Garage Key and no more precise reason applies.
   ///
   /// In en, this message translates to:
   /// **'Invalid garage key'**
   String get p2pGarageKeyInvalid;
 
-  /// Text of the first step of the wizard, about pasting a Garage Key the user already has.
-  ///
-  /// In en, this message translates to:
-  /// **'Or paste an existing Garage Key to recover your robots.'**
-  String get p2pGarageOnboardingPasteExisting;
-
-  /// Small button with a die: replaces the Garage Key, after the delete confirmation when one is stored.
-  ///
-  /// In en, this message translates to:
-  /// **'Generate new'**
-  String get p2pGarageOnboardingGenerateNew;
-
-  /// Title of the second step of the Garage Key wizard.
-  ///
-  /// In en, this message translates to:
-  /// **'2. Meet your robot identity'**
-  String get p2pGarageOnboardingStep2Title;
-
   /// Text of the second step of the wizard, above the robot's avatar, and its label on the profile.
   ///
   /// In en, this message translates to:
   /// **'This is your trading avatar'**
   String get p2pGarageTradingAvatar;
-
-  /// Followed by the robot's nickname, in bold between two bolts.
-  ///
-  /// In en, this message translates to:
-  /// **'Hi! My name is'**
-  String get p2pGarageHiMyNameIs;
 
   /// Tooltip and screen-reader label of the left arrow of the « Robot #N » navigator.
   ///
@@ -1397,65 +1301,11 @@ abstract class P2pLocalizations {
   /// **'Robot'**
   String get p2pGarageRobotLabel;
 
-  /// Title of the third step of the Garage Key wizard.
-  ///
-  /// In en, this message translates to:
-  /// **'3. Browse or create an order'**
-  String get p2pGarageOnboardingStep3Title;
-
-  /// Text of the third step of the Garage Key wizard.
-  ///
-  /// In en, this message translates to:
-  /// **'RoboSats is a peer-to-peer marketplace. You can browse the public offers or create a new one.'**
-  String get p2pGarageOnboardingStep3Text;
-
-  /// Start of the help sentence of the third step, followed by the link p2pGarageOnboardingHelpLink.
-  ///
-  /// In en, this message translates to:
-  /// **'If you need help on your RoboSats journey join our public support'**
-  String get p2pGarageOnboardingHelpIntro;
-
-  /// Name of the public RoboSats support group: shown with its link for copy, never opened.
-  ///
-  /// In en, this message translates to:
-  /// **'SimpleX group'**
-  String get p2pGarageOnboardingHelpLink;
-
-  /// End of the help sentence of the third step, after « , ».
-  ///
-  /// In en, this message translates to:
-  /// **'or visit the robot school for documentation.'**
-  String get p2pGarageOnboardingHelpOutro;
-
-  /// Button of the third step: shows the address of the RoboSats documentation for copy, never opened.
-  ///
-  /// In en, this message translates to:
-  /// **'Learn RoboSats'**
-  String get p2pGarageLearnRoboSats;
-
-  /// Text button of the third step: opens the Garage profile.
-  ///
-  /// In en, this message translates to:
-  /// **'See profile'**
-  String get p2pGarageSeeProfile;
-
   /// Caption of the box that holds the Garage Key on the profile.
   ///
   /// In en, this message translates to:
   /// **'Garage Key'**
   String get p2pGarageKeyLabel;
-
-  /// Tooltip of the red « Delete All » button of the profile.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete Garage Key and all robots'**
-  String get p2pGarageProfileDeleteAllTooltip;
-
-  /// Red button of the profile: opens « Delete Garage Key? ».
-  ///
-  /// In en, this message translates to:
-  /// **'Delete All'**
-  String get p2pGarageProfileDeleteAll;
 
   /// Title of the dialog where the user pastes a Garage Key to recover their robots.
   ///
@@ -1492,54 +1342,6 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Recover'**
   String get p2pRecoveryRecover;
-
-  /// Title of the confirmation before deleting the Garage Key of this network.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete Garage Key?'**
-  String get p2pDeleteKeyTitle;
-
-  /// Question of the delete confirmation; the capitals are RoboSats's own.
-  ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to permanently delete this Garage Key and ALL associated robots?'**
-  String get p2pDeleteKeyQuestion;
-
-  /// Warning of the delete confirmation, with RoboSats's own emoji.
-  ///
-  /// In en, this message translates to:
-  /// **'⚠️ This action cannot be undone!'**
-  String get p2pDeleteCannotBeUndone;
-
-  /// Followed by three bullet points.
-  ///
-  /// In en, this message translates to:
-  /// **'Before deleting, make sure you have:'**
-  String get p2pDeleteBeforeDeleting;
-
-  /// First bullet point: the key is not part of the wallet backup.
-  ///
-  /// In en, this message translates to:
-  /// **'Stored your Garage Key safely'**
-  String get p2pDeleteKeyStoredKey;
-
-  /// Second bullet point.
-  ///
-  /// In en, this message translates to:
-  /// **'No active or pending orders in ANY robot'**
-  String get p2pDeleteKeyNoActiveOrders;
-
-  /// Third bullet point.
-  ///
-  /// In en, this message translates to:
-  /// **'Exported any important data'**
-  String get p2pDeleteExportedData;
-
-  /// Red confirmation button of the delete confirmation.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete Garage Key'**
-  String get p2pDeleteKeyConfirm;
 
   /// Error under the Garage Key field: the text of RoboSats's validator, which it never translates. Not in the phase-1 catalogue.
   ///
@@ -1630,12 +1432,6 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Clear'**
   String get p2pCommonClear;
-
-  /// Warning on the robot step of the wizard and on the profile, right after « Generate Garage Key » or « Generate new » when the feature's database could not record that the key was drawn on this device: the key is stored, but its history is unknown, as for a key from elsewhere, so « Select Host » asks « Robots from elsewhere » (p2pRobotHistoryTitle) before its robots can reach a coordinator, and its delete asks the PIN. Not in the phase-1 catalogue (design note of #29, § 2.4).
-  ///
-  /// In en, this message translates to:
-  /// **'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.'**
-  String get p2pGarageKeyHistoryNotRecorded;
 
   /// Title of the panel under the robot navigator of the Garage profile. The RoboSats profile dialog says « Coordinators that know your robot: » (`components/Dialogs/Profile.tsx`); in Troc a robot lives on one coordinator only, hence the singular. French from the RoboSats French text, in the singular.
   ///
@@ -1838,7 +1634,7 @@ abstract class P2pLocalizations {
   /// Body of the dialog « Robots from elsewhere ». Not in the RoboSats texts (design note of #29, § 2.4). Factual: a key from the user's own backup is pasted in too, and nothing here says that a robot must be sent to a coordinator before trading.
   ///
   /// In en, this message translates to:
-  /// **'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.'**
+  /// **'This Garage Key was imported, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, go back to the internal Garage Keys.'**
   String get p2pRobotHistoryBody;
 
   /// Button of the dialog « Robots from elsewhere » that records the acknowledgement and goes on to the « Select Host » sheet; « Cancel » records nothing. Bull's own label (`settingsDevModeUnderstandButton` of the wallet), as the design note of #29 asks (§ 2.6).
@@ -2032,12 +1828,6 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Bull Market could not write its records on this device. The order was not taken.'**
   String get p2pTakeNotRecorded;
-
-  /// Not in the RoboSats texts: the project's own: a key pasted or acknowledged gives no robot for a new trade (#79).
-  ///
-  /// In en, this message translates to:
-  /// **'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.'**
-  String get p2pTakeKeyNotForTrades;
 
   /// Not in the RoboSats texts: the project's own: the fresh robot of the take was already known to the coordinator; the next take uses another robot.
   ///
@@ -5549,12 +5339,6 @@ abstract class P2pLocalizations {
   /// **'The robot chosen for this order already existed on {coordinator}. The order was not created: try again.'**
   String p2pMakeRobotNotNew(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own: a key pasted or acknowledged gives no robot for a new trade (#79).
-  ///
-  /// In en, this message translates to:
-  /// **'The robots of a pasted Garage Key cannot create orders here. Generate a new Garage Key in the Garage.'**
-  String get p2pMakeKeyNotForTrades;
-
   /// The start of the coordinator's message of error 1004 (`api/errors.py:7`, commit ff1998c), which the official client shows; the sizes it gives are not kept. The French is the project's.
   ///
   /// In en, this message translates to:
@@ -6840,17 +6624,11 @@ abstract class P2pLocalizations {
   /// **'End unknown'**
   String get p2pHistoryEndUnknown;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Title of the Garage Key card for a key of the words, between the arrows of the keys. {index} is the key's index, from 0.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The title of the card on an internal Garage Key (a key of the default wallet's words), between its arrows, and the key's line in the history and in a trade in progress of another key. {index} is its number, from 0.
   ///
   /// In en, this message translates to:
-  /// **'Garage Key #{index}'**
+  /// **'Internal Garage Key #{index}'**
   String p2pGarageKeyNumber(int index);
-
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the owner's answers of 2026-11-26 on the mock-up, the English composed on the model of the French; « Bull Wallet » and « 12 words » as the app names the wallet and its backup. Helper text under a key of the words, as plain as the official client's « Store your Garage Key safely » (the owner's decision of 2026-11-26).
-  ///
-  /// In en, this message translates to:
-  /// **'Keep this key safe and do not share it. The 12 words of your Bull Wallet back up your Garage Keys.'**
-  String get p2pGarageKeyHelperWords;
 
   /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The masked text of the Garage Key field before the re-authentication: the prefix of every key and dots, never any part of the key.
   ///
@@ -6858,95 +6636,185 @@ abstract class P2pLocalizations {
   /// **'robo1••••••••••••'**
   String get p2pGarageKeyMasked;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Tooltip of « ‹ » in the Garage Key card.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The tooltip and screen reader label of « ‹ » in the title of the card.
   ///
   /// In en, this message translates to:
-  /// **'Previous key'**
+  /// **'Previous internal Garage Key'**
   String get p2pGaragePreviousKey;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Tooltip of « › » in the Garage Key card; disabled on the highest key, where it creates nothing.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The tooltip and screen reader label of « › » in the title of the card; disabled on the highest internal Garage Key, it creates nothing.
   ///
   /// In en, this message translates to:
-  /// **'Next key'**
+  /// **'Next internal Garage Key'**
   String get p2pGarageNextKey;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Button of the Garage Key card in place of « Delete All »: activates the next key of the words, after a confirmation.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of the card on an internal Garage Key, in place of the official client's « Delete All »: it asks « New Garage Key » (p2pGarageNewKeyTitle).
   ///
   /// In en, this message translates to:
-  /// **'New key'**
+  /// **'New internal Garage Key'**
   String get p2pGarageNewKey;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (the owner's answers of 2026-11-26), the English composed on the model of the French. Title of the confirmation of « New key ».
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The title of the confirmation of « New internal Garage Key ».
   ///
   /// In en, this message translates to:
   /// **'New Garage Key'**
   String get p2pGarageNewKeyTitle;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (the owner's answers of 2026-11-26), the English composed on the model of the French. Text of the confirmation of « New key ». {index} is the index of the key it creates.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The text of « New Garage Key ». {index} is the number of the internal Garage Key it creates, the one after the highest.
   ///
   /// In en, this message translates to:
-  /// **'Your trades will use key #{index}.'**
+  /// **'Your trades will use internal Garage Key #{index}. Earlier Garage Keys stay within reach in the Garage.'**
   String p2pGarageNewKeyText(int index);
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (the owner's answers of 2026-11-26), the English composed on the model of the French. Second line of the confirmation of « New key »: nothing is erased.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of « New Garage Key » that creates the key. {index} is its number.
   ///
   /// In en, this message translates to:
-  /// **'Earlier keys stay within reach in the Garage.'**
-  String get p2pGarageNewKeyKept;
-
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Button of the confirmation of « New key ». {index} is the index of the key it creates.
-  ///
-  /// In en, this message translates to:
-  /// **'Create key #{index}'**
+  /// **'Create internal Garage Key #{index}'**
   String p2pGarageNewKeyConfirm(int index);
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Why no Garage Key can be shown or used: no default Bitcoin wallet on this network. Never a key drawn in its place.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). Why the internal Garage Keys cannot be shown: there is no default Bitcoin wallet.
   ///
   /// In en, this message translates to:
-  /// **'No default Bitcoin wallet: the Garage Key comes from its 12 words.'**
+  /// **'No default Bitcoin wallet: the internal Garage Keys come from its 12 words.'**
   String get p2pGarageKeyNoWallet;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Why no Garage Key can be shown or used: the default wallet has a BIP39 passphrase.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). Why the internal Garage Keys cannot be shown: the default wallet has a passphrase.
   ///
   /// In en, this message translates to:
-  /// **'This wallet has a passphrase: its 12 words alone cannot remake the Garage Key.'**
+  /// **'This wallet has a passphrase: its 12 words alone do not give the internal Garage Keys.'**
   String get p2pGarageKeyPassphrase;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Why no Garage Key can be shown or used: the default wallet's secret is a seed without words.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). Why the internal Garage Keys cannot be shown: the default wallet's secret has no words.
   ///
   /// In en, this message translates to:
-  /// **'This wallet has no words to remake the Garage Key from.'**
+  /// **'This wallet has no words: the internal Garage Keys come from them.'**
   String get p2pGarageKeyNoWords;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Why a key of the words cannot be used: the key the words give again is not the one this device recorded (other words restored, or another default wallet). Its robots are never mixed with the other wallet's.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). Why an internal Garage Key is refused: the words give another key than the one recorded (another default wallet).
   ///
   /// In en, this message translates to:
-  /// **'The 12 words of this wallet do not give back the Garage Key recorded on this device. Nothing was signed.'**
+  /// **'The 12 words of this wallet do not give back the internal Garage Key recorded on this device. Nothing was signed.'**
   String get p2pGarageKeyMismatch;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Why « New key » did nothing: the highest index a key can have is reached.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). Why « New internal Garage Key » did nothing: the highest possible index is reached.
   ///
   /// In en, this message translates to:
-  /// **'There is no Garage Key after this one.'**
+  /// **'There is no internal Garage Key after this one.'**
   String get p2pGarageKeyLastIndex;
 
-  /// Not in the RoboSats texts: the project's own (#81, the owner's answers of 2026-11-26 on the mock-up). The key and the robot of a line of the history of finished orders, which covers every key of the network: {key} is the key's number, {robot} the robot as the line said it before (« Robot #5 » or « Robot #5, its nickname »).
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The title of the card on the external Garage Key (the key the vault kept from before #81, or one imported), without arrows; the title of its explanation; its line in the history and in a trade in progress of another key.
   ///
   /// In en, this message translates to:
-  /// **'Key #{key} · {robot}'**
-  String p2pGarageHistoryKeyRobot(int key, String robot);
-
-  /// Not in the RoboSats texts: the project's own (#81, the owner's decision of 2026-11-26: the Garage Key the vault kept before #81, or one pasted in « Robot recovery », becomes the external key; default words until the mock-up of the external key, the English composed on the model of the French). Title of the Garage Key card for the external key, between the arrows of the keys, one position after the highest key of the words.
-  ///
-  /// In en, this message translates to:
-  /// **'External Key'**
+  /// **'External Garage Key'**
   String get p2pGarageExternalKey;
 
-  /// Not in the RoboSats texts: the project's own (#81, the owner's decision of 2026-11-26: the Garage Key the vault kept before #81, or one pasted in « Robot recovery », becomes the external key; default words until the mock-up of the external key, the English composed on the model of the French). The key and the robot of a line of the history of finished orders, or of a trade in progress, of the external key: {robot} is the robot as the line said it before (« Robot #5 » or « Robot #5, its nickname »).
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The line under the field of an internal Garage Key, before its ⓘ.
   ///
   /// In en, this message translates to:
-  /// **'External key · {robot}'**
-  String p2pGarageHistoryExternalRobot(String robot);
+  /// **'Backed up by the 12 words of your Bull Wallet.'**
+  String get p2pGarageKeyBackedUp;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The line under the field of the external Garage Key, in the warning colour, before its ⓘ.
+  ///
+  /// In en, this message translates to:
+  /// **'Not backed up by your Bull Wallet: keep a copy of it.'**
+  String get p2pGarageKeyNotBackedUp;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The tooltip and screen reader label of the ⓘ of the card, which opens the explanation of the key shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Explanation'**
+  String get p2pGarageKeyExplain;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The title of the explanation the ⓘ of an internal Garage Key opens.
+  ///
+  /// In en, this message translates to:
+  /// **'Internal Garage Keys'**
+  String get p2pGarageInternalKeysTitle;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The explanation of the internal Garage Keys, opened by the ⓘ of the card, closed by « Got it » (p2pCommonAcknowledged).
+  ///
+  /// In en, this message translates to:
+  /// **'Your internal Garage Keys are backed up by the 12 words of your Bull Wallet: reinstall the app with these 12 words and you find them again. Keep them safe and do not share them: whoever holds a Garage Key controls its robots.'**
+  String get p2pGarageInternalKeysInfo;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The explanation of the external Garage Key, opened by the ⓘ of the card, closed by « Got it » (p2pCommonAcknowledged).
+  ///
+  /// In en, this message translates to:
+  /// **'This Garage Key is not backed up by the 12 words of your Bull Wallet. If you lose this phone or delete the app, you will only find it again with your own copy: back it up separately. Keep it safe and do not share it.'**
+  String get p2pGarageExternalKeyInfo;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of the card on an internal Garage Key when an external Garage Key exists, and of the internal side when the words cannot give a key: it shows the external Garage Key.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to the external Garage Key'**
+  String get p2pGarageSwitchToExternal;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of the card on the external Garage Key: it shows the last internal Garage Key shown, else the highest.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to internal Garage Keys'**
+  String get p2pGarageBackToInternal;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The discreet link of the card on an internal Garage Key while there is no external Garage Key: it opens today's « Robot recovery ».
+  ///
+  /// In en, this message translates to:
+  /// **'Import an external Garage Key'**
+  String get p2pGarageImportExternal;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of the card on the external Garage Key, in the error colour: it asks « Delete the external Garage Key? » (p2pGarageDeleteExternalTitle).
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the external Garage Key'**
+  String get p2pGarageDeleteExternal;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The title of the confirmation of « Delete the external Garage Key ».
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the external Garage Key?'**
+  String get p2pGarageDeleteExternalTitle;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The text of « Delete the external Garage Key? ».
+  ///
+  /// In en, this message translates to:
+  /// **'It is not backed up by your Bull Wallet. Without a copy, its robots will be lost to this app.'**
+  String get p2pGarageDeleteExternalText;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The line in the warning colour of « Delete the external Garage Key? » when trades of that key are in progress; « Delete » stays enabled. {count} is how many, {orders} their numbers, each with its « # », joined with commas (« #48120, #48121 »).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Trade {orders} uses this Garage Key: without it, you will not be able to continue it.} other{Trades {orders} use this Garage Key: without it, you will not be able to continue them.}}'**
+  String p2pGarageDeleteExternalTrades(int count, String orders);
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of « Delete the external Garage Key? » that deletes it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get p2pGarageDeleteConfirm;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The title of the notice shown once, at the first opening of the Garage after the update when the vault kept a Garage Key.
+  ///
+  /// In en, this message translates to:
+  /// **'Your Garage Keys'**
+  String get p2pGarageNoticeTitle;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The text of « Your Garage Keys », closed by « Got it » (p2pCommonAcknowledged); the names in it are p2pGarageExternalKey and p2pGarageBackToInternal.
+  ///
+  /// In en, this message translates to:
+  /// **'Your current Garage Key is now called « External Garage Key ». The internal Garage Keys, backed up by your Bull Wallet, are next to it: tap « Back to internal Garage Keys ».'**
+  String get p2pGarageNoticeText;
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The line of the Garage, under the robot navigator, for a trade in progress of another Garage Key than the one shown; under it, in grey, its key, robot and coordinator. {orderId} is the order's number.
+  ///
+  /// In en, this message translates to:
+  /// **'Trade in progress #{orderId}'**
+  String p2pGarageTradeInProgress(String orderId);
+
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). In « Robot recovery », when the key pasted is one of the internal Garage Keys activated on this device: it is not imported. {index} is its number.
+  ///
+  /// In en, this message translates to:
+  /// **'This is already your internal Garage Key #{index}.'**
+  String p2pGarageKeyIsInternal(int index);
 }
 
 class _P2pLocalizationsDelegate

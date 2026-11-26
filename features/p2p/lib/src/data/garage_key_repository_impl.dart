@@ -39,12 +39,16 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
   Future<Result<GarageKeyring, P2pFailure>> keyring(
     RobosatsNetwork network,
   ) async {
-    final List<ActivatedGarageKey> keys;
+    List<ActivatedGarageKey>? keys;
+    P2pFailure? internalFailure;
     switch (await _activated(network)) {
       case Ok(:final value):
         keys = value;
-      case Err(:final failure):
+      case Err(failure: final P2pStorageFailure failure):
         return Err(failure);
+      // The words refuse to give key 0 (no default wallet, a passphrase, a secret without words, a keystore that cannot be read): only the internal Garage Keys are out of reach, never the external one (functional review of #292, C-passphrase).
+      case Err(:final failure):
+        internalFailure = failure;
     }
     GarageKeyFingerprint? external;
     P2pFailure? externalFailure;
@@ -63,36 +67,101 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
         externalFailure = failure;
     }
     final hasExternal = external != null || externalFailure != null;
-    final highest = keys.last.index;
+    // Nothing to show: the Garage says why the words refuse, as before.
+    if (internalFailure != null && !hasExternal) return Err(internalFailure);
+    final highest = keys?.last.index;
     final GarageKeySelection selected;
     switch (await _book.selected(network)) {
       case Err(:final failure):
         return Err(failure);
       case Ok(value: SelectedExternalKey()) when hasExternal:
         selected = const SelectedExternalKey();
-      case Ok(value: SelectedWordsKey(:final index)) when index <= highest:
+      case Ok(value: SelectedWordsKey(:final index))
+          when highest != null && index <= highest:
         selected = SelectedWordsKey(index);
       case Ok(:final value):
-        // The first opening (nothing recorded): the user stays on the key the vault kept, the external key, when there is one, otherwise key 0. An external key selected that the vault no longer holds: the highest key of the words.
-        selected = value == null
-            ? (hasExternal
-                  ? const SelectedExternalKey()
-                  : const SelectedWordsKey(0))
-            : SelectedWordsKey(highest);
+        if (value == null && hasExternal) {
+          // The first opening with a key in the vault: the user stays on it, named the external Garage Key from then on; after the update, « Your Garage Keys », made due by the step to schema 10, says so once (decided on 2026-11-26, #81).
+          selected = const SelectedExternalKey();
+        } else if (highest != null) {
+          // A first opening with no key in the vault: « Your Garage Keys » has nothing to say, and never will, even after an import.
+          if (value == null) {
+            if (await _book.externalNoticeShown() case Err(:final failure)) {
+              return Err(failure);
+            }
+          }
+          // The first opening without a key in the vault: key 0; an external Garage Key selected that the vault no longer holds: the highest internal one.
+          selected = SelectedWordsKey(value == null ? 0 : highest);
+        } else {
+          selected = const SelectedExternalKey();
+        }
         if (await _book.select(network, selected) case Err(:final failure)) {
           return Err(failure);
         }
     }
+    final int? lastInternal;
+    switch (await _book.lastInternal(network)) {
+      case Ok(:final value):
+        lastInternal = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
+    final bool noticeDue;
+    switch (await _book.externalNoticeDue()) {
+      case Ok(:final value):
+        noticeDue = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
     return Ok(
       GarageKeyring(
         highest: highest,
+        internalFailure: internalFailure,
         selected: selected,
-        fingerprints: [for (final key in keys) key.fingerprint],
+        lastInternal: lastInternal,
+        externalNoticeDue: noticeDue,
+        fingerprints: [
+          for (final key in keys ?? const <ActivatedGarageKey>[])
+            key.fingerprint,
+        ],
         external: external,
         externalFailure: externalFailure,
       ),
     );
   }
+
+  @override
+  Future<Result<void, P2pFailure>> selectInternal(
+    RobosatsNetwork network,
+  ) async {
+    switch (await keyring(network)) {
+      case Err(:final failure):
+        return Err(failure);
+      case Ok(:final value):
+        return switch (value.internalToReturnTo) {
+          final index? => await select(network, SelectedWordsKey(index)),
+          null => Err(value.internalFailure ?? const GarageKeyMissingFailure()),
+        };
+    }
+  }
+
+  @override
+  Future<Result<int?, P2pFailure>> internalIndexOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint fingerprint,
+  ) async => switch (await _book.activatedKeys(network)) {
+    Ok(:final value) => Ok(
+      value
+          .where((key) => key.fingerprint == fingerprint)
+          .map((key) => key.index)
+          .firstOrNull,
+    ),
+    Err(:final failure) => Err(failure),
+  };
+
+  @override
+  Future<Result<void, P2pFailure>> externalNoticeShown() =>
+      _book.externalNoticeShown();
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> read(
@@ -298,11 +367,16 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
       case Err():
         return const Err(GarageKeyNotDeletedFailure());
     }
-    // The external key gone, the highest key of the words is selected when the external key was.
+    // The external Garage Key gone, the last internal one selected is selected again when the external one was, else the highest (decided on 2026-11-26, #81); when the words give none, the Garage says why at its next reading.
     if (await _book.selected(network) case Ok(value: SelectedExternalKey())) {
       if (await _activated(network) case Ok(value: [..., final highest])) {
-        if (await _book.select(network, SelectedWordsKey(highest.index))
-            case Err(:final failure)) {
+        final index = switch (await _book.lastInternal(network)) {
+          Ok(value: final last?) when last <= highest.index => last,
+          _ => highest.index,
+        };
+        if (await _book.select(network, SelectedWordsKey(index)) case Err(
+          :final failure,
+        )) {
           return Err(failure);
         }
       }

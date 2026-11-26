@@ -6,7 +6,7 @@ import '../garage_key_fingerprint.dart';
 import '../garage_keyring.dart';
 import '../p2p_failure.dart';
 
-/// What `p2p.sqlite` keeps of the Garage Keys of the words (#81, schema 10): the indexes this device activated on each network with their fingerprints, and the key selected on each network. Never a key.
+/// What `p2p.sqlite` keeps of the Garage Keys of the words (#81, schema 10): the indexes this device activated on each network with their fingerprints, the key selected on each network with the last internal Garage Key selected there, and whether « Your Garage Keys » is due. Never a key.
 ///
 /// Only `GarageKeyRepositoryImpl` reads or writes it.
 abstract interface class GarageKeyBookRepository {
@@ -33,7 +33,19 @@ abstract interface class GarageKeyBookRepository {
     RobosatsNetwork network,
   );
 
-  /// Selects [selection] on [network]: a key of the words only when its index is activated there (`Ok(false)` otherwise, nothing written); the external key as it is, its presence in the vault being the caller's to check.
+  /// The last internal Garage Key selected on [network], kept while the external Garage Key is selected; `null` when none was selected yet.
+  @useResult
+  Future<Result<int?, P2pFailure>> lastInternal(RobosatsNetwork network);
+
+  /// Whether « Your Garage Keys » is due: made due by the step to schema 10 (an update) and not shown yet.
+  @useResult
+  Future<Result<bool, P2pFailure>> externalNoticeDue();
+
+  /// Records that « Your Garage Keys » was shown, or has nothing to say: it is never due again. Nothing is written when it is not due.
+  @useResult
+  Future<Result<void, P2pFailure>> externalNoticeShown();
+
+  /// Selects [selection] on [network]: an internal Garage Key only when its index is activated there (`Ok(false)` otherwise, nothing written), which is kept as the last internal one; the external Garage Key as it is, its presence in the vault being the caller's to check, the internal one selected until then kept as the last.
   @useResult
   Future<Result<bool, P2pFailure>> select(
     RobosatsNetwork network,

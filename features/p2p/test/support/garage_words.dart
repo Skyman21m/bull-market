@@ -4,6 +4,7 @@ import 'package:p2p/p2p.dart'
         P2pGarageKeyRefusal,
         P2pGarageKeyRefusalReason,
         RobosatsNetwork;
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/garage_keyring.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
@@ -170,6 +171,20 @@ mixin KeysFromRead implements GarageKeyRepository {
   @override
   Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
       throw UnimplementedError();
+
+  @override
+  Future<Result<void, P2pFailure>> selectInternal(RobosatsNetwork network) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<int?, P2pFailure>> internalIndexOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint fingerprint,
+  ) async => const Ok(null);
+
+  @override
+  Future<Result<void, P2pFailure>> externalNoticeShown() async =>
+      const Ok(null);
 }
 
 /// Key 0 of the words as the key the test stored in the vault's slot of the network, every other index refused, as `setUpP2pForTesting` does by default: for the tests written before #81 around a fixed key, never a derivation.

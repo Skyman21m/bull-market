@@ -22,11 +22,12 @@ import 'garage_state.dart';
 /// Asks the user the wallet's re-authentication, its PIN, and completes with `true` only when the user passed it: what the screen lends [GarageCubit] for a delete that needs it.
 typedef GarageReauthenticator = Future<bool> Function();
 
-/// The Garage of one network (#81, design note `docs/design/garage-key-from-the-words.md` § 6, § 8): the Garage Keys of the default wallet's words and the external key, the key and the robot shown, and the actions of the user on them.
+/// The Garage of one network (#81, design note `docs/design/garage-key-from-the-words.md` § 6, § 8): the internal Garage Keys, the keys of the default wallet's words, and the external Garage Key, the key and the robot shown, and the actions of the user on them.
 ///
-/// It reads the keys only when a method is called: [load] when the user opens the Garage, the others on an explicit action of the user. At the first opening, key 0 is there: nothing to generate or back up, since the words remake every key.
-/// It opens on the key selected on the network, the key of every new trade (the owner's decisions of 2026-11-26): at the first opening, the external key when the vault keeps one, otherwise key 0. [previousKey] and [nextKey] select the key before or after, among the keys of the words this device activated and then the external key, one position after the highest, and never create one; [newKey], after the user confirmed « New Garage Key », activates the key of the words after the highest, from whichever key is shown, and selects it. No move between keys asks the PIN: only showing a key's text does, on the screen.
-/// The external key is pasted in « Robot recovery » ([import]) when the vault keeps none, and removed ([delete]) after « Delete Garage Key? » and, when a robot of it may live on a coordinator, the wallet's PIN, as before #81; the keys of the words are never deleted.
+/// It reads the keys only when a method is called: [load] when the user opens the Garage, the others on an explicit action of the user. At the first opening, key 0 is there: nothing to generate or back up, since the words back up every internal Garage Key.
+/// It opens on the key selected on the network, the key of every new trade (decided on 2026-11-26, #81): at the first opening, the external Garage Key when the vault keeps one (with « Your Garage Keys », once), otherwise key 0. [previousKey] and [nextKey] select the internal Garage Key before or after, among those this device activated, and never create one nor reach the external Garage Key; [switchToExternal] selects the external Garage Key, [returnToInternal] the last internal one selected (else the highest); [newKey], after the user confirmed « New Garage Key », activates the internal Garage Key after the highest, from whichever internal one is shown, and selects it. No move between keys asks the PIN: only showing a key's text does, on the screen.
+/// The external Garage Key is imported in « Robot recovery » ([import]) when the vault keeps none, and deleted ([delete]) after « Delete the external Garage Key? », never refused, and, when a robot of it may live on a coordinator, the wallet's PIN, as before #81; the internal Garage Keys are never deleted.
+/// Words that cannot give the internal Garage Keys leave the external Garage Key shown and usable, and only the internal side says why (functional review of #292, C-passphrase).
 /// An action started while another is running is ignored, and a closed cubit reads nothing again.
 ///
 /// The robot shown follows the device's records of the key shown (#227, #251, [FollowTradesUsecase], design note `docs/design/phase-3-fresh-robot.md` § 4.1), as the reference's Garage does (`Garage.ensureReusableSlot`, `models/Garage.model.ts:233-298`, commit babf62e): it opens on [GarageNavigation.robotOf] over the records (the robot of the newest trade in progress whose bond was locked, made or taken here; else the robot of the « Last order #N » line under it, or the fresh robot when that order has served; else the first usable robot), and applies it again after each write of the records while it is shown, so that a trade that ends served moves it to the fresh robot. Nothing is sent when it moves.
@@ -66,6 +67,9 @@ class GarageCubit extends Cubit<GarageState> {
   /// Whether an action on the keys is running (a move between keys, « New key », a paste, a delete with its PIN): a second tap is ignored, and the state a delete decided on is the one it deletes.
   bool _activating = false;
 
+  /// Whether « Your Garage Keys » was shown by this cubit: never shown again by it, even when its record could not be written.
+  bool _noticeShown = false;
+
   GarageCubit(
     RobosatsNetwork network,
     this._read,
@@ -87,31 +91,63 @@ class GarageCubit extends Cubit<GarageState> {
     await _settle(failure: null);
   }
 
-  /// Selects and shows the key before the one shown: from the external key, the highest key of the words; from a key of the words, the one before, down to key 0. It is the key of new trades from then on, kept across restarts.
+  /// « ‹ »: selects and shows the internal Garage Key before the one shown, down to key 0. It is the key of new trades from then on, kept across restarts. Nothing on the external Garage Key, which the arrows never reach.
   Future<void> previousKey() async {
     if (_activating) return;
+    if (state case GarageWithKey(
+      key: NetworkGarageKey(:final index?),
+    ) when index > 0) {
+      await _select(SelectedWordsKey(index - 1));
+    }
+  }
+
+  /// « › »: selects and shows the internal Garage Key after the one shown, up to the highest activated; it never creates a key, and never reaches the external Garage Key.
+  Future<void> nextKey() async {
+    if (_activating) return;
+    if (state case GarageWithKey(
+      key: NetworkGarageKey(:final index?),
+      highest: final highest?,
+    ) when index < highest) {
+      await _select(SelectedWordsKey(index + 1));
+    }
+  }
+
+  /// « Switch to the external Garage Key » (decided on 2026-11-26, #81): selects and shows the external Garage Key, from an internal one, shown or out of reach; it is the key of new trades from then on.
+  Future<void> switchToExternal() async {
+    if (_activating) return;
     switch (state) {
-      case GarageWithKey(isExternal: true, :final highest):
-        await _select(SelectedWordsKey(highest));
-      case GarageWithKey(key: NetworkGarageKey(:final index?)) when index > 0:
-        await _select(SelectedWordsKey(index - 1));
-      // The external key that cannot be read, selected: back to the keys of the words.
-      case GarageUnknown(:final externalHighest?):
-        await _select(SelectedWordsKey(externalHighest));
+      case GarageWithKey(isExternal: false, hasExternal: true):
+      case GarageUnknown(canSwitchToExternal: true):
+        await _select(const SelectedExternalKey());
       case _:
     }
   }
 
-  /// Selects and shows the key after the one shown, up to the highest key of the words, then the external key when the vault keeps one; it never creates a key.
-  Future<void> nextKey() async {
-    final current = state;
-    if (_activating || current is! GarageWithKey) return;
-    final index = current.key.index;
-    if (index == null) return;
-    if (index < current.highest) {
-      await _select(SelectedWordsKey(index + 1));
-    } else if (current.hasExternal) {
-      await _select(const SelectedExternalKey());
+  /// « Back to internal Garage Keys » (decided on 2026-11-26, #81): selects and shows the last internal Garage Key selected, else the highest, from the external Garage Key, shown or not readable; and « Retry » where the internal side cannot be shown. When the words give no internal Garage Key, the internal side says why, with the way back to the external one.
+  Future<void> returnToInternal() async {
+    if (_activating) return;
+    switch (state) {
+      case GarageWithKey(isExternal: true):
+      case GarageUnknown(externalSelected: true):
+      case GarageUnknown(canSwitchToExternal: true):
+        break;
+      case _:
+        return;
+    }
+    _activating = true;
+    try {
+      _stopFollowing();
+      emit(GarageWorking(_network));
+      final selected = await _read.selectInternal(_network);
+      await _settle(
+        failure: null,
+        internalRefused: switch (selected) {
+          Ok() => null,
+          Err(:final failure) => failure,
+        },
+      );
+    } finally {
+      _activating = false;
     }
   }
 
@@ -132,13 +168,29 @@ class GarageCubit extends Cubit<GarageState> {
     }
   }
 
-  /// « New key », after the user confirmed « New Garage Key »: activates the key of the words after the highest one, from whichever key is shown, the external key included, selects it and shows it, with its robot 0 or the robot its records give.
+  /// « Your Garage Keys » shown: never again on this device. The state forgets it at once, so that a later state never shows it twice; a record that cannot be written is not retried in this visit.
+  Future<void> externalNoticeShown() async {
+    final current = state;
+    if (isClosed || current is! GarageWithKey || !current.externalNoticeDue) {
+      return;
+    }
+    emit(current.copyWith(externalNoticeDue: false, failure: current.failure));
+    _noticeShown = true;
+    // A record that cannot be written is not retried in this visit: this cubit forgets the notice all the same.
+    switch (await _read.externalNoticeShown()) {
+      case Ok() || Err():
+        return;
+    }
+  }
+
+  /// « New internal Garage Key », after the user confirmed « New Garage Key »: activates the internal Garage Key after the highest one, from whichever internal one is shown, selects it and shows it, with its robot 0 or the robot its records give. Nothing on the external Garage Key, which has no such button.
   ///
   /// When the key could not be activated, the keys are read again and the Garage says why.
   Future<void> newKey() async {
     final current = state;
-    if (_activating || current is! GarageWithKey) return;
+    if (_activating || current is! GarageWithKey || current.isExternal) return;
     final highest = current.highest;
+    if (highest == null) return;
     _activating = true;
     try {
       _stopFollowing();
@@ -154,9 +206,9 @@ class GarageCubit extends Cubit<GarageState> {
     }
   }
 
-  /// « Recover » in « Robot recovery »: stores the key whose `robo1…` form is [text], which the user pasted or typed, as the external key of a network whose vault keeps none, then selects and shows it, as the official client shows the key it recovers.
+  /// « Recover » in « Robot recovery », opened by « Import an external Garage Key »: stores the key whose `robo1…` form is [text], which the user pasted or typed, as the external Garage Key of a network whose vault keeps none, then selects and shows it, as the official client shows the key it recovers.
   ///
-  /// Text that is not a key changes nothing in the vault and is given back as a [GarageKeyInvalidFailure], for the dialog to say, the Garage staying as it is; the text itself is not kept. Any other outcome is the Garage's to show, and gives `null`.
+  /// Text that is not a key, or a key that is one of the internal Garage Keys, changes nothing in the vault and is given back as a [GarageKeyInvalidFailure] or a [GarageKeyIsInternalFailure], for the dialog to say, the Garage staying as it is; the text itself is not kept. Any other outcome is the Garage's to show, and gives `null`.
   Future<P2pFailure?> import(String text) async {
     final current = state;
     if (_activating || current is! GarageWithKey || current.hasExternal) {
@@ -173,6 +225,9 @@ class GarageCubit extends Cubit<GarageState> {
         case Err(failure: final GarageKeyInvalidFailure failure):
           await _settle(failure: null);
           return failure;
+        case Err(failure: final GarageKeyIsInternalFailure failure):
+          await _settle(failure: null);
+          return failure;
         case Err(:final failure):
           await _settle(failure: failure);
           return null;
@@ -182,14 +237,14 @@ class GarageCubit extends Cubit<GarageState> {
     }
   }
 
-  /// Removes the external key of the network, whatever its entry holds: only after the user confirmed « Delete Garage Key? », then, when a robot of the key may live on a coordinator, passed [reauthenticate], the wallet's PIN, as before #81 (RoboSats asks only the confirmation). The keys of the words are never deleted.
+  /// Deletes the external Garage Key of the network, whatever its entry holds: only after the user confirmed « Delete the external Garage Key? », which a trade in progress with it never refuses (decided on 2026-11-26, #81), then, when a robot of the key may live on a coordinator, passed [reauthenticate], the wallet's PIN, as before #81 (RoboSats asks only the confirmation). The internal Garage Keys are never deleted.
   ///
-  /// Without [reauthenticate], such a key is not deleted. A slot that cannot be read always asks the PIN. A PIN the user leaves deletes nothing and leaves the screen as it was. Once deleted, the highest key of the words is shown.
+  /// Without [reauthenticate], such a key is not deleted. A slot that cannot be read always asks the PIN. A PIN the user leaves deletes nothing and leaves the screen as it was. Once deleted, the last internal Garage Key selected is shown, else the highest; the records of the key deleted stay.
   Future<void> delete({required GarageReauthenticator? reauthenticate}) async {
     final current = state;
     final external = switch (current) {
       GarageWithKey(isExternal: true) => true,
-      GarageUnknown(externalHighest: _?) => true,
+      GarageUnknown(externalSelected: true) => true,
       _ => false,
     };
     if (_activating || !external) return;
@@ -282,7 +337,9 @@ class GarageCubit extends Cubit<GarageState> {
       },
     };
     if (target != null && target.accountIndex != current.robot.index) {
-      emit(_showing(current, target));
+      emit(
+        _showing(current.copyWith(inProgress: _inProgressOf(records)), target),
+      );
       return;
     }
     final GarageKeyFingerprint fingerprint;
@@ -295,9 +352,15 @@ class GarageCubit extends Cubit<GarageState> {
     final notServed = _ordersNotServedOf(
       RobotSlot(_network, fingerprint, current.robot.index),
     );
-    if (!_sameOrders(notServed, current.ordersNotServed)) {
+    final inProgress = _inProgressOf(records);
+    if (!_sameOrders(notServed, current.ordersNotServed) ||
+        !_sameRecords(inProgress, current.inProgress)) {
       emit(
-        current.copyWith(ordersNotServed: notServed, failure: current.failure),
+        current.copyWith(
+          ordersNotServed: notServed,
+          inProgress: inProgress,
+          failure: current.failure,
+        ),
       );
     }
   }
@@ -305,9 +368,9 @@ class GarageCubit extends Cubit<GarageState> {
   static bool _sameOrders(Set<(String, int)> a, Set<(String, int)> b) =>
       a.length == b.length && a.containsAll(b);
 
-  /// The panel of robot [index] read it on its coordinator with no active order (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.1, step 0, the owner's decision 5 of 2026-11-25): when it is the robot the Garage opened on in this visit and the device holds an open record of it, made or taken here with a key drawn here, that order is read once, as its page reads it when it opens, so that an order that ended while the app did not read it closes its record; the records then written apply the rule again.
+  /// The panel of robot [index] read it on its coordinator with no active order (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.1, step 0, the owner's decision 5 of 2026-11-25): when it is the robot the Garage opened on in this visit and the device holds an open record of it, made or taken here, with any key (decided on 2026-11-26, #81), that order is read once, as its page reads it when it opens, so that an order that ended while the app did not read it closes its record; the records then written apply the rule again.
   ///
-  /// At most one such read per visit, over Tor, to the coordinator that already knows that robot and its order; nothing for a robot shown by the arrows after the opening, a key from elsewhere, or records that cannot be read.
+  /// At most one such read per visit, over Tor, to the coordinator that already knows that robot and its order; nothing for a robot shown by the arrows after the opening, or records that cannot be read.
   void robotWithoutActiveOrder(int index) {
     final readOnce = _readOnce;
     final opened = _openedOn;
@@ -323,9 +386,7 @@ class GarageCubit extends Cubit<GarageState> {
     }
     final records = _records;
     if (records is! Ok<GarageRecords, P2pFailure>) return;
-    final value = records.value;
-    if (!value.keyDrawnHereOnly) return;
-    final record = value.openRecordOf(opened);
+    final record = records.value.openRecordOf(opened);
     if (record == null) return;
     _readOnceAsked = true;
     unawaited(readOnce(record));
@@ -385,9 +446,13 @@ class GarageCubit extends Cubit<GarageState> {
 
   /// Reads the keys of the network and settles on the key selected, with [failure] as the outcome of the action that led here; a closed cubit reads nothing.
   ///
+  /// With [internalRefused], « Back to internal Garage Keys » could not select an internal Garage Key: the internal side says why, with the way back to the external Garage Key when the vault keeps one.
   /// The robot the records give is read before the state is built, so that no panel of another robot is built, and reads its coordinator, in between.
   /// An [Error] of the records is a bug (AGENTS.md, rule 11): it is not caught, and the Garage stays on its wait.
-  Future<void> _settle({required P2pFailure? failure}) async {
+  Future<void> _settle({
+    required P2pFailure? failure,
+    P2pFailure? internalRefused,
+  }) async {
     if (isClosed) return;
     _stopFollowing();
     emit(GarageWorking(_network));
@@ -402,6 +467,18 @@ class GarageCubit extends Cubit<GarageState> {
         return;
     }
     if (isClosed) return;
+    if (internalRefused != null) {
+      emit(
+        GarageUnknown(
+          _network,
+          internalRefused,
+          actionFailure: failure,
+          canSwitchToExternal: keyring.hasExternal,
+        ),
+      );
+      return;
+    }
+    final externalSelected = keyring.selected is SelectedExternalKey;
     final read = switch (keyring.selected) {
       SelectedWordsKey(:final index) => await _read.derived(_network, index),
       SelectedExternalKey() => await _read.execute(_network),
@@ -425,7 +502,6 @@ class GarageCubit extends Cubit<GarageState> {
       Ok(:final value) => value.slot,
       Err() => null,
     };
-    final externalSelected = keyring.selected is SelectedExternalKey;
     emit(switch ((read, robot)) {
       (Ok(value: final key), Ok(value: final shown)) => GarageWithKey(
         _network,
@@ -438,24 +514,35 @@ class GarageCubit extends Cubit<GarageState> {
         },
         hasExternal: keyring.hasExternal,
         externalKey: keyring.external,
+        externalNoticeDue:
+            keyring.externalNoticeDue && externalSelected && !_noticeShown,
+        inProgress: _inProgressOf(_records),
         failure: failure,
         ordersNotServed: _ordersNotServedOf(shown.slot),
       ),
-      // A key read whose robot could not be derived, or a read that failed: the failure, and for the external key the way back to the keys of the words and its way out.
-      (_, Err(failure: final readFailure)) => GarageUnknown(
-        _network,
-        readFailure,
-        actionFailure: failure,
-        externalHighest: externalSelected ? keyring.highest : null,
-      ),
+      // A key read whose robot could not be derived, or a read that failed: the failure; for the external Garage Key, the way back to the internal ones and its way out; for an internal one, the way to the external one when there is one.
+      (_, Err(failure: final readFailure)) ||
       (Err(failure: final readFailure), Ok()) => GarageUnknown(
         _network,
         readFailure,
         actionFailure: failure,
-        externalHighest: externalSelected ? keyring.highest : null,
+        externalSelected: externalSelected,
+        canSwitchToExternal: !externalSelected && keyring.hasExternal,
       ),
     });
   }
+
+  /// The trades of the network in progress that [records] hold, every Garage Key's; none before they were read, or when they cannot be.
+  static List<TradeRecord> _inProgressOf(
+    Result<GarageRecords, P2pFailure>? records,
+  ) => switch (records) {
+    Ok(:final value) => [for (final trade in value.inProgress) trade.record],
+    _ => const [],
+  };
+
+  static bool _sameRecords(List<TradeRecord> a, List<TradeRecord> b) =>
+      a.length == b.length &&
+      a.indexed.every((entry) => entry.$2 == b[entry.$1]);
 
   @override
   Future<void> close() async {

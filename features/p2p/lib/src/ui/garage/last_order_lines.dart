@@ -33,8 +33,11 @@ class LastOrderLines extends StatefulWidget {
   /// The number of each key of the words of the network, by its fingerprint (#81): each line of the history, which covers every key, says its key.
   final Map<GarageKeyFingerprint, int> keyNumbers;
 
-  /// The fingerprint of the external key of the network, `null` when the vault keeps none: its lines say « External key ». A robot of a key in neither says its robot alone.
+  /// The fingerprint of the external Garage Key of the network, `null` when the vault keeps none or it cannot be read: its lines say « External Garage Key ». A robot of a key in neither says its robot alone.
   final GarageKeyFingerprint? externalKey;
+
+  /// The trades in progress of another Garage Key than the one shown (#81, decided on 2026-11-26): each has a line « Trade in progress #N » above the « Last order #N » lines, its key, robot and coordinator in grey, which opens it as they do.
+  final List<TradeRecord> inProgressElsewhere;
 
   const LastOrderLines({
     super.key,
@@ -42,6 +45,7 @@ class LastOrderLines extends StatefulWidget {
     this.historyKey,
     this.keyNumbers = const {},
     this.externalKey,
+    this.inProgressElsewhere = const [],
   });
 
   @override
@@ -123,9 +127,10 @@ class _LastOrderLinesState extends State<LastOrderLines> {
       _covered = false;
       _opening = false;
     }
+    final elsewhere = widget.inProgressElsewhere;
     return BlocBuilder<LastOrdersCubit, LastOrdersState>(
       builder: (context, state) {
-        final lines = switch (state) {
+        final last = switch (state) {
           LastOrdersLoading() ||
           LastOrdersListed(orders: []) => const SizedBox.shrink(),
           LastOrdersUnreadable() => Padding(
@@ -152,6 +157,32 @@ class _LastOrderLinesState extends State<LastOrderLines> {
             ),
           ),
         };
+        final lines = elsewhere.isEmpty
+            ? last
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: BullSpacing.sm),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final record in elsewhere)
+                          TradeRecordRow(
+                            key: ValueKey(('in-progress', record.robot)),
+                            record: record,
+                            label: l10n.p2pGarageTradeInProgress(
+                              '${record.orderId}',
+                            ),
+                            subtitle: _elsewhereLine(context, record),
+                            onTap: () => _open(record, current: current),
+                          ),
+                      ],
+                    ),
+                  ),
+                  last,
+                ],
+              );
         final key = widget.historyKey;
         if (key == null) return lines;
         return Column(
@@ -163,6 +194,24 @@ class _LastOrderLinesState extends State<LastOrderLines> {
         );
       },
     );
+  }
+
+  /// « External Garage Key · Robot #3 · LibreBazaar », « Internal Garage Key #1 · Robot #0 · TheBigLake »: the grey line of a trade in progress of another key (#81).
+  String _elsewhereLine(BuildContext context, TradeRecord record) {
+    final l10n = P2pLocalizations.of(context);
+    final fingerprint = record.robot.keyFingerprint;
+    final keyName = switch (widget.keyNumbers[fingerprint]) {
+      final number? => l10n.p2pGarageKeyNumber(number),
+      null when widget.externalKey == fingerprint => l10n.p2pGarageExternalKey,
+      null => null,
+    };
+    final robot = '${l10n.p2pGarageRobotLabel} #${record.robot.accountIndex}';
+    final coordinator = Federation.robosats.byAlias(record.coordinatorAlias);
+    final name = CoordinatorText.of(
+      coordinator?.longAlias ?? record.coordinatorAlias,
+      maxCodePoints: CoordinatorText.name,
+    );
+    return [?keyName, robot, name].join(' · ');
   }
 
   /// « See history » and, open, its lines (#253): no link while the lines are read or cannot be (they say so), nor when the history holds nothing they do not show.
@@ -301,11 +350,11 @@ class _HistoryRow extends StatelessWidget {
       final nickname? => l10n.p2pHistoryRobotNamed(number, nickname),
       null => number,
     };
-    // « Key #2 · Robot #5 », « External key · Robot #3 »: the history covers every key of the network (#81).
-    final robot = switch (keyNumber) {
-      final key? => l10n.p2pGarageHistoryKeyRobot(key, named),
-      null when external => l10n.p2pGarageHistoryExternalRobot(named),
-      null => named,
+    // « Internal Garage Key #2 », « External Garage Key », on a line of its own over the robot's: the history covers every key of the network (#81, decided on 2026-11-26).
+    final keyName = switch (keyNumber) {
+      final key? => l10n.p2pGarageKeyNumber(key),
+      null when external => l10n.p2pGarageExternalKey,
+      null => null,
     };
     final (end, endColor) = switch (order.end) {
       OrderEnd.traded => (l10n.p2pHistoryTraded, colors.text),
@@ -366,8 +415,9 @@ class _HistoryRow extends StatelessWidget {
                 ],
               ),
             ),
-            // The robot on a line of its own, the whole width: a nickname is one long word.
-            WordFitText(robot, style: muted),
+            // The key, then the robot, each on a line of its own, the whole width: a nickname is one long word.
+            if (keyName != null) WordFitText(keyName, style: muted),
+            WordFitText(named, style: muted),
           ],
         ),
       ),

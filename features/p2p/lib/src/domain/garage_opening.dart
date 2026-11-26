@@ -16,20 +16,16 @@ import 'usecases/trade/list_last_orders_usecase.dart';
 /// It holds no token and no key: robots are held as their [RobotSlot].
 @immutable
 final class GarageRecords {
-  /// Whether the Garage Key is recorded as drawn on this device for the network and as nothing else on any network (`NewTradeStanding.keyDrawnHereOnly`): only such a key's robots trade here, and only its Garage moves by itself.
-  final bool keyDrawnHereOnly;
-
   /// The trades of the network not closed, with where their stored trail says they stand (`ListActiveTradesUsecase`).
   final List<ActiveTrade> inProgress;
 
   /// The closed records of the network that have an order id, each with the last position of its stored trail (`TradeRecordRepository.watchClosedTrades`).
   final List<ClosedTrade> closed;
 
-  /// The robot the next trade of the key would reserve ([NextTradeRobot.of] over the same standing), or `null` when there is none: a key from elsewhere, or no usable index left.
+  /// The robot the next trade of the key would reserve ([NextTradeRobot.of] over the same standing), or `null` when there is none: no usable index left.
   final RobotSlot? fresh;
 
   GarageRecords({
-    required this.keyDrawnHereOnly,
     required Iterable<ActiveTrade> inProgress,
     required Iterable<ClosedTrade> closed,
     required this.fresh,
@@ -59,7 +55,7 @@ final class GarageRecords {
 
   @override
   String toString() =>
-      'GarageRecords(drawnHere: $keyDrawnHereOnly, ${inProgress.length} in progress, ${closed.length} closed, fresh: $fresh)';
+      'GarageRecords(${inProgress.length} in progress, ${closed.length} closed, fresh: $fresh)';
 }
 
 /// The robot the Garage opens on and moves to by itself (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.1, steps 1 to 3): a pure function of the device's records, nothing asked of a coordinator.
@@ -72,24 +68,21 @@ abstract final class GarageOpening {
   /// 2. else the newest finished trade, the first « Last order #N » line (`ListLastOrdersUsecase.lastOrdersOf`), when it is of the key: its robot when it has not served ([OrderEnd.served]: an expiry, a take that never started), else the fresh robot, or its own robot when there is none;
   /// 3. else `null`.
   ///
-  /// For a key from elsewhere ([GarageRecords.keyDrawnHereOnly] false) the Garage opens as before #251: only orders made here count at step 1, and step 2 keeps the line's robot whatever its end.
+  /// Every key follows this rule, whatever its origin, since every key trades here (decided on 2026-11-26, #81).
   static RobotSlot? of(NetworkGarageKey key, GarageRecords records) {
     if (lockedOf(key, records).lastOrNull case final robot?) return robot;
     final line = lastOrderOf(records);
     if (line == null || !_isOf(key, line.record.robot)) return null;
-    if (!records.keyDrawnHereOnly || !OrderEnd.served(line.lastPosition)) {
-      return line.record.robot;
-    }
+    if (!OrderEnd.served(line.lastPosition)) return line.record.robot;
     return records.fresh ?? line.record.robot;
   }
 
-  /// The robots of the trades of [key] in progress here whose bond this device saw locked, the oldest first (by index): step 1 of [of]. A trade taken here counts only for a key drawn here; a trade recovered never does.
+  /// The robots of the trades of [key] in progress here whose bond this device saw locked, the oldest first (by index): step 1 of [of]. A trade made or taken here counts; a trade recovered never does.
   static List<RobotSlot> lockedOf(NetworkGarageKey key, GarageRecords records) {
     final locked = [
       for (final ActiveTrade(:record, :standing) in records.inProgress)
         if ((record.origin == TradeOrigin.madeHere ||
-                (record.origin == TradeOrigin.takenHere &&
-                    records.keyDrawnHereOnly)) &&
+                record.origin == TradeOrigin.takenHere) &&
             record.closedAt == null &&
             standing is ActiveTradeAt &&
             standing.position.makerBondLocked &&

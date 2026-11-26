@@ -1258,10 +1258,6 @@ void main() {
       const Err(TakeCoordinatorUnreadable(CoordinatorUnreachable())),
       'Could not reach Temple of Sats. The order was not taken.',
     ),
-    (
-      const Err(TakeRobotRefused(GarageKeyNotForTradesFailure())),
-      'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.',
-    ),
   ]) {
     testWidgets('a preparation refused: « $text »', (tester) async {
       final take = _Take(prepared: [refusal]);

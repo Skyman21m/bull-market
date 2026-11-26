@@ -62,6 +62,14 @@ final class GarageKeyInvalidFailure extends P2pFailure {
   const GarageKeyInvalidFailure(this.reason);
 }
 
+/// The Garage Key the user gave is one of the internal Garage Keys this device activated on the network, number [index]: it is not imported as the external Garage Key, which would make one key both, and nothing was recorded or stored (review of #292).
+final class GarageKeyIsInternalFailure extends P2pFailure {
+  /// The number of the internal Garage Key it is.
+  final int index;
+
+  const GarageKeyIsInternalFailure(this.index);
+}
+
 /// No robot can be derived from the stored key: every index searched gave a token that a coordinator cannot be contacted with.
 ///
 /// It does not happen with a key drawn at random.
@@ -151,14 +159,6 @@ final class RobotCoordinatorBusyFailure extends P2pFailure {
 /// It is kept in memory only and ends with the run; reading back a robot already bound to that coordinator is not affected.
 final class RobotCoordinatorTooManyRefusalsFailure extends P2pFailure {
   const RobotCoordinatorTooManyRefusalsFailure();
-}
-
-/// The Garage Key of this network may not start a trade: it is not recorded as drawn on this device for the network, or it is recorded as imported or acknowledged on a network.
-///
-/// Its robots may live on coordinators from elsewhere, which hold their credentials, so none is used for a new trade (design note `docs/design/phase-2-taking-an-order.md` § 3.3); nothing was written or sent.
-/// A robot of such a key may still finish an order it already holds, once the user takes that trade over.
-final class GarageKeyNotForTradesFailure extends P2pFailure {
-  const GarageKeyNotForTradesFailure();
 }
 
 /// The federation list of this version of the app gives this coordinator no onion address on the network of the trade: no robot request can go there, and nothing was written or sent.

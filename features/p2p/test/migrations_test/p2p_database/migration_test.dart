@@ -636,7 +636,7 @@ void main() {
         isA<Ok<NewTradeStanding, P2pFailure>>().having(
           (ok) => ok.value,
           'standing',
-          NewTradeStanding(keyDrawnHereOnly: true, indexesInUse: [0, 2]),
+          NewTradeStanding(indexesInUse: [0, 2]),
         ),
       );
       // A binding of schema 2 is never reserved for a new trade, so it never takes a pending take: it was made by the Garage, and its robot may have met its coordinator for anything (review of #102).

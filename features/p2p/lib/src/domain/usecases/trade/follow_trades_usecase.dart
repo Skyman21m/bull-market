@@ -138,7 +138,6 @@ final class FollowTradesUsecase {
     }
     return Ok(
       GarageRecords(
-        keyDrawnHereOnly: standing.keyDrawnHereOnly,
         inProgress: inProgress,
         closed: finished,
         fresh: switch (NextTradeRobot.of(key, standing)) {

@@ -109,7 +109,13 @@ void main() {
         // No external key: key 0 is selected, and recorded.
         expect(
           await repository.keyring(mainnet),
-          isOk(const GarageKeyring(highest: 0, selected: SelectedWordsKey(0))),
+          isOk(
+            const GarageKeyring(
+              highest: 0,
+              selected: SelectedWordsKey(0),
+              lastInternal: 0,
+            ),
+          ),
         );
         final key = keyOf(await repository.read(mainnet));
         expect(key.index, 0);
@@ -165,7 +171,13 @@ void main() {
         );
         expect(
           await repository.keyring(mainnet),
-          isOk(const GarageKeyring(highest: 1, selected: SelectedWordsKey(1))),
+          isOk(
+            const GarageKeyring(
+              highest: 1,
+              selected: SelectedWordsKey(1),
+              lastInternal: 1,
+            ),
+          ),
         );
         // Two taps at once: one key.
         final both = await Future.wait([
@@ -186,7 +198,13 @@ void main() {
         );
         expect(
           await repository.keyring(mainnet),
-          isOk(const GarageKeyring(highest: 2, selected: SelectedWordsKey(2))),
+          isOk(
+            const GarageKeyring(
+              highest: 2,
+              selected: SelectedWordsKey(2),
+              lastInternal: 2,
+            ),
+          ),
         );
       },
       timeout: slow,
@@ -217,7 +235,13 @@ void main() {
         final again = repositoryOver(database);
         expect(
           await again.keyring(mainnet),
-          isOk(const GarageKeyring(highest: 1, selected: SelectedWordsKey(0))),
+          isOk(
+            const GarageKeyring(
+              highest: 1,
+              selected: SelectedWordsKey(0),
+              lastInternal: 0,
+            ),
+          ),
         );
         expect(keyOf(await again.forNewTrade(mainnet)).index, 0);
         // Another network keeps its own selection, and a key not activated is never selected.
@@ -403,6 +427,7 @@ void main() {
             GarageKeyring(
               highest: 0,
               selected: const SelectedExternalKey(),
+              externalNoticeDue: true,
               external: drawnFingerprint,
             ),
           ),
@@ -432,6 +457,8 @@ void main() {
             GarageKeyring(
               highest: 1,
               selected: const SelectedWordsKey(1),
+              lastInternal: 1,
+              externalNoticeDue: true,
               external: drawnFingerprint,
             ),
           ),
@@ -503,11 +530,12 @@ void main() {
             GarageKeyring(
               highest: 0,
               selected: const SelectedExternalKey(),
+              lastInternal: 0,
               external: drawnFingerprint,
             ),
           ),
         );
-        // Its rights are a key from elsewhere's: it only finishes its trades (`NewTradeStanding`).
+        // Recorded as imported: its robots may live elsewhere, which a binding of « Select Host » says; it trades as any other key (decided on 2026-11-26, #81).
         final exposure = await RobotBindingRepositoryImpl(
           database,
           clock: () => now,
@@ -530,7 +558,7 @@ void main() {
     );
 
     test(
-      'removing the external key deletes its vault entry only, and selects the highest key of the words',
+      'removing the external key deletes its vault entry only, and selects the last internal key selected',
       () async {
         await storeDrawnKey();
         final database = open(await schema9File(closed: true));
@@ -544,7 +572,14 @@ void main() {
         expect(storage.entries.keys, isNot(contains(mainnetEntry)));
         expect(
           await repository.keyring(mainnet),
-          isOk(const GarageKeyring(highest: 1, selected: SelectedWordsKey(1))),
+          isOk(
+            const GarageKeyring(
+              highest: 1,
+              selected: SelectedWordsKey(1),
+              lastInternal: 1,
+              externalNoticeDue: true,
+            ),
+          ),
         );
         // Its records stay: a key pasted back finds its robots bound where they were.
         expect(await countOf(database, 'trades'), 1);
@@ -603,9 +638,322 @@ void main() {
         );
         expect(
           await repository.keyring(mainnet),
-          isOk(const GarageKeyring(highest: 0, selected: SelectedWordsKey(0))),
+          isOk(
+            const GarageKeyring(
+              highest: 0,
+              selected: SelectedWordsKey(0),
+              lastInternal: 0,
+            ),
+          ),
         );
         expect(await selectionsOf(database), ['mainnet 0']);
+      },
+      timeout: slow,
+    );
+  });
+
+  group('after the first review and the mock-up (#292)', () {
+    Future<void> storeKey(GarageKey key) async {
+      expect(
+        await vault.import(
+          slot: GarageKeySlot.mainnet,
+          bytes: key.revealBytes(),
+        ),
+        isA<Ok<Object?, Failure>>(),
+      );
+    }
+
+    GarageKey parsed(String text) => switch (GarageKey.parse(text)) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+
+    for (final (reason, failure) in <(P2pGarageKeyRefusalReason, Matcher)>[
+      (
+        P2pGarageKeyRefusalReason.noDefaultWallet,
+        isA<GarageKeyNoWalletFailure>(),
+      ),
+      (P2pGarageKeyRefusalReason.passphrase, isA<GarageKeyPassphraseFailure>()),
+      (P2pGarageKeyRefusalReason.noWords, isA<GarageKeyNoWordsFailure>()),
+      (P2pGarageKeyRefusalReason.locked, isA<GarageKeyLockedFailure>()),
+      (P2pGarageKeyRefusalReason.unreadable, isA<GarageKeyUnreadableFailure>()),
+    ]) {
+      test(
+        'words that refuse (${reason.name}) leave the external Garage Key shown, usable and deletable; without it, the refusal (C-passphrase)',
+        () async {
+          words.refusal = reason;
+          final database = memory();
+          final repository = repositoryOver(database);
+          // Without an external Garage Key: the refusal, as before, and nothing written.
+          expect(
+            await repository.keyring(mainnet),
+            isA<Err<GarageKeyring, P2pFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              failure,
+            ),
+          );
+          expect(await selectionsOf(database), isEmpty);
+          // With one: the keyring offers it, selected, and the internal side says why.
+          await storeKey(drawnKey);
+          final keyring = switch (await repository.keyring(mainnet)) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(keyring.highest, isNull);
+          expect(keyring.internalFailure, failure);
+          expect(keyring.selected, const SelectedExternalKey());
+          expect(keyring.external, drawnFingerprint);
+          expect(keyOf(await repository.read(mainnet)).key, drawnKey);
+          expect(keyOf(await repository.forNewTrade(mainnet)).key, drawnKey);
+          expect(
+            keyOf(
+              await repository.ofSlot(RobotSlot(mainnet, drawnFingerprint, 3)),
+            ).key,
+            drawnKey,
+          );
+          // « Back to internal Garage Keys »: the refusal, the external Garage Key still selected.
+          expect(
+            await repository.selectInternal(mainnet),
+            isA<Err<void, P2pFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              failure,
+            ),
+          );
+          expect(await selectionsOf(database), ['mainnet null']);
+          // It can be deleted; then nothing is left to show but the refusal.
+          expect(await repository.delete(mainnet), isOk(null));
+          expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+          expect(
+            await repository.keyring(mainnet),
+            isA<Err<GarageKeyring, P2pFailure>>(),
+          );
+        },
+        timeout: slow,
+      );
+    }
+
+    test(
+      'words that refuse once keys were activated: the keyring stands, the internal key is refused, the external one given',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        await storeKey(drawnKey);
+        words.refusal = P2pGarageKeyRefusalReason.passphrase;
+        final keyring = switch (await repository.keyring(mainnet)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(keyring.highest, 1);
+        expect(keyring.selected, const SelectedWordsKey(1));
+        expect(
+          await repository.derived(mainnet, 1),
+          isErr<GarageKeyPassphraseFailure>(),
+        );
+        expect(
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(keyOf(await repository.forNewTrade(mainnet)).key, drawnKey);
+      },
+      timeout: slow,
+    );
+
+    test(
+      '« Back to internal Garage Keys » selects the last internal one selected, kept across a restart and a delete, else the highest',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        expect(await repository.activateNext(mainnet, after: 1), isOk(2));
+        expect(
+          await repository.select(mainnet, const SelectedWordsKey(1)),
+          isOk(null),
+        );
+        await storeKey(drawnKey);
+        expect(
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        // Restarted: the external key, and key 1 remembered.
+        final again = repositoryOver(database);
+        expect(
+          await again.keyring(mainnet),
+          isOk(
+            GarageKeyring(
+              highest: 2,
+              selected: const SelectedExternalKey(),
+              lastInternal: 1,
+              external: drawnFingerprint,
+            ),
+          ),
+        );
+        expect(await again.selectInternal(mainnet), isOk(null));
+        expect(keyOf(await again.read(mainnet)).index, 1);
+        // Deleted while selected: back to key 1, not to the highest nor to key 0.
+        expect(
+          await again.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(await again.delete(mainnet), isOk(null));
+        expect(keyOf(await again.read(mainnet)).index, 1);
+        // No internal key ever selected: the highest.
+        final other = memory();
+        final fresh = repositoryOver(other);
+        expect(await fresh.activateNext(mainnet, after: 0), isOk(1));
+        await other.customStatement('DELETE FROM selected_garage_keys');
+        expect(
+          await fresh.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(await fresh.selectInternal(mainnet), isOk(null));
+        expect(keyOf(await fresh.read(mainnet)).index, 1);
+      },
+      timeout: slow,
+    );
+
+    test(
+      '« Your Garage Keys » is due after the update only, shown once, never on a new install nor after an import',
+      () async {
+        Future<bool> due(
+          GarageKeyRepositoryImpl repository, [
+          RobosatsNetwork network = mainnet,
+        ]) async => switch (await repository.keyring(network)) {
+          Ok(:final value) => value.externalNoticeDue,
+          Err(:final failure) => fail('$failure'),
+        };
+        // A new install: never, even with a key in the vault (one an earlier install left).
+        await storeKey(drawnKey);
+        final fresh = memory();
+        expect(await due(repositoryOver(fresh)), isFalse);
+        expect(await countOf(fresh, 'garage_notices'), 0);
+        expect(
+          await vault.delete(slot: GarageKeySlot.mainnet),
+          isA<Ok<Object?, Failure>>(),
+        );
+        // The update without a key in the vault: nothing to say, then nothing after an import either.
+        final emptyFile = File('${directory.path}/empty-nine.sqlite');
+        await v9.DatabaseAtV9(NativeDatabase(emptyFile)).close();
+        final empty = P2pDatabase.forTesting(NativeDatabase(emptyFile));
+        addTearDown(empty.close);
+        final withoutKey = repositoryOver(empty);
+        expect(await due(withoutKey), isFalse);
+        expect(
+          await ImportGarageKeyUsecase(
+            withoutKey,
+            RobotBindingRepositoryImpl(empty, clock: () => now),
+          ).execute(mainnet, text: drawnKey.revealBech32()),
+          isOk(null),
+        );
+        expect(await due(withoutKey), isFalse);
+        expect(
+          await vault.delete(slot: GarageKeySlot.mainnet),
+          isA<Ok<Object?, Failure>>(),
+        );
+        // The update with a key in the vault: due until shown, then never again, on any network.
+        await storeKey(drawnKey);
+        final file = File('${directory.path}/key-nine.sqlite');
+        await v9.DatabaseAtV9(NativeDatabase(file)).close();
+        final updated = P2pDatabase.forTesting(NativeDatabase(file));
+        addTearDown(updated.close);
+        final repository = repositoryOver(updated);
+        expect(await due(repository), isTrue);
+        expect(await due(repository), isTrue);
+        expect(await repository.externalNoticeShown(), isOk(null));
+        expect(await due(repository), isFalse);
+        expect(
+          await vault.import(
+            slot: GarageKeySlot.testnet,
+            bytes: drawnKey.revealBytes(),
+          ),
+          isA<Ok<Object?, Failure>>(),
+        );
+        expect(await due(repository, testnet), isFalse);
+        // The database keeps it so: a notice shown never turns due again, nor is deleted.
+        await expectLater(
+          updated.customStatement('UPDATE garage_notices SET shown = 0'),
+          throwsA(isA<Exception>()),
+        );
+        await expectLater(
+          updated.customStatement('DELETE FROM garage_notices'),
+          throwsA(isA<Exception>()),
+        );
+      },
+      timeout: slow,
+    );
+
+    test(
+      'an internal Garage Key pasted in « Robot recovery » is refused, said by its number, and nothing is recorded or stored',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        final import = ImportGarageKeyUsecase(
+          repository,
+          RobotBindingRepositoryImpl(database, clock: () => now),
+        );
+        for (final (text, index) in [
+          (abandonMainnet0, 0),
+          (abandonMainnet1, 1),
+        ]) {
+          expect(
+            await import.execute(mainnet, text: text),
+            isA<Err<void, P2pFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              isA<GarageKeyIsInternalFailure>().having(
+                (failure) => failure.index,
+                'index',
+                index,
+              ),
+            ),
+          );
+        }
+        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+        expect(
+          (await database
+                  .customSelect('SELECT origin FROM garage_key_histories')
+                  .get())
+              .map((row) => row.read<String>('origin')),
+          everyElement('generated'),
+        );
+        // A key the words did not give on this network yet is imported.
+        expect(
+          await import.execute(mainnet, text: abandonMainnet2),
+          isOk(null),
+        );
+      },
+      timeout: slow,
+    );
+
+    test(
+      '« New internal Garage Key » that gives the key already external activates it: the same records, its trades going on, nothing lost',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(keyOf(await repository.read(mainnet)).index, 0);
+        final external = parsed(abandonMainnet1);
+        await storeKey(external);
+        final fingerprint = switch (GarageKeyFingerprint.of(external)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        final keyring = switch (await repository.keyring(mainnet)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(keyring.fingerprints, hasLength(2));
+        expect(keyring.fingerprints.last, fingerprint);
+        expect(keyring.external, fingerprint);
+        // A robot of that key finds its key, the internal one, the same bytes.
+        final found = keyOf(
+          await repository.ofSlot(RobotSlot(mainnet, fingerprint, 4)),
+        );
+        expect(found.index, 1);
+        expect(found.key, external);
       },
       timeout: slow,
     );

@@ -5,7 +5,7 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import '../p2p_failure.dart';
 import '../repositories/garage_key_repository.dart';
 
-/// Deletes the external Garage Key of a network, the one the vault keeps (#81), whatever the entry holds; the keys of the words are never deleted, the words remake them.
+/// Deletes the external Garage Key of a network, the one the vault keeps (#81), whatever the entry holds; the internal Garage Keys are never deleted, the words back them up.
 ///
 /// Destructive: the robots of the key are lost unless the user kept a copy of it, so call it only on the user's explicit confirmation.
 /// It is also the only way out of an external key that cannot be read.

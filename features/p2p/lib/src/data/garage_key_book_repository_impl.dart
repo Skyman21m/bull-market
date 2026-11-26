@@ -8,7 +8,7 @@ import '../domain/p2p_failure.dart';
 import '../domain/repositories/garage_key_book_repository.dart';
 import 'p2p_database.dart';
 
-/// The Garage Keys of the words this device activated, and the key selected on each network, in the feature's database (schema 10, #81).
+/// The Garage Keys of the words this device activated, the key selected on each network with the last internal one, and the Garage's notices shown once, in the feature's database (schema 10, #81).
 ///
 /// Every statement commits on its own, synced to disk, before its future completes; it returns no row of the database, and a [P2pStorageFailure] for any [Exception] the database throws, or for a row this code never writes.
 final class GarageKeyBookRepositoryImpl implements GarageKeyBookRepository {
@@ -25,18 +25,27 @@ final class GarageKeyBookRepositoryImpl implements GarageKeyBookRepository {
       'WHERE (SELECT coalesce(max(key_index), -1) FROM derived_garage_keys WHERE network = ?) = ? - 1 '
       'ON CONFLICT DO NOTHING RETURNING key_fingerprint';
 
-  /// The selection of a key of the words, written only when its index is activated on its network: one statement, so a selection never names a key of the words this device does not have.
+  /// The selection of an internal Garage Key, written only when its index is activated on its network, and kept as the last internal one: one statement, so a selection never names a key of the words this device does not have.
   static const String _selectWords =
-      'INSERT INTO selected_garage_keys (network, key_index) '
-      'SELECT ?, ? WHERE EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = ? AND key_index = ?) '
-      'ON CONFLICT (network) DO UPDATE SET key_index = excluded.key_index '
+      'INSERT INTO selected_garage_keys (network, key_index, last_internal_index) '
+      'SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = ? AND key_index = ?) '
+      'ON CONFLICT (network) DO UPDATE SET key_index = excluded.key_index, '
+      'last_internal_index = excluded.last_internal_index '
       'RETURNING network';
 
-  /// The selection of the external key, with no index.
+  /// The selection of the external Garage Key, with no index; the internal one selected until then is kept as the last internal one (SQLite reads every column of the update in the row as it was).
   static const String _selectExternal =
-      'INSERT INTO selected_garage_keys (network, key_index) VALUES (?, NULL) '
-      'ON CONFLICT (network) DO UPDATE SET key_index = NULL '
+      'INSERT INTO selected_garage_keys (network, key_index, last_internal_index) VALUES (?, NULL, NULL) '
+      'ON CONFLICT (network) DO UPDATE SET key_index = NULL, '
+      'last_internal_index = coalesce(key_index, last_internal_index) '
       'RETURNING network';
+
+  /// « Your Garage Keys » turned shown, only when it is due.
+  static const String _noticeShown =
+      'UPDATE garage_notices SET shown = 1 WHERE notice = ? AND shown = 0';
+
+  /// The one notice of the table.
+  static const String _externalKeyNamed = 'externalKeyNamed';
 
   final P2pDatabase _database;
   final DateTime Function() _clock;
@@ -151,6 +160,61 @@ final class GarageKeyBookRepositoryImpl implements GarageKeyBookRepository {
   }
 
   @override
+  Future<Result<int?, P2pFailure>> lastInternal(RobosatsNetwork network) async {
+    try {
+      final row = await _database
+          .customSelect(
+            'SELECT last_internal_index FROM selected_garage_keys WHERE network = ?',
+            variables: [Variable.withString(_networkValue(network))],
+            readsFrom: {_database.selectedGarageKeys},
+          )
+          .getSingleOrNull();
+      return switch (row?.data['last_internal_index']) {
+        null => const Ok(null),
+        final int index => Ok(index),
+        _ => const Err(P2pStorageFailure()),
+      };
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+  }
+
+  @override
+  Future<Result<bool, P2pFailure>> externalNoticeDue() async {
+    try {
+      final row = await _database
+          .customSelect(
+            'SELECT shown FROM garage_notices WHERE notice = ?',
+            variables: [Variable.withString(_externalKeyNamed)],
+            readsFrom: {_database.garageNotices},
+          )
+          .getSingleOrNull();
+      return switch (row?.data['shown']) {
+        null || 1 => const Ok(false),
+        0 => const Ok(true),
+        _ => const Err(P2pStorageFailure()),
+      };
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+  }
+
+  @override
+  Future<Result<void, P2pFailure>> externalNoticeShown() async {
+    try {
+      await _database.customUpdate(
+        _noticeShown,
+        variables: [Variable.withString(_externalKeyNamed)],
+        updates: {_database.garageNotices},
+        updateKind: UpdateKind.update,
+      );
+      return const Ok(null);
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+  }
+
+  @override
   Future<Result<bool, P2pFailure>> select(
     RobosatsNetwork network,
     GarageKeySelection selection,
@@ -162,6 +226,7 @@ final class GarageKeyBookRepositoryImpl implements GarageKeyBookRepository {
           _selectWords,
           variables: [
             Variable.withString(value),
+            Variable.withInt(index),
             Variable.withInt(index),
             Variable.withString(value),
             Variable.withInt(index),

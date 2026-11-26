@@ -256,4 +256,73 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 90)),
   );
+
+  // Restored from `main` (review of #292): the rule still holds for an external Garage Key imported on the other network.
+  test(
+    'a key of testnet imported into mainnet: its robots have one credential, so one binding, on both networks',
+    () async {
+      setUpWithGarage();
+      const testnet = RobosatsNetwork.testnet;
+      const mainnet = RobosatsNetwork.mainnet;
+      T value<T>(Result<T, P2pFailure> result) => switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      CoordinatorIdentity identityOf(String alias, RobosatsNetwork network) =>
+          CoordinatorIdentity.of(
+            Federation.robosats.byAlias(alias) ?? fail('no $alias'),
+            network,
+          ) ??
+          fail('$alias is not on $network');
+
+      final keys = locator<GarageKeyRepository>();
+      // Internal key 0 of testnet, recorded as drawn here there; its text, of the public test words, imported into the mainnet slot.
+      final testnetKey = value(await keys.read(testnet));
+      expect(value(await keys.keyring(mainnet)).highest, 0);
+      expect(
+        await locator<ImportGarageKeyUsecase>().execute(
+          mainnet,
+          text: testnetKey.key.revealBech32(),
+        ),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      final mainnetKey = value(await keys.read(mainnet));
+      expect(mainnetKey.index, isNull);
+      expect(value(mainnetKey.fingerprint), value(testnetKey.fingerprint));
+
+      final bindings = locator<RobotBindingRepository>();
+      final testnet0 = value(testnetKey.firstUsableRobot(0));
+      final mainnet0 = value(mainnetKey.firstUsableRobot(0));
+      expect(
+        mainnet0.identity.tokenSha256Base91,
+        testnet0.identity.tokenSha256Base91,
+      );
+      expect(
+        await bindings.bind(testnet0.slot, identityOf('temple', testnet)),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      // Robot 0's token hash went to temple on testnet: no mainnet coordinator gets it.
+      expect(
+        await bindings.bind(mainnet0.slot, identityOf('lake', mainnet)),
+        isA<Err<void, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<RobotBoundToAnotherCoordinatorFailure>(),
+        ),
+      );
+      // On mainnet the key was imported: a robot without a binding there may live anywhere, so « Select Host » asks first.
+      expect(
+        await bindings.bind(
+          value(mainnetKey.firstUsableRobot(1)).slot,
+          identityOf('lake', mainnet),
+        ),
+        isA<Err<void, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<RobotHistoryUnknownFailure>(),
+        ),
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 90)),
+  );
 }

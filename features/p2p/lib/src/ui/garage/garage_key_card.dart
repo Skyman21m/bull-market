@@ -7,19 +7,21 @@ import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
 import '../widgets/garage_key_clipboard.dart';
 import '../widgets/garage_key_view.dart';
-import 'delete_garage_key_dialog.dart';
+import '../widgets/trade_button.dart';
+import '../widgets/word_fit_text.dart';
+import 'garage_key_dialogs.dart';
 import 'garage_reauthentication.dart';
 import 'new_garage_key_dialog.dart';
 import 'recovery_dialog.dart';
 
-/// Whether the text of the key is asked for with an eye in a masked field, as the official client's field looks (the mock-up of 2026-11-26, question 3, answer A by default); `false` for today's button « Show Garage Key ».
-const bool _revealWithEye = true;
+/// Where the ⓘ of the card sits: `false` at the right of the line under the field (placement A of the mock-up of 2026-11-26, built until the owner chooses), `true` in the title, beside the key's name (placement B).
+const bool _infoInTitle = false;
 
-/// The card « Garage Key » of the Garage (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 6), under the robot's panel, where the official client puts its Garage Key and its copy: the one thing of the Garage that changes with the keys of the words.
+/// The card « Garage Key » of the Garage (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 6; the mock-up decided on 2026-11-26), under the robot's panel, where the official client puts its Garage Key and its copy: the one thing of the Garage that changes with the Garage Keys.
 ///
-/// Its title carries the arrows of the keys, « ‹ Garage Key n° N › », « ‹ External Key › »: they select another key without the PIN, as the robot arrows move between robots, from key 0 up to the highest key of the words this device activated, then the external key when the vault keeps one, one position further (the defaults of the owner's decision of 2026-11-26, until the mock-up of the external key); « › » creates nothing. The key shown is the key of new trades (the owner's decisions of 2026-11-26).
-/// « New key », in place of the official client's « Delete All », on every key, asks « New Garage Key » and activates the key of the words after the highest, which it selects.
-/// The external key has today's helper text and, besides « New key », « Delete Garage Key », which asks today's « Delete Garage Key? » and, when a robot of it may live on a coordinator, the PIN, which the cubit decides. Without an external key, a link opens « Robot recovery », where one is pasted.
+/// On an internal Garage Key (a key of the default wallet's words), its title carries the arrows, « ‹ Internal Garage Key #N › »: they select another internal Garage Key without the PIN, as the robot arrows move between robots, from key 0 up to the highest this device activated, and never create one nor reach the external Garage Key. Under the field, « Backed up by the 12 words of your Bull Wallet. » and its ⓘ; then « New internal Garage Key », which asks « New Garage Key » and activates the key after the highest; then « Switch to the external Garage Key » when the vault keeps one, otherwise the discreet link « Import an external Garage Key », which opens « Robot recovery ».
+/// On the external Garage Key, its title, « External Garage Key », has no arrows; under the field, « Not backed up by your Bull Wallet: keep a copy of it. » in the warning colour, and its ⓘ; then « Back to internal Garage Keys », which returns to the last internal one shown, and « Delete the external Garage Key », which asks « Delete the external Garage Key? », naming its trades in progress without ever refusing, and, when a robot of it may live on a coordinator, the PIN, which the cubit decides.
+/// The key shown is the key of new trades (decided on 2026-11-26, #81).
 /// The text of every key is shown only after the wallet's re-authentication, which [reauthenticate] brings from the shell; without it the text cannot be shown. It is hidden again when the app goes to the background, and the card is built anew for each key, so that moving to another key hides the text. It is copied only through [clipboard], which empties the clipboard after 30 seconds.
 class GarageKeyCard extends StatefulWidget {
   final GarageWithKey state;
@@ -83,6 +85,20 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
     await cubit.newKey();
   }
 
+  Future<void> _delete(GarageCubit cubit, bool disabled) async {
+    if (disabled ||
+        !await DeleteGarageKeyDialog.show(
+          context,
+          trades: widget.state.inProgressOfKeyShown,
+        ) ||
+        !mounted) {
+      return;
+    }
+    await cubit.delete(
+      reauthenticate: reauthenticationFrom(context, widget.reauthenticate),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
@@ -92,8 +108,14 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
     final state = widget.state;
     final index = state.key.index;
     final highest = state.highest;
+    final external = state.isExternal;
     final reauthenticate = widget.reauthenticate;
+    // Without the shell's re-authentication, a key whose delete asks the PIN cannot be deleted here, as it cannot be shown.
     final deleteDisabled = state.deletionNeedsPin && reauthenticate == null;
+    final info = _InfoButton(external: external);
+    final title = index == null
+        ? l10n.p2pGarageExternalKey
+        : l10n.p2pGarageKeyNumber(index);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(BullSpacing.md),
@@ -105,92 +127,81 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _KeyNavigator(
-            title: index == null
-                ? l10n.p2pGarageExternalKey
-                : l10n.p2pGarageKeyNumber(index),
-            onPrevious: index == 0 ? null : cubit.previousKey,
-            onNext: index != null && (index < highest || state.hasExternal)
-                ? cubit.nextKey
-                : null,
-          ),
+          if (index == null)
+            _ExternalTitle(title: title, info: _infoInTitle ? info : null)
+          else
+            _KeyNavigator(
+              title: title,
+              onPrevious: index > 0 ? cubit.previousKey : null,
+              onNext: highest != null && index < highest ? cubit.nextKey : null,
+              info: _infoInTitle ? info : null,
+            ),
           const Gap(BullSpacing.xs),
           if (_revealed)
             GarageKeyView(garageKey: state.key.key, clipboard: widget.clipboard)
-          else if (_revealWithEye)
+          else
             _MaskedKey(
               onReveal: reauthenticate == null
                   ? null
                   : () => _reveal(reauthenticate),
-            )
-          else
-            BullButton.big(
-              label: l10n.p2pGarageKeyReveal,
-              iconData: Icons.visibility,
-              iconFirst: true,
-              disabled: reauthenticate == null,
-              onPressed: () {
-                if (reauthenticate != null) _reveal(reauthenticate);
-              },
-              outlined: true,
-              bgColor: colors.transparent,
-              textColor: colors.primary,
-              borderColor: colors.primary,
             ),
           const Gap(BullSpacing.xs),
-          Text(
-            state.isExternal
-                ? l10n.p2pGarageKeyHelper
-                : l10n.p2pGarageKeyHelperWords,
-            style: text.labelMedium?.copyWith(
-              color: _revealed ? colors.text : colors.textMuted,
-            ),
-          ),
-          const Gap(BullSpacing.md),
-          BullButton.big(
-            label: l10n.p2pGarageNewKey,
-            iconData: Icons.add,
-            iconFirst: true,
-            onPressed: () => _newKey(highest + 1),
-            outlined: true,
-            bgColor: colors.transparent,
-            textColor: colors.primary,
-            borderColor: colors.primary,
-          ),
-          if (state.isExternal) ...[
-            const Gap(BullSpacing.sm),
-            // Without the shell's re-authentication, a key whose delete asks the PIN cannot be deleted here, as it cannot be shown.
-            BullButton.big(
-              label: l10n.p2pDeleteKeyConfirm,
-              iconData: Icons.delete_sweep,
-              iconFirst: true,
-              disabled: deleteDisabled,
-              onPressed: () async {
-                if (deleteDisabled ||
-                    !await DeleteGarageKeyDialog.show(context) ||
-                    !context.mounted) {
-                  return;
-                }
-                await cubit.delete(
-                  reauthenticate: reauthenticationFrom(context, reauthenticate),
-                );
-              },
-              outlined: true,
-              bgColor: colors.transparent,
-              textColor: colors.error,
-              borderColor: colors.error,
-            ),
-          ] else if (!state.hasExternal) ...[
-            const Gap(BullSpacing.xs),
-            Center(
-              child: TextButton(
-                onPressed: () => RecoveryDialog.show(context, cubit),
-                child: Text(
-                  l10n.p2pGarageWelcomeRecoverHint,
-                  textAlign: TextAlign.center,
-                  style: text.labelLarge?.copyWith(color: colors.primary),
+          Row(
+            children: [
+              Expanded(
+                child: WordFitText(
+                  external
+                      ? l10n.p2pGarageKeyNotBackedUp
+                      : l10n.p2pGarageKeyBackedUp,
+                  style: text.labelMedium?.copyWith(
+                    color: external ? colors.warning : colors.textMuted,
+                  ),
                 ),
               ),
+              if (!_infoInTitle) info,
+            ],
+          ),
+          const Gap(BullSpacing.md),
+          if (!external) ...[
+            if (highest != null)
+              TradeButton(
+                label: l10n.p2pGarageNewKey,
+                icon: Icons.add,
+                onPressed: () => _newKey(highest + 1),
+                outlined: true,
+              ),
+            if (state.hasExternal) ...[
+              const Gap(BullSpacing.sm),
+              TradeButton(
+                label: l10n.p2pGarageSwitchToExternal,
+                icon: Icons.swap_horiz,
+                onPressed: cubit.switchToExternal,
+                outlined: true,
+              ),
+            ] else ...[
+              const Gap(BullSpacing.xs),
+              _CardLink(
+                label: l10n.p2pGarageImportExternal,
+                icon: Icons.key,
+                color: colors.primary,
+                onPressed: () => RecoveryDialog.show(context, cubit),
+              ),
+            ],
+          ] else ...[
+            TradeButton(
+              label: l10n.p2pGarageBackToInternal,
+              icon: Icons.swap_horiz,
+              onPressed: cubit.returnToInternal,
+              outlined: true,
+            ),
+            const Gap(BullSpacing.xs),
+            _CardLink(
+              label: l10n.p2pGarageDeleteExternal,
+              icon: Icons.delete_outline,
+              color: colors.error,
+              onPressed: deleteDisabled
+                  ? null
+                  : () => _delete(cubit, deleteDisabled),
             ),
           ],
         ],
@@ -199,23 +210,27 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
   }
 }
 
-/// « ‹ Garage Key n° N › » or « ‹ External Key › », in the title of the card, drawn as the robot navigator: the previous key, disabled at key 0, and the next one, disabled on the last position, where it creates nothing.
+/// « ‹ Internal Garage Key #N › », in the title of the card, drawn as the robot navigator: the previous internal Garage Key, disabled at key 0, and the next one, disabled on the highest, where it creates nothing.
 class _KeyNavigator extends StatelessWidget {
   final String title;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
 
+  /// The ⓘ beside the title (placement B), `null` for none.
+  final Widget? info;
+
   const _KeyNavigator({
     required this.title,
     required this.onPrevious,
     required this.onNext,
+    required this.info,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
-    final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
+    final info = this.info;
     return Row(
       children: [
         IconButton(
@@ -225,17 +240,8 @@ class _KeyNavigator extends StatelessWidget {
           color: colors.text,
           disabledColor: colors.textMuted,
         ),
-        // Within the room the two arrows leave, so that a large text never overflows: the title, on one line, is scaled down just enough to fit when it is wider, never broken, as the robot navigator's label (#273).
-        Expanded(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: text.titleSmall?.copyWith(color: colors.text),
-            ),
-          ),
-        ),
+        Expanded(child: _Title(title: title)),
+        ?info,
         IconButton(
           tooltip: l10n.p2pGarageNextKey,
           onPressed: onNext,
@@ -244,6 +250,113 @@ class _KeyNavigator extends StatelessWidget {
           disabledColor: colors.textMuted,
         ),
       ],
+    );
+  }
+}
+
+/// « External Garage Key », the title of the card on the external Garage Key: no arrows (decided on 2026-11-26, #81).
+class _ExternalTitle extends StatelessWidget {
+  final String title;
+
+  /// The ⓘ beside the title (placement B), `null` for none.
+  final Widget? info;
+
+  const _ExternalTitle({required this.title, required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    final info = this.info;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Row(
+        children: [
+          Expanded(child: _Title(title: title)),
+          ?info,
+        ],
+      ),
+    );
+  }
+}
+
+/// The name of the key shown, a header for a screen reader; within the room the arrows leave, on one line, scaled down just enough to fit when it is wider, never broken, as the robot navigator's label (#273).
+class _Title extends StatelessWidget {
+  final String title;
+
+  const _Title({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      header: true,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: text.titleSmall?.copyWith(color: colors.text),
+        ),
+      ),
+    );
+  }
+}
+
+/// The ⓘ that opens the explanation of the key shown ([GarageKeyInfoDialog]).
+class _InfoButton extends StatelessWidget {
+  final bool external;
+
+  const _InfoButton({required this.external});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    return IconButton(
+      tooltip: l10n.p2pGarageKeyExplain,
+      onPressed: () => GarageKeyInfoDialog.show(context, external: external),
+      icon: const Icon(Icons.info_outline),
+      color: colors.text,
+    );
+  }
+}
+
+/// A discreet link of the card, its icon before its label, which wraps between words: « Import an external Garage Key », « Delete the external Garage Key ». At least 44 points high; `null` [onPressed] draws it disabled.
+class _CardLink extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  const _CardLink({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final shown = onPressed == null ? colors.textMuted : color;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18, color: shown),
+          const Gap(BullSpacing.xs),
+          Flexible(
+            child: WordFitText(
+              label,
+              textAlign: TextAlign.center,
+              style: text.labelLarge?.copyWith(color: shown),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

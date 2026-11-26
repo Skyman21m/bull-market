@@ -26,3 +26,15 @@ WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND k
 BEGIN
   SELECT RAISE(IGNORE);
 END;
+
+-- A notice shown is never due again, and a notice is never deleted: « Your Garage Keys » is shown once.
+CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices
+WHEN NOT (OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice)
+BEGIN
+  SELECT RAISE(ABORT, 'a Garage notice only turns shown');
+END;
+
+CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices
+BEGIN
+  SELECT RAISE(ABORT, 'a Garage notice is kept');
+END;

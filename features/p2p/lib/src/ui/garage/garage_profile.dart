@@ -22,7 +22,7 @@ import 'robot_nickname.dart';
 import 'last_order_lines.dart';
 import 'robot_coordinator_panel.dart';
 
-/// The profile of the Garage, as the official client draws it (`basic/GaragePage/GarageKeyProfile.tsx` at commit ff1998c): the nickname, the avatar, the robot navigator, then the card of the Garage Key ([GarageKeyCard]), where the keys of the words scroll and « New key » takes the place of « Delete All » (#81).
+/// The profile of the Garage, as the official client draws it (`basic/GaragePage/GarageKeyProfile.tsx` at commit ff1998c): the nickname, the avatar, the robot navigator, then the card of the Garage Key ([GarageKeyCard]), where the internal Garage Keys scroll, « New internal Garage Key » takes the place of « Delete All », and a button leads to the external Garage Key and back (#81).
 ///
 /// The Garage Key is hidden until the user asks for it and passes the app's own re-authentication, the PIN the wallet asks before it shows its seeds, which [reauthenticate] brings from the shell; the official client shows it at once.
 /// It is hidden again when the profile is left, when another key is shown and when the app goes to the background.
@@ -30,7 +30,8 @@ import 'robot_coordinator_panel.dart';
 /// Under the robot navigator, the panel of the robot shown ([RobotCoordinatorPanel]): the coordinator that knows it, if any, and what that coordinator says of its orders and rewards, with its own cubit for each robot, closed when the user moves to another robot.
 /// The settings of the robot (Telegram, webhook, stealth invoices) and the claim of its rewards are not shown.
 /// Under the navigator, « Last order #N » (#216, [LastOrderLines]): the reference's line of the robot shown, here read from the device's records, since each trade has a robot of its own; a tap shows that order's robot before its trade opens (#227, [GarageCubit.showOrderRobot]), so that the robot and the order on screen go together, as in the reference.
-/// Under those lines, « See history » (#253, an addition of Bull Market): the finished orders of the key shown, folded by default, each line opening its order as the lines above do.
+/// Above those lines, « Trade in progress #N » for each trade in progress of another Garage Key than the one shown, with its key, robot and coordinator (#81, decided on 2026-11-26), opening its trade with its own key.
+/// Under those lines, « See history » (#253, an addition of Bull Market): the finished orders of every Garage Key of the network, each saying its key and its robot (#81), folded by default, each line opening its order as the lines above do.
 class GarageProfile extends StatefulWidget {
   final GarageWithKey state;
   final GarageKeyClipboard clipboard;
@@ -101,6 +102,7 @@ class _GarageProfileState extends State<GarageProfile> {
                   historyKey: state.key,
                   keyNumbers: state.keyNumbers,
                   externalKey: state.externalKey,
+                  inProgressElsewhere: state.inProgressElsewhere,
                   onOpen: (record) {
                     cubit.showOrderRobot(record);
                     return open(record);
@@ -108,6 +110,9 @@ class _GarageProfileState extends State<GarageProfile> {
                 ),
               ),
               null => LastOrderLines(
+                keyNumbers: state.keyNumbers,
+                externalKey: state.externalKey,
+                inProgressElsewhere: state.inProgressElsewhere,
                 onOpen: (record) {
                   cubit.showOrderRobot(record);
                   return open(record);

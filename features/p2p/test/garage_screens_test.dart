@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_logger/bull_logger.dart';
@@ -48,6 +49,7 @@ import 'package:p2p/src/ui/garage/send_robot_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
+import 'package:p2p/src/ui/widgets/garage_key_field.dart';
 import 'package:p2p/src/ui/widgets/garage_key_view.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/order_search_miss_dialog.dart';
@@ -92,6 +94,20 @@ void main() {
     Err(:final failure) => throw StateError('$failure'),
   };
 
+  // The example key of the RoboSats frontend tests, the only real key the tests type, as `packages/robosats` records it.
+  final vector =
+      (jsonDecode(
+                File(
+                  '../../packages/robosats/test/fixtures/robot-identity-vectors.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>)['garage_key']
+          as Map<String, dynamic>;
+  final exampleText = vector['garage_key'] as String;
+  final exampleNickname =
+      ((vector['derived'] as List).first as Map<String, dynamic>)['nickname']
+          as String;
+
   late GetIt locator;
   late StreamController<P2pTorState> tor;
   late FakeSecureStoragePlatform storage;
@@ -106,6 +122,7 @@ void main() {
   /// The text on the fake clipboard, every text written to it, how many times it was read, and whether it refuses writes or reads.
   String? clipboard;
   late List<String?> clipboardWrites;
+  late int clipboardReads;
   late bool clipboardWriteFails;
   late bool clipboardUnreadable;
 
@@ -169,6 +186,7 @@ void main() {
     privacyCalls = [];
     clipboard = null;
     clipboardWrites = [];
+    clipboardReads = 0;
     clipboardWriteFails = false;
     clipboardUnreadable = false;
     reauthentications = 0;
@@ -185,6 +203,7 @@ void main() {
           clipboard = (call.arguments as Map)['text'] as String?;
           clipboardWrites.add(clipboard);
         case 'Clipboard.getData':
+          clipboardReads++;
           return clipboardUnreadable ? null : {'text': clipboard};
       }
       return null;
@@ -341,6 +360,12 @@ void main() {
       isFalse,
     );
   }
+
+  /// The paste field of « Robot recovery » and its editable text.
+  Finder pasteInput() => find.descendant(
+    of: find.byType(GarageKeyField),
+    matching: find.byType(EditableText),
+  );
 
   String shownKey(WidgetTester tester) => tester
       .widget<Text>(
@@ -2308,14 +2333,14 @@ void main() {
     );
   });
 
-  group('the keys of the words (#81)', () {
+  group('the Garage Keys (#81, the mock-up decided on 2026-11-26)', () {
     /// The port of the test words, its keys derived beforehand, outside the fake time.
     Future<TestWordsPort> wordsOf(WidgetTester tester) async {
       final words = TestWordsPort();
       await tester.runAsync(
         () => words.precompute([
-          (RobosatsNetwork.testnet, 0),
-          (RobosatsNetwork.testnet, 1),
+          for (var index = 0; index < 3; index++)
+            (RobosatsNetwork.testnet, index),
           (RobosatsNetwork.mainnet, 0),
         ]),
       );
@@ -2335,46 +2360,59 @@ void main() {
     String nickname(WidgetTester tester) =>
         tester.widget<RobotNickname>(find.byType(RobotNickname)).nickname;
 
-    // Each reading of the keys reads the vault slot of the external key, whose empty slot the vault settles with its full budget (#81).
+    // Each reading of the keys reads the vault slot of the external Garage Key, whose empty slot the vault settles with its full budget (#81).
     Future<void> tapText(WidgetTester tester, String text) async {
-      await tester.ensureVisible(find.text(text));
+      await tester.ensureVisible(find.text(text).last);
       await tester.pump();
-      await tester.tap(find.text(text));
+      await tester.tap(find.text(text).last);
       await letTheVaultSettle(tester);
     }
 
     Future<void> tapTooltip(WidgetTester tester, String tooltip) async {
-      await tester.ensureVisible(find.byTooltip(tooltip));
+      await tester.ensureVisible(find.byTooltip(tooltip).first);
       await tester.pump();
-      await tester.tap(find.byTooltip(tooltip));
+      await tester.tap(find.byTooltip(tooltip).first);
       await letTheVaultSettle(tester);
     }
 
+    const internalHelp = 'Backed up by the 12 words of your Bull Wallet.';
+    const externalHelp =
+        'Not backed up by your Bull Wallet: keep a copy of it.';
+
+    /// A book of schema 9 with an open trade of the fixed key, in the vault's testnet slot: what an update finds.
+    Future<QueryExecutor Function()> updatedBook(WidgetTester tester) async {
+      keystoreHolding({_testnetEntry: null});
+      final directory = Directory.systemTemp.createTempSync('p2p-external-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final file = File('${directory.path}/nine.sqlite');
+      await tester.runAsync(() => schema9Book(file, fixedKey));
+      return () => NativeDatabase(file);
+    }
+
     testWidgets(
-      'the first opening shows key 0 in its card: no wizard, no backup, no delete',
+      'the first opening shows internal key 0 in its card: no wizard, no backup, no delete, the import link',
       (tester) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
-        expect(find.text('Garage Key #0'), findsOneWidget);
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
         expect(find.text('robo1••••••••••••'), findsOneWidget);
-        expect(
-          find.text(
-            'Keep this key safe and do not share it. The 12 words of your Bull Wallet back up your Garage Keys.',
-          ),
-          findsOneWidget,
-        );
-        expect(find.text('New key'), findsOneWidget);
+        expect(find.text(internalHelp), findsOneWidget);
+        expect(find.text('New internal Garage Key'), findsOneWidget);
+        expect(find.text('Import an external Garage Key'), findsOneWidget);
+        expect(find.text('Switch to the external Garage Key'), findsNothing);
+        expect(find.text('Delete the external Garage Key'), findsNothing);
+        expect(find.text('Your Garage Keys'), findsNothing);
         expect(find.text('Delete All'), findsNothing);
         expect(find.text('Start'), findsNothing);
-        expect(arrow(tester, 'Previous key').onPressed, isNull);
-        expect(arrow(tester, 'Next key').onPressed, isNull);
+        expect(arrow(tester, 'Previous internal Garage Key').onPressed, isNull);
+        expect(arrow(tester, 'Next internal Garage Key').onPressed, isNull);
         expect(find.byType(GarageKeyView), findsNothing);
         expect(storage.entries.keys, isNot(contains(_testnetEntry)));
       },
     );
 
     testWidgets(
-      'nothing of the Garage is drawn until the capture protection is on, in French',
+      'nothing of the Garage is drawn until the capture protection is on, and nothing is read, in French',
       (tester) async {
         keystoreHolding({});
         protection = () async => false;
@@ -2391,19 +2429,37 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(find.text('Clé de garage n° 0'), findsNothing);
+        expect(find.text('Clé de garage interne n° 0'), findsNothing);
+        // The Garage is built only once the protection is on: until then it read nothing.
+        expect(storage.reads, 0);
         protection = () async => true;
         await tester.tap(find.text('Réessayer'));
         await settle(tester);
         await letTheVaultSettle(tester);
-        expect(find.text('Clé de garage n° 0'), findsOneWidget);
-        expect(find.text('Nouvelle clé'), findsOneWidget);
+        expect(find.text('Clé de garage interne n° 0'), findsOneWidget);
+        expect(find.text('Nouvelle clé de garage interne'), findsOneWidget);
+        expect(
+          find.text('Sauvegardée par les 12 mots de votre Bull Wallet.'),
+          findsOneWidget,
+        );
+        expect(find.text('Importer une clé de garage externe'), findsOneWidget);
       },
     );
 
-    testWidgets(
-      'a key copied is cleared after 30 seconds if the clipboard still holds it',
-      (tester) async {
+    for (final (label, after)
+        in <(String, Future<void> Function(WidgetTester))>[
+          ('if the clipboard still holds it', (_) async {}),
+          (
+            'even after the Garage is left',
+            (tester) async {
+              await tester.tap(find.text('Offers'));
+              await settle(tester);
+            },
+          ),
+        ]) {
+      testWidgets('a key copied is cleared after 30 seconds $label', (
+        tester,
+      ) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
         await tapTooltip(tester, 'Show Garage Key');
@@ -2414,12 +2470,30 @@ void main() {
         await tester.tap(find.byTooltip('Copy'));
         await settle(tester);
         expect(clipboard == key, isTrue);
+        await after(tester);
         await tester.pump(const Duration(seconds: 29));
         expect(clipboard == key, isTrue);
         await tester.pump(const Duration(seconds: 2));
         await settle(tester);
         expect(clipboard, '');
         expect(locator<GarageKeyClipboard>().isArmed, isFalse);
+      });
+    }
+
+    testWidgets(
+      'a key copied is left alone once the user copied something else',
+      (tester) async {
+        keystoreHolding({});
+        await openGarage(tester, words: await wordsOf(tester));
+        await tapTooltip(tester, 'Show Garage Key');
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        await tester.tap(find.byTooltip('Copy'));
+        await settle(tester);
+        clipboard = 'a shopping list';
+        await tester.pump(const Duration(seconds: 31));
+        await settle(tester);
+        expect(clipboard, 'a shopping list');
       },
     );
 
@@ -2450,11 +2524,11 @@ void main() {
               await tapTooltip(tester, 'Copy');
               await tester.pump(const Duration(seconds: 31));
               await settle(tester);
-              await tapText(tester, 'New key');
-              await tapText(tester, 'Create key #1');
+              await tapText(tester, 'New internal Garage Key');
+              await tapText(tester, 'Create internal Garage Key #1');
               await tapTooltip(tester, 'Next account');
-              await tapTooltip(tester, 'Previous key');
-              await tapTooltip(tester, 'Next key');
+              await tapTooltip(tester, 'Previous internal Garage Key');
+              await tapTooltip(tester, 'Next internal Garage Key');
               await tapTooltip(tester, 'Show Garage Key');
               await tester.tap(find.text('PIN ok'));
               await afterRoute(tester);
@@ -2502,43 +2576,55 @@ void main() {
     );
 
     testWidgets(
-      '« New key » asks first; Cancel creates nothing, « Create key #1 » shows key 1 and its robot 0',
+      '« New internal Garage Key » asks first; Cancel creates nothing, « Create » shows internal key 1 and its robot 0, without the PIN',
       (tester) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
         final first = nickname(tester);
-        await tapText(tester, 'New key');
+        await tapText(tester, 'New internal Garage Key');
         expect(find.text('New Garage Key'), findsOneWidget);
-        expect(find.text('Your trades will use key #1.'), findsOneWidget);
+        expect(
+          find.text(
+            'Your trades will use internal Garage Key #1. Earlier Garage Keys stay within reach in the Garage.',
+          ),
+          findsOneWidget,
+        );
         await tapText(tester, 'Cancel');
-        expect(find.text('Garage Key #0'), findsOneWidget);
-        await tapText(tester, 'New key');
-        await tapText(tester, 'Create key #1');
-        expect(find.text('Garage Key #1'), findsOneWidget);
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        await tapText(tester, 'New internal Garage Key');
+        await tapText(tester, 'Create internal Garage Key #1');
+        expect(find.text('Internal Garage Key #1'), findsOneWidget);
         expect(find.text('Robot #0'), findsOneWidget);
         expect(nickname(tester), isNot(first));
-        expect(arrow(tester, 'Next key').onPressed, isNull);
-        expect(arrow(tester, 'Previous key').onPressed, isNotNull);
+        expect(arrow(tester, 'Next internal Garage Key').onPressed, isNull);
+        expect(
+          arrow(tester, 'Previous internal Garage Key').onPressed,
+          isNotNull,
+        );
+        // From key 0, « Create » makes the key above the highest, key 2.
+        await tapTooltip(tester, 'Previous internal Garage Key');
+        await tapText(tester, 'New internal Garage Key');
+        expect(find.text('Create internal Garage Key #2'), findsOneWidget);
+        await tapText(tester, 'Create internal Garage Key #2');
+        expect(find.text('Internal Garage Key #2'), findsOneWidget);
         expect(reauthentications, 0);
       },
     );
 
     testWidgets(
-      'the arrows select an earlier key, which keeps « New key » and no line of its own; they ask no PIN',
+      'the arrows select an earlier internal key, which keeps « New internal Garage Key »; they ask no PIN',
       (tester) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
         final first = nickname(tester);
-        await tapText(tester, 'New key');
-        await tapText(tester, 'Create key #1');
-        await tapTooltip(tester, 'Previous key');
-        expect(find.text('Garage Key #0'), findsOneWidget);
-        expect(find.textContaining('Earlier key'), findsNothing);
-        expect(find.text('New key'), findsOneWidget);
+        await tapText(tester, 'New internal Garage Key');
+        await tapText(tester, 'Create internal Garage Key #1');
+        await tapTooltip(tester, 'Previous internal Garage Key');
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        expect(find.text('New internal Garage Key'), findsOneWidget);
         expect(nickname(tester), first);
-        await tapTooltip(tester, 'Next key');
-        expect(find.text('Garage Key #1'), findsOneWidget);
-        expect(find.text('New key'), findsOneWidget);
+        await tapTooltip(tester, 'Next internal Garage Key');
+        expect(find.text('Internal Garage Key #1'), findsOneWidget);
         expect(reauthentications, 0);
       },
     );
@@ -2548,8 +2634,8 @@ void main() {
       (tester) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
-        await tapText(tester, 'New key');
-        await tapText(tester, 'Create key #1');
+        await tapText(tester, 'New internal Garage Key');
+        await tapText(tester, 'Create internal Garage Key #1');
         await tapTooltip(tester, 'Show Garage Key');
         expect(reauthentications, 1);
         await tester.tap(find.text('PIN ok'));
@@ -2559,7 +2645,7 @@ void main() {
         expect(shownKey(tester), isNot(abandonTestnet0));
         expectKeyOnlyInView(tester);
         // An earlier key: its text is asked for again.
-        await tapTooltip(tester, 'Previous key');
+        await tapTooltip(tester, 'Previous internal Garage Key');
         expect(find.byType(GarageKeyView), findsNothing);
         await tapTooltip(tester, 'Show Garage Key');
         expect(reauthentications, 2);
@@ -2567,7 +2653,7 @@ void main() {
         await afterRoute(tester);
         expect(shownKey(tester), abandonTestnet0);
         // A system back from the PIN shows nothing.
-        await tapTooltip(tester, 'Next key');
+        await tapTooltip(tester, 'Next internal Garage Key');
         await tapTooltip(tester, 'Show Garage Key');
         await tester.tap(find.text('PIN back'));
         await afterRoute(tester);
@@ -2590,71 +2676,729 @@ void main() {
       expect(arrow(tester, 'Show Garage Key').onPressed, isNull);
     });
 
-    testWidgets('words that cannot give a key: why, then Retry; nothing drawn', (
-      tester,
-    ) async {
-      keystoreHolding({});
-      await openGarage(
-        tester,
-        words: TestWordsPort(
-          refusal: P2pGarageKeyRefusalReason.noDefaultWallet,
-        ),
-      );
-      expect(
-        find.text(
-          'No default Bitcoin wallet: the Garage Key comes from its 12 words.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Retry'), findsOneWidget);
-      expect(find.text('New key'), findsNothing);
-      expect(storage.entries, isEmpty);
-    });
+    testWidgets(
+      'the ⓘ opens the explanation of the key shown, internal or external, closed by its button; a screen reader hears it as an explanation',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        keystoreHolding({});
+        await openGarage(tester, words: await wordsOf(tester));
+        expect(
+          tester.getSemantics(find.byTooltip('Explanation')),
+          isSemantics(
+            tooltip: 'Explanation',
+            isButton: true,
+            hasTapAction: true,
+          ),
+        );
+        expect(find.bySemanticsLabel('Internal Garage Key #0'), findsOneWidget);
+        await tapTooltip(tester, 'Explanation');
+        expect(find.text('Internal Garage Keys'), findsOneWidget);
+        expect(
+          find.text(
+            'Your internal Garage Keys are backed up by the 12 words of your Bull Wallet: reinstall the app with these 12 words and you find them again. Keep them safe and do not share them: whoever holds a Garage Key controls its robots.',
+          ),
+          findsOneWidget,
+        );
+        await tapText(tester, 'Acknowledged');
+        expect(find.text('Internal Garage Keys'), findsNothing);
+        await tapText(tester, 'Import an external Garage Key');
+        await tester.enterText(pasteInput(), exampleText);
+        await settle(tester);
+        await tapText(tester, 'Recover');
+        expect(find.text('External Garage Key'), findsOneWidget);
+        await tapTooltip(tester, 'Explanation');
+        expect(find.text('External Garage Key'), findsNWidgets(2));
+        expect(
+          find.text(
+            'This Garage Key is not backed up by the 12 words of your Bull Wallet. If you lose this phone or delete the app, you will only find it again with your own copy: back it up separately. Keep it safe and do not share it.',
+          ),
+          findsOneWidget,
+        );
+        await tapText(tester, 'Acknowledged');
+        expect(find.text('External Garage Key'), findsOneWidget);
+        semantics.dispose();
+      },
+    );
 
     testWidgets(
-      'after the update, the key the vault kept is the external key, selected, after the highest key of the words, with today\'s helper and its delete',
+      'after the update, the key the vault kept is the external Garage Key, shown once with « Your Garage Keys », its trade in progress named, and the way to the internal keys and back',
       (tester) async {
-        keystoreHolding({_testnetEntry: null});
-        final directory = Directory.systemTemp.createTempSync('p2p-external-');
-        addTearDown(() => directory.deleteSync(recursive: true));
-        final file = File('${directory.path}/nine.sqlite');
-        await tester.runAsync(() => schema9Book(file, fixedKey));
+        final opener = await updatedBook(tester);
         await openGarage(
           tester,
           words: await wordsOf(tester),
-          databaseOpener: () => NativeDatabase(file),
+          databaseOpener: opener,
         );
-        expect(find.text('External Key'), findsOneWidget);
-        expect(find.text('Store your Garage Key safely'), findsOneWidget);
-        expect(find.text('New key'), findsOneWidget);
-        expect(find.text('Delete Garage Key'), findsOneWidget);
+        expect(find.text('Your Garage Keys'), findsOneWidget);
         expect(
-          find.text('Recover an existing robot using your token'),
-          findsNothing,
+          find.text(
+            'Your current Garage Key is now called « External Garage Key ». The internal Garage Keys, backed up by your Bull Wallet, are next to it: tap « Back to internal Garage Keys ».',
+          ),
+          findsOneWidget,
         );
-        expect(arrow(tester, 'Previous key').onPressed, isNotNull);
-        expect(arrow(tester, 'Next key').onPressed, isNull);
-        // « ‹ »: key 0 of the words, whose « › » leads back to the external key.
-        await tapTooltip(tester, 'Previous key');
-        expect(find.text('Garage Key #0'), findsOneWidget);
-        expect(find.text('Delete Garage Key'), findsNothing);
-        expect(arrow(tester, 'Next key').onPressed, isNotNull);
-        await tapTooltip(tester, 'Next key');
-        expect(find.text('External Key'), findsOneWidget);
+        await tapText(tester, 'Acknowledged');
+        expect(find.text('Your Garage Keys'), findsNothing);
+        // Behind it, the Garage stays on the external Garage Key: no arrows, no « New internal Garage Key », no import.
+        expect(find.text('External Garage Key'), findsOneWidget);
+        expect(find.text(fixedNickname), findsOneWidget);
+        expect(find.text(externalHelp), findsOneWidget);
+        expect(find.byTooltip('Previous internal Garage Key'), findsNothing);
+        expect(find.byTooltip('Next internal Garage Key'), findsNothing);
+        expect(find.text('New internal Garage Key'), findsNothing);
+        expect(find.text('Import an external Garage Key'), findsNothing);
+        expect(find.text('Delete the external Garage Key'), findsOneWidget);
+        // Its own trade in progress has no line of its own here.
+        expect(find.text('Trade in progress #42'), findsNothing);
+        await tapText(tester, 'Back to internal Garage Keys');
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        expect(find.text('Switch to the external Garage Key'), findsOneWidget);
+        expect(find.text('Import an external Garage Key'), findsNothing);
+        // The trade of the external Garage Key, shown on another key: its line, its key, its robot and its coordinator.
+        expect(find.text('Trade in progress #42'), findsOneWidget);
+        expect(
+          find.text('External Garage Key · Robot #0 · Temple of Sats'),
+          findsOneWidget,
+        );
+        await tapText(tester, 'New internal Garage Key');
+        await tapText(tester, 'Create internal Garage Key #1');
+        await tapTooltip(tester, 'Previous internal Garage Key');
+        await tapText(tester, 'Switch to the external Garage Key');
+        expect(find.text('External Garage Key'), findsOneWidget);
+        // « Back » returns to the last internal key shown, key 0, not the highest.
+        await tapText(tester, 'Back to internal Garage Keys');
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        // Never twice: leaving the Garage and coming back, on the external key.
+        await tapText(tester, 'Switch to the external Garage Key');
+        await tester.tap(find.text('Offers'));
+        await settle(tester);
+        await tester.tap(find.text('Garage'));
+        await settle(tester);
+        await letTheVaultSettle(tester);
+        expect(find.text('External Garage Key'), findsOneWidget);
+        expect(find.text('Your Garage Keys'), findsNothing);
+        expect(reauthentications, 0);
       },
     );
 
     testWidgets(
-      'without an external key, a link of the card opens « Robot recovery »',
+      'deleting the external Garage Key during its trade: the dialog names the trade, « Delete » stays enabled, the PIN, then the last internal key and the import link',
+      (tester) async {
+        final opener = await updatedBook(tester);
+        await openGarage(
+          tester,
+          words: await wordsOf(tester),
+          databaseOpener: opener,
+        );
+        await tapText(tester, 'Acknowledged');
+        await tapText(tester, 'Delete the external Garage Key');
+        expect(find.text('Delete the external Garage Key?'), findsOneWidget);
+        expect(
+          find.text(
+            'It is not backed up by your Bull Wallet. Without a copy, its robots will be lost to this app.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Trade #42 uses this Garage Key: without it, you will not be able to continue it.',
+          ),
+          findsOneWidget,
+        );
+        // « Cancel » deletes nothing and asks nothing.
+        await tapText(tester, 'Cancel');
+        expect(reauthentications, 0);
+        expect(storage.entries.keys, contains(_testnetEntry));
+        await tapText(tester, 'Delete the external Garage Key');
+        await tester.tap(find.text('Delete'));
+        await afterRoute(tester);
+        // A robot of it is bound: the PIN, as before #81.
+        expect(reauthentications, 1);
+        expect(storage.entries.keys, contains(_testnetEntry));
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        await letTheVaultSettle(tester);
+        expect(storage.entries.keys, isNot(contains(_testnetEntry)));
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        expect(find.text('Import an external Garage Key'), findsOneWidget);
+        expect(find.text('Switch to the external Garage Key'), findsNothing);
+      },
+    );
+
+    for (final (locale, title, text, confirm, cancel, pin) in [
+      (
+        const Locale('en'),
+        'Delete the external Garage Key?',
+        'It is not backed up by your Bull Wallet. Without a copy, its robots will be lost to this app.',
+        'Delete',
+        'Cancel',
+        'Delete the external Garage Key',
+      ),
+      (
+        const Locale('fr'),
+        'Supprimer la clé de garage externe ?',
+        'Elle n\'est pas sauvegardée par votre Bull Wallet. Sans une copie, ses robots seront perdus pour cette app.',
+        'Supprimer',
+        'Annuler',
+        'Supprimer la clé de garage externe',
+      ),
+    ]) {
+      testWidgets(
+        'in ${locale.languageCode}: its delete asks, then the PIN, then deletes this network\'s only',
+        (tester) async {
+          keystoreHolding({_testnetEntry: null, _mainnetEntry: null});
+          await openGarage(
+            tester,
+            locale: locale,
+            words: await wordsOf(tester),
+          );
+          await tapText(tester, pin);
+          expect(find.text(title), findsOneWidget);
+          expect(find.text(text), findsOneWidget);
+          expect(reauthentications, 0);
+          await tapText(tester, cancel);
+          expect(reauthentications, 0);
+          expect(
+            storage.entries.keys.toSet(),
+            containsAll({_testnetEntry, _mainnetEntry}),
+          );
+          await tapText(tester, pin);
+          await tester.tap(find.text(confirm));
+          await afterRoute(tester);
+          // The fixed key has no record of being drawn here: a robot of it may live on a coordinator, so the PIN comes after the confirmation, before anything is deleted.
+          expect(reauthentications, 1);
+          expect(storage.entries.keys, contains(_testnetEntry));
+          await tester.tap(find.text('PIN ok'));
+          await afterRoute(tester);
+          await letTheVaultSettle(tester);
+          expect(storage.entries.keys, isNot(contains(_testnetEntry)));
+          expect(
+            storage.entries[_mainnetEntry],
+            storedFixedKeys[_mainnetEntry],
+          );
+          expect(find.text(fixedNickname), findsNothing);
+        },
+      );
+    }
+
+    testWidgets('says so when the external key could not be deleted', (
+      tester,
+    ) async {
+      keystoreHolding(
+        {_testnetEntry: null},
+        scriptedWrites: [PlatformException(code: 'delete failed')],
+      );
+      await openGarage(tester, words: await wordsOf(tester));
+      await tapText(tester, 'Delete the external Garage Key');
+      await tester.tap(find.text('Delete'));
+      await afterRoute(tester);
+      await tester.tap(find.text('PIN ok'));
+      await afterRoute(tester);
+      await letTheVaultSettle(tester);
+      expect(
+        find.text('The Garage Key could not be deleted. Try again.'),
+        findsOneWidget,
+      );
+      expect(find.text(fixedNickname), findsOneWidget);
+      expect(storage.entries[_testnetEntry], storedFixedKeys[_testnetEntry]);
+    });
+
+    testWidgets(
+      'leaving the PIN deletes nothing and leaves the card as it was; without the re-authentication, a key that may have robots cannot be deleted',
+      (tester) async {
+        keystoreHolding({_testnetEntry: null});
+        await openGarage(tester, words: await wordsOf(tester));
+        await tapTooltip(tester, 'Next account');
+        expect(find.text('Robot #1'), findsOneWidget);
+        await tapText(tester, 'Delete the external Garage Key');
+        await tester.tap(find.text('Delete'));
+        await afterRoute(tester);
+        await tester.tap(find.text('PIN back'));
+        await afterRoute(tester);
+        expect(storage.entries.keys, contains(_testnetEntry));
+        expect(find.text('Robot #1'), findsOneWidget);
+        expect(find.text('External Garage Key'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'without the shell\'s re-authentication, the delete of an external key that may have robots is disabled',
+      (tester) async {
+        keystoreHolding({_testnetEntry: null});
+        await openTab(
+          tester,
+          withReauthentication: false,
+          words: await wordsOf(tester),
+        );
+        await tester.tap(find.text('Garage'));
+        await settle(tester);
+        await letTheVaultSettle(tester);
+        await tester.ensureVisible(find.text('Delete the external Garage Key'));
+        await tester.pump();
+        final button = tester.widget<TextButton>(
+          find.ancestor(
+            of: find.text('Delete the external Garage Key'),
+            matching: find.byType(TextButton),
+          ),
+        );
+        expect(button.onPressed, isNull);
+        await tester.tap(
+          find.text('Delete the external Garage Key'),
+          warnIfMissed: false,
+        );
+        await settle(tester);
+        expect(find.text('Delete the external Garage Key?'), findsNothing);
+        expect(storage.entries.keys, contains(_testnetEntry));
+      },
+    );
+
+    testWidgets(
+      'an external key locked: retry and the way back only, nothing deleted, in French',
+      (tester) async {
+        keystoreHolding({_testnetEntry: null}, locked: true);
+        await openGarage(
+          tester,
+          locale: const Locale('fr'),
+          words: await wordsOf(tester),
+        );
+        expect(
+          find.text(
+            'Le coffre de l’appareil est verrouillé. Déverrouillez votre appareil, puis réessayez.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Réessayer'), findsOneWidget);
+        expect(
+          find.text('Revenir aux clés de garage internes'),
+          findsOneWidget,
+        );
+        expect(find.text('Supprimer la clé de garage externe'), findsNothing);
+        storage
+          ..locked = false
+          ..writesFail = false;
+        await tapText(tester, 'Réessayer');
+        expect(find.text(fixedNickname), findsOneWidget);
+        expect(find.text('Clé de garage externe'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'an external key damaged: why, its delete after the PIN, then the internal key and the import link',
+      (tester) async {
+        keystoreHolding({_testnetEntry: 'not json at all'});
+        await openGarage(tester, words: await wordsOf(tester));
+        expect(find.text('External Garage Key'), findsOneWidget);
+        expect(
+          find.text('The Garage Key stored on this device is damaged.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Try again. If it keeps failing, delete it: the key and its robots are lost unless you kept a copy.',
+          ),
+          findsOneWidget,
+        );
+        await tapText(tester, 'Delete the external Garage Key');
+        expect(find.text('Delete the external Garage Key?'), findsOneWidget);
+        expect(reauthentications, 0);
+        await tester.tap(find.text('Delete'));
+        await afterRoute(tester);
+        // A slot that cannot be read always asks the PIN, after the confirmation.
+        expect(reauthentications, 1);
+        expect(storage.entries.keys, contains(_testnetEntry));
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        await letTheVaultSettle(tester);
+        expect(storage.entries.keys, isNot(contains(_testnetEntry)));
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        expect(find.text('Import an external Garage Key'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'an external key unreadable: said so, kept as it is, the way back offered',
+      (tester) async {
+        keystoreHolding({
+          _testnetEntry: null,
+        }, scripted: List.generate(5, (_) => PlatformException(code: 'read')));
+        await openGarage(tester, words: await wordsOf(tester));
+        expect(
+          find.text('The Garage Key stored on this device cannot be read.'),
+          findsOneWidget,
+        );
+        expect(find.text('Back to internal Garage Keys'), findsOneWidget);
+        expect(storage.entries[_testnetEntry], storedFixedKeys[_testnetEntry]);
+        await tapText(tester, 'Back to internal Garage Keys');
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+      },
+    );
+
+    for (final (reason, text) in [
+      (
+        P2pGarageKeyRefusalReason.noDefaultWallet,
+        'No default Bitcoin wallet: the internal Garage Keys come from its 12 words.',
+      ),
+      (
+        P2pGarageKeyRefusalReason.passphrase,
+        'This wallet has a passphrase: its 12 words alone do not give the internal Garage Keys.',
+      ),
+      (
+        P2pGarageKeyRefusalReason.noWords,
+        'This wallet has no words: the internal Garage Keys come from them.',
+      ),
+      (
+        P2pGarageKeyRefusalReason.locked,
+        'The keystore is locked. Unlock your device, then try again.',
+      ),
+      (
+        P2pGarageKeyRefusalReason.unreadable,
+        'The Garage Key stored on this device cannot be read.',
+      ),
+    ]) {
+      testWidgets(
+        'words that refuse (${reason.name}): without an external key, why and Retry; with one, the external key shown and usable, the internal side saying why (C-passphrase)',
+        (tester) async {
+          keystoreHolding({});
+          await openGarage(tester, words: TestWordsPort(refusal: reason));
+          expect(find.text(text), findsOneWidget);
+          expect(find.text('Retry'), findsOneWidget);
+          expect(find.text('Switch to the external Garage Key'), findsNothing);
+          expect(find.text('New internal Garage Key'), findsNothing);
+          expect(storage.entries, isEmpty);
+        },
+      );
+
+      testWidgets(
+        'words that refuse (${reason.name}), with an external key: shown, usable and deletable; the internal side says why, with the way back',
+        (tester) async {
+          keystoreHolding({_testnetEntry: null});
+          await openGarage(tester, words: TestWordsPort(refusal: reason));
+          expect(find.text('External Garage Key'), findsOneWidget);
+          expect(find.text(fixedNickname), findsOneWidget);
+          expect(find.text('Delete the external Garage Key'), findsOneWidget);
+          await tapText(tester, 'Back to internal Garage Keys');
+          expect(find.text(text), findsOneWidget);
+          expect(find.text('Retry'), findsOneWidget);
+          await tapText(tester, 'Retry');
+          expect(find.text(text), findsOneWidget);
+          await tapText(tester, 'Switch to the external Garage Key');
+          expect(find.text('External Garage Key'), findsOneWidget);
+          expect(find.text(fixedNickname), findsOneWidget);
+        },
+      );
+    }
+
+    testWidgets(
+      'without an external key, « Import an external Garage Key » opens today\'s « Robot recovery »; a key stored there shows the external key at once, its robot 0',
+      (tester) async {
+        keystoreHolding({});
+        await openGarage(
+          tester,
+          locale: const Locale('fr'),
+          words: await wordsOf(tester),
+        );
+        await tapText(tester, 'Importer une clé de garage externe');
+        expect(find.text('Récupération du robot'), findsOneWidget);
+        expect(find.text('Mode clé de garage'), findsOneWidget);
+        expect(
+          find.text(
+            'Saisissez votre clé de garage (robo1...) pour récupérer tous vos comptes robot.',
+          ),
+          findsOneWidget,
+        );
+        await tester.enterText(pasteInput(), 'robo1');
+        await settle(tester);
+        expect(find.text('Longueur invalide'), findsOneWidget);
+        await tester.tap(find.text('Récupérer'));
+        await settle(tester);
+        expect(storage.entries.keys, isNot(contains(_testnetEntry)));
+        // An internal key of this device is refused, by its number.
+        await tester.enterText(pasteInput(), abandonTestnet0);
+        await settle(tester);
+        await tester.tap(find.text('Récupérer'));
+        await letTheVaultSettle(tester);
+        expect(
+          find.text('C\'est déjà votre clé de garage interne n° 0.'),
+          findsOneWidget,
+        );
+        expect(storage.entries.keys, isNot(contains(_testnetEntry)));
+
+        await tester.enterText(pasteInput(), exampleText);
+        await settle(tester);
+        await tester.tap(find.text('Récupérer'));
+        await letTheVaultSettle(tester);
+        expect(find.text('Récupération du robot'), findsNothing);
+        expect(find.text('Clé de garage externe'), findsOneWidget);
+        expect(find.text(exampleNickname), findsOneWidget);
+        expect(find.text('Robot #0'), findsOneWidget);
+        expect(find.text('Your Garage Keys'), findsNothing);
+        expect(find.text('Vos clés de garage'), findsNothing);
+        expect(find.byType(GarageKeyView), findsNothing);
+        expect(storage.entries.keys, contains(_testnetEntry));
+      },
+    );
+
+    testWidgets(
+      'a change of network shows the keys of the other network, never their robot',
+      (tester) async {
+        keystoreHolding({_testnetEntry: null});
+        await openGarage(tester, words: await wordsOf(tester));
+        expect(find.text(fixedNickname), findsOneWidget);
+        network.switchTo(RobosatsNetwork.mainnet);
+        await settle(tester);
+        await letTheVaultSettle(tester);
+        expect(find.text(fixedNickname), findsNothing);
+        expect(find.text('Internal Garage Key #0'), findsOneWidget);
+        expect(storage.entries[_testnetEntry], storedFixedKeys[_testnetEntry]);
+        network.switchTo(RobosatsNetwork.testnet);
+        await settle(tester);
+        await letTheVaultSettle(tester);
+        expect(find.text(fixedNickname), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'an internal key, drawn here: Select Host once Tor is ready, then the sheet and the confirmation, and Cancel sends nothing',
       (tester) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
-        expect(find.text('Garage Key #0'), findsOneWidget);
-        expect(arrow(tester, 'Next key').onPressed, isNull);
-        await tapText(tester, 'Recover an existing robot using your token');
-        expect(find.text('Robot recovery'), findsOneWidget);
+        expect(_selectHost(tester).disabled, isTrue);
+        tor.add(P2pTorState.connecting);
+        await settle(tester);
+        expect(_selectHost(tester).disabled, isTrue);
+        expect(find.text('Connecting to Tor network'), findsOneWidget);
+        tor.add(P2pTorState.ready);
+        await letTheVaultSettle(tester);
+        expect(_selectHost(tester).disabled, isFalse);
+        await tester.ensureVisible(find.text('Select Host'));
+        await settle(tester);
+        await tester.tap(find.text('Select Host'));
+        await afterRoute(tester);
+        // A key drawn here asks no « Robots from elsewhere ».
+        expect(find.byType(RobotHistoryDialog), findsNothing);
+        expect(find.byType(SelectHostSheet), findsOneWidget);
+        expect(find.text('Temple of Sats'), findsOneWidget);
+        expect(find.text('TheBigLake'), findsOneWidget);
+        await tester.tap(find.text('Temple of Sats'));
+        await afterRoute(tester);
+        expect(find.byType(SendRobotDialog), findsOneWidget);
+        expect(find.textContaining('to Temple of Sats?'), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await afterRoute(tester);
+        expect(find.byType(SendRobotDialog), findsNothing);
+        expect(
+          find.text('No coordinator knows this robot yet.'),
+          findsOneWidget,
+        );
+        expect(transport.requests.where((r) => r.robot != null), isEmpty);
       },
     );
+  });
+
+  /// The paste field of « Robot recovery » and its editable text.
+  Finder recoveryInput() => pasteInput();
+
+  /// « Robot recovery » opened from « Import an external Garage Key », over the Garage on internal key 0.
+  Future<void> openRecovery(WidgetTester tester) async {
+    keystoreHolding({});
+    final words = TestWordsPort();
+    await tester.runAsync(
+      () => words.precompute([(RobosatsNetwork.testnet, 0)]),
+    );
+    await openGarage(tester, words: words);
+    await tester.ensureVisible(find.text('Import an external Garage Key'));
+    await tester.pump();
+    await tester.tap(find.text('Import an external Garage Key'));
+    await settle(tester);
+  }
+
+  // Restored from `main` (review of #292): the paste field, which « Robot recovery » keeps, played there now that the wizard is gone.
+  group('the paste field of « Robot recovery »', () {
+    testWidgets('has no text menu, no selection and no autofill', (
+      tester,
+    ) async {
+      await openRecovery(tester);
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byType(GarageKeyField),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(field.enableInteractiveSelection, isFalse);
+      expect(field.autofillHints, isNull);
+      expect(
+        field.contextMenuBuilder?.call(
+          tester.element(recoveryInput()),
+          tester.state<EditableTextState>(recoveryInput()),
+        ),
+        isA<SizedBox>(),
+      );
+      await tester.enterText(recoveryInput(), exampleText);
+      await settle(tester);
+      await tester.longPress(recoveryInput());
+      await settle(tester);
+      await tester.tap(recoveryInput());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(recoveryInput());
+      await settle(tester);
+      final state = tester.state<EditableTextState>(recoveryInput());
+      expect(state.widget.selectionEnabled, isFalse);
+      expect(state.textEditingValue.selection.isCollapsed, isTrue);
+      expect(state.selectionOverlay?.toolbarIsVisible ?? false, isFalse);
+      expect(state.selectionOverlay?.handlesAreVisible ?? false, isFalse);
+      final items = state.contextMenuButtonItems;
+      expect(
+        items.map((item) => item.type),
+        isNot(contains(ContextMenuButtonType.share)),
+      );
+      expect(items.map((item) => item.label), isNot(contains('Translate')));
+      for (final item in items.where(
+        (item) =>
+            item.type == ContextMenuButtonType.copy ||
+            item.type == ContextMenuButtonType.cut,
+      )) {
+        item.onPressed?.call();
+      }
+      await settle(tester);
+      expect(clipboardWrites, isEmpty);
+      expect(
+        tester.widget<EditableText>(recoveryInput()).controller.text ==
+            exampleText,
+        isTrue,
+      );
+      expect(find.text('Translate'), findsNothing);
+    });
+
+    testWidgets('Paste reads the clipboard once, cleans and checks it', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openRecovery(tester);
+      expect(clipboardReads, 0);
+      expect(
+        tester.getSemantics(find.byTooltip('Paste')),
+        isSemantics(tooltip: 'Paste', isButton: true, hasTapAction: true),
+      );
+      clipboard = 'not a key';
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+      expect(clipboardReads, 1);
+      expect(find.text('Must start with "robo1"'), findsOneWidget);
+      await tester.tap(find.byTooltip('Clear'));
+      await settle(tester);
+      expect(
+        tester.widget<EditableText>(recoveryInput()).controller.text,
+        isEmpty,
+      );
+      // A key copied with spaces and capitals: cleaned as if it were typed.
+      clipboard = exampleText.toUpperCase().replaceAllMapped(
+        RegExp('.{8}'),
+        (match) => '${match[0]} ',
+      );
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+      expect(clipboardReads, 2);
+      final controller = tester
+          .widget<EditableText>(recoveryInput())
+          .controller;
+      expect(controller.text == exampleText, isTrue);
+      expectKeyOnlyInView(tester);
+      await tester.tap(find.text('Recover'));
+      await letTheVaultSettle(tester);
+      expect(find.text(exampleNickname), findsOneWidget);
+      expect(clipboardReads, 2);
+      semantics.dispose();
+    });
+
+    testWidgets('a pasted key is never sent to the keyboard', (tester) async {
+      await openRecovery(tester);
+      await tester.tap(recoveryInput());
+      await settle(tester);
+      tester.testTextInput.log.clear();
+      clipboard = exampleText;
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+      expect(
+        tester.widget<EditableText>(recoveryInput()).controller.text ==
+            exampleText,
+        isTrue,
+      );
+      expect(
+        tester
+            .state<EditableTextState>(recoveryInput())
+            .widget
+            .focusNode
+            .hasFocus,
+        isFalse,
+      );
+      expect(
+        tester.testTextInput.log.any(
+          (call) => '${call.arguments}'.contains(exampleText.substring(5, 30)),
+        ),
+        isFalse,
+      );
+    });
+
+    testWidgets('a field focused again during the paste gets nothing', (
+      tester,
+    ) async {
+      await openRecovery(tester);
+      clipboard = exampleText;
+      await tester.tap(recoveryInput());
+      await settle(tester);
+      tester.testTextInput.log.clear();
+      await tester.tap(find.byTooltip('Paste'));
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.value();
+      }
+      final focus = tester
+          .state<EditableTextState>(recoveryInput())
+          .widget
+          .focusNode;
+      final controller = tester
+          .widget<EditableText>(recoveryInput())
+          .controller;
+      expect(focus.hasFocus, isFalse);
+      expect(controller.text.isEmpty, isTrue);
+      focus.requestFocus();
+      await settle(tester);
+      expect(focus.hasFocus, isTrue);
+      expect(controller.text.isEmpty, isTrue);
+      expect(
+        tester.testTextInput.log.any(
+          (call) => '${call.arguments}'.contains(exampleText.substring(5, 30)),
+        ),
+        isFalse,
+      );
+    });
+
+    testWidgets('a pasted text is bounded as a typed one', (tester) async {
+      await openRecovery(tester);
+      clipboard = 'a' * 300;
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+      expect(
+        tester.widget<EditableText>(recoveryInput()).controller.text,
+        'a' * GarageKeyField.maxLength,
+      );
+    });
+
+    testWidgets('an empty or unreadable clipboard changes nothing', (
+      tester,
+    ) async {
+      await openRecovery(tester);
+      await tester.enterText(recoveryInput(), 'robo1');
+      await settle(tester);
+      clipboard = '   ';
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+      clipboardUnreadable = true;
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+      expect(
+        tester.widget<EditableText>(recoveryInput()).controller.text,
+        'robo1',
+      );
+    });
   });
 }
 

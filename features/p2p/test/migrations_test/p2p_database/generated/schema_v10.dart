@@ -294,6 +294,199 @@ class DerivedGarageKeysCompanion
   }
 }
 
+class GarageNotices extends Table
+    with TableInfo<GarageNotices, GarageNoticesData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  GarageNotices(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> notice = GeneratedColumn<String>(
+    'notice',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> shown = GeneratedColumn<int>(
+    'shown',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  @override
+  List<GeneratedColumn> get $columns => [notice, shown];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'garage_notices';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {notice};
+  @override
+  GarageNoticesData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GarageNoticesData(
+      notice: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notice'],
+      )!,
+      shown: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}shown'],
+      )!,
+    );
+  }
+
+  @override
+  GarageNotices createAlias(String alias) {
+    return GarageNotices(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(notice)',
+    'CHECK(typeof(notice) = \'text\' AND typeof(shown) = \'integer\')',
+    'CHECK(notice IN (\'externalKeyNamed\'))',
+    'CHECK(shown IN (0, 1))',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class GarageNoticesData extends DataClass
+    implements Insertable<GarageNoticesData> {
+  final String notice;
+  final int shown;
+  const GarageNoticesData({required this.notice, required this.shown});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['notice'] = Variable<String>(notice);
+    map['shown'] = Variable<int>(shown);
+    return map;
+  }
+
+  GarageNoticesCompanion toCompanion(bool nullToAbsent) {
+    return GarageNoticesCompanion(notice: Value(notice), shown: Value(shown));
+  }
+
+  factory GarageNoticesData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GarageNoticesData(
+      notice: serializer.fromJson<String>(json['notice']),
+      shown: serializer.fromJson<int>(json['shown']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'notice': serializer.toJson<String>(notice),
+      'shown': serializer.toJson<int>(shown),
+    };
+  }
+
+  GarageNoticesData copyWith({String? notice, int? shown}) => GarageNoticesData(
+    notice: notice ?? this.notice,
+    shown: shown ?? this.shown,
+  );
+  GarageNoticesData copyWithCompanion(GarageNoticesCompanion data) {
+    return GarageNoticesData(
+      notice: data.notice.present ? data.notice.value : this.notice,
+      shown: data.shown.present ? data.shown.value : this.shown,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GarageNoticesData(')
+          ..write('notice: $notice, ')
+          ..write('shown: $shown')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(notice, shown);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GarageNoticesData &&
+          other.notice == this.notice &&
+          other.shown == this.shown);
+}
+
+class GarageNoticesCompanion extends UpdateCompanion<GarageNoticesData> {
+  final Value<String> notice;
+  final Value<int> shown;
+  final Value<int> rowid;
+  const GarageNoticesCompanion({
+    this.notice = const Value.absent(),
+    this.shown = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GarageNoticesCompanion.insert({
+    required String notice,
+    required int shown,
+    this.rowid = const Value.absent(),
+  }) : notice = Value(notice),
+       shown = Value(shown);
+  static Insertable<GarageNoticesData> custom({
+    Expression<String>? notice,
+    Expression<int>? shown,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (notice != null) 'notice': notice,
+      if (shown != null) 'shown': shown,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GarageNoticesCompanion copyWith({
+    Value<String>? notice,
+    Value<int>? shown,
+    Value<int>? rowid,
+  }) {
+    return GarageNoticesCompanion(
+      notice: notice ?? this.notice,
+      shown: shown ?? this.shown,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (notice.present) {
+      map['notice'] = Variable<String>(notice.value);
+    }
+    if (shown.present) {
+      map['shown'] = Variable<int>(shown.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GarageNoticesCompanion(')
+          ..write('notice: $notice, ')
+          ..write('shown: $shown, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class GarageKeyHistories extends Table
     with TableInfo<GarageKeyHistories, GarageKeyHistoriesData> {
   @override
@@ -6091,8 +6284,16 @@ class SelectedGarageKeys extends Table
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<int> lastInternalIndex = GeneratedColumn<int>(
+    'last_internal_index',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   @override
-  List<GeneratedColumn> get $columns => [network, keyIndex];
+  List<GeneratedColumn> get $columns => [network, keyIndex, lastInternalIndex];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -6112,6 +6313,10 @@ class SelectedGarageKeys extends Table
         DriftSqlType.int,
         data['${effectivePrefix}key_index'],
       ),
+      lastInternalIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_internal_index'],
+      ),
     );
   }
 
@@ -6123,9 +6328,11 @@ class SelectedGarageKeys extends Table
   @override
   List<String> get customConstraints => const [
     'PRIMARY KEY(network)',
-    'CHECK(typeof(network) = \'text\' AND(key_index IS NULL OR typeof(key_index) = \'integer\'))',
+    'CHECK(typeof(network) = \'text\' AND(key_index IS NULL OR typeof(key_index) = \'integer\')AND(last_internal_index IS NULL OR typeof(last_internal_index) = \'integer\'))',
     'CHECK(network IN (\'mainnet\', \'testnet\'))',
     'CHECK(key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)',
+    'CHECK(last_internal_index IS NULL OR last_internal_index BETWEEN 0 AND 2147483647)',
+    'CHECK(key_index IS NULL OR last_internal_index = key_index)',
   ];
   @override
   bool get dontWriteConstraints => true;
@@ -6135,13 +6342,21 @@ class SelectedGarageKeysData extends DataClass
     implements Insertable<SelectedGarageKeysData> {
   final String network;
   final int? keyIndex;
-  const SelectedGarageKeysData({required this.network, this.keyIndex});
+  final int? lastInternalIndex;
+  const SelectedGarageKeysData({
+    required this.network,
+    this.keyIndex,
+    this.lastInternalIndex,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['network'] = Variable<String>(network);
     if (!nullToAbsent || keyIndex != null) {
       map['key_index'] = Variable<int>(keyIndex);
+    }
+    if (!nullToAbsent || lastInternalIndex != null) {
+      map['last_internal_index'] = Variable<int>(lastInternalIndex);
     }
     return map;
   }
@@ -6152,6 +6367,9 @@ class SelectedGarageKeysData extends DataClass
       keyIndex: keyIndex == null && nullToAbsent
           ? const Value.absent()
           : Value(keyIndex),
+      lastInternalIndex: lastInternalIndex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastInternalIndex),
     );
   }
 
@@ -6163,6 +6381,7 @@ class SelectedGarageKeysData extends DataClass
     return SelectedGarageKeysData(
       network: serializer.fromJson<String>(json['network']),
       keyIndex: serializer.fromJson<int?>(json['keyIndex']),
+      lastInternalIndex: serializer.fromJson<int?>(json['lastInternalIndex']),
     );
   }
   @override
@@ -6171,20 +6390,28 @@ class SelectedGarageKeysData extends DataClass
     return <String, dynamic>{
       'network': serializer.toJson<String>(network),
       'keyIndex': serializer.toJson<int?>(keyIndex),
+      'lastInternalIndex': serializer.toJson<int?>(lastInternalIndex),
     };
   }
 
   SelectedGarageKeysData copyWith({
     String? network,
     Value<int?> keyIndex = const Value.absent(),
+    Value<int?> lastInternalIndex = const Value.absent(),
   }) => SelectedGarageKeysData(
     network: network ?? this.network,
     keyIndex: keyIndex.present ? keyIndex.value : this.keyIndex,
+    lastInternalIndex: lastInternalIndex.present
+        ? lastInternalIndex.value
+        : this.lastInternalIndex,
   );
   SelectedGarageKeysData copyWithCompanion(SelectedGarageKeysCompanion data) {
     return SelectedGarageKeysData(
       network: data.network.present ? data.network.value : this.network,
       keyIndex: data.keyIndex.present ? data.keyIndex.value : this.keyIndex,
+      lastInternalIndex: data.lastInternalIndex.present
+          ? data.lastInternalIndex.value
+          : this.lastInternalIndex,
     );
   }
 
@@ -6192,44 +6419,51 @@ class SelectedGarageKeysData extends DataClass
   String toString() {
     return (StringBuffer('SelectedGarageKeysData(')
           ..write('network: $network, ')
-          ..write('keyIndex: $keyIndex')
+          ..write('keyIndex: $keyIndex, ')
+          ..write('lastInternalIndex: $lastInternalIndex')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(network, keyIndex);
+  int get hashCode => Object.hash(network, keyIndex, lastInternalIndex);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is SelectedGarageKeysData &&
           other.network == this.network &&
-          other.keyIndex == this.keyIndex);
+          other.keyIndex == this.keyIndex &&
+          other.lastInternalIndex == this.lastInternalIndex);
 }
 
 class SelectedGarageKeysCompanion
     extends UpdateCompanion<SelectedGarageKeysData> {
   final Value<String> network;
   final Value<int?> keyIndex;
+  final Value<int?> lastInternalIndex;
   final Value<int> rowid;
   const SelectedGarageKeysCompanion({
     this.network = const Value.absent(),
     this.keyIndex = const Value.absent(),
+    this.lastInternalIndex = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SelectedGarageKeysCompanion.insert({
     required String network,
     this.keyIndex = const Value.absent(),
+    this.lastInternalIndex = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : network = Value(network);
   static Insertable<SelectedGarageKeysData> custom({
     Expression<String>? network,
     Expression<int>? keyIndex,
+    Expression<int>? lastInternalIndex,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (network != null) 'network': network,
       if (keyIndex != null) 'key_index': keyIndex,
+      if (lastInternalIndex != null) 'last_internal_index': lastInternalIndex,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6237,11 +6471,13 @@ class SelectedGarageKeysCompanion
   SelectedGarageKeysCompanion copyWith({
     Value<String>? network,
     Value<int?>? keyIndex,
+    Value<int?>? lastInternalIndex,
     Value<int>? rowid,
   }) {
     return SelectedGarageKeysCompanion(
       network: network ?? this.network,
       keyIndex: keyIndex ?? this.keyIndex,
+      lastInternalIndex: lastInternalIndex ?? this.lastInternalIndex,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6255,6 +6491,9 @@ class SelectedGarageKeysCompanion
     if (keyIndex.present) {
       map['key_index'] = Variable<int>(keyIndex.value);
     }
+    if (lastInternalIndex.present) {
+      map['last_internal_index'] = Variable<int>(lastInternalIndex.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6266,6 +6505,7 @@ class SelectedGarageKeysCompanion
     return (StringBuffer('SelectedGarageKeysCompanion(')
           ..write('network: $network, ')
           ..write('keyIndex: $keyIndex, ')
+          ..write('lastInternalIndex: $lastInternalIndex, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6290,6 +6530,15 @@ class DatabaseAtV10 extends GeneratedDatabase {
   late final Trigger derivedGarageKeysInsertedOnce = Trigger(
     'CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE (IGNORE);END',
     'derived_garage_keys_inserted_once',
+  );
+  late final GarageNotices garageNotices = GarageNotices(this);
+  late final Trigger garageNoticesShownOnce = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices WHEN NOT(OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice)BEGIN SELECT RAISE (ABORT, \'a Garage notice only turns shown\');END',
+    'garage_notices_shown_once',
+  );
+  late final Trigger garageNoticesNeverDeleted = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices BEGIN SELECT RAISE (ABORT, \'a Garage notice is kept\');END',
+    'garage_notices_never_deleted',
   );
   late final GarageKeyHistories garageKeyHistories = GarageKeyHistories(this);
   late final RobotBindings robotBindings = RobotBindings(this);
@@ -6472,6 +6721,9 @@ class DatabaseAtV10 extends GeneratedDatabase {
     derivedGarageKeysNeverChanged,
     derivedGarageKeysInOrder,
     derivedGarageKeysInsertedOnce,
+    garageNotices,
+    garageNoticesShownOnce,
+    garageNoticesNeverDeleted,
     garageKeyHistories,
     robotBindings,
     trades,
@@ -6551,6 +6803,20 @@ class DatabaseAtV10 extends GeneratedDatabase {
       on: TableUpdateQuery.onTableName(
         'derived_garage_keys',
         limitUpdateKind: UpdateKind.insert,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'garage_notices',
+        limitUpdateKind: UpdateKind.update,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'garage_notices',
+        limitUpdateKind: UpdateKind.delete,
       ),
       result: [],
     ),
