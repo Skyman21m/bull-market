@@ -610,6 +610,34 @@ void main() {
         );
 
         test(
+          'the service failing: 8 after 13 after a failed read at 6, the first 8 shown after a status outside the rule, is a step shown anew and reads once (2 reads in all); only 8 directly after 6 waits (review of #287)',
+          () async {
+            final (harness, record, six, eight, thirteen, _) =
+                await atFifteen();
+            final reads = <Object>[];
+            final port = wallet(const P2pWalletRateUnavailable());
+            final cubit = cubitOf(harness, record, port, reads: reads);
+            await cubit.show(six, appeared: true);
+            expect(reads, hasLength(1));
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(thirteen);
+            expect(cubit.state, isA<PayoutRateNone>());
+            expect(reads, hasLength(1));
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(eight);
+            expect(reads, hasLength(2));
+            expect(
+              cubit.state,
+              isA<PayoutRateChecked>().having(
+                (s) => s.check,
+                'check',
+                isA<WalletRateUnverified>(),
+              ),
+            );
+          },
+        );
+
+        test(
           'the service answering: the first 15 and twelve round trips 15 → 13 → 15 read as before, nothing at the first 15 (the price fresh), once on the first return past 3 minutes after the read at 6',
           () async {
             final (harness, record, six, _, thirteen, fifteen) =
