@@ -19,6 +19,7 @@ import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_cubit.dart';
 import '../../presentation/payout_l10n.dart';
 import '../widgets/coordinator_link_sheet.dart';
+import '../widgets/moved_tap_guard.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
@@ -819,12 +820,17 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final cancelling = widget.request.cancelling;
     // The payout this frame shows: the tap gives it, and the cubit sends it only if it is still the one offered (no frame between what is drawn and what is sent).
     final payout = state.submittable(kind);
-    final button = TradeButton(
-      label: l10n.p2pPayoutSubmit,
-      busy: sending || _checking,
-      onPressed: cancelling || payout == null || _checking
-          ? null
-          : () => unawaited(_press(kind, payout)),
+    // A tap aimed at what stood here before the rule's lines above came, went or changed (a read of the price ending, an alert arriving, « Retry » answered) is ignored for a moment (#283); « Submit » stays enabled and gives the payout at the next tap.
+    final button = MovedTapGuard(
+      builder: (context, guard) => TradeButton(
+        label: l10n.p2pPayoutSubmit,
+        busy: sending || _checking,
+        onPressed: guard(
+          cancelling || payout == null || _checking
+              ? null
+              : () => unawaited(_press(kind, payout)),
+        ),
+      ),
     );
     return cancelling
         ? Tooltip(message: l10n.p2pPayoutSubmitWhileCancelling, child: button)

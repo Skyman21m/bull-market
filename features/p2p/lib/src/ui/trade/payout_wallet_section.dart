@@ -8,6 +8,7 @@ import '../../../public/p2p_wallet_port.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_cubit.dart';
 import '../../presentation/payout_wallet_cubit.dart';
+import '../widgets/moved_tap_guard.dart';
 import '../widgets/trade_button.dart';
 import 'payout_panel.dart';
 
@@ -63,15 +64,18 @@ class PayoutWalletSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TradeButton(
-          label: switch (kind) {
-            PayoutKind.lightning => l10n.p2pPayoutWalletGenerateInvoice,
-            PayoutKind.onchain => l10n.p2pPayoutWalletGenerateAddress,
-          },
-          icon: Icons.account_balance_wallet_outlined,
-          outlined: true,
-          busy: makingHere,
-          onPressed: onPressed,
+        // Under the payout's breakdown, moved by the rule's lines as « Submit » is: a tap aimed at what stood here before is ignored for a moment (#283), so that no request reaches the wallet unasked; the button stays enabled.
+        MovedTapGuard(
+          builder: (context, guard) => TradeButton(
+            label: switch (kind) {
+              PayoutKind.lightning => l10n.p2pPayoutWalletGenerateInvoice,
+              PayoutKind.onchain => l10n.p2pPayoutWalletGenerateAddress,
+            },
+            icon: Icons.account_balance_wallet_outlined,
+            outlined: true,
+            busy: makingHere,
+            onPressed: guard(onPressed),
+          ),
         ),
         if (makingHere) ...[
           const Gap(BullSpacing.xs),
