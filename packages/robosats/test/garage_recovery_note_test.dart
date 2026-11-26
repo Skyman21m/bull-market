@@ -278,7 +278,10 @@ void main() {
       expect(read([noteJson(12, writer: legacy)]), 12);
       final earlier = DateTime.utc(2026, 11);
       expect(read([noteJson(12, writer: legacy, at: earlier), noteJson(5)]), 5);
-      expect(read([noteJson(5, at: earlier), noteJson(12, writer: legacy)]), 12);
+      expect(
+        read([noteJson(5, at: earlier), noteJson(12, writer: legacy)]),
+        12,
+      );
     });
 
     test('gives nothing without a note', () {
