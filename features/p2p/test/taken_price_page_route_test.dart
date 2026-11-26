@@ -1209,6 +1209,148 @@ void main() {
       );
     });
   }
+
+  // Follow-ups of #270, #273 and #283: « Show details » with a large text, and « The order changed. » for its two causes at once.
+  for (final locale in const [Locale('en'), Locale('fr')]) {
+    final code = locale.languageCode;
+
+    group('the order page with a large text, $code', () {
+      testWidgets(
+        'at 360 points and the normal text size, « Show details » and « Hide details » are laid out exactly as before the follow-ups of #270, #273 and #283',
+        (tester) async {
+          await loadAppFont();
+          final journey = await _Journey.start(tester, locale, sats: 112362);
+          tester.view.physicalSize = const Size(360 * 3, 3200 * 3);
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          journey.expectRed();
+          final l10n = journey.l10n;
+          final button = find.descendant(
+            of: journey.toggle,
+            matching: find.byType(TextButton),
+          );
+          final icon = find.descendant(
+            of: journey.toggle,
+            matching: find.byType(Icon),
+          );
+          final folded = [
+            tester.getRect(button),
+            tester.getRect(find.text(l10n.p2pDetailShow)),
+            tester.getRect(icon),
+            tester.getRect(journey.continueButton),
+          ];
+          await journey.tap(journey.toggle);
+          journey.expectOpen(journey.redDetail);
+          final open = [
+            tester.getRect(button),
+            tester.getRect(find.text(l10n.p2pDetailHide)),
+            tester.getRect(icon),
+            tester.getRect(find.byKey(PriceCheckLines.explanationLine)),
+            tester.getRect(journey.continueButton),
+          ];
+          expect([...folded, ...open], _toggleLayoutBefore[code]);
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'at 320 and 360 points, at the text size ×1, ×2 and ×3: « Show details » and « Hide details » keep the same place and size, a target of at least 44 points, their words whole; two quick taps at the same place open then fold the explanation, and never reach « Continue » (review of #276, R3)',
+        (tester) async {
+          await loadAppFont();
+          final journey = await _Journey.start(tester, locale, sats: 112362);
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          journey.expectRed();
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          final button = find.descendant(
+            of: journey.toggle,
+            matching: find.byType(TextButton),
+          );
+          for (final width in const [320.0, 360.0]) {
+            for (final scale in const [1.0, 2.0, 3.0]) {
+              final reason = '$width points ×$scale';
+              // Tall enough for the page not to scroll: a fold at the page's end moves the link with the page (#270, left as it is).
+              tester.view.physicalSize = Size(width * 3, 6000 * 3);
+              tester.platformDispatcher.textScaleFactorTestValue = scale;
+              await tester.pump();
+              await tester.ensureVisible(journey.toggle);
+              await tester.pump();
+              journey.expectFolded(journey.redDetail);
+              _expectNothingCut(tester, journey.toggle, '$reason, folded');
+              final folded = tester.getRect(button);
+              expect(
+                folded.width >= 44 && folded.height >= 44,
+                isTrue,
+                reason: '$reason: $folded',
+              );
+              final finger = folded.center;
+              await tester.tapAt(finger);
+              await tester.pump(const Duration(milliseconds: 100));
+              journey.expectOpen(journey.redDetail);
+              _expectNothingCut(tester, journey.toggle, '$reason, open');
+              final open = tester.getRect(button);
+              _expectSameRoom(open, folded, finger, scale, reason);
+              await tester.tapAt(finger);
+              await tester.pump(const Duration(milliseconds: 100));
+              journey.expectFolded(journey.redDetail);
+              expect(tester.getRect(button), folded, reason: reason);
+              expect(find.byType(StoreTokenDialog), findsNothing);
+              expect(journey.takes, isEmpty);
+              await tester.pump(MovedTapGuard.afterMove);
+            }
+          }
+          await journey.close();
+        },
+      );
+
+      testWidgets(
+        'an order priced in sats whose premium read moved from the book\'s, found changed again at « Done » (its description): « The order changed. » is said once for its two causes at once, then still once on the new read',
+        (tester) async {
+          await loadAppFont();
+          final journey = await _Journey.start(
+            tester,
+            locale,
+            sats: 100000,
+            explicit: 100000,
+          );
+          journey.coordinator.robotView
+            ..['price_now'] = null
+            ..['premium_now'] = 39.55;
+          await journey.open(byUrl: false);
+          await journey.prepare();
+          final said = find.text(journey.l10n.p2pTakeOrderChangedRead);
+          // The first cause alone: the premium read moved, « Price and premium » marked.
+          expect(journey.priceRow().changed, isTrue);
+          expect(said, findsOneWidget);
+          await tester.pump(MovedTapGuard.afterMove);
+          await journey.tap(journey.continueButton);
+          await settle(tester);
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+          // The second cause: the robot's read at « Done » finds another description.
+          journey.coordinator.description = 'Revolut only.';
+          await journey.tap(find.text(journey.l10n.p2pCommonDone));
+          await settle(tester);
+          await journey.waitFor(find.text('Revolut only.'));
+          await settle(tester);
+          expect(journey.takes, isEmpty);
+          expect(find.byType(TradeScreen), findsNothing);
+          expect(
+            BlocProvider.of<TakeOrderCubit>(
+              tester.element(journey.continueButton),
+            ).state,
+            isA<TakeReady>().having((s) => s.changed, 'found changed', isTrue),
+          );
+          expect(journey.priceRow().changed, isTrue);
+          expect(said, findsOneWidget);
+          expect(
+            tester.getTopLeft(said).dy,
+            lessThan(tester.getTopLeft(journey.continueButton).dy),
+          );
+          await journey.close();
+        },
+      );
+    });
+  }
 }
 
 /// « Show details » of the alert reached by a tap at the text size set: the explanation [detail] opened cuts nothing, then is folded again.
@@ -1229,6 +1371,48 @@ Future<void> _expectDetailReachable(
   journey.expectFolded(detail);
   expect(find.byType(StoreTokenDialog), findsNothing, reason: reason);
 }
+
+/// « Show details » and « Hide details » at the same place: with a text larger than normal, exactly the same room; at the normal size, as before the follow-ups of #270, #273 and #283, the same top and height, each word its own width, the finger on both.
+void _expectSameRoom(
+  Rect now,
+  Rect folded,
+  Offset finger,
+  double scale,
+  String reason,
+) {
+  if (scale > 1) {
+    expect(now, folded, reason: '$reason: the link kept its room');
+  } else {
+    expect((now.top, now.height), (folded.top, folded.height), reason: reason);
+    expect(now.contains(finger), isTrue, reason: '$reason: $now');
+  }
+}
+
+/// The places of « Show details » (its button, its words, its chevron) and of « Continue », then of « Hide details », its words, its chevron, the explanation and « Continue », at 360 points and the normal text size, with the app's font, as `main` drew them before the follow-ups of #270, #273 and #283 (0e8bb8a84).
+const _toggleLayoutBefore = <String, List<Rect>>{
+  'en': [
+    Rect.fromLTWH(118.1097412109375, 616.0, 123.780517578125, 48.0),
+    Rect.fromLTWH(130.1097412109375, 631.5, 75.780517578125, 17.0),
+    Rect.fromLTWH(209.8902587890625, 630.0, 20.0, 20.0),
+    Rect.fromLTWH(16.0, 945.0, 328.0, 52.0),
+    Rect.fromLTWH(120.80976104736328, 616.0, 118.38047790527344, 48.0),
+    Rect.fromLTWH(132.80976104736328, 631.5, 70.38047790527344, 17.0),
+    Rect.fromLTWH(207.19023895263672, 630.0, 20.0, 20.0),
+    Rect.fromLTWH(33.0, 664.0, 294.0, 80.0),
+    Rect.fromLTWH(16.0, 1027.0, 328.0, 52.0),
+  ],
+  'fr': [
+    Rect.fromLTWH(119.08974075317383, 634.0, 121.82051849365234, 48.0),
+    Rect.fromLTWH(131.08974075317383, 649.5, 73.82051849365234, 17.0),
+    Rect.fromLTWH(208.91025924682617, 648.0, 20.0, 20.0),
+    Rect.fromLTWH(16.0, 963.0, 328.0, 52.0),
+    Rect.fromLTWH(105.25965881347656, 634.0, 149.48068237304688, 48.0),
+    Rect.fromLTWH(117.25965881347656, 649.5, 101.48068237304688, 17.0),
+    Rect.fromLTWH(222.74034118652344, 648.0, 20.0, 20.0),
+    Rect.fromLTWH(33.0, 682.0, 294.0, 100.0),
+    Rect.fromLTWH(16.0, 1065.0, 328.0, 52.0),
+  ],
+};
 
 /// Nothing overflows under [scope], no paragraph exceeds its lines, and no line breaks between two letters (as `LeanConfirmation.expectNothingCut` checks the confirmations).
 void _expectNothingCut(WidgetTester tester, Finder scope, String reason) {

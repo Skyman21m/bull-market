@@ -12,6 +12,7 @@ import '../widgets/garage_key_clipboard.dart';
 import '../widgets/garage_key_field.dart';
 import '../widgets/garage_key_view.dart';
 import '../widgets/robot_avatar.dart';
+import '../widgets/word_fit_text.dart';
 import 'account_navigator.dart';
 import 'delete_garage_key_dialog.dart';
 import 'garage_key_history_notice.dart';
@@ -510,8 +511,9 @@ class RobotNickname extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ExcludeSemantics(child: Icon(Icons.bolt, color: colors.bitcoinOrange)),
+        // A nickname is one word: too wide for the line, as at twice the text size on a phone of 320 points, it is shrunk to it, never broken nor elided (follow-ups of #270, #273 and #283).
         Flexible(
-          child: Text(
+          child: WordFitText(
             nickname,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineLarge?.copyWith(
