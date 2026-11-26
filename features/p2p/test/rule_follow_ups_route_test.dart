@@ -26,6 +26,7 @@ import 'package:secrets/testing.dart';
 
 import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
+import 'support/lean_confirmation.dart' show loadAppFont;
 import 'support/make_harness.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
@@ -490,5 +491,84 @@ void main() {
         },
       );
     });
+  }
+
+  // Follow-ups of #270, #273 and #283: « Show details » of the payout breakdown with a large text, in the app's font (last in the file: it stays loaded).
+  for (final locale in const [Locale('en'), Locale('fr')]) {
+    final code = locale.languageCode;
+
+    testWidgets(
+      'at 6, on a phone of 320 points at the text size ×1, ×2 and ×3, $code: « Show details » of the breakdown and « Hide details » keep the same place and size, a target of at least 44 points; two quick taps at the same place open then fold the detail',
+      (tester) async {
+        await loadAppFont();
+        final app = await _App.start(
+          tester,
+          rate: P2pWalletRateRead(50000),
+          locale: locale,
+        );
+        await app.openTrade();
+        final toggle = find.byKey(PayoutPanel.detailToggle);
+        await app.waitFor(toggle);
+        await app.settle();
+        final button = find.descendant(
+          of: toggle,
+          matching: find.byType(TextButton),
+        );
+        for (final scale in const [1.0, 2.0, 3.0]) {
+          final reason = '$code ×$scale';
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          await tester.pump();
+          await tester.ensureVisible(toggle);
+          await tester.pump();
+          expect(find.byKey(PayoutPanel.detail), findsNothing, reason: reason);
+          expect(find.text(app.l10n.p2pDetailShow), findsOneWidget);
+          final folded = tester.getRect(button);
+          expect(
+            folded.width >= 44 && folded.height >= 44,
+            isTrue,
+            reason: '$reason: $folded',
+          );
+          final finger = folded.center;
+          await tester.tapAt(finger);
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(
+            find.byKey(PayoutPanel.detail),
+            findsOneWidget,
+            reason: reason,
+          );
+          expect(find.text(app.l10n.p2pDetailHide), findsOneWidget);
+          _expectSameRoom(
+            tester.getRect(button),
+            folded,
+            finger,
+            scale,
+            reason,
+          );
+          await tester.tapAt(finger);
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(find.byKey(PayoutPanel.detail), findsNothing, reason: reason);
+          expect(find.text(app.l10n.p2pDetailShow), findsOneWidget);
+          expect(tester.getRect(button), folded, reason: reason);
+          expect(tester.takeException(), isNull, reason: reason);
+        }
+        await app.close();
+      },
+    );
+  }
+}
+
+/// « Show details » and « Hide details » at the same place: with a text larger than normal, exactly the same room; at the normal size, as before the follow-ups of #270, #273 and #283, the same top and height, each word its own width, the finger on both.
+void _expectSameRoom(
+  Rect now,
+  Rect folded,
+  Offset finger,
+  double scale,
+  String reason,
+) {
+  if (scale > 1) {
+    expect(now, folded, reason: '$reason: the link kept its room');
+  } else {
+    expect((now.top, now.height), (folded.top, folded.height), reason: reason);
+    expect(now.contains(finger), isTrue, reason: '$reason: $now');
   }
 }
