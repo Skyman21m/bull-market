@@ -47,6 +47,7 @@ import 'package:p2p/testing.dart' show ScriptedMakerCoordinator;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
+import 'garage_words.dart';
 
 import 'trade_harness.dart'
     show
@@ -396,7 +397,7 @@ final class _Clock {
   _Clock(this.now);
 }
 
-final class _MakeVault implements GarageKeyRepository {
+final class _MakeVault with KeysFromRead implements GarageKeyRepository {
   /// The key the vault holds: `null` once deleted.
   NetworkGarageKey? key;
 
@@ -409,11 +410,6 @@ final class _MakeVault implements GarageKeyRepository {
     final held? when held.network == network => Ok(held),
     _ => const Err(GarageKeyMissingFailure()),
   };
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -429,10 +425,6 @@ final class _MakeVault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError();
 }
 
 /// The trade records, stopping the app where the test says, or failing a write of a make.

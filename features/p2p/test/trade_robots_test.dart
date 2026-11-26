@@ -22,9 +22,10 @@ import 'support/fakes.dart';
 import 'support/key_output.dart';
 import 'support/robot_bindings.dart';
 import 'support/two_connections.dart';
+import 'support/garage_words.dart';
 
 /// The vault as the robot layer reads it: the key of each network, or the failure given for it.
-final class _Vault implements GarageKeyRepository {
+final class _Vault with KeysFromRead implements GarageKeyRepository {
   final Map<RobosatsNetwork, Result<NetworkGarageKey, P2pFailure>> slots;
 
   _Vault(this.slots);
@@ -33,11 +34,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
   ) async => slots[network] ?? const Err(GarageKeyMissingFailure());
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError('the robot layer never draws a key');
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -53,10 +49,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError('the robot layer derives from the key itself');
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError('the robot layer never deletes a key');
 }
 
 /// The robot of a new trade and of a recorded one, over the real records in a database, and the vault faked.

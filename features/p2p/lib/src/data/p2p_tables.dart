@@ -611,3 +611,57 @@ class StoredTradeChatNostrPins extends Table {
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }
+
+/// The Garage Keys of the wallet's words this device activated, per network (schema 10, #81; design note `docs/design/garage-key-from-the-words.md` § 2): the index of each and the `GarageKeyFingerprint` of the key the words gave there when it was activated, never the key, which the words give again.
+///
+/// Indexes go up one by one from 0 (`derived_garage_keys_in_order`), and a row is never changed nor deleted: the highest is the key of every new trade, the others finish their trades. A fingerprint is unique on its network, so two indexes never claim the same key.
+@DataClassName('DerivedGarageKeyRow')
+class DerivedGarageKeys extends Table {
+  /// `mainnet` or `testnet`: the network step of the BIP85 path.
+  TextColumn get network => text()();
+
+  /// The index of the key, from 0: the last step of the BIP85 path.
+  IntColumn get keyIndex => integer()();
+
+  /// The `GarageKeyFingerprint` of the key, 64 lowercase hexadecimal characters.
+  TextColumn get keyFingerprint => text()();
+
+  /// When this device activated the key, in milliseconds since the epoch.
+  IntColumn get activatedAt => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {network, keyIndex};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (typeof(network) = 'text' AND typeof(key_index) = 'integer' AND typeof(key_fingerprint) = 'text' AND typeof(activated_at) = 'integer')",
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    'CHECK (key_index BETWEEN 0 AND 2147483647)',
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (activated_at BETWEEN 0 AND 8640000000000000)',
+    'UNIQUE (network, key_fingerprint)',
+  ];
+}
+
+/// The one-time switch of the book to the Garage Keys of the words (schema 10, #81; design note `docs/design/garage-key-from-the-words.md` § 8): one row, `GarageSwitchState` by name, which only moves forward (`garage_switch_forward`) and is never deleted.
+@DataClassName('GarageSwitchRow')
+class GarageSwitch extends Table {
+  @override
+  String get tableName => 'garage_switch';
+
+  /// Always 1: the switch is one for the whole book.
+  IntColumn get id => integer()();
+
+  /// `legacy`, `emptying`, `vaultPending` or `derived`.
+  TextColumn get state => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (typeof(id) = 'integer' AND typeof(state) = 'text')",
+    'CHECK (id = 1)',
+    "CHECK (state IN ('legacy', 'emptying', 'vaultPending', 'derived'))",
+  ];
+}

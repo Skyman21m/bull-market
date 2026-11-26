@@ -14,20 +14,26 @@ void main() {
   CompilationUnit unitOf(String path) =>
       parseString(content: File(path).readAsStringSync()).unit;
 
-  // The methods of the interface, each with its full signature: nothing, whether a key is stored, the key a draw made, the key of a network for the screens of the Garage, or a robot derived from it, each with its network.
+  // The methods of the interface, each with its full signature (#81): which keys the Garage offers, a key (the one the Garage opens on, one of the words by index, the one of a new trade, the one of a robot's slot), « New key », whether a key can be shown, a robot derived from it, each with its network, and the import that no screen reaches in this version.
   const allowed = {
-    'create':
-        'Future<Result<NetworkGarageKey, P2pFailure>> create(RobosatsNetwork network)',
-    'import':
-        'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
-    'exists':
-        'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network)',
+    'keyring':
+        'Future<Result<GarageKeyring, P2pFailure>> keyring(RobosatsNetwork network)',
     'read':
         'Future<Result<NetworkGarageKey, P2pFailure>> read(RobosatsNetwork network)',
+    'derived':
+        'Future<Result<NetworkGarageKey, P2pFailure>> derived(RobosatsNetwork network, int index)',
+    'forNewTrade':
+        'Future<Result<NetworkGarageKey, P2pFailure>> forNewTrade(RobosatsNetwork network)',
+    'ofSlot':
+        'Future<Result<NetworkGarageKey, P2pFailure>> ofSlot(RobotSlot slot)',
+    'activateNext':
+        'Future<Result<int, P2pFailure>> activateNext(RobosatsNetwork network, {required int after})',
+    'exists':
+        'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network)',
     'firstUsableRobot':
         'Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network)',
-    'delete':
-        'Future<Result<void, P2pFailure>> delete(RobosatsNetwork network)',
+    'import':
+        'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
   };
 
   test(
@@ -69,24 +75,34 @@ void main() {
     },
   );
 
-  test('the repository holds the vault handle and nothing else', () {
-    final repository =
-        unitOf(
-              'lib/src/data/garage_key_repository_impl.dart',
-            ).declarations.single
-            as ClassDeclaration;
+  test(
+    'the repository holds the vault handle, the port of the words and the book of their indexes, and nothing else',
+    () {
+      final repository =
+          unitOf(
+                'lib/src/data/garage_key_repository_impl.dart',
+              ).declarations.single
+              as ClassDeclaration;
 
-    expect(_fieldsOf(repository), ['final GarageKeys _garageKeys']);
-    final constructors = _membersOf(
-      repository,
-    ).whereType<ConstructorDeclaration>().toList();
-    expect(constructors, hasLength(1));
-    final constructor = constructors.single;
-    expect(constructor.name, isNull);
-    expect(constructor.parameters.toSource(), '(this._garageKeys)');
-    expect(constructor.initializers, isEmpty);
-    expect(constructor.redirectedConstructor, isNull);
-  });
+      expect(_fieldsOf(repository), [
+        'final GarageKeys _garageKeys',
+        'final P2pGarageKeyPort _words',
+        'final GarageKeyBookRepository _book',
+      ]);
+      final constructors = _membersOf(
+        repository,
+      ).whereType<ConstructorDeclaration>().toList();
+      expect(constructors, hasLength(1));
+      final constructor = constructors.single;
+      expect(constructor.name, isNull);
+      expect(
+        constructor.parameters.toSource(),
+        '(this._garageKeys, this._words, this._book)',
+      );
+      expect(constructor.initializers, isEmpty);
+      expect(constructor.redirectedConstructor, isNull);
+    },
+  );
 
   test('the failures carry no field but the reason of an invalid key', () {
     final unit = unitOf('lib/src/domain/p2p_failure.dart');
@@ -133,7 +149,7 @@ final class GarageKeyRepositoryImpl {
   Uint8List? _copy;
   const GarageKeyRepositoryImpl(this._garageKeys, [this._copy]);
   @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network, {bool all = true}) async => const Ok(null);
+  Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key, {bool all = true}) async => const Ok(null);
 }
 ''',
     ).unit;
@@ -145,11 +161,11 @@ final class GarageKeyRepositoryImpl {
       _membersOf(
         repository,
       ).whereType<ConstructorDeclaration>().single.parameters.toSource(),
-      isNot('(this._garageKeys)'),
+      isNot('(this._garageKeys, this._words, this._book)'),
     );
     expect(
       _signature(_membersOf(repository).whereType<MethodDeclaration>().single),
-      isNot(allowed['delete']),
+      isNot(allowed['import']),
     );
   });
 }

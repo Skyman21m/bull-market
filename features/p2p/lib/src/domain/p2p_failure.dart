@@ -69,6 +69,36 @@ final class GarageRobotUnavailableFailure extends P2pFailure {
   const GarageRobotUnavailableFailure();
 }
 
+/// No default Bitcoin wallet on the network's environment: the Garage Key comes from its words, so there is none (#81). Never a reason to draw one at random.
+final class GarageKeyNoWalletFailure extends P2pFailure {
+  const GarageKeyNoWalletFailure();
+}
+
+/// The default wallet has a BIP39 passphrase: its words alone would not give the Garage Key back, so none is derived (#81, design note `docs/design/garage-key-from-the-words.md` § 1).
+final class GarageKeyPassphraseFailure extends P2pFailure {
+  const GarageKeyPassphraseFailure();
+}
+
+/// The default wallet's secret is a seed without words, which cannot give the Garage Key (#81).
+final class GarageKeyNoWordsFailure extends P2pFailure {
+  const GarageKeyNoWordsFailure();
+}
+
+/// The key the words give again at an index is not the one this device recorded there (its `GarageKeyFingerprint` differs): other words were restored in the same book, or the default wallet changed (#81). Nothing is derived from it and nothing is signed with it, so the robots of two wallets never mix.
+final class GarageKeyMismatchFailure extends P2pFailure {
+  const GarageKeyMismatchFailure();
+}
+
+/// The book of P2P is not emptied yet because a trade is in progress (#81, design note § 8): the Garage Key drawn at random before only finishes those trades, and no new trade starts, neither a take nor a make; the words' key comes at the first start where every trade is finished.
+final class GarageKeySwitchPendingFailure extends P2pFailure {
+  const GarageKeySwitchPendingFailure();
+}
+
+/// The highest key the words give, index 0x7fffffff, is already in use: there is no next key (#81).
+final class GarageKeyLastIndexFailure extends P2pFailure {
+  const GarageKeyLastIndexFailure();
+}
+
 /// The feature's database could not be read or written: nothing was sent to a coordinator, and no key was stored.
 ///
 /// Try again; the database holds no secret, and a failure of it never loosens a binding.

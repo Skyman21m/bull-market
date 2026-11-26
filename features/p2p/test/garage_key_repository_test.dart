@@ -1,465 +1,588 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:drift/drift.dart' hide isNull, isNotNull;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/p2p.dart' show P2pGarageKeyRefusalReason;
+import 'package:p2p/src/data/garage_key_book_repository_impl.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
+import 'package:p2p/src/data/p2p_database.dart';
+import 'package:p2p/src/data/robot_binding_repository_impl.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/garage_keyring.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
+import 'package:secrets/secrets.dart' show GarageKeySlot, GarageKeys, Secrets;
 import 'package:secrets/testing.dart';
 
-/// The Garage Keys of P2P, through the real vault of `package:secrets` over its in-memory keystore.
-///
-/// The vault settles an empty slot with its full read budget, so each test that reads, creates or imports into an empty slot waits about 4.5 s of real time.
+import 'migrations_test/p2p_database/generated/schema_v9.dart' as v9;
+import 'support/garage_words.dart';
+
+/// The Garage Keys of P2P since #81 (design note `docs/design/garage-key-from-the-words.md`), through the real repository, the real vault of `package:secrets` over its in-memory keystore, the real derivation of the public test words and the real database: key 0 at the first opening, « New key », the keys checked against their fingerprints, the refusals that never draw a key, and the book of the key drawn at random emptied once, never while a trade of it is in progress, and never again.
 void main() {
-  // The names the vault files the two keys under, frozen in `packages/secrets`.
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  const mainnet = RobosatsNetwork.mainnet;
+  const testnet = RobosatsNetwork.testnet;
   const mainnetEntry = 'com.bullbitcoin.secrets/garage/p2p/mainnet';
   const testnetEntry = 'com.bullbitcoin.secrets/garage/p2p/testnet';
-  const slow = Timeout(Duration(seconds: 90));
+  const slow = Timeout(Duration(seconds: 120));
 
-  // Fixed test bytes, 0x01 to 0x20: not a key anyone uses.
-  final fixedKey = switch (GarageKey.fromBytes(
+  // Fixed test bytes, 0x01 to 0x20: the key drawn at random of these tests, not a key anyone uses.
+  final drawnKey = switch (GarageKey.fromBytes(
     Uint8List.fromList(List<int>.generate(32, (i) => i + 1)),
   )) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
-  final fixedRobot = switch (fixedKey.firstUsableRobot(0)) {
+  final drawnFingerprint = switch (GarageKeyFingerprint.of(drawnKey)) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
 
-  // The example key of the RoboSats frontend tests, and its first robot, as `packages/robosats` records them (tests run in the package directory).
-  final vectors =
-      jsonDecode(
-            File(
-              '../../packages/robosats/test/fixtures/robot-identity-vectors.json',
-            ).readAsStringSync(),
-          )
-          as Map<String, dynamic>;
-  final exampleVector = vectors['garage_key'] as Map<String, dynamic>;
-  final exampleRobot =
-      (exampleVector['derived'] as List).first as Map<String, dynamic>;
-  final exampleKey = switch (GarageKey.parse(
-    exampleVector['garage_key'] as String,
-  )) {
-    Ok(:final value) => value,
-    Err(:final failure) => throw StateError('$failure'),
-  };
+  late FakeSecureStoragePlatform storage;
+  late GarageKeys vault;
+  late TestWordsPort words;
+  late Directory directory;
 
-  GarageKeyRepositoryImpl repositoryOver(FakeSecureStoragePlatform storage) {
-    storage.install();
-    return GarageKeyRepositoryImpl(
-      Secrets(scratchDirectory: () async => '.').garageKeys(),
-    );
+  setUp(() async {
+    storage = FakeSecureStoragePlatform()..install();
+    vault = Secrets(scratchDirectory: () async => '.').garageKeys();
+    words = TestWordsPort();
+    directory = await Directory.systemTemp.createTemp('p2p-garage-keys-');
+  });
+
+  tearDown(() => directory.delete(recursive: true));
+
+  final now = DateTime.utc(2026, 11, 26, 12);
+
+  GarageKeyRepositoryImpl repositoryOver(P2pDatabase database) =>
+      GarageKeyRepositoryImpl(
+        vault,
+        words,
+        GarageKeyBookRepositoryImpl(database, clock: () => now),
+      );
+
+  P2pDatabase memory() {
+    final database = P2pDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(database.close);
+    return database;
   }
 
-  T ok<T>(Result<T, P2pFailure> result) => switch (result) {
-    Ok(:final value) => value,
-    Err(:final failure) => fail('expected a value, got $failure'),
-  };
+  NetworkGarageKey keyOf(Result<NetworkGarageKey, P2pFailure> result) =>
+      switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
 
-  P2pFailure err<T>(Result<T, P2pFailure> result) => switch (result) {
-    Ok() => fail('expected a failure, got a value'),
-    Err(:final failure) => failure,
-  };
+  GarageKeyFingerprint fingerprintOf(NetworkGarageKey key) =>
+      switch (key.fingerprint) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
 
-  // The fixed key stored in each slot, the way the vault stores it: by an import through its public handle.
-  late Map<String, String> storedFixedKeys;
+  Future<List<String>> statesOf(P2pDatabase database) async => [
+    for (final row
+        in await database.customSelect('SELECT state FROM garage_switch').get())
+      row.read<String>('state'),
+  ];
 
-  setUpAll(() async {
-    final storage = FakeSecureStoragePlatform();
-    final repository = repositoryOver(storage);
-    ok(await repository.import(RobosatsNetwork.mainnet, fixedKey));
-    ok(await repository.import(RobosatsNetwork.testnet, fixedKey));
-    storedFixedKeys = Map.of(storage.entries);
-    expect(storedFixedKeys.keys, unorderedEquals([mainnetEntry, testnetEntry]));
-  });
+  Future<int> countOf(P2pDatabase database, String table) async =>
+      (await database
+              .customSelect('SELECT count(*) AS n FROM $table')
+              .getSingle())
+          .read<int>('n');
 
-  FakeSecureStoragePlatform storageHolding(
-    Iterable<String> entries, {
-    bool locked = false,
-    List<Object?>? scripted,
-    List<Object?>? scriptedWrites,
-  }) => FakeSecureStoragePlatform(
-    entries: {for (final entry in entries) entry: storedFixedKeys[entry] ?? ''},
-    locked: locked,
-    scripted: scripted,
-    scriptedWrites: scriptedWrites,
-  );
-
-  group('an empty slot', () {
+  group('the keys of the words', () {
     test(
-      'reads as no key, after the full budget, and nothing is written',
+      'the first opening activates key 0 of the words, recorded as drawn here',
       () async {
-        final storage = FakeSecureStoragePlatform();
-        final repository = repositoryOver(storage);
-
-        expect(ok(await repository.exists(RobosatsNetwork.mainnet)), isFalse);
-        expect(storage.reads, 5);
+        final database = memory();
+        final repository = repositoryOver(database);
         expect(
-          err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-          isA<GarageKeyMissingFailure>(),
+          await repository.keyring(mainnet),
+          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(0)),
         );
-        expect(storage.entries, isEmpty);
+        final key = keyOf(await repository.read(mainnet));
+        expect(key.index, 0);
+        expect(key.network, mainnet);
+        expect(key.key.revealBech32(), abandonMainnet0);
+        final testnetKey = keyOf(await repository.read(testnet));
+        expect(testnetKey.key.revealBech32(), abandonTestnet0);
+        // Recorded as drawn here on its network, so that its robots may be bound and trade.
+        final exposure = await RobotBindingRepositoryImpl(
+          database,
+          clock: () => now,
+        ).exposureOf(mainnet, fingerprintOf(key));
+        expect(
+          exposure,
+          isA<Ok<GarageKeyExposure, P2pFailure>>().having(
+            (ok) => ok.value.history,
+            'history',
+            GarageKeyHistory.drawnHere,
+          ),
+        );
+        expect(await statesOf(database), ['derived']);
+        // Nothing of the key is at rest: no entry in the vault, only the index and the fingerprint in the database.
+        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+        expect(storage.entries.keys, isNot(contains(testnetEntry)));
+        expect(await countOf(database, 'derived_garage_keys'), 2);
       },
       timeout: slow,
     );
 
-    test('takes a new key, in the slot of its own network only', () async {
-      final storage = FakeSecureStoragePlatform();
-      final repository = repositoryOver(storage);
+    test(
+      '« New key » activates the next index, one at a time, and new trades take the highest key only',
+      () async {
+        final repository = repositoryOver(memory());
+        expect(
+          await repository.keyring(mainnet),
+          isA<Ok<GarageKeyring, P2pFailure>>(),
+        );
+        expect(
+          await repository.activateNext(mainnet, after: 0),
+          const Ok<int, P2pFailure>(1),
+        );
+        expect(
+          keyOf(await repository.read(mainnet)).key.revealBech32(),
+          abandonMainnet1,
+        );
+        final earlier = keyOf(await repository.derived(mainnet, 0));
+        expect(earlier.index, 0);
+        expect(earlier.key.revealBech32(), abandonMainnet0);
+        final forTrades = keyOf(await repository.forNewTrade(mainnet));
+        expect(forTrades.index, 1);
+        expect(forTrades.key.revealBech32(), abandonMainnet1);
+        // A second tap after the first one won: nothing more.
+        expect(
+          await repository.activateNext(mainnet, after: 0),
+          const Err<int, P2pFailure>(GarageKeyMissingFailure()),
+        );
+        expect(
+          await repository.keyring(mainnet),
+          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(1)),
+        );
+        // Two taps at once: one key.
+        final both = await Future.wait([
+          repository.activateNext(mainnet, after: 1),
+          repository.activateNext(mainnet, after: 1),
+        ]);
+        expect(both.whereType<Ok<int, P2pFailure>>().map((ok) => ok.value), [
+          2,
+        ]);
+        expect(
+          keyOf(await repository.forNewTrade(mainnet)).key.revealBech32(),
+          abandonMainnet2,
+        );
+        // « › » never creates: a key above the highest is not given.
+        expect(
+          await repository.derived(mainnet, 3),
+          const Err<NetworkGarageKey, P2pFailure>(GarageKeyMissingFailure()),
+        );
+        expect(
+          await repository.keyring(mainnet),
+          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(2)),
+        );
+      },
+      timeout: slow,
+    );
 
-      final drawn = ok(await repository.create(RobosatsNetwork.testnet));
-
-      expect(storage.entries.keys, [testnetEntry]);
-      // The key the vault drew, with the network of its slot: the one stored.
-      expect(drawn.network, RobosatsNetwork.testnet);
-      expect(ok(await repository.read(RobosatsNetwork.testnet)), drawn);
-      expect(storage.readKeys.toSet(), {testnetEntry});
-      expect(ok(await repository.exists(RobosatsNetwork.testnet)), isTrue);
-      final robot = ok(
-        await repository.firstUsableRobot(RobosatsNetwork.testnet),
+    test('the last index has no next key, and 2^31 is never asked', () async {
+      final database = memory();
+      final repository = repositoryOver(database);
+      expect(
+        await repository.keyring(mainnet),
+        isA<Ok<GarageKeyring, P2pFailure>>(),
       );
-      expect(robot.accountIndex, 0);
-    }, timeout: slow);
+      expect(
+        await repository.activateNext(mainnet, after: 0x7fffffff),
+        const Err<int, P2pFailure>(GarageKeyLastIndexFailure()),
+      );
+      final book = GarageKeyBookRepositoryImpl(database, clock: () => now);
+      final fingerprint = fingerprintOf(keyOf(await repository.read(mainnet)));
+      expect(
+        () => book.activate(mainnet, 0x80000000, fingerprint),
+        throwsArgumentError,
+      );
+      expect(
+        words.asked.map((asked) => asked.$2),
+        everyElement(lessThan(0x80000000)),
+      );
+    });
 
     test(
-      'create hands back the key the vault drew, tagged with the slot of each network',
+      'a key the words give again that is not the recorded one is refused everywhere, never signed with',
       () async {
-        final storage = FakeSecureStoragePlatform();
-        final repository = repositoryOver(storage);
-
-        final drawn = {
-          for (final network in RobosatsNetwork.values)
-            network: ok(await repository.create(network)),
+        final repository = repositoryOver(memory());
+        final recorded = keyOf(await repository.read(mainnet));
+        final robot = switch (recorded.firstUsableRobot(0)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
         };
-
-        expect(
-          storage.entries.keys,
-          unorderedEquals([mainnetEntry, testnetEntry]),
-        );
-        for (final network in RobosatsNetwork.values) {
-          expect(drawn[network]?.network, network);
-          expect(ok(await repository.read(network)), drawn[network]);
+        // Other words restored in the same book.
+        words.words = legalWords;
+        for (final result in [
+          await repository.read(mainnet),
+          await repository.derived(mainnet, 0),
+          await repository.forNewTrade(mainnet),
+          await repository.ofSlot(robot.slot),
+        ]) {
+          expect(
+            result,
+            const Err<NetworkGarageKey, P2pFailure>(GarageKeyMismatchFailure()),
+          );
         }
-        // Two draws, two keys.
         expect(
-          drawn[RobosatsNetwork.mainnet]?.key,
-          isNot(drawn[RobosatsNetwork.testnet]?.key),
+          await repository.activateNext(mainnet, after: 0),
+          isA<Err<int, P2pFailure>>(),
         );
       },
       timeout: slow,
     );
 
     test(
-      'create reads nothing back: the keystore sees the reads of the vault\'s own draw, no more',
+      'the robot of a recorded trade finds its key by fingerprint',
       () async {
-        // The vault's draw alone, on an empty keystore of its own: the reads it settles the empty slot with.
-        final alone = FakeSecureStoragePlatform()..install();
+        final repository = repositoryOver(memory());
+        final first = keyOf(await repository.read(mainnet));
         expect(
-          await Secrets(
-            scratchDirectory: () async => '.',
-          ).garageKeys().create(slot: GarageKeySlot.testnet),
-          isA<Ok<Object, Failure>>(),
+          await repository.activateNext(mainnet, after: 0),
+          const Ok<int, P2pFailure>(1),
         );
-        final readsOfTheVault = alone.reads;
-
-        final storage = FakeSecureStoragePlatform();
-        final repository = repositoryOver(storage);
-        ok(await repository.create(RobosatsNetwork.testnet));
-
-        // A read of the slot after the write, to hand back what it holds, would show here.
-        expect(storage.reads, readsOfTheVault);
-      },
-      timeout: slow,
-    );
-
-    test('takes an imported key, which gives its own robots back', () async {
-      final storage = FakeSecureStoragePlatform();
-      final repository = repositoryOver(storage);
-
-      ok(await repository.import(RobosatsNetwork.mainnet, exampleKey));
-
-      expect(storage.entries.keys, [mainnetEntry]);
-      final robot = ok(
-        await repository.firstUsableRobot(RobosatsNetwork.mainnet),
-      );
-      expect(robot.accountIndex, exampleRobot['account_index']);
-      expect(robot.identity.hashId.hex, exampleRobot['hash_id']);
-      expect(robot.identity.nickname, exampleRobot['nickname']);
-    }, timeout: slow);
-  });
-
-  group('a stored key', () {
-    test('is found, and gives the robots of its own bytes', () async {
-      final repository = repositoryOver(storageHolding([mainnetEntry]));
-
-      expect(ok(await repository.exists(RobosatsNetwork.mainnet)), isTrue);
-      expect(
-        ok(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        isA<NetworkRobot>()
-            .having(
-              (robot) => robot.network,
-              'network',
-              RobosatsNetwork.mainnet,
-            )
-            .having((robot) => robot.robot, 'robot', fixedRobot),
-      );
-    });
-
-    test('is read with the network of its slot, never the other', () async {
-      final storage = storageHolding([testnetEntry]);
-      final repository = repositoryOver(storage);
-
-      expect(
-        ok(await repository.read(RobosatsNetwork.testnet)),
-        NetworkGarageKey(RobosatsNetwork.testnet, fixedKey),
-      );
-      expect(
-        err(await repository.read(RobosatsNetwork.mainnet)),
-        isA<GarageKeyMissingFailure>(),
-      );
-      expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
-    }, timeout: slow);
-
-    test('gives robots tagged with the network of its slot', () async {
-      final repository = repositoryOver(
-        storageHolding([mainnetEntry, testnetEntry]),
-      );
-
-      for (final network in RobosatsNetwork.values) {
-        final key = ok(await repository.read(network));
-        expect(key.network, network);
+        final robot = switch (first.firstUsableRobot(3)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final found = keyOf(await repository.ofSlot(robot.slot));
+        expect(found.index, 0);
+        expect(found.key.revealBech32(), abandonMainnet0);
         expect(
-          ok(key.firstUsableRobot(0)),
-          ok(await repository.firstUsableRobot(network)),
+          await repository.ofSlot(RobotSlot(mainnet, drawnFingerprint, 0)),
+          const Err<NetworkGarageKey, P2pFailure>(TradeKeyMissingFailure()),
         );
-        expect(ok(key.firstUsableRobot(0)).network, network);
-      }
-    });
-
-    test('is never replaced: create and import are refused', () async {
-      final storage = storageHolding([mainnetEntry]);
-      final repository = repositoryOver(storage);
-
-      expect(
-        err(await repository.create(RobosatsNetwork.mainnet)),
-        isA<GarageKeyAlreadyStoredFailure>(),
-      );
-      expect(
-        err(await repository.import(RobosatsNetwork.mainnet, exampleKey)),
-        isA<GarageKeyAlreadyStoredFailure>(),
-      );
-
-      expect(storage.entries, {mainnetEntry: storedFixedKeys[mainnetEntry]});
-      expect(
-        ok(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        isA<NetworkRobot>()
-            .having(
-              (robot) => robot.network,
-              'network',
-              RobosatsNetwork.mainnet,
-            )
-            .having((robot) => robot.robot, 'robot', fixedRobot),
-      );
-    });
-
-    test('of one network is never reached from the other', () async {
-      final storage = storageHolding([testnetEntry]);
-      final repository = repositoryOver(storage);
-
-      expect(
-        ok(await repository.firstUsableRobot(RobosatsNetwork.testnet)),
-        isA<NetworkRobot>()
-            .having(
-              (robot) => robot.network,
-              'network',
-              RobosatsNetwork.testnet,
-            )
-            .having((robot) => robot.robot, 'robot', fixedRobot),
-      );
-      ok(await repository.delete(RobosatsNetwork.mainnet));
-
-      expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
-      expect(storage.readKeys.toSet(), {testnetEntry});
-    });
-  });
-
-  group('an entry that cannot be used', () {
-    test(
-      'is reported as such, refused as a slot, and kept until deleted',
-      () async {
-        final storage = FakeSecureStoragePlatform(
-          entries: {mainnetEntry: 'not json at all'},
-        );
-        final repository = repositoryOver(storage);
-
-        expect(
-          err(await repository.exists(RobosatsNetwork.mainnet)),
-          isA<GarageKeyUnusableFailure>(),
-        );
-        expect(
-          err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-          isA<GarageKeyUnusableFailure>(),
-        );
-        expect(
-          err(await repository.read(RobosatsNetwork.mainnet)),
-          isA<GarageKeyUnusableFailure>(),
-        );
-        expect(
-          err(await repository.create(RobosatsNetwork.mainnet)),
-          isA<GarageKeyAlreadyStoredFailure>(),
-        );
-        expect(
-          err(await repository.import(RobosatsNetwork.mainnet, exampleKey)),
-          isA<GarageKeyAlreadyStoredFailure>(),
-        );
-        expect(storage.entries, {mainnetEntry: 'not json at all'});
-
-        ok(await repository.delete(RobosatsNetwork.mainnet));
-
-        expect(storage.entries, isEmpty);
-        expect(ok(await repository.exists(RobosatsNetwork.mainnet)), isFalse);
       },
       timeout: slow,
     );
 
     test(
-      'that keeps failing to read is unreadable, and nothing is written over it',
+      'when the words cannot give a key, nothing is activated and nothing is drawn',
       () async {
-        PlatformException failing() => PlatformException(code: 'read failed');
-        final storage = storageHolding([
-          mainnetEntry,
-        ], scripted: List.generate(20, (_) => failing()));
-        final repository = repositoryOver(storage);
+        for (final (reason, failure)
+            in <(P2pGarageKeyRefusalReason, P2pFailure)>[
+              (
+                P2pGarageKeyRefusalReason.noDefaultWallet,
+                const GarageKeyNoWalletFailure(),
+              ),
+              (
+                P2pGarageKeyRefusalReason.passphrase,
+                const GarageKeyPassphraseFailure(),
+              ),
+              (
+                P2pGarageKeyRefusalReason.noWords,
+                const GarageKeyNoWordsFailure(),
+              ),
+              (
+                P2pGarageKeyRefusalReason.locked,
+                const GarageKeyLockedFailure(),
+              ),
+              (
+                P2pGarageKeyRefusalReason.unreadable,
+                const GarageKeyUnreadableFailure(),
+              ),
+            ]) {
+          words.refusal = reason;
+          final database = memory();
+          final repository = repositoryOver(database);
+          expect(
+            await repository.keyring(mainnet),
+            Err<GarageKeyring, P2pFailure>(failure),
+            reason: reason.name,
+          );
+          expect(
+            await repository.forNewTrade(mainnet),
+            Err<NetworkGarageKey, P2pFailure>(failure),
+            reason: reason.name,
+          );
+          expect(await countOf(database, 'derived_garage_keys'), 0);
+          expect(await countOf(database, 'garage_key_histories'), 0);
+          expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+        }
+      },
+    );
 
+    test(
+      'a book created at schema 10 leaves the vault slots as they are',
+      () async {
         expect(
-          err(await repository.exists(RobosatsNetwork.mainnet)),
-          isA<GarageKeyUnreadableFailure>(),
+          await vault.import(
+            slot: GarageKeySlot.mainnet,
+            bytes: drawnKey.revealBytes(),
+          ),
+          isA<Ok<Object?, Failure>>(),
         );
+        final repository = repositoryOver(memory());
         expect(
-          err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-          isA<GarageKeyUnreadableFailure>(),
+          keyOf(await repository.read(mainnet)).key.revealBech32(),
+          abandonMainnet0,
         );
-        expect(
-          err(await repository.read(RobosatsNetwork.mainnet)),
-          isA<GarageKeyUnreadableFailure>(),
-        );
-        expect(
-          err(await repository.create(RobosatsNetwork.mainnet)),
-          isA<GarageKeyNotSavedFailure>(),
-        );
-        expect(storage.entries, {mainnetEntry: storedFixedKeys[mainnetEntry]});
+        expect(storage.entries.keys, contains(mainnetEntry));
       },
       timeout: slow,
     );
   });
 
-  group('a locked keystore', () {
-    test('is reported as locked, and nothing is written or deleted', () async {
-      final storage = storageHolding([mainnetEntry], locked: true);
-      final repository = repositoryOver(storage);
-
-      for (final failure in [
-        err(await repository.exists(RobosatsNetwork.mainnet)),
-        err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        err(await repository.read(RobosatsNetwork.mainnet)),
-        err(await repository.create(RobosatsNetwork.mainnet)),
-        err(await repository.import(RobosatsNetwork.mainnet, exampleKey)),
+  group('the book of the key drawn at random, emptied once', () {
+    /// A file of schema 9 with a key drawn here, a robot of it bound and its trade, open unless [closed].
+    Future<File> schema9File({required bool closed}) async {
+      final file = File('${directory.path}/nine.sqlite');
+      final old = v9.DatabaseAtV9(NativeDatabase(file));
+      final fingerprint = drawnFingerprint.hex;
+      for (final statement in [
+        "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES ('mainnet', '$fingerprint', 'generated', 1)",
+        "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('mainnet', '$fingerprint', 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')",
+        "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('mainnet', '$fingerprint', 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, ${closed ? 5 : 'NULL'})",
       ]) {
-        expect(failure, isA<GarageKeyLockedFailure>());
+        await old.customStatement(statement);
       }
-      storage
-        ..locked = false
-        ..writesFail = true;
-      expect(
-        err(await repository.delete(RobosatsNetwork.mainnet)),
-        isA<GarageKeyLockedFailure>(),
-      );
-
-      expect(storage.entries, {mainnetEntry: storedFixedKeys[mainnetEntry]});
-    });
-  });
-
-  group('a keystore that refuses a change', () {
-    test('keeps the key when a delete fails, and says so', () async {
-      final storage = storageHolding(
-        [mainnetEntry],
-        scriptedWrites: [PlatformException(code: 'delete failed')],
-      );
-      final repository = repositoryOver(storage);
-
-      expect(
-        err(await repository.delete(RobosatsNetwork.mainnet)),
-        isA<GarageKeyNotDeletedFailure>(),
-      );
-      expect(storage.entries, {mainnetEntry: storedFixedKeys[mainnetEntry]});
-    });
-
-    test('stores no key when a write fails, and says so', () async {
-      final storage = FakeSecureStoragePlatform(
-        scriptedWrites: [PlatformException(code: 'write failed')],
-      );
-      final repository = repositoryOver(storage);
-
-      expect(
-        err(await repository.create(RobosatsNetwork.mainnet)),
-        isA<GarageKeyNotSavedFailure>(),
-      );
-      expect(storage.entries, isEmpty);
-    }, timeout: slow);
-  });
-
-  test('two simultaneous creates on an empty slot store one key', () async {
-    final storage = _SlowWrites();
-    final first = repositoryOver(storage);
-    final second = repositoryOver(storage);
-
-    final (a, b) = await (
-      first.create(RobosatsNetwork.mainnet),
-      second.create(RobosatsNetwork.mainnet),
-    ).wait;
-
-    expect([a, b].whereType<Ok<void, P2pFailure>>(), hasLength(1));
-    expect(
-      [a, b].whereType<Err<void, P2pFailure>>().single.failure,
-      isA<GarageKeyAlreadyStoredFailure>(),
-    );
-    expect(storage.entries.keys, [mainnetEntry]);
-  }, timeout: slow);
-
-  test('the failures carry nothing but their type', () {
-    for (final failure in <P2pFailure>[
-      const GarageKeyMissingFailure(),
-      const GarageKeyAlreadyStoredFailure(),
-      const GarageKeyLockedFailure(),
-      const GarageKeyUnreadableFailure(),
-      const GarageKeyUnusableFailure(),
-      const GarageKeyNotSavedFailure(),
-      const GarageKeyNotDeletedFailure(),
-      const GarageKeyInvalidFailure(GarageKeyBadChecksum()),
-      const GarageRobotUnavailableFailure(),
-    ]) {
-      expect(failure.logMessage, isNull);
-      expect(failure.toString(), '${failure.runtimeType}');
+      await old.close();
+      return file;
     }
+
+    Future<void> storeDrawnKey() async {
+      expect(
+        await vault.import(
+          slot: GarageKeySlot.mainnet,
+          bytes: drawnKey.revealBytes(),
+        ),
+        isA<Ok<Object?, Failure>>(),
+      );
+    }
+
+    P2pDatabase open(File file) {
+      final database = P2pDatabase.forTesting(NativeDatabase(file));
+      addTearDown(database.close);
+      return database;
+    }
+
+    test(
+      'nothing is emptied while a trade is in progress: the earlier key only finishes it',
+      () async {
+        await storeDrawnKey();
+        final file = await schema9File(closed: false);
+        final database = open(file);
+        final repository = repositoryOver(database);
+        expect(
+          await repository.keyring(mainnet),
+          const Ok<GarageKeyring, P2pFailure>(LegacyGarageKeyring()),
+        );
+        final legacy = keyOf(await repository.read(mainnet));
+        expect(legacy.index, isNull);
+        expect(legacy.key, drawnKey);
+        expect(
+          keyOf(
+            await repository.ofSlot(RobotSlot(mainnet, drawnFingerprint, 0)),
+          ).key,
+          drawnKey,
+        );
+        // No new trade, on that key or any other, and no key of the words yet.
+        expect(
+          await repository.forNewTrade(mainnet),
+          const Err<NetworkGarageKey, P2pFailure>(
+            GarageKeySwitchPendingFailure(),
+          ),
+        );
+        expect(
+          await repository.activateNext(mainnet, after: 0),
+          const Err<int, P2pFailure>(GarageKeySwitchPendingFailure()),
+        );
+        expect(
+          await repository.derived(mainnet, 0),
+          const Err<NetworkGarageKey, P2pFailure>(
+            GarageKeySwitchPendingFailure(),
+          ),
+        );
+        expect(await statesOf(database), ['legacy']);
+        expect(await countOf(database, 'trades'), 1);
+        expect(await countOf(database, 'robot_bindings'), 1);
+        expect(await countOf(database, 'derived_garage_keys'), 0);
+        expect(storage.entries.keys, contains(mainnetEntry));
+        expect(words.asked, isEmpty);
+      },
+      timeout: slow,
+    );
+
+    test(
+      'the first start where every trade is finished empties the book, then the vault, then switches',
+      () async {
+        await storeDrawnKey();
+        final file = await schema9File(closed: false);
+        final first = P2pDatabase.forTesting(NativeDatabase(file));
+        expect(await statesOf(first), ['legacy']);
+        // The trade ends during the run: the switch waits for the next start.
+        await first.customStatement('UPDATE trades SET closed_at = 9');
+        expect(await statesOf(first), ['legacy']);
+        await first.close();
+        final database = open(file);
+        expect(await statesOf(database), ['vaultPending']);
+        for (final table in [
+          'trades',
+          'robot_bindings',
+          'garage_key_histories',
+          'trade_trails',
+          'trade_terms',
+          'trade_payments',
+          'trade_payouts',
+          'trade_chat_pins',
+          'trade_chat_nostr_pins',
+          'maker_terms',
+        ]) {
+          expect(await countOf(database, table), 0, reason: table);
+        }
+        // The triggers that refuse a delete are back.
+        final triggers = [
+          for (final row
+              in await database
+                  .customSelect(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger'",
+                  )
+                  .get())
+            row.read<String>('name'),
+        ];
+        expect(
+          triggers,
+          containsAll([
+            'trades_never_deleted',
+            'trade_trails_never_deleted',
+            'trade_payouts_never_deleted',
+          ]),
+        );
+        expect(storage.entries.keys, contains(mainnetEntry));
+        final repository = repositoryOver(database);
+        expect(
+          await repository.keyring(mainnet),
+          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(0)),
+        );
+        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+        expect(await statesOf(database), ['derived']);
+        expect(
+          keyOf(await repository.forNewTrade(mainnet)).key.revealBech32(),
+          abandonMainnet0,
+        );
+      },
+      timeout: slow,
+    );
+
+    test(
+      'an emptying cut at any point resumes at the next opening, never half done',
+      () async {
+        await storeDrawnKey();
+        final killed = File('${directory.path}/killed.sqlite');
+        await _killedMidEmptying(killed, drawnFingerprint.hex);
+        final database = open(killed);
+        expect(await statesOf(database), ['vaultPending']);
+        expect(await countOf(database, 'trades'), 0);
+        expect(await countOf(database, 'robot_bindings'), 0);
+        expect(await countOf(database, 'garage_key_histories'), 0);
+        final triggers = [
+          for (final row
+              in await database
+                  .customSelect(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'trades_never_deleted'",
+                  )
+                  .get())
+            row.read<String>('name'),
+        ];
+        expect(triggers, ['trades_never_deleted']);
+        // Killed again between the database and the vault: the slot is still there, and the next reading of the keys deletes it before any key of the words.
+        expect(storage.entries.keys, contains(mainnetEntry));
+        final repository = repositoryOver(database);
+        expect(
+          await repository.keyring(mainnet),
+          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(0)),
+        );
+        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+      },
+      timeout: slow,
+    );
+
+    test(
+      'the book of the keys of the words is never emptied again, and the switch never goes back',
+      () async {
+        final file = File('${directory.path}/ten.sqlite');
+        final database = P2pDatabase.forTesting(NativeDatabase(file));
+        final repository = repositoryOver(database);
+        final key = keyOf(await repository.read(mainnet));
+        final robot = switch (key.firstUsableRobot(0)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(
+          await RobotBindingRepositoryImpl(database, clock: () => now).bind(
+            robot.slot,
+            CoordinatorIdentity(
+              network: mainnet,
+              alias: 'temple',
+              onion: 'http://temple.onion',
+              nodeKeys: const [],
+              nostrKey: 'abc',
+            ),
+          ),
+          const Ok<void, P2pFailure>(null),
+        );
+        await database.close();
+        final again = open(file);
+        expect(await statesOf(again), ['derived']);
+        expect(await countOf(again, 'robot_bindings'), 1);
+        expect(await countOf(again, 'derived_garage_keys'), 1);
+        for (final state in ['legacy', 'emptying', 'vaultPending']) {
+          await expectLater(
+            again.customStatement("UPDATE garage_switch SET state = '$state'"),
+            throwsA(anything),
+            reason: state,
+          );
+        }
+        await expectLater(
+          again.customStatement('DELETE FROM garage_switch'),
+          throwsA(anything),
+        );
+        await again.customStatement(
+          "INSERT OR REPLACE INTO garage_switch (id, state) VALUES (1, 'legacy')",
+        );
+        expect(await statesOf(again), ['derived']);
+      },
+      timeout: slow,
+    );
   });
 }
 
-/// A keystore whose writes take time, as a real one's do: in memory, a write would land before the second caller's last read, and the race would never interleave.
-final class _SlowWrites extends FakeSecureStoragePlatform {
-  @override
-  Future<void> write({
-    required String key,
-    required String value,
-    required Map<String, String> options,
-  }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    await super.write(key: key, value: value, options: options);
+/// A file left by a run killed in the middle of the emptying: at schema 10, the switch at `emptying`, `trades_never_deleted` dropped, the bindings deleted, the history and the closed trade still there.
+Future<void> _killedMidEmptying(File file, String fingerprint) async {
+  final old = v9.DatabaseAtV9(NativeDatabase(file));
+  for (final statement in [
+    "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES ('mainnet', '$fingerprint', 'generated', 1)",
+    "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('mainnet', '$fingerprint', 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')",
+    "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('mainnet', '$fingerprint', 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, NULL)",
+  ]) {
+    await old.customStatement(statement);
   }
+  await old.close();
+  // Upgraded with the trade open: `legacy`, whole.
+  final upgraded = P2pDatabase.forTesting(NativeDatabase(file));
+  expect(
+    (await upgraded.customSelect('SELECT state FROM garage_switch').getSingle())
+        .read<String>('state'),
+    'legacy',
+  );
+  // The trade closed, then a run that started the emptying and was killed in the middle of it.
+  await upgraded.customStatement('UPDATE trades SET closed_at = 9');
+  await upgraded.customStatement(
+    "UPDATE garage_switch SET state = 'emptying' WHERE state = 'legacy'",
+  );
+  await upgraded.customStatement('DROP TRIGGER trades_never_deleted');
+  await upgraded.customStatement('PRAGMA foreign_keys = OFF');
+  await upgraded.customStatement('DELETE FROM robot_bindings');
+  await upgraded.close();
 }

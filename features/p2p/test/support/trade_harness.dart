@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
+import 'package:p2p/src/data/garage_key_book_repository_impl.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/trade_chat_pin_repository_impl.dart';
 import 'package:p2p/src/domain/repositories/trade_chat_pin_repository.dart';
@@ -56,6 +57,7 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'robot_coordinators.dart' show pairOf;
+import 'garage_words.dart';
 
 /// A Garage Key made for the trade tests only.
 final GarageKey tradeKey = switch (GarageKey.fromBytes(
@@ -229,7 +231,7 @@ final class HarnessKeys implements RobotKeyComputePort {
   }
 }
 
-final class _Vault implements GarageKeyRepository {
+final class _Vault with KeysFromRead implements GarageKeyRepository {
   /// The key the vault holds: `null` once deleted.
   NetworkGarageKey? key;
 
@@ -242,11 +244,6 @@ final class _Vault implements GarageKeyRepository {
     final held? when held.network == network => Ok(held),
     _ => const Err(GarageKeyMissingFailure()),
   };
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -262,10 +259,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError();
 }
 
 /// The trade records, stopping the app where [kill] says.
@@ -540,8 +533,17 @@ final class TradeHarness {
 
   final _Vault _vault;
 
-  TradeHarness._(this.network, this.database, this.coordinator, this.now)
-    : _vault = _Vault(NetworkGarageKey(network, tradeKey)) {
+  /// The Garage Key of this run: [tradeKey] unless the test gave another one, such as a key of the public test words (#81).
+  final GarageKey key;
+
+  TradeHarness._(
+    this.network,
+    this.database,
+    this.coordinator,
+    this.now, {
+    GarageKey? key,
+  }) : key = key ?? tradeKey,
+       _vault = _Vault(NetworkGarageKey(network, key ?? tradeKey, index: 0)) {
     DateTime clock() => now;
     bindings = RobotBindingRepositoryImpl(database, clock: clock);
     records = _KillingRecords(
@@ -667,13 +669,15 @@ final class TradeHarness {
     String? password,
     String alias = 'temple',
     RobotIdentity? maker,
+    GarageKey? key,
+    bool activatedFromWords = false,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
     final database = P2pDatabase.forTesting(NativeDatabase.memory());
     final coordinator = ScriptedCoordinator(
       network: network,
-      robots: robotsOf(network),
+      robots: robotsOf(network, key ?? tradeKey),
       clock: () => _clockOf[database] ?? now,
       orderType: orderType,
       takerFee: takerFee,
@@ -683,15 +687,27 @@ final class TradeHarness {
       alias: alias,
       maker: maker,
     );
-    final harness = TradeHarness._(network, database, coordinator, now);
+    final harness = TradeHarness._(
+      network,
+      database,
+      coordinator,
+      now,
+      key: key,
+    );
     _clockOf[database] = now;
     harness._track();
-    final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
+    final fingerprint = switch (GarageKeyFingerprint.of(harness.key)) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     };
+    // A key of the words is recorded as drawn here by its activation, as the repository activates key 0 at the first opening (#81); otherwise as a key drawn here before #81.
     expect(
-      await harness.bindings.recordGeneratedKey(network, fingerprint),
+      activatedFromWords
+          ? await GarageKeyBookRepositoryImpl(
+              database,
+              clock: () => now,
+            ).activate(network, 0, fingerprint)
+          : await harness.bindings.recordGeneratedKey(network, fingerprint),
       isA<Ok>(),
     );
     return harness;
@@ -699,7 +715,7 @@ final class TradeHarness {
 
   /// The app started again over the same database and coordinator, at the same time: nothing kept in memory.
   TradeHarness restart() {
-    final again = TradeHarness._(network, database, coordinator, now);
+    final again = TradeHarness._(network, database, coordinator, now, key: key);
     again._track();
     return again;
   }
@@ -731,8 +747,11 @@ final class TradeHarness {
   ];
 
   /// The robots of [tradeKey] on [network] the coordinator may meet: its first usable ones.
-  static List<RobotIdentity> robotsOf(RobosatsNetwork network) {
-    final key = NetworkGarageKey(network, tradeKey);
+  static List<RobotIdentity> robotsOf(
+    RobosatsNetwork network, [
+    GarageKey? garageKey,
+  ]) {
+    final key = NetworkGarageKey(network, garageKey ?? tradeKey);
     final found = <RobotIdentity>[];
     var from = 0;
     while (found.length < 6) {
@@ -754,7 +773,7 @@ final class TradeHarness {
   void replaceKey() => _vault.key = NetworkGarageKey(network, otherTradeKey);
 
   /// The robot of index [index] among [robotsOf].
-  RobotIdentity robot(int index) => robotsOf(network)[index];
+  RobotIdentity robot(int index) => robotsOf(network, key)[index];
 
   /// The coordinator's order as its book lists it now.
   Future<PublicOrder> shownOrder() async {

@@ -829,14 +829,21 @@ void main() {
     });
 
     test(
-      'only the draw and the import write a key, and record its history',
+      'only « New key » activates a key of the words, only the import writes the vault, and nothing records a key as drawn here but the activation',
       () {
-        expect(referring((r) => r == 'GarageKeyRepository.create'), {
-          'lib/src/domain/usecases/generate_garage_key_usecase.dart',
+        // Since #81 nothing draws a key: the keys of the words are activated by the repository, at the first opening (key 0) and on « New key » (#81), and recorded as drawn here by the book's own activation, never through the bindings' repository.
+        expect(referring((r) => r == 'GarageKeyRepository.activateNext'), {
+          'lib/src/domain/usecases/new_garage_key_usecase.dart',
+        });
+        expect(referring((r) => r == 'NewGarageKeyUsecase.execute'), {
+          'lib/src/presentation/garage_cubit.dart',
+        });
+        expect(referring((r) => r == 'GarageKeyBookRepository.activate'), {
+          'lib/src/data/garage_key_repository_impl.dart',
         });
         expect(
           referring((r) => r == 'RobotBindingRepository.recordGeneratedKey'),
-          {'lib/src/domain/usecases/generate_garage_key_usecase.dart'},
+          isEmpty,
         );
         expect(referring((r) => r == 'GarageKeyRepository.import'), {
           'lib/src/domain/usecases/import_garage_key_usecase.dart',
@@ -845,12 +852,15 @@ void main() {
           referring((r) => r == 'RobotBindingRepository.recordImportedKey'),
           {'lib/src/domain/usecases/import_garage_key_usecase.dart'},
         );
-        // And only the repository asks the vault to write one.
-        for (final member in ['GarageKeys.create', 'GarageKeys.import']) {
-          expect(referring((r) => r == member), {
-            'lib/src/data/garage_key_repository_impl.dart',
-          }, reason: member);
-        }
+        // And only the repository asks the vault to write one; nothing asks it to draw one.
+        expect(referring((r) => r == 'GarageKeys.import'), {
+          'lib/src/data/garage_key_repository_impl.dart',
+        });
+        expect(referring((r) => r == 'GarageKeys.create'), isEmpty);
+        // Only the repository's one-time switch deletes the vault's slots (#81).
+        expect(referring((r) => r == 'GarageKeys.delete'), {
+          'lib/src/data/garage_key_repository_impl.dart',
+        });
       },
     );
 
@@ -974,18 +984,6 @@ void main() {
         expect(referring((r) => r.startsWith('extension on ')), isEmpty);
       },
     );
-
-    test('deleting a key cannot reach the bindings', () {
-      expect(
-        references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
-        isNot(
-          anyOf(
-            contains('type RobotBindingRepository'),
-            contains('RobotBindingRepository.bind'),
-          ),
-        ),
-      );
-    });
   });
 
   test('the robot cubit\'s public surface is exactly what the panel uses', () {
@@ -2586,8 +2584,11 @@ const _watched = {
       'releaseOrder',
     },
   ),
-  'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
-  'GarageKeys': ('package:secrets/', {'create', 'import'}),
+  'GarageKeyRepository': ('package:p2p/', {'import', 'activateNext'}),
+  'GarageKeys': ('package:secrets/', {'create', 'import', 'delete'}),
+  // The keys of the words (#81): who activates one.
+  'GarageKeyBookRepository': ('package:p2p/', {'activate'}),
+  'NewGarageKeyUsecase': ('package:p2p/', {'execute'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
   'CloseRobotSessionsUsecase': ('package:p2p/', {'execute'}),
   'CoordinatorSessionsPort': ('package:p2p/', {'closeRobotSessions'}),

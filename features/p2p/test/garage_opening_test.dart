@@ -29,6 +29,7 @@ import 'package:test/test.dart';
 import 'support/fakes.dart';
 import 'support/history_records.dart';
 import 'support/robot_bindings.dart';
+import 'support/garage_words.dart';
 
 GarageKey _keyOf(int first) => switch (GarageKey.fromBytes(
   Uint8List.fromList(List<int>.generate(32, (i) => first + i)),
@@ -44,7 +45,7 @@ GarageKeyFingerprint _fingerprintOf(GarageKey key) =>
     };
 
 /// The vault as the robot layer and the Garage read it: one key per network.
-final class _Vault implements GarageKeyRepository {
+final class _Vault with KeysFromRead implements GarageKeyRepository {
   final Map<RobosatsNetwork, Result<NetworkGarageKey, P2pFailure>> slots;
 
   _Vault(this.slots);
@@ -53,11 +54,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
   ) async => slots[network] ?? const Err(GarageKeyMissingFailure());
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -73,10 +69,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError();
 }
 
 /// The robot the Garage shows by the device's records (#251, design note `docs/design/phase-3-fresh-robot.md` § 3, § 4.1): « served » from how a finished trade's trail stopped, the fresh robot the next trade would reserve, the pure rule of the opening, and where the user left the Garage by hand.

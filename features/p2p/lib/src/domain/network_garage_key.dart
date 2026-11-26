@@ -16,7 +16,7 @@ import 'garage_key_fingerprint.dart';
 import 'p2p_failure.dart';
 import 'robot_binding.dart';
 
-/// The Garage Key of one network, as the vault keeps it in the slot of that network, and the robots derived from it.
+/// The Garage Key of one network, derived from the default wallet's words at [index] (#81), or, with no index, the key drawn at random before #81 that the vault keeps in the slot of that network; and the robots derived from it.
 ///
 /// Every robot it gives is a [NetworkRobot] that carries [network] and the [fingerprint] of the key, so that a robot of the testnet key can never be handed to a call for mainnet, nor checked against the bindings of another key.
 /// Only the repository makes one, from the slot it has just read: `test/network_garage_key_test.dart` pins that no other library of the feature calls this constructor.
@@ -29,7 +29,10 @@ final class NetworkGarageKey {
   /// The key: its clear forms are for `GarageKeyView` (its text) and the repository (its bytes) only, as the custody gate checks.
   final GarageKey key;
 
-  const NetworkGarageKey(this.network, this.key);
+  /// The index of the key among the keys of the words, the « n° N » of the Garage Key card; `null` for the key drawn at random before #81, which only finishes its trades.
+  final int? index;
+
+  const NetworkGarageKey(this.network, this.key, {this.index});
 
   /// What ties the bindings of the robots of this key to it: see [GarageKeyFingerprint].
   Result<GarageKeyFingerprint, P2pFailure> get fingerprint =>
@@ -95,13 +98,16 @@ final class NetworkGarageKey {
 
   @override
   bool operator ==(Object other) =>
-      other is NetworkGarageKey && other.network == network && other.key == key;
+      other is NetworkGarageKey &&
+      other.network == network &&
+      other.key == key &&
+      other.index == index;
 
   @override
-  int get hashCode => Object.hash(network, key);
+  int get hashCode => Object.hash(network, key, index);
 
   @override
-  String toString() => 'NetworkGarageKey(${network.name}, <redacted>)';
+  String toString() => 'NetworkGarageKey(${network.name}, $index, <redacted>)';
 }
 
 /// A robot of the Garage Key of one network, with that network: the only form in which a robot leaves the repository.
