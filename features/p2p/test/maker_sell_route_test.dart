@@ -603,6 +603,8 @@ void main() {
             ),
           ),
         );
+        // The screen takes in what the wallet now says, which may move « Pay » (a guarded button ignores taps for a moment after a move, security review of #291): the user taps once it is still.
+        await settle(tester);
         await journey.tap(
           find.text(words.payTotal.replaceAll('{n}', words.sats(196654))),
         );
