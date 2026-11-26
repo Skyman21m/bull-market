@@ -1028,11 +1028,13 @@ void main() {
       }
 
       test(
-        'once the invoice expired: the same red check as at 6 for the same sats; while the coordinator retries, nothing',
+        'once the invoice expired: the same red check as at 6 for the same sats, the same sum as the invoice kept from 6 (#281); while the coordinator retries, nothing',
         () async {
           final (harness, record, six) = await taken();
           final port = wallet(P2pWalletRateRead(80000));
-          final cubit = cubitOf(harness, record, port);
+          // One run of the app: the invoice of 6 kept for 15 (#281).
+          final memory = PayoutRateMemory();
+          final cubit = cubitOf(harness, record, port, memory: memory);
           await cubit.show(six, appeared: true);
           await harness.settle();
           final atSix = switch (cubit.state) {
@@ -1042,7 +1044,7 @@ void main() {
           expect(atSix.warns, isTrue);
           final retrying = await toFifteen(harness, record, expired: false);
           expect(retrying.status, isA<RoutingFailed>());
-          final later = cubitOf(harness, record, port);
+          final later = cubitOf(harness, record, port, memory: memory);
           await later.show(retrying, appeared: true);
           await harness.settle();
           expect(later.state, isA<PayoutRateNone>());
@@ -1121,4 +1123,184 @@ void main() {
       );
     });
   });
+
+  group(
+    '#281: at 15, the new invoice against the one asked at 6 or 8 (design note § 3.3 bis, point 4)',
+    () {
+      /// [record]'s trade moved from where it stands to 15 (8, 9, 10, 13, then 15, the failed invoice expired), each read in turn; [last] the coordinator's `last_satoshis` from 13 on, when given (a coordinator that lowers the contract's sats before 15).
+      Future<TradeSeen> toFifteen(
+        MakeHarness harness,
+        TradeRecord record, {
+        int? last,
+      }) async {
+        harness.coordinator.lockEscrow(record.orderId);
+        await readOf(harness, record);
+        for (final status in const [9, 10, 13]) {
+          harness.coordinator.order(record.orderId).status = status;
+          await readOf(harness, record);
+        }
+        if (last != null) {
+          harness.coordinator.order(record.orderId).lastSatoshis = last;
+        }
+        harness.coordinator.failPayout(record.orderId);
+        return readOf(harness, record);
+      }
+
+      Sats askedAt(TradeRecord record, TradeSeen seen) =>
+          valueOf(PayoutAsk.of(record, seen)).buyerSats;
+
+      test(
+        'the use case: at 6 the invoice kept for 15 (`keepFirst`); at 15 nothing kept, and against the largest of 6 and 8: fewer by one sat is an alert, as many or more is as at 6, nothing kept is said',
+        () async {
+          final (harness, record, six) = await taken();
+          final maker = await termsOf(harness, record);
+          final atSix = comparedOf(
+            CheckPayoutRateUsecase.subjectAt(record, maker, six),
+          );
+          expect(atSix.keepFirst, askedAt(record, six));
+          expect(atSix.basis, const PayoutRateAskedNow());
+          final first = askedAt(record, six);
+          final fifteen = await toFifteen(harness, record);
+          final asked = askedAt(record, fifteen);
+          expect(asked, first, reason: 'the reference asks the same sum');
+          PayoutRateCompared at(Sats? kept) => comparedOf(
+            CheckPayoutRateUsecase.subjectAt(
+              record,
+              maker,
+              fifteen,
+              asked: kept,
+              first: kept,
+            ),
+          );
+          final same = at(first);
+          expect(same.basis, const PayoutRateAskedNow());
+          expect(same.keep, isNull);
+          expect(same.keepFirst, isNull);
+          expect(same.received, asked);
+          // One sat more kept: the sum of 15 is one sat fewer.
+          final oneMore = Sats(first.value + BigInt.one);
+          expect(at(oneMore).basis, PayoutRateBelowFirst(oneMore));
+          // One sat fewer kept: more at 15, nothing more said.
+          expect(
+            at(Sats(first.value - BigInt.one)).basis,
+            const PayoutRateAskedNow(),
+          );
+          expect(at(null).basis, const PayoutRateFirstUnknown());
+        },
+      );
+
+      test(
+        'the cubit: 6 honest, 15 asks 9 % fewer: the alert, whatever the price says; 15 keeps nothing, so 15 → 13 → 15 still says it; the verdict warns, and nothing within the threshold is silenced as « reassuring » beside it',
+        () async {
+          final (harness, record, six) = await taken();
+          final memory = PayoutRateMemory();
+          final port = wallet(P2pWalletRateRead(91711.15));
+          final cubit = cubitOf(harness, record, port, memory: memory);
+          await cubit.show(six, appeared: true);
+          await harness.settle();
+          final first = askedAt(record, six);
+          expect(memory.firstOf(record, 0), first);
+          final kept = memory.askedOf(record, 0);
+          final last = harness.coordinator.order(record.orderId).lastSatoshis;
+          final fifteen = await toFifteen(
+            harness,
+            record,
+            last: last * 91 ~/ 100,
+          );
+          await cubit.show(fifteen);
+          await harness.settle();
+          final now = askedAt(record, fifteen);
+          expect(now.value < first.value, isTrue);
+          expect(
+            cubit.state,
+            isA<PayoutRateChecked>().having(
+              (s) => s.basis,
+              'basis',
+              PayoutRateBelowFirst(first),
+            ),
+          );
+          expect(
+            PayoutRateCubit.verdictOf(cubit.state),
+            PayoutRateVerdict.warns,
+          );
+          // 15 keeps nothing: neither the smallest for 9 nor the first for 15.
+          expect(memory.firstOf(record, 0), first);
+          expect(memory.askedOf(record, 0), kept);
+          // 15 → 13 → 15: compared again with 6, never with the 15 before.
+          harness.coordinator.order(record.orderId).status = 13;
+          await cubit.show(await readOf(harness, record));
+          harness.coordinator.order(record.orderId).status = 15;
+          await cubit.show(await readOf(harness, record), appeared: true);
+          await harness.settle();
+          expect(
+            (cubit.state as PayoutRateChecked).basis,
+            PayoutRateBelowFirst(first),
+          );
+          final check = (cubit.state as PayoutRateChecked).check;
+          expect(
+            CheckPayoutRateUsecase.reassuresBesideAlert(
+              fifteen,
+              check,
+              PayoutRateBelowFirst(first),
+            ),
+            isFalse,
+          );
+        },
+      );
+
+      test(
+        'several invoices at 6 and 8: the largest is the reference, so that a smaller one shown first cannot make the same smaller one at 15 look unchanged; 9 still takes the smallest',
+        () async {
+          final (harness, record, six) = await taken();
+          final memory = PayoutRateMemory();
+          final port = wallet(P2pWalletRateRead(91711.15));
+          final cubit = cubitOf(harness, record, port, memory: memory);
+          final order = harness.coordinator.order(record.orderId);
+          final honest = order.lastSatoshis;
+          // At 6 a read 5 % smaller, then the honest one.
+          order.lastSatoshis = honest * 95 ~/ 100;
+          final small = await readOf(harness, record);
+          await cubit.show(small, appeared: true);
+          await harness.settle();
+          order.lastSatoshis = honest;
+          final big = await readOf(harness, record);
+          await cubit.show(big);
+          await harness.settle();
+          expect(memory.firstOf(record, 0), askedAt(record, big));
+          expect(memory.askedOf(record, 0), askedAt(record, small));
+          final fifteen = await toFifteen(
+            harness,
+            record,
+            last: honest * 95 ~/ 100,
+          );
+          expect(askedAt(record, fifteen), askedAt(record, small));
+          await cubit.show(fifteen);
+          await harness.settle();
+          expect(
+            (cubit.state as PayoutRateChecked).basis,
+            PayoutRateBelowFirst(askedAt(record, big)),
+          );
+        },
+      );
+
+      test(
+        'nothing kept (a new memory, as after a restart): the Bull wallet\'s comparison and « not compared with the first invoice », never an invented comparison; a currency not priced and a price not read keep their lines',
+        () async {
+          final (harness, record, _) = await taken();
+          final fifteen = await toFifteen(harness, record);
+          for (final (rate, kind) in <(P2pWalletBitcoinRate, Type)>[
+            (P2pWalletRateRead(91711.15), WalletRateAtWallet),
+            (const P2pWalletRateUnavailable(), WalletRateUnverified),
+          ]) {
+            final cubit = cubitOf(harness, record, wallet(rate));
+            await cubit.show(fifteen, appeared: true);
+            await harness.settle();
+            final state = cubit.state as PayoutRateChecked;
+            expect(state.basis, const PayoutRateFirstUnknown());
+            expect(state.check.runtimeType, kind);
+          }
+        },
+      );
+    },
+  );
 }
