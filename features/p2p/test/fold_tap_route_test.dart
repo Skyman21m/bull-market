@@ -889,7 +889,7 @@ void main() {
             isTrue,
           );
           final ignored = await _ignoredBeforePaying(tester, confirmation);
-          count('$gesture', ignored);
+          count(gesture, ignored);
           expect(ignored, expected);
           await confirmation.close();
         },
