@@ -24,6 +24,7 @@ import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -1344,9 +1345,12 @@ void main() {
             ),
           ),
         );
+        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+        await tester.pump(MovedTapGuard.afterMove);
         await journey.tap(generate);
         await settle(tester);
         final before = journey.coordinator.requests.length;
+        await tester.pump(MovedTapGuard.afterMove);
         await journey.tap(find.widgetWithText(TradeButton, 'Submit'));
         await journey.pass(5);
         // « Submit » sent the invoice to the coordinator. The tests' coordinator checks its clear signature against the key it kept for the robot, which the fake robot keys of this composition do not sign for (« The PGP signed cleartext message is not valid »): the invoice is then taken as the coordinator takes one given from another app, 6 → 7 (`api/logics.py:907-933`).
@@ -1390,6 +1394,8 @@ void main() {
           if (tester.widget<TradeButton>(sent).onPressed != null) break;
           await journey.pass(1);
         }
+        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+        await tester.pump(MovedTapGuard.afterMove);
         await journey.tap(sent);
         await settle(tester);
         await settle(tester);
@@ -1410,6 +1416,8 @@ void main() {
           find.descendant(of: dialog, matching: find.textContaining('5,100')),
           findsNothing,
         );
+        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(
           find.descendant(of: dialog, matching: find.text('Confirm')),
         );
@@ -1714,6 +1722,8 @@ void main() {
               ),
             ),
           );
+          // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+          await tester.pump(MovedTapGuard.afterMove);
           await journey.tap(generate);
           await settle(tester);
           expect(find.text(l10n.p2pPayoutBreakdownFees), findsOneWidget);

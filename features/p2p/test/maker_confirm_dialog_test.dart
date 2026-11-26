@@ -24,6 +24,7 @@ import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/testing.dart' show ScriptedMakerRequest;
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -206,6 +207,8 @@ void main() {
       matching: find.text('Confirm'),
     );
     expect(go, findsOneWidget);
+    // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+    await tester.pump(MovedTapGuard.afterMove);
     await tester.tap(go);
     await tester.pump();
     await settleBoth(tester, h);

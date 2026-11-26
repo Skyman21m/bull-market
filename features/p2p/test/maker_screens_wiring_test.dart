@@ -25,6 +25,7 @@ import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:secrets/secrets.dart' show Secrets;
@@ -283,6 +284,8 @@ void main() {
       final submit = find.widgetWithText(TradeButton, 'Submit');
       await tester.ensureVisible(submit);
       await tester.pump();
+      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(submit);
       await tester.pump();
       await tester.pump();
@@ -295,10 +298,14 @@ void main() {
       final confirm = find.widgetWithText(TradeButton, 'Confirm 100 EUR sent');
       await tester.ensureVisible(confirm);
       await tester.pump();
+      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(confirm);
       await tester.pump();
       await tester.pump();
       expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+      // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(
         find.descendant(
           of: find.byType(ConfirmFiatSentDialog),
@@ -445,6 +452,8 @@ void main() {
         );
         await tester.ensureVisible(generate);
         await tester.pump();
+        // A tap after the guard's delay, as a user's: the layout just moved the button (#283).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(generate);
         await tester.pump();
         await tester.pump();
