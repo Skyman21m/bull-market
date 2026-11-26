@@ -2773,4 +2773,123 @@ final class GarageKeyRepositoryImpl {
       );
     });
   });
+
+  group('the Garage Key derived from the words has no caller yet (#81)', () {
+    const grouped = '''
+import 'package:secrets/secrets.dart';
+Object key(Secret secret) =>
+    secret.derive.garageKey(network: GarageKeySlot.mainnet, index: 0);
+''';
+
+    test('the grouped call is refused everywhere', () async {
+      for (final (name, path) in [
+        ('garage_derived_app', null),
+        ('garage_derived_locator', 'lib/locator.dart'),
+        ('garage_derived_bip85', 'lib/core/bip85/garage.dart'),
+        ('garage_derived_feature', 'features/p2p/lib/src/data/garage.dart'),
+        (
+          'garage_derived_reader',
+          'features/p2p/lib/src/data/garage_key_repository_impl.dart',
+        ),
+      ]) {
+        expect(
+          keyReads(await inspect(name, grouped, policyPath: path)).single,
+          allOf(
+            contains('package:secrets/'),
+            endsWith('#SecretDerivation.garageKey'),
+          ),
+          reason: name,
+        );
+      }
+    });
+
+    test('the flat operation, a tear-off, an alias and a pattern keep the identity', () async {
+      for (final (name, source, symbol) in [
+        (
+          'garage_derived_flat',
+          '''
+import 'package:secrets/secrets.dart';
+Object key(Secret secret) =>
+    secret.garageKey(network: GarageKeySlot.testnet, index: 1);
+''',
+          '#Secret.garageKey',
+        ),
+        (
+          'garage_derived_tear_off',
+          '''
+import 'package:secrets/secrets.dart';
+Object key(Secret secret) => secret.derive.garageKey;
+''',
+          '#SecretDerivation.garageKey',
+        ),
+        (
+          'garage_derived_alias',
+          '''
+import 'package:secrets/secrets.dart' as custody;
+typedef Handle = custody.Secret;
+Object key(Handle secret) => secret.derive.garageKey(
+  network: custody.GarageKeySlot.mainnet,
+  index: 2,
+);
+''',
+          '#SecretDerivation.garageKey',
+        ),
+        (
+          'garage_derived_pattern',
+          '''
+import 'package:secrets/secrets.dart';
+Object key(Object value) => switch (value) {
+  Secret(garageKey: final derive) => derive,
+  _ => 0,
+};
+''',
+          '#Secret.garageKey',
+        ),
+      ]) {
+        expect(
+          (await inspect(name, source)).single,
+          allOf(contains('package:secrets/'), endsWith(symbol)),
+          reason: name,
+        );
+      }
+    });
+
+    test('dynamic access fails closed', () async {
+      final violations = await inspect('garage_derived_dynamic', '''
+Object call(dynamic secret) =>
+    secret.derive.garageKey(network: 0, index: 0);
+Object tearOff(dynamic derive) => derive.garageKey;
+''');
+      expect(violations, [
+        'lib/garage_derived_dynamic.dart: unresolved sensitive member garageKey',
+      ]);
+    });
+
+    test('the other derivations of a secret remain available', () async {
+      expect(
+        await inspect('garage_derived_neighbours', '''
+import 'package:primitives/primitives.dart';
+import 'package:secrets/secrets.dart';
+Object hex(Secret secret) => secret.derive.bip85.hex(numBytes: 32, index: 0);
+Object xpub(Secret secret) => secret.derive.xpub(
+  network: BitcoinNetwork.mainnet,
+  scriptType: ScriptType.bip84,
+);
+Object slot() => GarageKeySlot.testnet;
+'''),
+        isEmpty,
+      );
+    });
+
+    test('a production file that calls it fails the whole check', () async {
+      final root = Directory('${fixture.path}/garage_derived_root')
+        ..createSync();
+      File('${root.path}/lib/app.dart')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(grouped);
+      expect((await checkKeyMaterial(root.path)).violations, [
+        'lib/app.dart: package:secrets/src/public/extensions.dart#SecretDerivation.garageKey',
+      ]);
+    });
+  });
 }

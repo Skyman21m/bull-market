@@ -28,9 +28,9 @@ Run `make secrets-api-docs` after changing the public API and include the README
 
 Account xpub derivation, Bitcoin signing, BIP85 and the swap key honour a BIP39 passphrase. Liquid descriptors and signatures derive from the words alone and ignore it. A RecoverBull vault contains the words only; its encryption key derives from the original secret, including its passphrase. Two secrets with the same words and different passphrases therefore share a Liquid descriptor but have different Bitcoin fingerprints.
 
-These methods return their values directly. There is no passphrase wrapper: the behavior is part of each operation's contract. One operation refuses instead: `silentPayments.account`, because bwk derives from the words alone (`SpAccount.createFromMnemonic`, `mnemonic.to_seed("")`) and the account would be the passphrase-less sibling's — `PassphraseUnsupportedFailure`. `secrets.recoverbull.restore(vault:, key:, passphrase:)` accepts the passphrase separately; the vault cannot verify whether the supplied passphrase is correct. Without one, it restores the passphrase-less wallet.
+These methods return their values directly. There is no passphrase wrapper: the behavior is part of each operation's contract. Two operations refuse instead, with `PassphraseUnsupportedFailure`: `silentPayments.account`, because bwk derives from the words alone (`SpAccount.createFromMnemonic`, `mnemonic.to_seed("")`) and the account would be the passphrase-less sibling's; and `derive.garageKey`, because the words alone must give that key back (§ The derived Garage Key). `secrets.recoverbull.restore(vault:, key:, passphrase:)` accepts the passphrase separately; the vault cannot verify whether the supplied passphrase is correct. Without one, it restores the passphrase-less wallet.
 
-**Default wallets never have a passphrase.** The app generates or imports their words without one. A restored `Secret` handle is also rejected by `CreateDefaultWalletsUsecase` if it carries a passphrase, before any wallet is created. Liquid, RecoverBull recovery, BIP85, swaps, Silent Payments and the physical backup check rely on this invariant. Passphrase-protected Bitcoin wallets are imported non-default wallets.
+**Default wallets never have a passphrase.** The app generates or imports their words without one. A restored `Secret` handle is also rejected by `CreateDefaultWalletsUsecase` if it carries a passphrase, before any wallet is created. Liquid, RecoverBull recovery, BIP85, swaps, Silent Payments, the derived Garage Key and the physical backup check rely on this invariant. Passphrase-protected Bitcoin wallets are imported non-default wallets.
 
 The bound lwk API accepts `network` and `mnemonic`, with no passphrase parameter. Its `lwk_signer` 0.18.0 implementation uses `mnemonic.to_seed("")` (verified 2026-09-14). Changing that behavior would move existing Liquid wallets; it is not a migration omission. Device vectors compare the descriptors produced from identical words with and without a passphrase.
 
@@ -61,7 +61,7 @@ The public vocabulary does not change persisted key names. Give the key to SQLCi
 
 `Secrets.garageKeys()` returns the handle of the P2P feature on its RoboSats Garage Keys: `create(slot:)`, `import(slot:, bytes:)`, `read(slot:)` and `delete(slot:)`, one key per `GarageKeySlot`. The shell asks for it and passes it to that feature alone, as it would a `DatabaseKeys` handle. A Garage Key is the master secret of the user's RoboSats robots: whoever holds it can act as any of them, which reaches the escrow and the bond of a trade in progress, though not the wallet.
 
-It is **not a wallet secret and never touches one**. Thirty-two random bytes drawn by the package (`Random.secure`), never derived from a seed, so that the robots cannot be linked to the wallet and a leaked seed does not reveal them; stored in the module-key namespace, in the versioned envelope of database keys, under `com.bullbitcoin.secrets/garage/p2p/mainnet` or `…/testnet`, with the kind `garage`; read by `GarageKeyRepository`, which imports nothing from `crypto/` and reads no `seed_` entry. It is not part of a RecoverBull vault: `backup.recoverbull` seals the words of one secret and the caller's metadata, nothing else, and a restore writes one `seed_` entry. The twelve words do not bring it back either. The user keeps a copy of the key separately, as RoboSats asks, and restores it with `import`. Deleting a wallet does not touch it, and deleting it does not touch the wallet.
+A stored Garage Key is **not a wallet secret and never touches one**. Thirty-two random bytes drawn by the package (`Random.secure`), never derived from a seed, so that the robots cannot be linked to the wallet and a leaked seed does not reveal them; stored in the module-key namespace, in the versioned envelope of database keys, under `com.bullbitcoin.secrets/garage/p2p/mainnet` or `…/testnet`, with the kind `garage`; read by `GarageKeyRepository`, which imports nothing from `crypto/` and reads no `seed_` entry. It is not part of a RecoverBull vault: `backup.recoverbull` seals the words of one secret and the caller's metadata, nothing else, and a restore writes one `seed_` entry. The twelve words do not bring it back either. The user keeps a copy of the key separately, as RoboSats asks, and restores it with `import`. Deleting a wallet does not touch it, and deleting it does not touch the wallet.
 
 **A stored Garage Key is never replaced.** Replacing one loses every robot derived from it, so `create` and `import` write only into an empty slot, through the one write-if-absent operation of the datasource (`storeModuleKeyIfAbsent`): under the lock, the slot is read with the full `settled` budget, and any entry found — a key, an empty value, a value that does not parse, a key of another kind — is `GarageKeyAlreadyExistsFailure`, with nothing written. Only a settled clean miss writes, and the new key's bytes are drawn there, under the lock, so two calls give one key and the second is refused. That budget holds the lock for ~4.5 s of pauses plus the time of the five reads themselves, longer when the platform's reads are slow, on every create or import that finds the slot empty: the first for a slot, and again after each `delete` of it. The other composed writes keep `underLock` (§ Absence), and wait behind it. A read that keeps failing, or a locked keystore, writes nothing either.
 
@@ -69,15 +69,42 @@ It is **not a wallet secret and never touches one**. Thirty-two random bytes dra
 
 `GarageKeyMaterial` holds its own copy of the 32 bytes and hands them out only through `bytes`, an unmodifiable view: no hex, no equality, a `toString` that prints `GarageKeyMaterial(•••)`, and a constructor the package alone may call. `import` copies the caller's bytes before anything awaits and refuses another length with an `ArgumentError`. The slot names on disk belong to the repository, not to the enum, so renaming an enum value moves no stored key.
 
+## The derived Garage Key
+
+`secret.derive.garageKey(network:, index:)` (`Secret.garageKey`, computed by `Deriver.garage`) derives a Garage Key from the secret's words, for a P2P Garage that the words alone restore (#81). It is not a stored key and the `GarageKeys` handle never sees it: computed on each call, held by nobody in the package, logged nowhere. Its value is a `GarageKeyMaterial`, so it prints as `GarageKeyMaterial(•••)` and leaves only through `bytes`, which the custody gate already fences.
+
+The key is the first 32 bytes of the 64 bytes of BIP85 entropy at
+
+```
+m / 83696968' / 82796679' / 0' / {network}' / {index}'
+```
+
+- `83696968'`, BIP85's own branch, where no wallet key lives.
+- `82796679'`, the application number: « ROBO » in ASCII decimal (82 79 66 79). It names what is derived, a RoboSats Garage Key, not the app.
+- `0'`, the purpose: a Garage Key in this layout. A later layout takes another purpose; `1'` is kept for a later key of the same application.
+- `{network}'`, `0'` for `GarageKeySlot.mainnet` and `1'` for `testnet`, the BIP44 coin types. A robot's token does not depend on the network, so without this step robot *i* of the testnet key would be the mainnet credential.
+- `{index}'`, `0'` for the first key and the next index for each new key, up to 0x7fffffff, a required argument checked before any keystore read.
+
+The truncation is BIP85's HEX one, as for the RecoverBull backup key; the RoboSats client accepts any 32 bytes as a Garage Key. **The application number `82796679'` and its purpose `0'` are reserved for this key, and the path, the purpose, the network numbers and the truncation are frozen once a version that derives a key has shipped**: another value gives other keys, so other robots, and the user's robots would be lost to the app.
+
+The path is built in the deriver from the enum and the integer, never from a caller's string, and checked before `bip85_entropy` is called: `m` and exactly five steps, each hardened and in canonical decimal below 2^31, BIP85's branch, this application, this purpose and a network of `0'` or `1'`. `bip85_entropy` accepts an unhardened step without a word, and its entropy is then an HMAC over a non-hardened child; a path that fails the check is an `ArgumentError`, a bug that leaves the boundary as an error and never as a key. `test/garage_key_derivation_test.dart` pins the keys through the real library: indexes 0, 1 and 2 of both networks for two test phrases and for the specification's master key, the largest index, the two first indexes whose BIP32 key at the last step starts with a zero byte (131 on mainnet, 1566 on testnet), the cross-check of index 474480, the unhardened path the library would derive, and no collision with the BIP85 children, the RecoverBull keys and the swap child of the same words.
+
+Why BIP85 rather than a path of its own: a hardened path of our own would protect about as well, but BIP85 adds an HMAC that keeps the value one-way from the key tree even if a step were unhardened by mistake, keeps it from being a spending key, sits in a branch reserved for derived entropy, and is a reviewed standard the package already implements, so another wallet can reproduce the keys from the vectors.
+
+A secret with a passphrase is refused with `PassphraseUnsupportedFailure`: default wallets have none, and a Garage that the words alone do not restore is not this feature. A seed-only secret is refused with `MnemonicRequiredFailure` for the same reason. Whoever holds the words holds every derived Garage Key, so every robot of every key: that is the counterpart of not having to save the key. A leaked Garage Key reveals neither the words nor any other child: each key is an HMAC-SHA512 output keyed by a hardened BIP32 child, and the keys of other indexes, other networks and other applications sit on other hardened branches.
+
+No production code calls it in this version: the custody gate refuses `Secret.garageKey` and `SecretDerivation.garageKey`, and dynamic access to a member named `garageKey`, everywhere, until a named adapter of the P2P feature is added with its own review.
+
 ## The exits
 
-The README's operation table is the full inventory — every output, whether it can spend, and what it reveals. Three derivation operations return key material, and none returns the stored mnemonic. Backup keys, database keys and Garage Keys are separate outputs in the same inventory; a Garage Key is random material the package keeps, not something derived from a secret (§ Garage Keys):
+The README's operation table is the full inventory — every output, whether it can spend, and what it reveals. Four derivation operations return key material, and none returns the stored mnemonic. Backup keys, database keys and stored Garage Keys are separate outputs in the same inventory; a stored Garage Key is random material the package keeps, not something derived from a secret (§ Garage Keys):
 
 | | |
 |---|---|
 | `secret.derive.bip85.hex(…)` | BIP85 child entropy the caller asked this feature to create |
 | `secret.derive.bip85.mnemonic(…)` | the same child as words |
 | `secret.derive.swapKey(network:)` | the swap-scoped credential boltz takes on every call |
+| `secret.derive.garageKey(network:, index:)` | a RoboSats Garage Key derived from the words (§ The derived Garage Key) |
 
 ⚠️ **One library receives the stored words: bwk.** `secret.silentPayments.account(…)` opens the Silent Payments account inside the package, so the words never reach the app — but bwk-dart builds an account from a mnemonic only, and the account it returns holds the keys until it is disposed. It is a capability, not an exit to the host. A key-based bwk constructor (bwk-bitcoin/bwk#114) would let the package pass derived keys instead.
 
@@ -105,8 +132,8 @@ package's own tests read the painted text
 through `debugPaintedTextOf`, `@internal` and reachable only from `src/`.
 To *compare* words, `verify.mnemonic` answers without exposing anything.
 
-Do not grep for the three — `test/invariants_test.dart` pins the set, so
-adding a fourth turns the suite red and names it.
+Do not grep for the four — `test/invariants_test.dart` pins the set, so
+adding a fifth turns the suite red and names it.
 
 `derive.descriptors.liquid` is not on it, but it is not public either:
 lwk's confidential descriptor embeds the SLIP-77 master blinding key, so
@@ -136,7 +163,9 @@ derived private key, and version bytes never enter it. The package
 always derives from the mainnet encoding, which is also the only one
 `bip85_entropy` accepts. The app used to pass the wallet's
 network-encoded xprv, so BIP85 and vault creation failed on every
-non-mainnet wallet.
+non-mainnet wallet. The derived Garage Key does take a network, but as a
+step of its own path from the same mainnet-encoded root, not as an
+encoding.
 
 ## Modules
 
@@ -148,7 +177,7 @@ lib/secrets.dart          the package: the surface, explicit `show` lists — wh
 lib/src/
   public/                 what you call          Secrets, Secret, the grouped operations, the export lists (types.dart, widgets.dart) — forwards Results, catches nothing
   crypto/crypto.dart      what it computes       derivers/, signers/, backups/, generator, silent_payments
-    derivers/derivers.dart one deriver per library  fingerprint, bitcoin, liquid, bip85, boltz — a static namespace
+    derivers/derivers.dart one deriver per library  fingerprint, bitcoin, liquid, bip85, boltz, and garage (BIP85 too) — a static namespace
     signers/signers.dart  one signer per chain   bitcoin_signer, liquid_signer, and pset_sighash (the Liquid sighash guard)
     backups/backups.dart  one backup per format  recoverbull — a static namespace
   data/data.dart          where it is kept       the keystore, the three repositories, the one try/catch (boundary.dart)
@@ -215,7 +244,7 @@ The boundary has structural checks in `test/invariants_test.dart` and `test/inte
 | every failure is built in the data layer | no `SecretFailure` is constructed outside `src/data/boundary.dart`, `src/data/secret_repository.dart`, `src/data/database_key_repository.dart` and `src/data/garage_key_repository.dart`; `public/` catches nothing |
 | a Garage Key never reaches a seed | `src/data/garage_key_repository.dart` imports nothing from `crypto/` and names no seed operation; `GarageKeyMaterial` exposes `bytes` alone, `GarageKeys` its four operations |
 | the grouped API adds nothing | `src/public/extensions.dart` contains no `await`, no collaborator, no statement body |
-| material leaves at four named methods | the set of `Secret` methods returning material is exactly `{revealMnemonic, bip85Hex, bip85Mnemonic, swapKey}` — and `revealMnemonic` is `@internal` |
+| material leaves at five named methods | the set of `Secret` methods returning material is exactly `{revealMnemonic, bip85Hex, bip85Mnemonic, swapKey, garageKey}` — and `revealMnemonic` is `@internal` |
 | the public surface is a literal list | the export graph is walked and compared name for name |
 | modules are fronted by their entry point | every cross-module import targets `<module>/<module>.dart` |
 | foreign dependencies stay in their module | bdk/lwk/boltz/bwk/recoverbull only under `crypto/`, the keystore only under `data/` and `testing/`, Flutter only under `widgets/`, `data/` and `testing/`, nothing foreign under `domain/` |
@@ -231,7 +260,7 @@ or `package:secrets/src/` outside the package, the app's own secure store
 excepted. The `PR custody review` workflow comments on a pull request that
 adds one, asking the contributor why.
 
-Local `make custody-check`, included in `make checks`, requires only Dart. It resolves production Dart symbols to reject known private-key derivation and vault-opening operations outside `secrets`. Its named exceptions cover pre-import scanning, swap-scoped credentials and the public-only xpub decoding adapter. Public-key operations, mnemonic validation and formatting of an exported BIP85 child remain valid. The gate also rejects imports or exports of `secrets/testing.dart` and references to its test-support declarations throughout application and workspace production code, including aliases and re-exports. It refuses the reading of a Garage Key — `GarageKeyMaterial.bytes`, and `GarageKey.revealBytes` and `revealBech32` of `package:robosats` — everywhere but one class of each of two named files of the P2P feature, the repository and the display widget, which does not exist yet, and `Secrets.garageKeys` everywhere but the class `AppLocator` of `lib/locator.dart`, the composition root; object patterns are checked like any other access. Unresolved production code fails the gate. This is an operation policy, not complete data-flow analysis or proof that arbitrary strings cannot carry secrets. Pre-import scanning still belongs to a future sync extraction; RecoverBull restoration and inspection are migrated. Since #47 it also scans generated files, allows `Secrets.garageKeys` in one place and shape of the foreground composition, refuses a re-export of this package's declarations, and their use by the workspace's other packages outside three files of the P2P feature and its test seam, and fixes the public surface of the Garage Key readers in a table; it is a fence on named symbols, signatures and places, not a data-flow proof, and `tool/README.md` says what it does not see.
+Local `make custody-check`, included in `make checks`, requires only Dart. It resolves production Dart symbols to reject known private-key derivation and vault-opening operations outside `secrets`. Its named exceptions cover pre-import scanning, swap-scoped credentials and the public-only xpub decoding adapter. Public-key operations, mnemonic validation and formatting of an exported BIP85 child remain valid. The gate also rejects imports or exports of `secrets/testing.dart` and references to its test-support declarations throughout application and workspace production code, including aliases and re-exports. It refuses the reading of a Garage Key — `GarageKeyMaterial.bytes`, and `GarageKey.revealBytes` and `revealBech32` of `package:robosats` — everywhere but one class of each of two named files of the P2P feature, the repository and the display widget, which does not exist yet, and `Secrets.garageKeys` everywhere but the class `AppLocator` of `lib/locator.dart`, the composition root; it refuses the derived Garage Key, `Secret.garageKey` and `SecretDerivation.garageKey`, everywhere (#81); object patterns are checked like any other access. Unresolved production code fails the gate. This is an operation policy, not complete data-flow analysis or proof that arbitrary strings cannot carry secrets. Pre-import scanning still belongs to a future sync extraction; RecoverBull restoration and inspection are migrated. Since #47 it also scans generated files, allows `Secrets.garageKeys` in one place and shape of the foreground composition, refuses a re-export of this package's declarations, and their use by the workspace's other packages outside three files of the P2P feature and its test seam, and fixes the public surface of the Garage Key readers in a table; it is a fence on named symbols, signatures and places, not a data-flow proof, and `tool/README.md` says what it does not see.
 
 So an audit is: run the suite, then read four files —
 `src/public/secret.dart` for what the package does, `src/data/boundary.dart`

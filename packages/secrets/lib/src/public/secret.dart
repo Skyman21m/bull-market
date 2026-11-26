@@ -31,7 +31,7 @@ final class UnreadableSecret extends SecretEntry {
 ///
 /// Obtained from `Secrets` — `generate`, `import` or `fetch` — and holds no key material of its own: [info] describes the secret, and every operation asks the repository to run a closure on material that exists only for that call.
 ///
-/// **This class is the audit surface.** Implementations stay together here behind `@internal`; callers use only the grouped API, such as `secret.sign.psbt(…)`. Its extensions forward calls without handling material or errors. The four implementations that hand back material ([revealMnemonic], [bip85Hex], [bip85Mnemonic], [swapKey]) can be audited together.
+/// **This class is the audit surface.** Implementations stay together here behind `@internal`; callers use only the grouped API, such as `secret.sign.psbt(…)`. Its extensions forward calls without handling material or errors. The five implementations that hand back material ([revealMnemonic], [bip85Hex], [bip85Mnemonic], [swapKey], [garageKey]) can be audited together.
 ///
 /// Nothing here catches: the repository is the boundary that turns an exception into a [SecretFailure].
 ///
@@ -154,6 +154,23 @@ final class Secret extends SecretEntry {
     log.info('SECRET_DERIVE: swap key for ${info.id}');
     return key;
   });
+
+  /// The RoboSats Garage Key of this secret for [network] at [index]. **Returns key material**: whoever holds it controls every robot derived from it, so the bond and the escrow of their trades, though not the wallet.
+  ///
+  /// The first 32 bytes of the BIP85 entropy at `m/83696968'/82796679'/0'/{network}'/{index}'`, network `0'` for mainnet and `1'` for testnet; index 0 is the first key. Derived on each call and stored nowhere: the words give it back. The path is frozen, see [GarageDeriver].
+  ///
+  /// A secret with a passphrase is refused with `PassphraseUnsupportedFailure`, since the words alone must give the key back, and a seed-only secret with `MnemonicRequiredFailure`. An index outside 0 … 0x7fffffff is an [ArgumentError], before any keystore read. Nothing is logged.
+  @internal
+  Future<Result<GarageKeyMaterial, SecretFailure>> garageKey({
+    required GarageKeySlot network,
+    required int index,
+  }) {
+    _requireIndex(index, 'index');
+    return _repository.useMnemonic(
+      info,
+      (m) => Deriver.garage.key(m, network: network, index: index),
+    );
+  }
 
   // --------------------------------------------------------------- signing
 
