@@ -1298,7 +1298,13 @@ void main() {
         );
         await capture('garage-p6-echange-ailleurs');
         await tap(find.text(l10n.p2pHistoryShow));
-        await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
+        // The history opened, from its toggle at the top of the screen.
+        await tester.runAsync(
+          () => Scrollable.ensureVisible(
+            tester.element(find.text(l10n.p2pHistoryHide)),
+            alignment: 0.05,
+          ),
+        );
         await settle();
         await capture('garage-p6-historique');
         await close(locator, tor);

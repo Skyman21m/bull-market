@@ -2441,14 +2441,14 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(find.text('Clé de garage interne n° 0'), findsNothing);
+        expect(find.text('Clé de garage interne n°\u00a00'), findsNothing);
         // The Garage is built only once the protection is on: until then it read nothing.
         expect(storage.reads, 0);
         protection = () async => true;
         await tester.tap(find.text('Réessayer'));
         await settle(tester);
         await letTheVaultSettle(tester);
-        expect(find.text('Clé de garage interne n° 0'), findsOneWidget);
+        expect(find.text('Clé de garage interne n°\u00a00'), findsOneWidget);
         expect(find.text('Nouvelle clé de garage interne'), findsOneWidget);
         expect(
           find.text('Sauvegardée par les 12 mots de votre Bull Wallet.'),
@@ -2848,7 +2848,7 @@ void main() {
       ),
       (
         const Locale('fr'),
-        'Supprimer la clé de garage externe ?',
+        'Supprimer la clé de garage externe\u00a0?',
         'Elle n\'est pas sauvegardée par votre Bull Wallet. Sans une copie, ses robots seront perdus pour cette app.',
         'Supprimer',
         'Annuler',
@@ -3130,7 +3130,7 @@ void main() {
         await tester.tap(find.text('Récupérer'));
         await letTheVaultSettle(tester);
         expect(
-          find.text('C\'est déjà votre clé de garage interne n° 0.'),
+          find.text('C\'est déjà votre clé de garage interne n°\u00a00.'),
           findsOneWidget,
         );
         expect(storage.entries.keys, isNot(contains(_testnetEntry)));
@@ -3211,8 +3211,11 @@ void main() {
                     TextPosition(offset: offset),
                   );
                   if (line.end >= text.length || line.end <= offset) break;
+                  // A space, or the hyphen of a compound word (« gardez-en »), where the line breaker of the whole app breaks too: never a word cut letter by letter.
                   expect(
-                    text[line.end - 1] == ' ' || text[line.end] == ' ',
+                    text[line.end - 1] == ' ' ||
+                        text[line.end] == ' ' ||
+                        text[line.end - 1] == '-',
                     isTrue,
                     reason: '$reason: « $label » broken at ${line.end}',
                   );

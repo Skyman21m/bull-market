@@ -4320,7 +4320,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pGarageKeyNumber(int index) {
-    return 'Clé de garage interne n° $index';
+    return 'Clé de garage interne n° $index';
   }
 
   @override
@@ -4340,25 +4340,25 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pGarageNewKeyText(int index) {
-    return 'Vos échanges utiliseront la clé de garage interne n° $index. Les clés de garage précédentes restent accessibles dans le Garage.';
+    return 'Vos échanges utiliseront la clé de garage interne n° $index. Les clés de garage précédentes restent accessibles dans le Garage.';
   }
 
   @override
   String p2pGarageNewKeyConfirm(int index) {
-    return 'Créer la clé de garage interne n° $index';
+    return 'Créer la clé de garage interne n° $index';
   }
 
   @override
   String get p2pGarageKeyNoWallet =>
-      'Aucun portefeuille Bitcoin par défaut : les clés de garage internes viennent de ses 12 mots.';
+      'Aucun portefeuille Bitcoin par défaut : les clés de garage internes viennent de ses 12 mots.';
 
   @override
   String get p2pGarageKeyPassphrase =>
-      'Ce portefeuille a une phrase secrète : ses 12 mots seuls ne donnent pas les clés de garage internes.';
+      'Ce portefeuille a une phrase secrète : ses 12 mots seuls ne donnent pas les clés de garage internes.';
 
   @override
   String get p2pGarageKeyNoWords =>
-      'Ce portefeuille n\'a pas de mots : les clés de garage internes en viennent.';
+      'Ce portefeuille n\'a pas de mots : les clés de garage internes en viennent.';
 
   @override
   String get p2pGarageKeyMismatch =>
@@ -4377,7 +4377,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageKeyNotBackedUp =>
-      'Non sauvegardée par votre Bull Wallet : gardez-en une copie.';
+      'Non sauvegardée par votre Bull Wallet : gardez-en une copie.';
 
   @override
   String get p2pGarageKeyExplain => 'Explication';
@@ -4387,11 +4387,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageInternalKeysInfo =>
-      'Vos clés de garage internes sont sauvegardées par les 12 mots de votre Bull Wallet : en réinstallant l\'app avec ces 12 mots, vous les retrouvez. Gardez-les précieusement et ne les partagez pas : qui détient une clé de garage contrôle ses robots.';
+      'Vos clés de garage internes sont sauvegardées par les 12 mots de votre Bull Wallet : en réinstallant l\'app avec ces 12 mots, vous les retrouvez. Gardez-les précieusement et ne les partagez pas : qui détient une clé de garage contrôle ses robots.';
 
   @override
   String get p2pGarageExternalKeyInfo =>
-      'Cette clé de garage n\'est pas sauvegardée par les 12 mots de votre Bull Wallet. Si vous perdez ce téléphone ou supprimez l\'app, vous ne la retrouverez qu\'avec votre propre copie : sauvegardez-la à part. Gardez-la précieusement et ne la partagez pas.';
+      'Cette clé de garage n\'est pas sauvegardée par les 12 mots de votre Bull Wallet. Si vous perdez ce téléphone ou supprimez l\'app, vous ne la retrouverez qu\'avec votre propre copie : sauvegardez-la à part. Gardez-la précieusement et ne la partagez pas.';
 
   @override
   String get p2pGarageSwitchToExternal =>
@@ -4408,7 +4408,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageDeleteExternalTitle =>
-      'Supprimer la clé de garage externe ?';
+      'Supprimer la clé de garage externe ?';
 
   @override
   String get p2pGarageDeleteExternalText =>
@@ -4420,9 +4420,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
       count,
       locale: localeName,
       other:
-          'Les échanges $orders utilisent cette clé de garage : sans elle, vous ne pourrez plus les continuer.',
+          'Les échanges $orders utilisent cette clé de garage : sans elle, vous ne pourrez plus les continuer.',
       one:
-          'L\'échange $orders utilise cette clé de garage : sans elle, vous ne pourrez plus le continuer.',
+          'L\'échange $orders utilise cette clé de garage : sans elle, vous ne pourrez plus le continuer.',
     );
     return '$_temp0';
   }
@@ -4435,7 +4435,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageNoticeText =>
-      'Votre clé de garage actuelle s\'appelle maintenant « Clé de garage externe ». Les clés de garage internes, sauvegardées par votre Bull Wallet, sont à côté : appuyez sur « Revenir aux clés de garage internes ».';
+      'Votre clé de garage actuelle s\'appelle maintenant « Clé de garage externe ». Les clés de garage internes, sauvegardées par votre Bull Wallet, sont à côté : appuyez sur « Revenir aux clés de garage internes ».';
 
   @override
   String p2pGarageTradeInProgress(String orderId) {
@@ -4444,6 +4444,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pGarageKeyIsInternal(int index) {
-    return 'C\'est déjà votre clé de garage interne n° $index.';
+    return 'C\'est déjà votre clé de garage interne n° $index.';
   }
 }
