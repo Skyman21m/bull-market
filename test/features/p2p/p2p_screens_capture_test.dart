@@ -1016,7 +1016,7 @@ void main() {
     );
   }
 
-  // The Garage on the keys of the words (#81), over a vault in memory, on testnet, with the public test phrase « abandon ×11 about » as the default wallet's words (never a real wallet's), derived by the app's own adapter: key 0 at the first opening, « New key? », key 1, an earlier key, the key shown after the PIN (the public vector of key 0), and, in a second run, the card during an update with a trade of the key drawn at random still in progress.
+  // The Garage on the keys of the words (#81), over a vault in memory, on testnet, with the public test phrase « abandon ×11 about » as the default wallet's words (never a real wallet's), derived by the app's own adapter: key 0 at the first opening, « New Garage Key », key 1, an earlier key selected (the key of new trades, whatever its number), the key shown after the PIN (the public vector of key 0), and, in a second run, the card during an update with a trade of the key drawn at random still in progress.
   for (final locale in const [Locale('fr'), Locale('en')]) {
     testWidgets(
       'captures of the Garage in ${locale.languageCode}',
@@ -1124,7 +1124,7 @@ void main() {
         await tap(find.byTooltip(l10n.p2pGaragePreviousKey));
         tor.add(P2pTorState.ready);
         await settle();
-        await tester.ensureVisible(find.text(l10n.p2pGarageEarlierKey(1)));
+        await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(0)));
         await settle();
         await capture('garage-cle-precedente');
         await tap(find.byTooltip(l10n.p2pGarageKeyReveal));
@@ -1139,55 +1139,29 @@ void main() {
         await settle();
         await capture('garage-cle-affichee');
 
-        // The card during an update, a trade of the key drawn at random still in progress: the public example key of the RoboSats frontend tests stands for it, stored in the slot of the network.
-        FakeSecureStoragePlatform().install();
-        final second = Secrets(scratchDirectory: () async => '.');
-        final example = switch (GarageKey.parse(_exampleGarageKey())) {
-          Ok(:final value) => value,
-          Err() => throw StateError('not a key'),
-        };
-        final legacy = GetIt.asNewInstance();
-        addTearDown(legacy.reset);
-        setUpP2pForTesting(
-          legacy,
-          transport: const _RecordedTransport(RobosatsNetwork.testnet),
-          torStates: () => tor.stream,
-          clock: () => _now,
-          garageKeys: second.garageKeys(),
+        // The external key (#81): the public example key of the RoboSats frontend tests pasted in « Robot recovery », from the link of the card; the key the vault kept before #81 is shown the same way.
+        await tap(find.text(l10n.p2pGarageWelcomeRecoverHint));
+        await capture('garage-recuperation');
+        // The field of the dialog, drawn over the Garage: the last one.
+        await tester.enterText(
+          find.byType(TextField).last,
+          _exampleGarageKey(),
         );
-        await tester.runAsync(() async {
-          await second.garageKeys().import(
-            slot: GarageKeySlot.testnet,
-            bytes: example.revealBytes(),
-          );
-          await seedLegacyBookForTesting(
-            legacy,
-            example,
-            RobosatsNetwork.testnet,
-          );
-        });
-        await tester.pumpWidget(
-          _App(
-            locale: locale,
-            locator: legacy,
-            network: RobosatsNetwork.testnet,
-          ),
-        );
-        // The first Garage is gone: its database is closed before the second one opens.
-        await locator.reset();
+        await settle();
+        await tap(find.text(l10n.p2pRecoveryRecover));
         tor.add(P2pTorState.ready);
         await settle();
-        await tester.tap(find.text(l10n.p2pNavGarage));
-        await settle();
-        tor.add(P2pTorState.ready);
-        await settle();
-        final waiting = find.text(l10n.p2pGarageKeySwitchPending);
-        if (waiting.evaluate().isEmpty) {
-          throw StateError('the card does not say the trades must finish');
+        final external = find.text(l10n.p2pGarageExternalKey);
+        if (external.evaluate().isEmpty) {
+          throw StateError('the key pasted is not shown as the external key');
         }
-        await tester.ensureVisible(waiting);
+        await capture('garage-cle-externe-haut');
+        await tester.ensureVisible(external);
         await settle();
-        await capture('garage-mise-a-jour-echange-en-cours');
+        await capture('garage-cle-externe');
+        await tap(find.text(l10n.p2pDeleteKeyConfirm));
+        await capture('garage-supprimer-cle-externe');
+        await tap(find.text(l10n.p2pCommonCancel));
       },
     );
   }
