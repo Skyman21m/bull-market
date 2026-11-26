@@ -11,7 +11,7 @@ import 'package:secrets/src/domain/domain.dart';
 
 /// The RoboSats Garage Keys this package keeps for the P2P feature, one per network.
 ///
-/// A repository by role, like `DatabaseKeyRepository`, and as separate from `SecretRepository`: a Garage Key is 32 random bytes, never derived from a seed, never stored with one and never part of a wallet backup. So this file reads no seed and imports nothing from `crypto/`, which the invariant suite checks.
+/// A repository by role, like `DatabaseKeyRepository`, and as separate from `SecretRepository`: a stored Garage Key is 32 random bytes, never derived from a seed, never stored with one and never part of a wallet backup; a Garage Key derived from a secret's words is computed by `crypto/` on each call and never stored here. So this file reads no seed and imports nothing from `crypto/`, which the invariant suite checks.
 ///
 /// Stored under `com.bullbitcoin.secrets/garage/p2p/<slot>` in the module-key envelope. A key is never replaced: creating or importing one needs an empty slot, settled under the lock (see [FlutterSecureStorageDatasource.storeModuleKeyIfAbsent]), and a corrupt one is refused and kept until the user deletes it.
 class GarageKeyRepository {

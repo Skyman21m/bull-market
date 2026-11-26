@@ -21,12 +21,14 @@ library;
 import 'package:secrets/src/crypto/derivers/bip85_deriver.dart';
 import 'package:secrets/src/crypto/derivers/bitcoin_deriver.dart';
 import 'package:secrets/src/crypto/derivers/fingerprint_deriver.dart';
+import 'package:secrets/src/crypto/derivers/garage_deriver.dart';
 import 'package:secrets/src/crypto/derivers/boltz_deriver.dart';
 import 'package:secrets/src/crypto/derivers/liquid_deriver.dart';
 
 export 'bip85_deriver.dart' show Bip85Deriver;
 export 'bitcoin_deriver.dart' show BitcoinDeriver, Descriptors;
 export 'fingerprint_deriver.dart' show FingerprintDeriver;
+export 'garage_deriver.dart' show GarageDeriver;
 export 'boltz_deriver.dart' show BoltzDeriver;
 export 'liquid_deriver.dart' show LiquidDeriver;
 
@@ -46,4 +48,7 @@ abstract final class Deriver {
 
   /// The swap key, through boltz.
   static const boltz = BoltzDeriver();
+
+  /// RoboSats Garage Keys, as BIP85 children.
+  static const garage = GarageDeriver();
 }

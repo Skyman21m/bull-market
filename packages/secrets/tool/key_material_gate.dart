@@ -821,6 +821,7 @@ const _unresolvedSensitiveMembers = {
   'revealBytes',
   'revealBech32',
   'garageKeys',
+  'garageKey',
   // `GarageKeyMaterial.bytes`, reached without a static type. No production file reads a member named `bytes` dynamically today.
   'bytes',
   // `AppLocator.setupP2p`, called dynamically.
@@ -894,8 +895,12 @@ String? materialSymbol(Element element) {
           symbol == 'EncryptionService.decrypt',
     // The bytes of a stored RoboSats Garage Key, and its two clear forms: whoever holds one controls every robot derived from it.
     // The handle that reads and writes Garage Keys is asked for by the composition root alone (see [_KeyMaterialVisitor.isHandleCall]).
+    // The Garage Key derived from a secret's words (#81), as the flat operation and its grouped spelling: no production file may call either yet.
     _ when uri.startsWith('package:secrets/') =>
-      symbol == 'GarageKeyMaterial.bytes' || symbol == 'Secrets.garageKeys',
+      symbol == 'GarageKeyMaterial.bytes' ||
+          symbol == 'Secrets.garageKeys' ||
+          symbol == 'Secret.garageKey' ||
+          symbol == 'SecretDerivation.garageKey',
     _ when uri.startsWith('package:robosats/') =>
       owner == 'GarageKey' && {'revealBytes', 'revealBech32'}.contains(member),
     _ => false,
