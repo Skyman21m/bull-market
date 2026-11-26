@@ -18,6 +18,7 @@ import '../../presentation/p2p_formats.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../../presentation/robot_coordinator_state.dart';
 import '../widgets/coordinator_avatar.dart';
+import '../widgets/word_fit_text.dart';
 import 'robot_history_dialog.dart';
 import 'select_host_sheet.dart';
 import 'send_robot_dialog.dart';
@@ -84,9 +85,10 @@ class _RobotCoordinatorPanelState extends State<RobotCoordinatorPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // A word never broken inside: with a large text on a narrow phone the longest word is shrunk to the line, never cut nor elided (follow-ups of #270, #273 and #283).
           Semantics(
             header: true,
-            child: Text(
+            child: WordFitText(
               l10n.p2pRobotCoordinatorTitle,
               style: text.bodyLarge?.copyWith(
                 color: colors.text,
