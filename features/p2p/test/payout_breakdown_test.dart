@@ -373,72 +373,80 @@ void main() {
       },
     );
 
-    testWidgets('a narrow phone with a large text: nothing cut', (
-      tester,
-    ) async {
-      tester.view
-        ..physicalSize = const Size(320, 2400) * 3
-        ..devicePixelRatio = 3;
-      addTearDown(tester.view.reset);
-      final breakdown = breakdownOf(
-        six,
-        wallet: (amount: sats(106606), received: sats(106400)),
-      );
-      for (final check in [
-        compared(106713, warns: true),
-        compared(106713),
-        PayoutCheckUnverified(Sats.fromInt(106713)),
-        PayoutCheckNotPriced(Sats.fromInt(106713)),
-        // #237: the orange alert since the order was made, and the records not read.
-        PayoutCheckNotPriced(
-          Sats.fromInt(106713),
-          against: (gap: '10,72 %', currency: 'GBP'),
-        ),
-        PayoutCheckTermsUnread(Sats.fromInt(106713)),
-      ]) {
-        for (final scale in const [1.0, 2.0, 3.0]) {
-          await tester.pumpWidget(
-            harness(
-              MediaQuery(
-                data: MediaQueryData(
-                  size: const Size(320, 2400),
-                  textScaler: TextScaler.linear(scale),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      PayoutBreakdownView(
-                        breakdown: breakdown,
-                        check: check,
-                        onRetry: () {},
-                      ),
-                      DetailToggle(open: true, onPressed: () {}),
-                      PayoutBreakdownDetail(
-                        breakdown: breakdown,
-                        check: check,
-                        onCopy: () {},
-                      ),
-                      // Alone above the form, its explanation under it (#250, #237).
-                      PayoutCheckLines(
-                        check: check,
-                        onRetry: () {},
-                        explained: true,
-                      ),
-                    ],
+    testWidgets(
+      'a narrow phone with a large text, in English and in French: nothing cut',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(320, 2400) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final breakdown = breakdownOf(
+          six,
+          wallet: (amount: sats(106606), received: sats(106400)),
+        );
+        for (final check in [
+          compared(106713, warns: true),
+          compared(106713),
+          PayoutCheckUnverified(Sats.fromInt(106713)),
+          PayoutCheckNotPriced(Sats.fromInt(106713)),
+          // #237: the orange alert since the order was made, and the records not read.
+          PayoutCheckNotPriced(
+            Sats.fromInt(106713),
+            against: (gap: '10,72 %', currency: 'GBP'),
+          ),
+          PayoutCheckTermsUnread(Sats.fromInt(106713)),
+        ]) {
+          for (final (locale, scale) in [
+            for (final locale in const [Locale('en'), Locale('fr')])
+              for (final scale in const [1.0, 2.0, 3.0]) (locale, scale),
+          ]) {
+            await tester.pumpWidget(
+              harness(
+                MediaQuery(
+                  data: MediaQueryData(
+                    size: const Size(320, 2400),
+                    textScaler: TextScaler.linear(scale),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        PayoutBreakdownView(
+                          breakdown: breakdown,
+                          check: check,
+                          onRetry: () {},
+                        ),
+                        DetailToggle(open: true, onPressed: () {}),
+                        PayoutBreakdownDetail(
+                          breakdown: breakdown,
+                          check: check,
+                          onCopy: () {},
+                        ),
+                        // Alone above the form, its explanation under it (#250, #237).
+                        PayoutCheckLines(
+                          check: check,
+                          onRetry: () {},
+                          explained: true,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                locale: locale,
               ),
-              locale: const Locale('fr'),
-            ),
-          );
-          expect(tester.takeException(), isNull, reason: '$check $scale');
+            );
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '$check $locale $scale',
+            );
+          }
         }
-      }
-    });
+      },
+    );
   });
 
   testWidgets(
-    '#237 at 9 and in « Confirm … sent », a narrow phone with a large text: « Amount not checked » of records not read, and the orange alert since the order was made, nothing cut',
+    '#237 at 9 and in « Confirm … sent », a narrow phone with a large text, in English and in French: « Amount not checked » of records not read, and the orange alert since the order was made, nothing cut',
     (tester) async {
       tester.view
         ..physicalSize = const Size(320, 2400) * 3
@@ -463,7 +471,10 @@ void main() {
           against: BigInt.from(1072),
         ),
       ]) {
-        for (final scale in const [1.0, 2.0, 3.0]) {
+        for (final (locale, scale) in [
+          for (final locale in const [Locale('en'), Locale('fr')])
+            for (final scale in const [1.0, 2.0, 3.0]) (locale, scale),
+        ]) {
           await tester.pumpWidget(
             harness(
               MediaQuery(
@@ -500,10 +511,14 @@ void main() {
                   ),
                 ),
               ),
-              locale: const Locale('fr'),
+              locale: locale,
             ),
           );
-          expect(tester.takeException(), isNull, reason: '$state $scale');
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '$state $locale $scale',
+          );
         }
       }
     },
