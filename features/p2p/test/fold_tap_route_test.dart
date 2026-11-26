@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:bull_ui/bull_ui.dart' show BullSegmented;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -19,6 +20,7 @@ import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
+import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show Secrets;
@@ -69,14 +71,18 @@ final class _Confirmation {
   final DateTime Function() clock;
   final Future<void> Function() close;
 
+  /// How many requests the order's coordinator has received.
+  final int Function() requests;
+
   _Confirmation(
     this.tester,
     this.locale,
     this.wallet,
     this.invoice,
     this.clock,
-    this.close,
-  ) {
+    this.close, {
+    this.requests = _none,
+  }) {
     wallet.scriptPayment(
       Ok(P2pWalletPayment(id: 'fold', paymentHash: invoice.facts.paymentHash)),
     );
@@ -103,6 +109,8 @@ final class _Confirmation {
     await tester.pump(MovedTapGuard.afterMove);
   }
 }
+
+int _none() => 0;
 
 ScrollPosition _position(WidgetTester tester) =>
     Scrollable.of(tester.element(_toggle)).position;
@@ -250,6 +258,54 @@ Future<int> _ignoredBeforePaying(
   fail('« Pay » never paid');
 }
 
+/// « Pay with this wallet » placed with its bottom [under] points below the page's edge (negative: above it), or at the top of the page's view when `null` (as `ensureVisible` leaves it), then tapped at the middle of its visible part, the quote scripted, the Bull wallet's price read held [hold] when given: the test is left at the first frame of the confirmation. The point tapped, and whether the page scrolled to bring « Pay » into view.
+Future<(Offset, bool)> _openPlaced(
+  WidgetTester tester,
+  _Confirmation confirmation, {
+  double? under,
+  Duration hold = Duration.zero,
+}) async {
+  final payWith = find.text(confirmation.l10n.p2pPayWithThisWallet);
+  await tester.ensureVisible(payWith);
+  await tester.pump();
+  final position = Scrollable.of(tester.element(payWith)).position;
+  final page = tester.getRect(
+    find.ancestor(of: payWith, matching: find.byType(Scrollable)).first,
+  );
+  if (under != null) {
+    final below = page.bottom - tester.getRect(payWith).bottom;
+    position.jumpTo(
+      (position.pixels - below - under).clamp(0, position.maxScrollExtent),
+    );
+  }
+  await tester.pump(MovedTapGuard.afterMove);
+  final button = tester.getRect(
+    find.ancestor(of: payWith, matching: find.byType(TradeButton)).first,
+  );
+  final point = button.intersect(page).center;
+  final before = position.pixels;
+  final held = hold == Duration.zero ? null : Completer<void>();
+  confirmation.wallet
+    ..rateHeld = held
+    ..scriptQuote(Ok(confirmation.quote));
+  await tester.tapAt(point);
+  await tester.pump();
+  if (held != null) {
+    for (var waited = Duration.zero; waited < hold;) {
+      await tester.pump(const Duration(milliseconds: 16));
+      waited += const Duration(milliseconds: 16);
+    }
+    held.complete();
+  }
+  for (var i = 0; i < 200 && confirmation.pay.evaluate().isEmpty; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  expect(confirmation.pay, findsOneWidget);
+  // The reveal of « Pay » runs after this first frame: one more frame shows it.
+  await tester.pump(const Duration(milliseconds: 16));
+  return (point, _position(tester).pixels != before);
+}
+
 // The maker's side: an order made here, at its bond (0) or, sold and taken, at its collateral (6).
 
 final class _MakerCoordinators implements CoordinatorTransport {
@@ -390,12 +446,14 @@ Future<_Confirmation> _maker(
   final order = coordinator.order(record.orderId);
   final invoice = collateral ? order.escrow : order.bond;
   if (invoice == null) fail('no invoice');
+  var requests = 0;
+  coordinator.onRequest = (_) => requests++;
   await _size(tester);
   return _Confirmation(tester, locale, wallet, invoice, () => clock, () async {
     await tester.pumpWidget(const SizedBox.shrink());
     await settle(tester);
     await tester.pump(const Duration(seconds: 61));
-  });
+  }, requests: () => requests);
 }
 
 // The taker's side: an order of the book taken by the user's gestures, at its bond (3).
@@ -448,6 +506,8 @@ final class _TakerCoordinators implements CoordinatorTransport {
 Future<_Confirmation> _taker(
   WidgetTester tester, {
   Locale locale = const Locale('en'),
+  Future<void> Function(P2pLocalizations l10n, void Function(Duration) advance)?
+  atContinue,
 }) async {
   await loadAppFont();
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -515,8 +575,12 @@ Future<_Confirmation> _taker(
   await settle(tester);
   await waitFor(find.text(l10n.p2pTakeOrder));
   await tap(find.text(l10n.p2pTakeOrder));
-  await waitFor(find.text(l10n.p2pTakerBond));
-  await tap(find.text(l10n.p2pCommonContinue));
+  if (atContinue != null) {
+    await atContinue(l10n, (by) => clock = clock.add(by));
+  } else {
+    await waitFor(find.text(l10n.p2pTakerBond));
+    await tap(find.text(l10n.p2pCommonContinue));
+  }
   await settle(tester);
   await tap(find.text(l10n.p2pCommonDone));
   await settle(tester);
@@ -623,6 +687,84 @@ void main() {
     }
   });
 
+  group(
+    'a second tap on « Pay with this wallet » at the page\'s bottom edge (security review of #291, B1)',
+    () {
+      for (final (width, height, scale, locale, under, hold) in const [
+        (320.0, 490.0, 3.0, Locale('fr'), 4.0, Duration.zero),
+        (320.0, 490.0, 3.0, Locale('fr'), 4.0, Duration(seconds: 1)),
+        (390.0, 490.0, 2.0, Locale('en'), 4.0, Duration.zero),
+        (360.0, 640.0, 2.0, Locale('fr'), 4.0, Duration.zero),
+        (390.0, 600.0, 3.0, Locale('en'), 4.0, Duration(seconds: 2)),
+      ]) {
+        testWidgets(
+          '$width × $height, the text ×$scale, ${locale.languageCode}, the button $under points under the edge, the price read held ${hold.inSeconds} s: « Pay » is brought where the finger was; a second tap there 100, 300 and 600 ms after the confirmation\'s first frame pays nothing, one at 750 ms pays',
+          (tester) async {
+            final confirmation = await _maker(tester, locale: locale);
+            await _size(tester, width: width, height: height, scale: scale);
+            final (point, scrolled) = await _openPlaced(
+              tester,
+              confirmation,
+              under: under,
+              hold: hold,
+            );
+            expect(scrolled, isTrue);
+            var elapsed = 16;
+            for (final ms in const [100, 300, 600]) {
+              await tester.pump(Duration(milliseconds: ms - elapsed));
+              elapsed = ms;
+              expect(
+                _under(tester, point, confirmation),
+                'pay',
+                reason: '$ms ms',
+              );
+              await tester.tapAt(point);
+              await tester.pump();
+              expect(confirmation.wallet.paid, isEmpty, reason: '$ms ms');
+            }
+            await tester.pump(Duration(milliseconds: 750 - elapsed));
+            await tester.tapAt(point);
+            await tester.pump();
+            expect(confirmation.wallet.paid, hasLength(1));
+            await confirmation.close();
+          },
+        );
+      }
+
+      testWidgets(
+        'the confirmation opened with « Pay » brought into view (the guard\'s first measure skipped), then the review\'s case of #288: the second tap on « Hide details » pays nothing, the guard still measuring (both reviews of #291, C1)',
+        (tester) async {
+          final confirmation = await _maker(tester);
+          final (_, scrolled) = await _openPlaced(
+            tester,
+            confirmation,
+            under: -4,
+          );
+          expect(scrolled, isTrue);
+          await tester.pump(MovedTapGuard.afterMove);
+          final band = await _band(tester, confirmation, step: 8);
+          expect(band, isNotEmpty);
+          final folded = await _fold(
+            tester,
+            confirmation,
+            band[band.length ~/ 2],
+            after: const Duration(milliseconds: 100),
+          );
+          if (folded == null) fail('the link off the screen');
+          expect(folded.$2, 'pay');
+          await tester.tapAt(folded.$1);
+          await tester.pump();
+          expect(confirmation.wallet.paid, isEmpty);
+          await tester.pump(MovedTapGuard.afterMove);
+          await tester.tapAt(folded.$1);
+          await tester.pump();
+          expect(confirmation.wallet.paid, hasLength(1));
+          await confirmation.close();
+        },
+      );
+    },
+  );
+
   group('the ordinary gestures around « Pay », a maker\'s bond: the taps ignored', () {
     const configs = [
       (390.0, 1.0, Locale('en')),
@@ -661,47 +803,35 @@ void main() {
       final at = '$width points ×$scale ${locale.languageCode}';
       for (final edge in const [false, true]) {
         testWidgets(
-          'the confirmation opened, « Pay with this wallet » ${edge ? 'at the page\'s bottom edge, so that `ensureVisible` scrolls to « Pay » after the first frame' : 'at the page\'s top'}, then « Pay » at the next frame ($at): none ignored',
+          'the confirmation opened, « Pay with this wallet » ${edge ? 'at the page\'s bottom edge, so that `ensureVisible` scrolls to « Pay »' : 'at the top of the page\'s view'}, then « Pay » tapped 300, 500, 700 and 900 ms after the card\'s first frame ($at): a button that just appeared ignores the taps within 0.7 s (security review of #291, B1), the first after pays',
           (tester) async {
             final confirmation = await _maker(tester, locale: locale);
             await _size(tester, width: width, scale: scale);
-            final payWith = find.text(confirmation.l10n.p2pPayWithThisWallet);
-            await tester.ensureVisible(payWith);
-            await tester.pump();
-            final position = Scrollable.of(tester.element(payWith)).position;
-            if (edge) {
-              final page = tester.getRect(
-                find
-                    .ancestor(of: payWith, matching: find.byType(Scrollable))
-                    .first,
-              );
-              final below = page.bottom - tester.getRect(payWith).bottom;
-              position.jumpTo(
-                (position.pixels - below + 4).clamp(
-                  0,
-                  position.maxScrollExtent,
-                ),
-              );
-            }
-            await tester.pump(MovedTapGuard.afterMove);
-            final before = Scrollable.of(
-              tester.element(payWith),
-            ).position.pixels;
-            confirmation.wallet.scriptQuote(Ok(confirmation.quote));
-            await tester.tap(payWith);
-            for (
-              var i = 0;
-              i < 100 && confirmation.pay.evaluate().isEmpty;
-              i++
-            ) {
-              await tester.pump(const Duration(milliseconds: 16));
-            }
-            await tester.pump(const Duration(milliseconds: 16));
-            final scrolled = _position(tester).pixels != before;
+            final (_, scrolled) = await _openPlaced(
+              tester,
+              confirmation,
+              under: edge ? -4 : null,
+            );
             if (edge) expect(scrolled, isTrue, reason: 'brought into view');
-            final ignored = await _ignoredBeforePaying(tester, confirmation);
-            count('open (edge: $edge, $at, scrolled: $scrolled)', ignored);
-            expect(ignored, 0);
+            final outcomes = <int, bool>{};
+            var elapsed = 16;
+            for (final ms in const [300, 500, 700, 900]) {
+              await tester.pump(Duration(milliseconds: ms - elapsed));
+              elapsed = ms;
+              await tester.tapAt(tester.getCenter(confirmation.pay));
+              await tester.pump();
+              outcomes[ms] = confirmation.wallet.paid.isNotEmpty;
+              if (outcomes[ms] ?? false) break;
+            }
+            count(
+              'open (edge: $edge, $at, scrolled: $scrolled): paid at $outcomes',
+              outcomes.values.where((paid) => !paid).length,
+            );
+            expect(outcomes[300], isFalse);
+            expect(outcomes[500], isFalse);
+            // The delay starts at the guard's first measure: at the card's first frame, or one frame later when the reveal scrolled after it.
+            expect(outcomes[700] ?? true, scrolled ? isFalse : isTrue);
+            expect(confirmation.wallet.paid, hasLength(1));
             await confirmation.close();
           },
         );
@@ -842,6 +972,74 @@ void main() {
       }
     }
 
+    testWidgets(
+      'the screen built again without moving « Pay » (the app sent to the background and back, a read of the coordinator that changes nothing, the balance that changes), then « Pay » 100 ms later: none ignored',
+      (tester) async {
+        final confirmation = await opened(tester, 390, 1, const Locale('en'));
+        Future<int> payAfter(Duration wait) async {
+          await tester.pump(wait);
+          final ignored = await _ignoredBeforePaying(tester, confirmation);
+          return ignored;
+        }
+
+        // Back from the background.
+        for (final state in const [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        await tester.pump(const Duration(milliseconds: 16));
+        // A read of the coordinator, answered with nothing new.
+        final before = confirmation.requests();
+        for (var i = 0; i < 400 && confirmation.requests() == before; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(confirmation.requests(), greaterThan(before));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        // The balance after a sync of the wallet.
+        confirmation.wallet.setBalance(Ok(Sats.fromInt(4900000)));
+        await tester.pump();
+        final rebuilt = await payAfter(const Duration(milliseconds: 100));
+        count('rebuilt in place (background, read, balance)', rebuilt);
+        expect(rebuilt, 0);
+        await confirmation.close();
+      },
+    );
+
+    testWidgets(
+      'the tab « Order » then « Contract », then « Pay » 300 ms later: the card is built anew, as a button that appears',
+      (tester) async {
+        final confirmation = await opened(tester, 390, 1, const Locale('en'));
+        Finder tab(String label) => find.descendant(
+          of: find.byType(BullSegmented),
+          matching: find.text(label),
+        );
+        await tester.tap(tab(confirmation.l10n.p2pNavOrder));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(confirmation.pay, findsNothing);
+        await tester.tap(tab(confirmation.l10n.p2pTradeTabContract));
+        await tester.pump();
+        expect(confirmation.pay, findsOneWidget);
+        expect(
+          _viewport(tester).contains(tester.getCenter(confirmation.pay)),
+          isTrue,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        final ignored = await _ignoredBeforePaying(tester, confirmation);
+        count('tab Order then Contract, Pay at 300 ms', ignored);
+        expect(ignored, 1);
+        await confirmation.close();
+      },
+    );
+
     for (final (gesture, from, to, expected) in const [
       (
         'the view grows by 40 points (a system bar that goes)',
@@ -892,6 +1090,64 @@ void main() {
           count(gesture, ignored);
           expect(ignored, expected);
           await confirmation.close();
+        },
+      );
+    }
+  });
+
+  group('« Continue » before a take (security review of #291, B1)', () {
+    // At ×2 « Continue » is below the screen once the read's card is brought into view: the user scrolls to it first.
+    for (final (height, scale) in const [(800.0, 1.0)]) {
+      testWidgets(
+        '390 × $height, the text ×$scale: the robot\'s read shown (the card brought into view, 300 ms), then « Continue » tapped 300 ms after the read goes on: « Continue » starts no delay when it appears (`armsWhenShown: false`)',
+        (tester) async {
+          await _taker(
+            tester,
+            atContinue: (l10n, advance) async {
+              await _size(tester, height: height, scale: scale);
+              final go = find.byWidgetPredicate(
+                (widget) =>
+                    widget is TradeButton &&
+                    widget.label == l10n.p2pCommonContinue,
+              );
+              // From the frame « Continue » is shown, the read with it.
+              var frames = 0;
+              while (go.evaluate().isEmpty) {
+                advance(const Duration(milliseconds: 16));
+                await tester.pump(const Duration(milliseconds: 16));
+                frames++;
+                if (frames > 4000) fail('no read');
+              }
+              final busyAtFirst = tester.widget<TradeButton>(go).busy;
+              final outcomes = <int, bool>{};
+              var elapsed = 0;
+              for (final ms in const [300, 500, 700, 900]) {
+                await tester.pump(Duration(milliseconds: ms - elapsed));
+                if (ms == 300) {
+                  await tester.ensureVisible(go);
+                  await tester.pump();
+                }
+                await tester.tapAt(tester.getCenter(go));
+                await tester.pump(const Duration(milliseconds: 16));
+                await tester.pump(const Duration(milliseconds: 16));
+                elapsed = ms + 32;
+                // Gone on: « Store your garage key » shown over the page, or « Continue » gone.
+                final went =
+                    go.evaluate().isEmpty ||
+                    find.text(l10n.p2pCommonDone).evaluate().isNotEmpty ||
+                    find.byType(BottomSheet).evaluate().isNotEmpty ||
+                    find.byType(Dialog).evaluate().isNotEmpty;
+                outcomes[ms] = went;
+                if (went) break;
+              }
+              debugPrint(
+                'GESTURE continue 390 × $height ×$scale: busy when shown: $busyAtFirst, went at $outcomes',
+              );
+              expect(outcomes[300], isTrue);
+              // Back to the size the rest of the take is played at.
+              await _size(tester, height: 3200);
+            },
+          );
         },
       );
     }

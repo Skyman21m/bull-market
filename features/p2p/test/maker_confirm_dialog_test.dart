@@ -161,6 +161,7 @@ void main() {
   Future<(MakeHarness, TradeRecord, TradeCubit, PayoutRateCubit)> dialogAt9(
     WidgetTester tester, {
     FutureOr<P2pWalletBitcoinRate> Function()? price,
+    bool settled = true,
   }) async {
     final (harness, record) = await madeAt8(tester);
     final (trade, rate) = await mount(
@@ -192,7 +193,8 @@ void main() {
     await tester.pump();
     await tester.tap(confirm);
     await settleBoth(tester, harness);
-    await tester.pumpAndSettle();
+    // Unsettled: the dialog's first frames, no time passed on the test's clock.
+    if (settled) await tester.pumpAndSettle();
     expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
     final honest = dialogTexts(tester);
     expect(anyContains(honest, 'You receive'), isTrue);
@@ -250,6 +252,34 @@ void main() {
     await tester.runAsync(trade.close);
     await tester.runAsync(rate.close);
   }
+
+  testWidgets(
+    'the dialog just opened: « Confirm », a button just shown, ignores the taps 300 and 500 ms after the dialog\'s first frame (a second tap at the place of « Confirm … sent » sends nothing), the first after 0.7 s sends (security review of #291, B1)',
+    (tester) async {
+      final (harness, _, trade, rate) = await dialogAt9(tester, settled: false);
+      final go = find.descendant(
+        of: find.byType(ConfirmFiatSentDialog),
+        matching: find.text('Confirm'),
+      );
+      final sent = <int, bool>{};
+      var elapsed = 0;
+      for (final ms in const [300, 500, 700, 900]) {
+        await tester.pump(Duration(milliseconds: ms - elapsed));
+        elapsed = ms;
+        await tester.tap(go);
+        await tester.pump();
+        await settleBoth(tester, harness);
+        sent[ms] = confirms(harness) > 0;
+        if (sent[ms] ?? false) break;
+      }
+      debugPrint('GESTURE dialog Confirm … sent: sent at $sent');
+      expect(sent[300], isFalse);
+      expect(sent[500], isFalse);
+      expect(sent.containsValue(true), isTrue);
+      expect(confirms(harness), 1);
+      await close(tester, trade, rate);
+    },
+  );
 
   testWidgets(
     'the app left with the dialog open (to send the fiat) and back while the coordinator shows 1,000 EUR for the 100 asked: the dialog says the alert and what to do, nothing of the comparison before; « Confirm » sends nothing and the wait says so (C1, C2)',

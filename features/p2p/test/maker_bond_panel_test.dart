@@ -25,6 +25,7 @@ import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/presentation/trade_panel.dart';
 import 'package:p2p/src/ui/trade/bond_payment_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -393,6 +394,8 @@ void main() {
         );
         expect(find.textContaining('beyond a 10% gap'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
+        // « Pay » just shown ignores taps for a moment (security review of #291, B1).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
         expect(payments.pays, hasLength(1));
@@ -442,6 +445,8 @@ void main() {
         expect(find.textContaining('Gap of the invoice'), findsNothing);
         expect(find.textContaining('A small gap is normal'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
+        // « Pay » just shown ignores taps for a moment (security review of #291, B1).
+        await tester.pump(MovedTapGuard.afterMove);
         final pay = tester.widget<TradeButton>(
           find.ancestor(
             of: find.text('Pay 3,357 sats'),
@@ -513,6 +518,8 @@ void main() {
         expect(find.textContaining('Temple of Sats'), findsNothing);
         expect(find.text('Retry'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
+        // « Pay » just shown ignores taps for a moment (security review of #291, B1).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
         expect(payments.pays, hasLength(1));
@@ -566,6 +573,8 @@ void main() {
         expect(find.textContaining('9,171'), findsNothing);
         expect(find.textContaining('beyond a 10% gap'), findsNothing);
         await _reveal(tester, find.text('Pay 3,357 sats'));
+        // « Pay » just shown ignores taps for a moment (security review of #291, B1).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
         expect(payments.pays, hasLength(1));
@@ -639,6 +648,8 @@ void main() {
         );
         expect(tester.widget<TradeButton>(pay).onPressed, isNotNull);
         await _reveal(tester, find.text('Pay 3,357 sats'));
+        // « Pay » just shown ignores taps for a moment (security review of #291, B1).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
         expect(payments.pays, hasLength(1));

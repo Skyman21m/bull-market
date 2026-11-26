@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 
-/// The guard of « Pay » (security review of #268, C1 and C2), alone: whatever the structure around the button, a move on the screen that is not a scroll sets it off, and no scroll does; since #288, the page brought back by the layout too (its content under the button that shrinks at its end, its viewport that grows), while a scroll of the user's, an animation's or a jump's never does.
+/// The guard of « Pay » (security review of #268, C1 and C2), alone: whatever the structure around the button, a move on the screen that is not a scroll sets it off, and no scroll does; since #288, the page brought back by the layout too (its content under the button that shrinks at its end, its viewport that grows), while a scroll of the user's, an animation's or a jump's never does; and a button that appears ignores taps for the delay, a button built again in place does not (security review of #291, B1).
 void main() {
   var taps = 0;
   setUp(() => taps = 0);
 
-  Widget button() => MovedTapGuard(
+  Widget button({bool armsWhenShown = true}) => MovedTapGuard(
+    armsWhenShown: armsWhenShown,
     builder: (context, guard) =>
         TextButton(onPressed: guard(() => taps++), child: const Text('Pay')),
   );
@@ -50,6 +51,8 @@ void main() {
         ),
       );
       await tester.pump();
+      // A button that appears ignores taps for the delay (security review of #291, B1): the move comes after it.
+      await tester.pump(MovedTapGuard.afterMove);
       top.value = 130;
       await tester.pump();
       await tapSoon(tester);
@@ -90,6 +93,7 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pump(MovedTapGuard.afterMove);
       await tapSoon(tester);
       expect(taps, 1);
       inner.jumpTo(40);
@@ -132,6 +136,7 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pump(MovedTapGuard.afterMove);
       top.value = 170;
       await tester.pump();
       await tapSoon(tester);
@@ -277,46 +282,153 @@ void main() {
       },
     );
 
+    /// A list 400 points high whose button appears under its edge when [shown] is set, below [above] points, and is brought into view by `ensureVisible` from a callback after the frame that builds it, as the panel of the payment brings « Pay » into view when the confirmation opens.
+    Future<void> appearsBroughtIntoView(
+      WidgetTester tester,
+      ValueNotifier<bool> shown,
+      ValueNotifier<double> above, {
+      bool armsWhenShown = true,
+    }) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        app(
+          SizedBox(
+            height: 400,
+            child: ListView(
+              children: [
+                ValueListenableBuilder<double>(
+                  valueListenable: above,
+                  builder: (_, height, _) => SizedBox(height: height),
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: shown,
+                  builder: (_, on, _) => on
+                      ? KeyedSubtree(
+                          key: key,
+                          child: button(armsWhenShown: armsWhenShown),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(height: 600),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      // The reveal asked when the confirmation comes, before the frame that builds it: it runs before the guard's first measure, which is skipped.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final target = key.currentContext;
+        if (target != null) unawaited(Scrollable.ensureVisible(target));
+      });
+      shown.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        tester.getTopLeft(find.text('Pay')).dy,
+        lessThan(400),
+        reason: 'brought into view',
+      );
+    }
+
     testWidgets(
-      'the button appears under the page\'s edge and is brought into view by `ensureVisible` after its first frame (the confirmation that opens): its first tap counts at once',
+      'the button appears under the page\'s edge and is brought into view by `ensureVisible` after its first frame (the confirmation that opens, « Pay » where « Pay with this wallet » was): a tap within the delay is ignored, the first after it counts (security review of #291, B1)',
       (tester) async {
         final shown = ValueNotifier<bool>(false);
+        final above = ValueNotifier<double>(380);
         addTearDown(shown.dispose);
-        final key = GlobalKey();
+        addTearDown(above.dispose);
+        await appearsBroughtIntoView(tester, shown, above);
+        for (final ms in const [100, 300, 200]) {
+          await tester.pump(Duration(milliseconds: ms));
+          await tester.tap(find.text('Pay'));
+          expect(taps, 0, reason: 'within the delay');
+        }
+        await tester.pump(MovedTapGuard.afterMove);
+        await tester.tap(find.text('Pay'));
+        expect(taps, 1);
+      },
+    );
+
+    testWidgets(
+      'a measure skipped (the jump after the first frame), then, the delay past, a move of the layout above the button: the guard measures again, the tap at once is ignored, the one after the delay counts (both reviews of #291, C1)',
+      (tester) async {
+        final shown = ValueNotifier<bool>(false);
+        final above = ValueNotifier<double>(380);
+        addTearDown(shown.dispose);
+        addTearDown(above.dispose);
+        await appearsBroughtIntoView(tester, shown, above);
+        await tester.pump(MovedTapGuard.afterMove);
+        await tester.tap(find.text('Pay'));
+        expect(taps, 1);
+        above.value = 420;
+        await tester.pump();
+        await tapSoon(tester);
+        expect(taps, 1, reason: 'moved by the layout');
+        await tester.pump(MovedTapGuard.afterMove);
+        await tester.tap(find.text('Pay'));
+        expect(taps, 2);
+      },
+    );
+
+    testWidgets(
+      'a button that appears, no scroll: taps within the delay are ignored, the first after it counts; built again in place (its parent built anew, nothing moved), it starts no delay',
+      (tester) async {
+        final shown = ValueNotifier<bool>(false);
+        final rebuilt = ValueNotifier<int>(0);
+        addTearDown(shown.dispose);
+        addTearDown(rebuilt.dispose);
         await tester.pumpWidget(
           app(
-            SizedBox(
-              height: 400,
-              child: ListView(
-                children: [
-                  const SizedBox(height: 380),
-                  ValueListenableBuilder<bool>(
+            ListView(
+              children: [
+                const SizedBox(height: 100),
+                ValueListenableBuilder<int>(
+                  valueListenable: rebuilt,
+                  builder: (_, count, _) => ValueListenableBuilder<bool>(
                     valueListenable: shown,
                     builder: (_, on, _) => on
-                        ? KeyedSubtree(key: key, child: button())
-                        : const SizedBox.shrink(),
+                        ? Padding(padding: EdgeInsets.zero, child: button())
+                        : const SizedBox(height: 48),
                   ),
-                  const SizedBox(height: 600),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         );
         await tester.pump();
-        // As the panel of the payment: the reveal asked when the confirmation comes, before the frame that builds it.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final target = key.currentContext;
-          if (target != null) unawaited(Scrollable.ensureVisible(target));
-        });
         shown.value = true;
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 16));
-        expect(
-          tester.getTopLeft(find.text('Pay')).dy,
-          lessThan(400),
-          reason: 'brought into view',
-        );
+        await tapSoon(tester);
+        await tester.pump(const Duration(milliseconds: 400));
         await tester.tap(find.text('Pay'));
+        expect(taps, 0, reason: 'appeared 0.5 s ago');
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.tap(find.text('Pay'));
+        expect(taps, 1);
+        for (var i = 1; i <= 3; i++) {
+          rebuilt.value = i;
+          await tester.pump();
+          await tapSoon(tester);
+          expect(taps, 1 + i, reason: 'built again in place');
+        }
+      },
+    );
+
+    testWidgets(
+      'a button that starts no delay when shown (« Continue »), brought into view by `ensureVisible` after its first frame: that first measure, made after the jump and before the screen shows it, is skipped, never mixing the place before the jump with the offset after it; no move, the tap counts at once',
+      (tester) async {
+        final shown = ValueNotifier<bool>(false);
+        final above = ValueNotifier<double>(380);
+        addTearDown(shown.dispose);
+        addTearDown(above.dispose);
+        await appearsBroughtIntoView(
+          tester,
+          shown,
+          above,
+          armsWhenShown: false,
+        );
+        await tapSoon(tester);
         expect(taps, 1);
       },
     );

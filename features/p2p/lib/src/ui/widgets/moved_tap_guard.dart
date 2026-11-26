@@ -6,15 +6,22 @@ import 'package:flutter/widgets.dart';
 /// What [MovedTapGuard] gives its builder: [onTap] wrapped so that a tap is ignored while the guarded widget has just moved; `null` stays `null`.
 typedef GuardedTap = VoidCallback? Function(VoidCallback? onTap);
 
-/// A guard for a button whose tap matters (« Pay », « Continue » before a take, and since #283 the « Confirm » of the dialog « Confirm … sent », the one tap that cannot be undone; « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
+/// A guard for a button whose tap matters (« Pay », « Continue » before a take, and since #283 the « Confirm » of the buyer's dialog « Confirm … sent », the declaration that the fiat was sent; the seller's « Confirm » of « Confirm … received », which releases the escrow, has none (#293); « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
 ///
-/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) never sets it off, while a move of the layout does; its first place, when it appears, is only recorded. Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
+/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) never sets it off, while a move of the layout does. When it appears (the confirmation opened, the dialog opened, the card built anew as when the tab « Contract » is shown again), its first measure starts the delay too ([armsWhenShown]): a tap on a button that appeared less than [afterMove] ago is ignored, since a tap meant for a button just shown, whose amounts are still to read, is no ordinary gesture, while a second tap at the same place, aimed at what stood there (« Pay with this wallet » where « Pay » is brought into view), is (security review of #291, B1). Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
 ///
-/// Its place on the screen alone is measured too, for the one move the first measure does not see, where the scroll offset changes with the layout by as much: the page scrolled to its end whose content under the button shrinks (« Hide details » under « Pay », a line under the card that goes) or whose viewport grows (the keyboard or a system bar that goes, a rotation) is brought back to its new end by the layout, so that everything above moves down on the screen and nothing moves in the content (#267, #288). A move on the screen sets it off when no [ScrollPosition] around it scrolled since the last frame: a scroll, whether by a finger, a fling, an animation or a jump (`ensureVisible` when the confirmation opens), tells the position's listeners, and a bring back by the layout (`ScrollPosition.correctPixels`) tells nobody; while a finger holds the page, or a scroll runs, nothing is compared on the screen.
+/// Its place on the screen alone is measured too, for the one move the first measure does not see, where the scroll offset changes with the layout by as much: the page scrolled to its end whose content under the button shrinks (« Hide details » under « Pay », a line under the card that goes) or whose viewport grows (the keyboard or a system bar that goes, a rotation) is brought back to its new end by the layout, so that everything above moves down on the screen and nothing moves in the content (#267, #288). A move on the screen sets it off when no [ScrollPosition] around it scrolled since the last measure made: a scroll, whether by a finger, a fling, an animation or a jump (`ensureVisible` when the confirmation opens), tells the position's listeners, and a bring back by the layout (`ScrollPosition.correctPixels`) tells nobody; while a finger holds the page, or a scroll runs, nothing is compared on the screen.
 class MovedTapGuard extends StatefulWidget {
   final Widget Function(BuildContext context, GuardedTap guard) builder;
 
-  const MovedTapGuard({super.key, required this.builder});
+  /// Whether its first measure starts the delay, a tap on the button just shown being ignored (security review of #291, B1); `false` for « Continue », which is shown only once the robot's read the user waited for has come, where « Take Order » stood busy, so that no second tap can reach it.
+  final bool armsWhenShown;
+
+  const MovedTapGuard({
+    super.key,
+    required this.builder,
+    this.armsWhenShown = true,
+  });
 
   /// How long a tap is ignored after a move: long enough for a tap aimed at what was there before the move, short enough that a second tap, aimed at the button now in view, pays.
   static const afterMove = Duration(milliseconds: 700);
@@ -24,10 +31,10 @@ class MovedTapGuard extends StatefulWidget {
 }
 
 class _MovedTapGuardState extends State<MovedTapGuard> {
-  /// The place of the guarded widget in the scrolled content at the last frame; `null` before its first frame.
+  /// The place of the guarded widget in the scrolled content at the last measure made; `null` before its first measure.
   Offset? _place;
 
-  /// The place of the guarded widget on the screen at the last frame; `null` before its first frame.
+  /// The place of the guarded widget on the screen at the last measure made; `null` before its first measure.
   Offset? _onScreen;
   Timer? _moved;
 
@@ -106,7 +113,10 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
         !scrolled &&
         lastOnScreen != null &&
         (onScreen - lastOnScreen).distance > 0.5;
-    if (movedInContent || movedOnScreen) {
+    // Just appeared: the delay starts at its first measure (security review of #291, B1).
+    if ((last == null && widget.armsWhenShown) ||
+        movedInContent ||
+        movedOnScreen) {
       _moved?.cancel();
       _moved = Timer(MovedTapGuard.afterMove, () {});
     }

@@ -24,6 +24,7 @@ import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -278,6 +279,13 @@ final class _Journey {
   Future<void> tap(Finder finder) async {
     await tester.ensureVisible(finder);
     await tester.pump();
+    // A guarded button just shown (« Pay ») ignores taps for a moment (security review of #291, B1): the tap comes later, as a user's.
+    if (find
+        .ancestor(of: finder, matching: find.byType(MovedTapGuard))
+        .evaluate()
+        .isNotEmpty) {
+      await tester.pump(MovedTapGuard.afterMove);
+    }
     await tester.tap(finder);
     await tester.pump();
   }
@@ -446,6 +454,8 @@ final class _Journey {
     wallet.scriptQuote(Ok(walletQuote));
     await tap(find.text(words.payWithThisWallet));
     await settle(tester);
+    // « Pay » just shown ignores taps for a moment (security review of #291, B1).
+    await tester.pump(MovedTapGuard.afterMove);
     return walletQuote;
   }
 
