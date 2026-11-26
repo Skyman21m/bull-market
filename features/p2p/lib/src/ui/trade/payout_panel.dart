@@ -477,14 +477,16 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     );
   }
 
-  /// The rule's check when no breakdown draws it ([PayoutBreakdownView.drawnOf] `null` for [breakdown]): an alert (red or orange) or the « not quoted » line, alone above the form; nothing for a comparison within the threshold, which would compare other sats than those shown.
+  /// The rule's check when no breakdown draws it ([PayoutBreakdownView.drawnOf] `null` for [breakdown]): an alert (red or orange) or the « not quoted » line, alone above the form; for a comparison within the threshold, which would compare other sats than those shown, nothing but, at 15 with nothing kept of 6 or 8, « Not compared with the first invoice » and its reason (#283: in the app, while a payout given at 15 awaits its answer and a read meanwhile brought other sats).
   List<Widget>? _looseCheck(PayoutBreakdown? breakdown) {
     final check = widget.request.check;
     if (check == null ||
         PayoutBreakdownView.drawnOf(breakdown, check) != null) {
       return null;
     }
-    if (!check.alert && check is! PayoutCheckNotPriced) return null;
+    // A comparison within the threshold of other sats is not drawn; at 15 with nothing kept of 6 or 8, « Not compared with the first invoice », true of any sats, is still said, alone (#283).
+    final firstOnly = !check.alert && check is! PayoutCheckNotPriced;
+    if (firstOnly && check.first is! PayoutFirstUnknown) return null;
     return [
       // No breakdown, so no detail: the alert's explanation said under it (#250).
       PayoutCheckLines(
@@ -492,6 +494,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         check: check,
         onRetry: widget.request.onRetry,
         explained: true,
+        firstOnly: firstOnly,
       ),
       const Gap(BullSpacing.md),
     ];

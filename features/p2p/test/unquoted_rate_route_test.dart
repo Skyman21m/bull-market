@@ -25,6 +25,7 @@ import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
+import 'support/captures.dart';
 import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
 import 'support/make_harness.dart';
@@ -210,7 +211,13 @@ final class _App {
         ),
       ),
     );
-    await tester.pumpWidget(routerHarness(router, locale: locale));
+    // In a frame the captures of #283 draw, written only when `P2P_CAPTURE_DIR` names a folder.
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: captureFrame,
+        child: routerHarness(router, locale: locale),
+      ),
+    );
     tor.add(P2pTorState.ready);
     await app.settle();
     final request = MakeHarness.request(
@@ -518,6 +525,51 @@ void main() {
                 .descendant(of: card, matching: find.byType(TradeButton))
                 .last;
             expect(tester.widget<TradeButton>(pay).onPressed, isNotNull);
+            expect(app.wallet.paid, isEmpty);
+            await app.close();
+          },
+        );
+
+        testWidgets(
+          '#283: the same card, its detail open, on a phone of 320 points with a text at ×1, ×2 and ×3: the grey line, the orange alert and its explanation, nothing cut',
+          (tester) async {
+            final app = await _App.start(
+              tester,
+              sell: true,
+              at: 45000,
+              locale: locale,
+            );
+            await loadCaptureFonts();
+            tester.view.physicalSize = const Size(320 * 3, 3600 * 3);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+            await app.openTrade();
+            final escrow = app.coordinator.order(app.record.orderId).escrow;
+            if (escrow == null) fail('no escrow invoice');
+            await _confirm(app, escrow);
+            final card = find.byType(PayConfirmationCard);
+            await app.tap(find.text(app.l10n.p2pDetailShow));
+            await app.settle();
+            for (final scale in const [1.0, 2.0, 3.0]) {
+              tester.platformDispatcher.textScaleFactorTestValue = scale;
+              await app.settle();
+              expect(tester.takeException(), isNull, reason: '$scale');
+              for (final line in [
+                app.notQuoted,
+                app.against(1112),
+                app.explanation,
+              ]) {
+                expect(
+                  find.descendant(of: card, matching: line),
+                  findsOneWidget,
+                  reason: '$scale',
+                );
+              }
+            }
+            await tester.ensureVisible(card);
+            await app.settle();
+            await capture(tester, '$code-garantie-non-cotee-320-x3');
             expect(app.wallet.paid, isEmpty);
             await app.close();
           },

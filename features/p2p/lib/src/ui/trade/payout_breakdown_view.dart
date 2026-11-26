@@ -293,11 +293,15 @@ class PayoutCheckLines extends StatelessWidget {
   /// Whether the alert's explanation is said under its two lines: where the check is drawn alone above the form, with no breakdown and so no detail to hold it (#250).
   final bool explained;
 
+  /// Whether only the lines against the invoice of 6 or 8 are drawn, not the comparison with the Bull wallet's price: above the form, for a comparison within the threshold of other sats than the breakdown's, which is never drawn there (#283).
+  final bool firstOnly;
+
   const PayoutCheckLines({
     super.key,
     required this.check,
     this.onRetry,
     this.explained = false,
+    this.firstOnly = false,
   });
 
   static const explanation = PriceCheckLines.explanationLine;
@@ -320,7 +324,7 @@ class PayoutCheckLines extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price = _priceLines(context);
+    final price = firstOnly ? null : _priceLines(context);
     final first = _firstLines(context);
     if (first == null) return price ?? const SizedBox.shrink();
     return Column(

@@ -23,6 +23,7 @@ import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/testing.dart' show ScriptedMakerRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -206,6 +207,8 @@ void main() {
       matching: find.text('Confirm'),
     );
     expect(go, findsOneWidget);
+    // « Confirm » is guarded (#283): the alert that just came into the dialog moved it, and a user's tap comes later.
+    await tester.pump(MovedTapGuard.afterMove);
     await tester.tap(go);
     await tester.pump();
     await settleBoth(tester, h);

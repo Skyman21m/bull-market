@@ -1,6 +1,7 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
+import 'moved_tap_guard.dart';
 import 'trade_button.dart';
 import 'word_fit_text.dart';
 
@@ -38,6 +39,9 @@ class TradeDialogBody extends StatelessWidget {
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
 
+  /// Whether a tap on the button that goes on is ignored for a moment just after the layout moved it ([MovedTapGuard]): for a dialog whose [lines] or [alerts] follow a state while it is open, so that a line that comes or goes can bring that button under a tap aimed at the one that goes back (« Confirm … sent », #283).
+  final bool guardsGo;
+
   /// What a screen reader reads of the button that goes on, when it differs from its label (« Wait 42 seconds »), and whether its changes are announced (« Confirm » once a wait ends).
   final String? goSemanticLabel;
   final bool goLive;
@@ -55,6 +59,7 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.guardsGo = false,
     this.goSemanticLabel,
     this.goLive = false,
     this.semanticTitle,
@@ -159,12 +164,21 @@ class TradeDialogBody extends StatelessWidget {
           const Gap(BullSpacing.sm),
           Semantics(
             liveRegion: goLive,
-            child: TradeButton(
-              label: goLabel,
-              onPressed: onGo,
-              outlined: backFirst,
-              semanticLabel: goSemanticLabel,
-            ),
+            child: guardsGo
+                ? MovedTapGuard(
+                    builder: (context, guard) => TradeButton(
+                      label: goLabel,
+                      onPressed: guard(onGo),
+                      outlined: backFirst,
+                      semanticLabel: goSemanticLabel,
+                    ),
+                  )
+                : TradeButton(
+                    label: goLabel,
+                    onPressed: onGo,
+                    outlined: backFirst,
+                    semanticLabel: goSemanticLabel,
+                  ),
           ),
         ],
       ),

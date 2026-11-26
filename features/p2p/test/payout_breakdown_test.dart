@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
 import 'package:p2p/src/domain/usecases/trade/check_payout_rate_usecase.dart';
+import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/presentation/payout_rate_cubit.dart';
 import 'package:p2p/src/ui/trade/payout_rate_line.dart';
 import 'package:p2p/src/ui/widgets/trade_dialog_body.dart';
@@ -373,72 +375,80 @@ void main() {
       },
     );
 
-    testWidgets('a narrow phone with a large text: nothing cut', (
-      tester,
-    ) async {
-      tester.view
-        ..physicalSize = const Size(320, 2400) * 3
-        ..devicePixelRatio = 3;
-      addTearDown(tester.view.reset);
-      final breakdown = breakdownOf(
-        six,
-        wallet: (amount: sats(106606), received: sats(106400)),
-      );
-      for (final check in [
-        compared(106713, warns: true),
-        compared(106713),
-        PayoutCheckUnverified(Sats.fromInt(106713)),
-        PayoutCheckNotPriced(Sats.fromInt(106713)),
-        // #237: the orange alert since the order was made, and the records not read.
-        PayoutCheckNotPriced(
-          Sats.fromInt(106713),
-          against: (gap: '10,72 %', currency: 'GBP'),
-        ),
-        PayoutCheckTermsUnread(Sats.fromInt(106713)),
-      ]) {
-        for (final scale in const [1.0, 2.0, 3.0]) {
-          await tester.pumpWidget(
-            harness(
-              MediaQuery(
-                data: MediaQueryData(
-                  size: const Size(320, 2400),
-                  textScaler: TextScaler.linear(scale),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      PayoutBreakdownView(
-                        breakdown: breakdown,
-                        check: check,
-                        onRetry: () {},
-                      ),
-                      DetailToggle(open: true, onPressed: () {}),
-                      PayoutBreakdownDetail(
-                        breakdown: breakdown,
-                        check: check,
-                        onCopy: () {},
-                      ),
-                      // Alone above the form, its explanation under it (#250, #237).
-                      PayoutCheckLines(
-                        check: check,
-                        onRetry: () {},
-                        explained: true,
-                      ),
-                    ],
+    testWidgets(
+      'a narrow phone with a large text, in English and in French: nothing cut',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(320, 2400) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final breakdown = breakdownOf(
+          six,
+          wallet: (amount: sats(106606), received: sats(106400)),
+        );
+        for (final check in [
+          compared(106713, warns: true),
+          compared(106713),
+          PayoutCheckUnverified(Sats.fromInt(106713)),
+          PayoutCheckNotPriced(Sats.fromInt(106713)),
+          // #237: the orange alert since the order was made, and the records not read.
+          PayoutCheckNotPriced(
+            Sats.fromInt(106713),
+            against: (gap: '10,72 %', currency: 'GBP'),
+          ),
+          PayoutCheckTermsUnread(Sats.fromInt(106713)),
+        ]) {
+          for (final (locale, scale) in [
+            for (final locale in const [Locale('en'), Locale('fr')])
+              for (final scale in const [1.0, 2.0, 3.0]) (locale, scale),
+          ]) {
+            await tester.pumpWidget(
+              harness(
+                MediaQuery(
+                  data: MediaQueryData(
+                    size: const Size(320, 2400),
+                    textScaler: TextScaler.linear(scale),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        PayoutBreakdownView(
+                          breakdown: breakdown,
+                          check: check,
+                          onRetry: () {},
+                        ),
+                        DetailToggle(open: true, onPressed: () {}),
+                        PayoutBreakdownDetail(
+                          breakdown: breakdown,
+                          check: check,
+                          onCopy: () {},
+                        ),
+                        // Alone above the form, its explanation under it (#250, #237).
+                        PayoutCheckLines(
+                          check: check,
+                          onRetry: () {},
+                          explained: true,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                locale: locale,
               ),
-              locale: const Locale('fr'),
-            ),
-          );
-          expect(tester.takeException(), isNull, reason: '$check $scale');
+            );
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '$check $locale $scale',
+            );
+          }
         }
-      }
-    });
+      },
+    );
   });
 
   testWidgets(
-    '#237 at 9 and in « Confirm … sent », a narrow phone with a large text: « Amount not checked » of records not read, and the orange alert since the order was made, nothing cut',
+    '#237 at 9 and in « Confirm … sent », a narrow phone with a large text, in English and in French: « Amount not checked » of records not read, and the orange alert since the order was made, nothing cut',
     (tester) async {
       tester.view
         ..physicalSize = const Size(320, 2400) * 3
@@ -463,7 +473,10 @@ void main() {
           against: BigInt.from(1072),
         ),
       ]) {
-        for (final scale in const [1.0, 2.0, 3.0]) {
+        for (final (locale, scale) in [
+          for (final locale in const [Locale('en'), Locale('fr')])
+            for (final scale in const [1.0, 2.0, 3.0]) (locale, scale),
+        ]) {
           await tester.pumpWidget(
             harness(
               MediaQuery(
@@ -500,11 +513,112 @@ void main() {
                   ),
                 ),
               ),
-              locale: const Locale('fr'),
+              locale: locale,
             ),
           );
-          expect(tester.takeException(), isNull, reason: '$state $scale');
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '$state $locale $scale',
+          );
         }
+      }
+    },
+  );
+
+  testWidgets(
+    '#283: at 15 where no payout panel draws the breakdown (a composition the app does not use, the rule\'s cubit and the panel\'s being registered together), the rule\'s lines say the alert of fewer sats than at 6 or 8 with its figures and explanation, never the neutral comparison beside it; nothing kept, the comparison then « Not compared with the first invoice » and its reason; with the panel, none of it here',
+    (tester) async {
+      final maker = switch (madeTerms().side) {
+        MadeSide(:final maker) => maker,
+      };
+      // 100 EUR at a premium of 2 % and the Bull wallet's 91,711.15 EUR/BTC: about 106,900 sats expected, 106,713 within the threshold.
+      final within = WalletRateCheck.ofMakerPayout(
+        maker,
+        amount: FiatAmount.tryCreate(100) ?? (throw StateError('100')),
+        received: Sats.fromInt(106713),
+        wallet: P2pWalletRateRead(91711.15),
+      );
+      expect(within, isA<WalletRateCompared>());
+      expect((within as WalletRateCompared).warns, isFalse);
+      const step = PayoutRateStep(0, fiatSent: false);
+      final fewer = PayoutRateChecked(
+        step,
+        within,
+        basis: PayoutRateBelowFirst(Sats.fromInt(110000)),
+      );
+      final unknown = PayoutRateChecked(
+        step,
+        within,
+        basis: const PayoutRateFirstUnknown(),
+      );
+      for (final locale in const [Locale('en'), Locale('fr')]) {
+        late List<TradeDialogLine> fewerLines;
+        late List<TradeDialogLine> unknownLines;
+        late List<TradeDialogLine> inPanel;
+        late P2pLocalizations l10n;
+        late P2pFormats formats;
+        await tester.pumpWidget(
+          harness(
+            Builder(
+              builder: (context) {
+                l10n = P2pLocalizations.of(context);
+                formats = P2pFormats.of(context);
+                List<TradeDialogLine> linesOf(
+                  PayoutRateState state, {
+                  bool inBreakdown = false,
+                }) => PayoutRateLines.linesOf(
+                  context,
+                  state,
+                  coordinator: 'Temple of Sats',
+                  amount: '100',
+                  comparisonInBreakdown: inBreakdown,
+                );
+                fewerLines = linesOf(fewer);
+                unknownLines = linesOf(unknown);
+                inPanel = [
+                  ...linesOf(fewer, inBreakdown: true),
+                  ...linesOf(unknown, inBreakdown: true),
+                ];
+                return Column(
+                  children: [
+                    PayoutRateLines(
+                      state: fewer,
+                      coordinator: 'Temple of Sats',
+                      amount: '100',
+                    ),
+                  ],
+                );
+              },
+            ),
+            locale: locale,
+          ),
+        );
+        expect(fewerLines, [
+          (text: l10n.p2pPayoutFirstFewer, tone: TradeDialogTone.alert),
+          (
+            text: l10n.p2pPayoutFirstFewerFigures(
+              formats.bigSats(BigInt.from(110000)),
+              formats.bigSats(BigInt.from(106713)),
+            ),
+            tone: TradeDialogTone.alertFigures,
+          ),
+          (
+            text: l10n.p2pPayoutFirstFewerDetail,
+            tone: TradeDialogTone.alertFigures,
+          ),
+        ], reason: '$locale');
+        expect(find.text(l10n.p2pPayoutFirstFewer), findsOneWidget);
+        expect(find.text(l10n.p2pPayoutFirstFewerDetail), findsOneWidget);
+        // Nothing kept: the neutral comparison, then the discreet line and its reason, there being no detail here.
+        expect(unknownLines, hasLength(3), reason: '$locale');
+        expect(unknownLines.first.tone, TradeDialogTone.plain);
+        expect(unknownLines.sublist(1), [
+          (text: l10n.p2pPayoutFirstUnknown, tone: TradeDialogTone.plain),
+          (text: l10n.p2pPayoutFirstUnknownDetail, tone: TradeDialogTone.plain),
+        ]);
+        // Where the panel's breakdown draws the check, nothing of it here.
+        expect(inPanel, isEmpty, reason: '$locale');
       }
     },
   );

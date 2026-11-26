@@ -75,6 +75,8 @@ class ConfirmFiatSentDialog extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(false),
       goLabel: l10n.p2pEndConfirm,
       backFirst: true,
+      // The rule's lines follow its state while the dialog is open: one that comes or goes moves « Confirm », the tap that cannot be undone, which then ignores a tap for a moment (#283).
+      guardsGo: this.lines != null,
       onGo: () => Navigator.of(context).pop(true),
     );
   }

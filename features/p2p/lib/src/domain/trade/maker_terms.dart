@@ -107,10 +107,18 @@ final class TradeRateGap {
       other is TradeRateGap &&
       other.fixedRate == fixedRate &&
       other.createdRate == createdRate &&
-      other.percent == percent;
+      other.percent == percent &&
+      other._tradeSatoshis == _tradeSatoshis &&
+      other._createdSatoshis == _createdSatoshis;
 
   @override
-  int get hashCode => Object.hash(fixedRate, createdRate, percent);
+  int get hashCode => Object.hash(
+    fixedRate,
+    createdRate,
+    percent,
+    _tradeSatoshis,
+    _createdSatoshis,
+  );
 
   /// Never an amount nor a rate.
   @override
