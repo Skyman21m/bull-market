@@ -31,7 +31,7 @@ import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// Follow-ups of the owner's payment rule (#283; design note `docs/design/phase-3-making-an-order.md` § 3.3 bis, « As #283 wrote it ») on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`), by the user's gestures, in English and in French, on a phone of 320 points with a text at three times its size: the real router, records, use cases, state machine and trade screen; the coordinator played by `ScriptedMakerCoordinator` (never a real one), the wallet `FakeP2pWalletPort` (no price service, no swap service, no money).
 ///
-/// (1) The « Confirm » of the dialog « Confirm … sent » ignores a tap just after the rule's lines moved it ([MovedTapGuard]) and takes the next one; « Submit » and « Confirm … sent » of the chat step have no guard and take a tap at once (review of #283, C2). (2) After a read of the Bull wallet's price that failed, a status already shown that the coordinator makes come and go (15 ↔ 13) reads it again only once the last read is 3 minutes old; « Retry » always reads.
+/// (1) The « Confirm » of the dialog « Confirm … sent » ignores a tap just after the rule's lines moved it ([MovedTapGuard]) and takes the next one; « Submit » and « Confirm … sent » of the chat step have no guard and take a tap at once (review of #283, C2). (2) After a read of the Bull wallet's price that failed, a status already shown that the coordinator makes come and go (15 ↔ 13) reads it again only once the last read is 3 minutes old, the first 15 reading once; « Retry » always reads.
 ///
 /// The order: 100 EUR bought at a premium of 0, made and taken at the coordinator's 50,000 per bitcoin: 200,000 sats, the maker fee 0.025 %, so the coordinator pays 199,950 at 6, an invoice of 199,750 with the default routing budget; the Bull wallet's price 50,000.
 const _net = RobosatsNetwork.testnet;
@@ -458,21 +458,21 @@ void main() {
       }
 
       testWidgets(
-        'the price service failing: one read at 6, one at 9 shown for the first time, none at the first 15 (the payout\'s step, already shown at 6) within 3 minutes, one in the four minutes of round trips (before #283, one at every return to 15); « Retry » reads at once, twice in a row',
+        'the price service failing: one read at 6, one at 9 shown for the first time, one at the first 15 (the payout\'s step shown at 6, at another status; verification of the review of #283, V-R1), one in the four minutes of round trips (before #283, one at every return to 15); « Retry » reads at once, twice in a row',
         (tester) async {
           final (app, reads) = await roundTrips(
             tester,
             const P2pWalletRateUnavailable(),
           );
-          expect(reads, [1, 2, 3]);
+          expect(reads, [1, 3, 4]);
           final retry = find.text(app.l10n.p2pCommonRetry);
           expect(retry, findsOneWidget);
           await app.tapLater(retry);
           await app.settle();
-          expect(app.wallet.ratesAsked, hasLength(4));
+          expect(app.wallet.ratesAsked, hasLength(5));
           await app.tapLater(retry);
           await app.settle();
-          expect(app.wallet.ratesAsked, hasLength(5));
+          expect(app.wallet.ratesAsked, hasLength(6));
           await app.close();
         },
       );

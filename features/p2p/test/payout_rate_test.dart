@@ -524,6 +524,120 @@ void main() {
           },
         );
 
+        /// An order made and taken, its collateral locked (8), then 9, 10 and 13, and 15 once the failed invoice expired: 6, 8, 13 and 15 as the cubit is shown them.
+        Future<
+          (MakeHarness, TradeRecord, TradeSeen, TradeSeen, TradeSeen, TradeSeen)
+        >
+        atFifteen() async {
+          final (harness, record, six) = await taken();
+          harness.coordinator.lockEscrow(record.orderId);
+          final eight = await readOf(harness, record);
+          expect(eight.status, isA<WaitingForPayout>());
+          await givenHere(harness, record, take: 0);
+          for (final status in const [9, 10]) {
+            harness.coordinator.order(record.orderId).status = status;
+            await readOf(harness, record);
+          }
+          harness.coordinator.order(record.orderId).status = 13;
+          final thirteen = await readOf(harness, record);
+          expect(PayoutRateStep.of(thirteen.status), isNull);
+          harness.coordinator.failPayout(record.orderId, expired: true);
+          final fifteen = await readOf(harness, record);
+          expect(
+            PayoutRateStep.of(fifteen.status),
+            PayoutRateStep.of(six.status),
+          );
+          return (harness, record, six, eight, thirteen, fifteen);
+        }
+
+        test(
+          'the service failing: the first 15 within 3 minutes of a failed read at 6, of the same step at another status, reads once; twelve round trips 15 → 13 → 15 read once in all, the first past 3 minutes after the read at 15 (verification of the review of #283, V-R1)',
+          () async {
+            final (harness, record, six, _, thirteen, fifteen) =
+                await atFifteen();
+            final reads = <Object>[];
+            final port = wallet(const P2pWalletRateUnavailable());
+            final cubit = cubitOf(harness, record, port, reads: reads);
+            await cubit.show(six, appeared: true);
+            expect(reads, hasLength(1));
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(thirteen);
+            expect(cubit.state, isA<PayoutRateNone>());
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(fifteen);
+            expect(reads, hasLength(2));
+            expect(
+              cubit.state,
+              isA<PayoutRateChecked>()
+                  .having((s) => s.step.fiatSent, 'payout', isFalse)
+                  .having((s) => s.check, 'check', isA<WalletRateUnverified>()),
+            );
+            for (var i = 0; i < 12; i++) {
+              await harness.elapse(const Duration(seconds: 10));
+              await cubit.show(thirteen);
+              expect(cubit.state, isA<PayoutRateNone>());
+              await harness.elapse(const Duration(seconds: 10));
+              await cubit.show(fifteen);
+            }
+            // The read at the first 15 at 20 seconds; the returns at 40 seconds, 1 minute, … 4 minutes 20: the first past 3 minutes after that read reads once, none after it; with the step kept without its status, the first 15 read nothing (2 reads in all); with no bound, every return read (14 in all).
+            expect(reads, hasLength(3));
+          },
+        );
+
+        test(
+          'the service failing: 8 after a failed read at 6, the same step at another status, reads nothing within 3 minutes, as before #283 (a status that moves reads only once the last read is 3 minutes old); « Amount not checked » and its « Retry » stay',
+          () async {
+            final (harness, record, six, eight, _, _) = await atFifteen();
+            final reads = <Object>[];
+            final port = wallet(const P2pWalletRateUnavailable());
+            final cubit = cubitOf(harness, record, port, reads: reads);
+            await cubit.show(six, appeared: true);
+            expect(reads, hasLength(1));
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(eight);
+            expect(reads, hasLength(1));
+            expect(
+              cubit.state,
+              isA<PayoutRateChecked>().having(
+                (s) => s.check,
+                'check',
+                isA<WalletRateUnverified>(),
+              ),
+            );
+            await cubit.retry();
+            expect(reads, hasLength(2));
+          },
+        );
+
+        test(
+          'the service answering: the first 15 and twelve round trips 15 → 13 → 15 read as before, nothing at the first 15 (the price fresh), once on the first return past 3 minutes after the read at 6',
+          () async {
+            final (harness, record, six, _, thirteen, fifteen) =
+                await atFifteen();
+            final reads = <Object>[];
+            final cubit = cubitOf(
+              harness,
+              record,
+              wallet(P2pWalletRateRead(91711.15)),
+              reads: reads,
+            );
+            await cubit.show(six, appeared: true);
+            expect(reads, hasLength(1));
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(thirteen);
+            await harness.elapse(const Duration(seconds: 10));
+            await cubit.show(fifteen);
+            expect(reads, hasLength(1));
+            for (var i = 0; i < 12; i++) {
+              await harness.elapse(const Duration(seconds: 10));
+              await cubit.show(thirteen);
+              await harness.elapse(const Duration(seconds: 10));
+              await cubit.show(fifteen);
+            }
+            expect(reads, hasLength(2));
+          },
+        );
+
         test(
           'the service answering: the same returns read exactly as before #283, once at 6, once on the first return past 3 minutes',
           () async {
