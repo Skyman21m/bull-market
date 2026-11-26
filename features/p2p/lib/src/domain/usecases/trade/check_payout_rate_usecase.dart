@@ -27,24 +27,28 @@ final class CheckPayoutRateUsecase {
 
   const CheckPayoutRateUsecase(this._reader, this._wallet);
 
-  /// The terms of [record] when the rule applies to it: an order made here whose user buys ([MakerPayoutTerms]), or an order taken here whose user buys ([TakerPayoutTerms], #249) and that the rule compares ([TakenRateRules.compares]), its terms readable; `null` otherwise (a seller's trade, records that cannot be read), and nothing is ever compared nor read for it.
-  Future<PayoutRateTerms?> termsOf(TradeRecord record) async {
+  /// The terms of [record] when the rule applies to it: an order made here whose user buys ([MakerPayoutTerms]), or an order taken here whose user buys ([TakerPayoutTerms], #249) and that the rule compares ([TakenRateRules.compares]); [PayoutRateTermsUnreadable] when this device's records of a buyer's trade could not be opened now (#237: the database, the vault or the robot's binding refused the read, or the records cannot be restored), so that the screen says the amount was not checked rather than nothing; `null` when the rule does not compare the trade at all (a seller's, an order priced in sats were [TakenRateRules.comparesOrdersPricedInSats] ever `false`), and nothing is ever compared nor read for it.
+  ///
+  /// Only local records are read: nothing is sent, and no coordinator can make the reading fail (design note `docs/design/phase-3-making-an-order.md` § 3.3 bis).
+  Future<PayoutRateTermsRead?> termsOf(TradeRecord record) async {
     if (record.role != TradeRole.buyer) return null;
     final TradeTerms terms;
     switch (await _reader.open(record)) {
       case TradeOpened(:final trade):
         terms = trade.terms;
-      case _:
-        return null;
+      case TradeNotOpened() || TradeNotRestorable() || TradeTakeNeverSent():
+        return const PayoutRateTermsUnreadable();
     }
-    if (terms.role != TradeRole.buyer) return null;
+    // Terms of the other role are another trade's, which the opening refuses: never here, and never silent.
+    if (terms.role != TradeRole.buyer) return const PayoutRateTermsUnreadable();
     if (terms is TradeTerms<TakenSide>) {
       return TakenRateRules.compares(terms) ? TakerPayoutTerms(terms) : null;
     }
     return switch (terms.side) {
       MadeSide(:final maker) when record.origin == TradeOrigin.madeHere =>
         MakerPayoutTerms(maker),
-      _ => null,
+      // A maker's terms on a record not made here, which the opening never gives: not silent either.
+      _ => const PayoutRateTermsUnreadable(),
     };
   }
 
@@ -93,9 +97,9 @@ final class CheckPayoutRateUsecase {
     ),
   };
 
-  /// What the rule compares at [seen], a status of [record] taken with [terms], whose user buys (#249): `null` outside its steps (the payout at 6 or 8, « fiat sent » at 9) or for a status not marked stored.
+  /// What the rule compares at [seen], a status of [record] taken with [terms], whose user buys (#249): `null` outside its steps (the payout at 6 or 8, and since #237 at 15 once a new invoice is asked, « fiat sent » at 9) or for a status not marked stored.
   ///
-  /// The amount is the one taken, kept in the terms ([TakenSide.amount]), never the read's. At 6 and 8, the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`), as for a maker buyer; at 9, where the coordinator gives no `trade_satoshis`, the trade's sats (`satoshis_now`, its `last_satoshis`) less the taker fee of the terms ([TakenTradeTerms.payoutAt]), against the smallest invoice's sats this app saw asked at 6 or 8 ([asked]) as for a maker buyer. While the state machine says the terms or the amounts do not agree ([takeDisagrees]), nothing is compared ([PayoutRateMismatch]), the kept invoice included: a taker has none of a maker's per-contract cases (one contract, no amount moved within it but `TradeTermsChanged`), and at 9 a trade's sats missing is itself `TradePriceOutsideOrder`.
+  /// The amount is the one taken, kept in the terms ([TakenSide.amount]), never the read's. At 6, 8 and 15, the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`), as for a maker buyer; at 9, where the coordinator gives no `trade_satoshis`, the trade's sats (`satoshis_now`, its `last_satoshis`) less the taker fee of the terms ([TakenTradeTerms.payoutAt]), against the smallest invoice's sats this app saw asked at 6 or 8 ([asked]) as for a maker buyer. While the state machine says the terms or the amounts do not agree ([takeDisagrees]), nothing is compared ([PayoutRateMismatch]), the kept invoice included: a taker has none of a maker's per-contract cases (one contract, no amount moved within it but `TradeTermsChanged`), and at 9 a trade's sats missing is itself `TradePriceOutsideOrder`.
   static PayoutRateSubject? subjectOfTake(
     TradeRecord record,
     TradeTerms<TakenSide> terms,
@@ -109,7 +113,8 @@ final class CheckPayoutRateUsecase {
     final disagree = takeDisagrees(status);
     switch (status) {
       case WaitingForBoth(role: TradeRole.buyer) ||
-          WaitingForPayout(role: TradeRole.buyer):
+          WaitingForPayout(role: TradeRole.buyer) ||
+          RoutingFailed(role: TradeRole.buyer, invoiceExpired: true):
         final invoice = switch (PayoutAsk.of(record, seen)) {
           Ok(:final value) => value.buyerSats,
           Err() => null,
@@ -157,7 +162,9 @@ final class CheckPayoutRateUsecase {
     }
   }
 
-  /// What the rule compares at [seen], a status of [record] whose terms are [maker]: `null` outside its steps (the payout at 6 or 8, « fiat sent » at 9) or for a status not marked stored.
+  /// What the rule compares at [seen], a status of [record] whose terms are [maker]: `null` outside its steps (the payout at 6 or 8, and since #237 at 15 once a new invoice is asked, « fiat sent » at 9) or for a status not marked stored.
+  ///
+  /// At 15 (the payout failed and its invoice expired) the coordinator asks a new invoice of `trade_satoshis`, `Logics.payout_amount` as at 6 and 8 (`api/views.py:472-488`, `api/logics.py:650-669`): the same figures, compared as at 6 and 8 (design note § 3.3 bis).
   ///
   /// [asked] is the smallest invoice's sats this app saw asked at 6 or 8 for the contract, when it kept one (in memory only: not after a restart, #204).
   static PayoutRateSubject? subjectAt(
@@ -178,7 +185,8 @@ final class CheckPayoutRateUsecase {
     final moved = seen.contractAmountMovedFrom(maker.amount);
     switch (status) {
       case WaitingForBoth(role: TradeRole.buyer) ||
-          WaitingForPayout(role: TradeRole.buyer):
+          WaitingForPayout(role: TradeRole.buyer) ||
+          RoutingFailed(role: TradeRole.buyer, invoiceExpired: true):
         final invoice = switch (PayoutAsk.of(record, seen)) {
           Ok(:final value) => value.buyerSats,
           Err() => null,
@@ -273,11 +281,50 @@ final class CheckPayoutRateUsecase {
       wallet: wallet,
     ),
   };
+
+  /// For [check], a currency the Bull wallet does not price, of an order made here ([MakerPayoutTerms]) shown at [seen] (#237, the owner's decision of 2026-11-20; design note `docs/design/phase-3-making-an-order.md` § 3.3 bis): how far the contract's sats fixed at the take (the order's `satoshis_now`, its `last_satoshis`) are below its amount's sats at the rate of the creation, in hundredths of a percent, only beyond the owner's threshold ([TradeRateGap.againstFor] for a buyer); `null` for any other check, an order taken here (the owner's decision of 2026-11-24: the « not priced » line alone), a read without those sats or a contract's amount not known, and within the threshold or in the buyer's favour.
+  static BigInt? againstOf(
+    PayoutRateTerms terms,
+    WalletRateCheck check,
+    TradeSeen seen,
+  ) {
+    if (check is! WalletRateNotPriced) return null;
+    final maker = switch (terms) {
+      MakerPayoutTerms(:final maker) => maker,
+      TakerPayoutTerms() => null,
+    };
+    final last = seen.order?.satoshisNow;
+    if (maker == null || last == null) return null;
+    final kept = seen.status.trail.takenAmount;
+    return maker
+        .rateGap(
+          rangeAmount: kept == null ? null : FiatAmount.tryCreate(kept),
+          tradeSatoshis: last,
+        )
+        ?.againstFor(TradeRole.buyer);
+  }
+}
+
+/// What reading the terms the rule compares gave (#237): the terms ([PayoutRateTerms]), or this device's records could not be opened now ([PayoutRateTermsUnreadable]).
+@immutable
+sealed class PayoutRateTermsRead {
+  const PayoutRateTermsRead();
+}
+
+/// This device's records of a buyer's trade could not be opened now (the database, the vault or the robot's binding refused the read, or the records cannot be restored): nothing compared, and the screen says so, with « Retry », which reads them again (#237, design note `docs/design/phase-3-making-an-order.md` § 3.3 bis).
+final class PayoutRateTermsUnreadable extends PayoutRateTermsRead {
+  const PayoutRateTermsUnreadable();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateTermsUnreadable;
+
+  @override
+  int get hashCode => 7;
 }
 
 /// The terms the owner's payment rule compares a buyer's payout with (design note `docs/design/phase-3-taken-order-price-check.md` § 8 slice 3): a maker buyer's ([MakerPayoutTerms], #182) or a taker buyer's ([TakerPayoutTerms], #249).
 @immutable
-sealed class PayoutRateTerms {
+sealed class PayoutRateTerms extends PayoutRateTermsRead {
   const PayoutRateTerms();
 
   /// The order's currency, whose Bull wallet's price is read.

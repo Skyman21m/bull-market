@@ -5894,7 +5894,7 @@ abstract class P2pLocalizations {
   /// **'Breakdown, in sats'**
   String get p2pPayoutBreakdownTitle;
 
-  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): a discreet line under the breakdown's title at 15 (the payout failed, a new invoice asked), where the owner's payment rule does not run (it runs at 6, 8 and 9 only), so that the figures do not look checked (security review of #228, C2).
+  /// Not in the RoboSats texts: the project's own (#228; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is composed on the model of the French, as #250 gives its examples): a discreet line under the breakdown's title at 15 (the payout failed, a new invoice asked) on a page where the owner's payment rule does not run (since #237 the rule runs at 15 as at 6 and 8 wherever it is on the page, so the line is said only without it), so that the figures do not look checked (security review of #228, C2).
   ///
   /// In en, this message translates to:
   /// **'No Bull Wallet check at this step'**
@@ -6013,6 +6013,30 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Without this price, it cannot compare the coordinator\'s amount.'**
   String get p2pPayoutBreakdownUnverifiedDetail;
+
+  /// Not in the RoboSats texts: the project's own (#237; proposed to the owner, not validated: the validated second line of « Amount not checked », p2pPayoutBreakdownUnverifiedLine, speaks of the Bull wallet's price, which was never asked here; the English is composed on the model of the French): under p2pPayoutBreakdownUnverified, in the warning colour, at a buyer's payout (6, 8, 15), at 9 and in « Confirm … sent », when this device's records of the trade could not be read now (the database, the vault or the robot's binding refused the read), so that nothing was compared; « Retry » reads them again.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet could not read this order\'s terms on this device.'**
+  String get p2pPayoutRateTermsUnreadLine;
+
+  /// Not in the RoboSats texts: the project's own (#237; proposed to the owner, not validated, on the model of p2pPayoutBreakdownUnverifiedDetail, whose « this price » would be false here; the English is composed on the model of the French): the explanation of p2pPayoutRateTermsUnreadLine, « them » being the order's terms: in the payout breakdown's detail, and under the two lines at 9 and in « Confirm … sent », where no detail holds it.
+  ///
+  /// In en, this message translates to:
+  /// **'Without them, it cannot compare the coordinator\'s amount.'**
+  String get p2pPayoutRateTermsUnreadDetail;
+
+  /// Not in the RoboSats texts: the project's own (#237; the wording the owner validated on 2026-11-24 on the page « Textes à valider », section « Monnaie que le portefeuille Bull ne cote pas », after his decision of 2026-11-20; the English is a faithful translation of the French): an orange alert line with the warning icon, under the grey « not quoted » line, only for an order made here in a currency the Bull wallet does not price, when the contract's sats fixed at the take are more than 10 % fewer (a buyer) or more (a seller) than its amount's sats at the rate of the creation; never within the threshold, never in the user's favour, never for an order taken here. {gap} the gap in sats, in percent without its sign, always above 10.00 %.
+  ///
+  /// In en, this message translates to:
+  /// **'Gap of {gap} against you since the order was made'**
+  String p2pRateAgainstSinceMade(String gap);
+
+  /// Not in the RoboSats texts: the project's own (#237; the wording the owner validated on 2026-11-24, as p2pRateAgainstSinceMade; the English is a faithful translation of the French): the explanation of p2pRateAgainstSinceMade, behind « Show details » in the payout breakdown and in a collateral's confirmation, and under the alert at 9 and in « Confirm … sent », where no detail holds it. {currency} the order's currency code.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet does not quote {currency}. It therefore compares the coordinator\'s rate at the take with its rate when the order was made. The market may have moved in between.'**
+  String p2pRateAgainstSinceMadeDetail(String currency);
 
   /// Not in the RoboSats texts: the project's own (#250; the wording the owner validated on 2026-11-24 for #250 (« Textes à valider », screen 2, the payout breakdown); the English is #250's own example): last in the detail, only beside a comparison within the owner's threshold, never beside an alert. Also, since #250's second slice, in the lean confirmation of a bond or a collateral (« Pay with this wallet »), with the same words.
   ///

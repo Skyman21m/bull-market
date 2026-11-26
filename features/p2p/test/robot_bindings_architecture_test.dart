@@ -559,9 +559,10 @@ void main() {
           _makeOrderUseCase,
           '${_tradeUseCases}trade_reader.dart',
         });
-        // The gap is computed by the state machine alone, from the order's `satoshis_now`, which `package:robosats` bounds (#178).
+        // The gap is computed by the state machine, from the order's `satoshis_now`, which `package:robosats` bounds (#178), and since #237 by the owner's payment rule on a buyer's side from the same bounded figure of the order it compares (`CheckPayoutRateUsecase.againstOf`, status 15 carrying no gap of its own).
         expect(referring((r) => r == 'MakerTerms.rateGap'), {
           'lib/src/domain/trade/trade_status.dart',
+          '${_tradeUseCases}check_payout_rate_usecase.dart',
         });
       },
     );

@@ -30,6 +30,12 @@ class PriceCheckLines extends StatelessWidget {
   /// The bold line's words in place of « Gap against you » or « Amount not checked », for the order page, which compares a price and not an amount (#249, slice 4); `null` keeps them.
   final String? label;
 
+  /// The second line of « Amount not checked » in place of « Bull Wallet could not get its bitcoin price. », where the price was never asked (the trade's records not read, #237); `null` keeps it.
+  final String? line;
+
+  /// Under the grey « not quoted » line, the orange alert of a gap against the user since the order was made, worded by the caller (#237); `null` draws none.
+  final String? against;
+
   /// The gap to the Bull price within the threshold, written with its sign: « Gap to the Bull price (indicative) ».
   const PriceCheckLines.gap(String this.gap, {super.key})
     : _kind = _PriceCheckKind.gap,
@@ -37,7 +43,9 @@ class PriceCheckLines extends StatelessWidget {
       explanation = null,
       onRetry = null,
       retrying = false,
-      label = null;
+      label = null,
+      line = null,
+      against = null;
 
   /// Beyond the threshold: « ⚠ Gap against you » and the gap, in red and bold, then [figures] in red; never « (indicative) ».
   const PriceCheckLines.against(
@@ -48,28 +56,32 @@ class PriceCheckLines extends StatelessWidget {
     this.label,
   }) : _kind = _PriceCheckKind.against,
        onRetry = null,
-       retrying = false;
+       retrying = false,
+       line = null,
+       against = null;
 
-  /// The Bull wallet's price not read: « ⚠ Amount not checked » in orange and bold with « Retry », then « Bull Wallet could not get its bitcoin price. ».
+  /// The Bull wallet's price not read: « ⚠ Amount not checked » in orange and bold with « Retry », then « Bull Wallet could not get its bitcoin price. » (or [line]).
   const PriceCheckLines.unverified({
     super.key,
     this.onRetry,
     this.retrying = false,
     this.explanation,
     this.label,
+    this.line,
   }) : _kind = _PriceCheckKind.unverified,
        gap = null,
-       figures = null;
+       figures = null,
+       against = null;
 
-  /// A currency the Bull wallet does not price: the grey line « Gap to the Bull price — not quoted », nothing else.
-  const PriceCheckLines.notPriced({super.key})
+  /// A currency the Bull wallet does not price: the grey line « Gap to the Bull price — not quoted »; under it, only for an order made here whose contract moved against the user beyond the owner's threshold since it was made (#237), [against] in orange and bold with the warning icon, and its [explanation] where no detail holds it.
+  const PriceCheckLines.notPriced({super.key, this.against, this.explanation})
     : _kind = _PriceCheckKind.notPriced,
       gap = null,
       figures = null,
-      explanation = null,
       onRetry = null,
       retrying = false,
-      label = null;
+      label = null,
+      line = null;
 
   /// Whether a gap of [hundredths] of a percent is small both ways, within [TradeTolerances.walletRateGap] on either side: the only gap beside which « A small gap is normal » is said (functional review of #268, C1). A large gap on the side that does not warn (a bond far below the sats expected, a payout far above them) gets neither the alert nor the sentence.
   static bool smallGap(BigInt hundredths) =>
@@ -86,6 +98,7 @@ class PriceCheckLines extends StatelessWidget {
   static const unverifiedRow = ValueKey('price-check-unverified');
   static const unverifiedLine = ValueKey('price-check-unverified-line');
   static const notPricedRow = ValueKey('price-check-not-priced');
+  static const againstSinceMadeRow = ValueKey('price-check-against-since-made');
   static const retryButton = ValueKey('price-check-retry');
 
   @override
@@ -156,7 +169,7 @@ class PriceCheckLines extends StatelessWidget {
             ),
             second(
               unverifiedLine,
-              l10n.p2pPayoutBreakdownUnverifiedLine,
+              line ?? l10n.p2pPayoutBreakdownUnverifiedLine,
               colors.warning,
             ),
             if (explanation != null)
@@ -169,6 +182,15 @@ class PriceCheckLines extends StatelessWidget {
               amount: l10n.p2pPayoutBreakdownNotPriced,
               tone: AmountRowTone.muted,
             ),
+            if (against case final shown?)
+              AmountRow(
+                key: againstSinceMadeRow,
+                label: shown,
+                tone: AmountRowTone.warning,
+                icon: Icons.warning_amber_rounded,
+              ),
+            if (explanation != null && against != null)
+              second(explanationLine, explanation, colors.warning),
           ],
         },
       ),

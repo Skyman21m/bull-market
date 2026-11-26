@@ -6,6 +6,7 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../../public/p2p_wallet_port.dart';
 import '../../domain/trade/shown_alerts.dart';
+import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_tolerances.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade/wallet_rate_check.dart';
@@ -136,6 +137,17 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
         rate,
       _ => null,
     };
+    // A maker seller's collateral in a currency the Bull wallet does not price (#237, the owner's decision of 2026-11-20): the gap of the contract's sats against the seller since the order was made, beyond the owner's threshold only, from the rate the state machine computed for the status shown (`TradeRateGap`, an order made here only: never for a take).
+    final against = switch ((rate, widget.seen.status)) {
+      (
+        WalletRateNotPriced(),
+        WaitingForBoth(:final rateGap?, :final role) ||
+            WaitingForEscrow(:final rateGap?, :final role),
+      )
+          when escrow =>
+        rateGap.againstFor(role),
+      _ => null,
+    };
     final check = switch (rate) {
       null => null,
       WalletRateCompared(warns: false, :final gapHundredths) =>
@@ -152,7 +164,11 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
         onRetry: widget.onRetry,
         retrying: confirming.retrying,
       ),
-      WalletRateNotPriced() => const PriceCheckLines.notPriced(),
+      WalletRateNotPriced() => PriceCheckLines.notPriced(
+        against: against == null
+            ? null
+            : l10n.p2pRateAgainstSinceMade(formats.gapSize(against)),
+      ),
     };
     Widget block(
       Key key, {
@@ -312,6 +328,7 @@ class _PayConfirmationCardState extends State<PayConfirmationCard> {
             escrow: escrow,
             earlier: [for (final alert in earlier) ?alert.detail],
             currency: widget.currency,
+            againstSinceMade: against != null,
           ),
       ],
     );
@@ -328,6 +345,9 @@ class _Detail extends StatelessWidget {
   final List<String> earlier;
   final RobosatsCurrency? currency;
 
+  /// Whether the card draws the orange alert of a gap against the seller since the order was made (#237): its explanation is said here.
+  final bool againstSinceMade;
+
   const _Detail({
     super.key,
     required this.walletQuote,
@@ -335,6 +355,7 @@ class _Detail extends StatelessWidget {
     required this.escrow,
     required this.earlier,
     required this.currency,
+    this.againstSinceMade = false,
   });
 
   @override
@@ -393,6 +414,11 @@ class _Detail extends StatelessWidget {
         colors.text,
       ),
       WalletRateUnverified() => (l10n.p2pPayUnverifiedDetail, colors.warning),
+      // The orange alert of #237: its explanation, the owner's words.
+      WalletRateNotPriced(currency: final code) when againstSinceMade => (
+        l10n.p2pRateAgainstSinceMadeDetail(code.code),
+        colors.warning,
+      ),
       WalletRateNotPriced() || null => null,
     };
     // Within the threshold both ways only (functional review of #268, C1): a large favourable gap gets no « small gap ».

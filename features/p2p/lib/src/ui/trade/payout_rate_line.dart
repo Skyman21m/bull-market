@@ -12,7 +12,7 @@ import '../widgets/price_check_lines.dart';
 import '../widgets/trade_dialog_body.dart';
 import 'payout_breakdown_view.dart';
 
-/// The lines of the owner's payment rule on a maker buyer's side (#182, design note § 3.3), before « Submit » of the payout, before the chat step and in « Confirm … sent »: the comparison with the Bull wallet's price (information), the red warning beyond [TradeTolerances.walletRateGap] fewer sats (nothing blocked), one line without a figure for a currency the Bull wallet does not price, « rate not checked » with « Retry » for a price that could not be read, and « rate not checked » for a read that gives no sats: never nothing without saying it.
+/// The lines of the owner's payment rule on a maker buyer's side (#182, design note § 3.3), before « Submit » of the payout, before the chat step and in « Confirm … sent »: the comparison with the Bull wallet's price (information), the red warning beyond [TradeTolerances.walletRateGap] fewer sats (nothing blocked), one line without a figure for a currency the Bull wallet does not price (and, for an order made here, the orange alert of a gap against the buyer since it was made, #237), « rate not checked » with « Retry » for a price that could not be read, « rate not checked » for a read that gives no sats, and « Amount not checked » with « Retry » for the trade's records that could not be read (#237): never nothing without saying it.
 class PayoutRateLines extends StatelessWidget {
   final PayoutRateState state;
   final String coordinator;
@@ -35,7 +35,7 @@ class PayoutRateLines extends StatelessWidget {
     this.comparisonInBreakdown = false,
   });
 
-  /// The check of [state] as the payout panel's breakdown draws it (#228, #250), with [amount] the contract's amount written ([amountOf]): only at 6 and 8, for a comparison with the Bull wallet's price, a price that could not be read or a currency the Bull wallet does not price; `null` otherwise (a price being read, amounts that do not agree, a comparison within the threshold beside an alert, `PayoutRateAlertAlone`, the chat step).
+  /// The check of [state] as the payout panel's breakdown draws it (#228, #250), with [amount] the contract's amount written ([amountOf]): only at 6, 8 and 15, for a comparison with the Bull wallet's price, a price that could not be read, a currency the Bull wallet does not price (with the alert of a gap against the buyer since the order was made, #237) or the trade's records that could not be read (#237); `null` otherwise (a price being read, amounts that do not agree, a comparison within the threshold beside an alert, `PayoutRateAlertAlone`, the chat step).
   static PayoutCheck? checkOf(
     BuildContext context,
     PayoutRateState? state, {
@@ -44,7 +44,14 @@ class PayoutRateLines extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     return switch (state) {
-      PayoutRateChecked(:final step, :final check, basis: PayoutRateAskedNow())
+      PayoutRateTermsUnread(:final step, :final given?) when !step.fiatSent =>
+        PayoutCheckTermsUnread(given),
+      PayoutRateChecked(
+        :final step,
+        :final check,
+        basis: PayoutRateAskedNow(),
+        :final against,
+      )
           when !step.fiatSent =>
         switch (check) {
           WalletRateCompared() => PayoutCheckCompared(
@@ -61,7 +68,15 @@ class PayoutRateLines extends StatelessWidget {
             small: PriceCheckLines.smallGap(check.gapHundredths),
           ),
           WalletRateUnverified() => PayoutCheckUnverified(check.asked),
-          WalletRateNotPriced() => PayoutCheckNotPriced(check.asked),
+          WalletRateNotPriced() => PayoutCheckNotPriced(
+            check.asked,
+            against: against == null
+                ? null
+                : (
+                    gap: formats.gapSize(against),
+                    currency: check.currency.code,
+                  ),
+          ),
         },
       _ => null,
     };
@@ -98,7 +113,26 @@ class PayoutRateLines extends StatelessWidget {
         if (notSeen)
           (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
       ],
-      PayoutRateChecked(:final check, :final basis) => [
+      // At 6, 8 and 15 the payout panel says it ([checkOf]), in its breakdown or alone above its form, where it is drawn.
+      PayoutRateTermsUnread(:final step, given: _?)
+          when comparisonInBreakdown && !step.fiatSent =>
+        const [],
+      // The trade's records could not be read: nothing compared, said rather than nothing (#237), with its explanation, there being no detail here.
+      PayoutRateTermsUnread() => [
+        (
+          text: l10n.p2pPayoutBreakdownUnverified,
+          tone: TradeDialogTone.warning,
+        ),
+        (
+          text: l10n.p2pPayoutRateTermsUnreadLine,
+          tone: TradeDialogTone.warningLine,
+        ),
+        (
+          text: l10n.p2pPayoutRateTermsUnreadDetail,
+          tone: TradeDialogTone.warningLine,
+        ),
+      ],
+      PayoutRateChecked(:final check, :final basis, :final against) => [
         // At 9, a coordinator's figure that moved since the invoice it asked: said first, in the alert colour (security review of #182, C2).
         if (basis case PayoutRateTold(:final told, :final asked))
           (
@@ -165,6 +199,17 @@ class PayoutRateLines extends StatelessWidget {
                 ),
                 tone: TradeDialogTone.warning,
               ),
+              // An order made here whose contract moved against the buyer beyond the owner's threshold since it was made (#237): the orange alert, then its explanation, there being no detail at 9 nor in « Confirm … sent ».
+              if (against != null) ...[
+                (
+                  text: l10n.p2pRateAgainstSinceMade(formats.gapSize(against)),
+                  tone: TradeDialogTone.warning,
+                ),
+                (
+                  text: l10n.p2pRateAgainstSinceMadeDetail(check.currency.code),
+                  tone: TradeDialogTone.warningLine,
+                ),
+              ],
             ],
             WalletRateUnverified() => [
               (
@@ -205,7 +250,8 @@ class PayoutRateLines extends StatelessWidget {
     );
     if (lines.isEmpty) return const SizedBox.shrink();
     final retry = switch (state) {
-      PayoutRateChecked(check: WalletRateUnverified()) => true,
+      PayoutRateChecked(check: WalletRateUnverified()) ||
+      PayoutRateTermsUnread() => true,
       _ => false,
     };
     final onRetry = this.onRetry;
@@ -222,7 +268,9 @@ class PayoutRateLines extends StatelessWidget {
               children: [
                 // The figures' line of an alert under its bold line, without an icon of its own.
                 ExcludeSemantics(
-                  child: line.tone == TradeDialogTone.alertFigures
+                  child:
+                      line.tone == TradeDialogTone.alertFigures ||
+                          line.tone == TradeDialogTone.warningLine
                       ? const SizedBox(width: 18)
                       : Icon(
                           line.tone == TradeDialogTone.plain
@@ -242,7 +290,8 @@ class PayoutRateLines extends StatelessWidget {
                         TradeDialogTone.warning ||
                         TradeDialogTone.alert => FontWeight.bold,
                         TradeDialogTone.plain ||
-                        TradeDialogTone.alertFigures => null,
+                        TradeDialogTone.alertFigures ||
+                        TradeDialogTone.warningLine => null,
                       },
                     ),
                   ),
@@ -269,7 +318,8 @@ class PayoutRateLines extends StatelessWidget {
   static Color _colourOf(BuildContext context, TradeDialogTone tone) =>
       switch (tone) {
         TradeDialogTone.plain => context.bull.text,
-        TradeDialogTone.warning => context.bull.warning,
+        TradeDialogTone.warning ||
+        TradeDialogTone.warningLine => context.bull.warning,
         TradeDialogTone.alert ||
         TradeDialogTone.alertFigures => context.bull.error,
       };
