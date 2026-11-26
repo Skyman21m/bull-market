@@ -1236,17 +1236,164 @@ void main() {
             (cubit.state as PayoutRateChecked).basis,
             PayoutRateBelowFirst(first),
           );
-          final check = (cubit.state as PayoutRateChecked).check;
+        },
+      );
+
+      test(
+        'a 15 that carries an alert of the screen (the trace of terms shown otherwise, #231) and a gap within the threshold: fewer sats is still said, never silenced as « reassuring » (functional review C1, security review C2 of #281)',
+        () async {
+          final (harness, record, six) = await taken();
+          final memory = PayoutRateMemory();
+          final port = wallet(P2pWalletRateRead(91711.15));
+          final cubit = cubitOf(harness, record, port, memory: memory);
+          await cubit.show(six, appeared: true);
+          await harness.settle();
+          final first = askedAt(record, six);
+          // One read with another premium, then the order's own again: the trace stays to the end.
+          harness.coordinator.orderChanges[record.orderId] = {
+            'premium': '9.00',
+          };
+          await readOf(harness, record);
+          harness.coordinator.orderChanges.remove(record.orderId);
+          final last = harness.coordinator.order(record.orderId).lastSatoshis;
+          final fifteen = await toFifteen(
+            harness,
+            record,
+            last: last * 95 ~/ 100,
+          );
+          expect(ShownAlerts.any(fifteen), isTrue);
+          await cubit.show(fifteen);
+          await harness.settle();
+          final state = cubit.state;
+          expect(
+            state,
+            isA<PayoutRateChecked>().having(
+              (s) => s.basis,
+              'basis',
+              PayoutRateBelowFirst(first),
+            ),
+          );
+          final check = (state as PayoutRateChecked).check;
+          // Within the threshold: beside an alert this comparison alone would have been silenced.
+          expect(check, isA<WalletRateCompared>());
+          expect((check as WalletRateCompared).warns, isFalse);
           expect(
             CheckPayoutRateUsecase.reassuresBesideAlert(
               fifteen,
               check,
-              PayoutRateBelowFirst(first),
+              const PayoutRateAskedNow(),
             ),
-            isFalse,
+            isTrue,
           );
         },
       );
+
+      test(
+        'the panel asks a smaller sum at 8 than at 6 (the large one first): no alert at 6 nor 8; the reference stays the largest, so 15 asking the smaller is said (functional review R1, security review R3 of #281)',
+        () async {
+          final (harness, record, six) = await taken();
+          final memory = PayoutRateMemory();
+          final port = wallet(P2pWalletRateRead(91711.15));
+          final cubit = cubitOf(harness, record, port, memory: memory);
+          await cubit.show(six, appeared: true);
+          await harness.settle();
+          final first = askedAt(record, six);
+          expect(
+            (cubit.state as PayoutRateChecked).basis,
+            const PayoutRateAskedNow(),
+          );
+          final order = harness.coordinator.order(record.orderId);
+          final smaller = order.lastSatoshis * 95 ~/ 100;
+          order.lastSatoshis = smaller;
+          harness.coordinator.lockEscrow(record.orderId);
+          final eight = await readOf(harness, record);
+          expect(eight.status, isA<WaitingForPayout>());
+          await cubit.show(eight);
+          await harness.settle();
+          expect(askedAt(record, eight).value < first.value, isTrue);
+          expect(
+            (cubit.state as PayoutRateChecked).basis,
+            const PayoutRateAskedNow(),
+          );
+          expect(memory.firstOf(record, 0), first);
+          for (final status in const [9, 10, 13]) {
+            order.status = status;
+            await readOf(harness, record);
+          }
+          harness.coordinator.failPayout(record.orderId);
+          final fifteen = await readOf(harness, record);
+          expect(askedAt(record, fifteen), askedAt(record, eight));
+          await cubit.show(fifteen);
+          await harness.settle();
+          expect(
+            (cubit.state as PayoutRateChecked).basis,
+            PayoutRateBelowFirst(first),
+          );
+        },
+      );
+
+      /// An order of a range of 50 to 150 EUR, made and taken for [amount]: its record and its status at 6.
+      Future<(MakeHarness, TradeRecord, TradeSeen)> takenRange({
+        required double amount,
+      }) async {
+        final harness = await MakeHarness.start();
+        final record =
+            (valueOf(
+                      await harness.makeOrder(
+                        MakeHarness.request(range: (50, 150)),
+                      ),
+                    )
+                    as MakeStarted)
+                .record;
+        harness.coordinator
+          ..lockMakerBond(record.orderId)
+          ..take(record.orderId, harness.robot(4), amount: amount);
+        return (harness, record, await readOf(harness, record));
+      }
+
+      for (final seenAtSix in const [true, false]) {
+        test(
+          'two contracts of a range (150 EUR, then 100 EUR taken again), the second ${seenAtSix ? 'seen' : 'not seen'} at 6: the invoice of the first contract never serves the second (functional review R1 of #281)',
+          () async {
+            final (harness, record, six) = await takenRange(amount: 150);
+            expect(six.status.trail.take, 0);
+            final memory = PayoutRateMemory();
+            final port = wallet(P2pWalletRateRead(91711.15));
+            final cubit = cubitOf(harness, record, port, memory: memory);
+            await cubit.show(six, appeared: true);
+            await harness.settle();
+            final firstOfZero = askedAt(record, six);
+            expect(memory.firstOf(record, 0), firstOfZero);
+            // Back in the book, taken again for 100 EUR: contract 1, fewer sats honestly.
+            harness.coordinator.backToBook(record.orderId);
+            await readOf(harness, record);
+            await harness.elapse(const Duration(minutes: 1));
+            harness.coordinator.take(
+              record.orderId,
+              harness.robot(5),
+              amount: 100,
+            );
+            final sixOfOne = await readOf(harness, record);
+            expect(sixOfOne.status.trail.take, 1);
+            if (seenAtSix) {
+              await cubit.show(sixOfOne);
+              await harness.settle();
+              expect(memory.firstOf(record, 1), askedAt(record, sixOfOne));
+            }
+            final fifteen = await toFifteen(harness, record);
+            expect(fifteen.status.trail.take, 1);
+            expect(askedAt(record, fifteen).value < firstOfZero.value, isTrue);
+            await cubit.show(fifteen, appeared: true);
+            await harness.settle();
+            expect(
+              (cubit.state as PayoutRateChecked).basis,
+              seenAtSix
+                  ? const PayoutRateAskedNow()
+                  : const PayoutRateFirstUnknown(),
+            );
+          },
+        );
+      }
 
       test(
         'several invoices at 6 and 8: the largest is the reference, so that a smaller one shown first cannot make the same smaller one at 15 look unchanged; 9 still takes the smallest',

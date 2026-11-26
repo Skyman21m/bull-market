@@ -476,6 +476,42 @@ void main() {
       );
 
       testWidgets(
+        'the coordinator showed the trade once with another premium (the trace of #231 stays to the end), then 5 % fewer at 15, within the Bull wallet\'s threshold: the trace and the new alert both drawn, neither silencing the other (security review C2 of #281, its scenario E5)',
+        (tester) async {
+          final app = await _App.start(tester, locale: locale);
+          await app.openTrade();
+          await app.waitFor(app.indicative);
+          final changed = find.text(app.l10n.p2pTradeWarnTerms);
+          app.coordinator.orderChanges[app.record.orderId] = {
+            'premium': '9.00',
+          };
+          await app.waitFor(changed);
+          app.coordinator.orderChanges.remove(app.record.orderId);
+          for (var i = 0; i < 240 && changed.evaluate().isNotEmpty; i++) {
+            app.advance(const Duration(milliseconds: 250));
+            await tester.pump(const Duration(milliseconds: 250));
+          }
+          expect(changed, findsNothing);
+          final trace = find.textContaining(
+            code == 'fr'
+                ? 'a montré cet échange avec d’autres conditions'
+                : 'showed this trade with other terms',
+          );
+          expect(trace, findsOneWidget);
+          await app.toSending();
+          await app.failPayout(last: 190000);
+          await app.waitFor(app.fewer);
+          await app.settle();
+          expect(trace, findsOneWidget);
+          expect(app.inBreakdown(app.fewer), findsOneWidget);
+          expect(app.figures(199950, 189952), findsOneWidget);
+          // The gap within the threshold beside an alert: not drawn, as everywhere.
+          expect(app.indicative, findsNothing);
+          await app.close();
+        },
+      );
+
+      testWidgets(
         '15 → 13 → 15: still compared with the invoice of 6, never with the 15 before',
         (tester) async {
           final app = await _App.start(tester, locale: locale);
