@@ -989,7 +989,9 @@ void main() {
 
     Future<String> storedEntry() async {
       final scratch = FakeSecureStoragePlatform()..install();
-      final scratchVault = Secrets(scratchDirectory: () async => '.').garageKeys();
+      final scratchVault = Secrets(
+        scratchDirectory: () async => '.',
+      ).garageKeys();
       expect(
         await scratchVault.import(
           slot: GarageKeySlot.mainnet,
@@ -1053,12 +1055,18 @@ void main() {
       () async {
         storage.entries[mainnetEntry] = 'not json at all';
         final repository = repositoryOver(memory());
-        expect(await repository.read(mainnet), isErr<GarageKeyUnusableFailure>());
+        expect(
+          await repository.read(mainnet),
+          isErr<GarageKeyUnusableFailure>(),
+        );
         expect(
           await repository.firstUsableRobot(mainnet),
           isErr<GarageKeyUnusableFailure>(),
         );
-        expect(await repository.exists(mainnet), isErr<GarageKeyUnusableFailure>());
+        expect(
+          await repository.exists(mainnet),
+          isErr<GarageKeyUnusableFailure>(),
+        );
         expect(
           await repository.import(mainnet, drawnKey),
           isErr<GarageKeyAlreadyStoredFailure>(),
@@ -1093,7 +1101,10 @@ void main() {
             isA<GarageKeyUnreadableFailure>(),
           ),
         );
-        expect(await repository.read(mainnet), isErr<GarageKeyUnreadableFailure>());
+        expect(
+          await repository.read(mainnet),
+          isErr<GarageKeyUnreadableFailure>(),
+        );
         expect(storage.entries[mainnetEntry], entry);
       },
       timeout: slow,
@@ -1122,37 +1133,47 @@ void main() {
         storage
           ..locked = false
           ..writesFail = true;
-        expect(await repository.delete(mainnet), isErr<GarageKeyLockedFailure>());
+        expect(
+          await repository.delete(mainnet),
+          isErr<GarageKeyLockedFailure>(),
+        );
         expect(storage.entries[mainnetEntry], entry);
       },
       timeout: slow,
     );
 
-    test('a keystore that refuses a change keeps the key when a delete fails, and stores no key when a write fails, and says so', () async {
-      final entry = await storedEntry();
-      await keystore(
-        FakeSecureStoragePlatform(
-          entries: {mainnetEntry: entry},
-          scriptedWrites: [PlatformException(code: 'delete failed')],
-        ),
-      );
-      final repository = repositoryOver(memory());
-      expect(keyOf(await repository.read(mainnet)).key, drawnKey);
-      expect(await repository.delete(mainnet), isErr<GarageKeyNotDeletedFailure>());
-      expect(storage.entries[mainnetEntry], entry);
+    test(
+      'a keystore that refuses a change keeps the key when a delete fails, and stores no key when a write fails, and says so',
+      () async {
+        final entry = await storedEntry();
+        await keystore(
+          FakeSecureStoragePlatform(
+            entries: {mainnetEntry: entry},
+            scriptedWrites: [PlatformException(code: 'delete failed')],
+          ),
+        );
+        final repository = repositoryOver(memory());
+        expect(keyOf(await repository.read(mainnet)).key, drawnKey);
+        expect(
+          await repository.delete(mainnet),
+          isErr<GarageKeyNotDeletedFailure>(),
+        );
+        expect(storage.entries[mainnetEntry], entry);
 
-      await keystore(
-        FakeSecureStoragePlatform(
-          scriptedWrites: [PlatformException(code: 'write failed')],
-        ),
-      );
-      final empty = repositoryOver(memory());
-      expect(
-        await empty.import(mainnet, drawnKey),
-        isErr<GarageKeyNotSavedFailure>(),
-      );
-      expect(storage.entries, isNot(contains(mainnetEntry)));
-    }, timeout: slow);
+        await keystore(
+          FakeSecureStoragePlatform(
+            scriptedWrites: [PlatformException(code: 'write failed')],
+          ),
+        );
+        final empty = repositoryOver(memory());
+        expect(
+          await empty.import(mainnet, drawnKey),
+          isErr<GarageKeyNotSavedFailure>(),
+        );
+        expect(storage.entries, isNot(contains(mainnetEntry)));
+      },
+      timeout: slow,
+    );
 
     test('the failures carry nothing but their type', () {
       for (final failure in <P2pFailure>[

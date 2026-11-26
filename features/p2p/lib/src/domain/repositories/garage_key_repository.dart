@@ -29,7 +29,9 @@ abstract interface class GarageKeyRepository {
 
   /// The external Garage Key of [network], read from the vault's slot: for the Garage, once [keyring] said it is selected, without reading the keys again. [GarageKeyMissingFailure] when the slot is empty.
   @useResult
-  Future<Result<NetworkGarageKey, P2pFailure>> external(RobosatsNetwork network);
+  Future<Result<NetworkGarageKey, P2pFailure>> external(
+    RobosatsNetwork network,
+  );
 
   /// The key of the words at [index] on [network], an index this device activated ([GarageKeyMissingFailure] otherwise), derived again and checked against the fingerprint recorded for it.
   @useResult

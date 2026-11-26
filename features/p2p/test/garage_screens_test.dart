@@ -536,7 +536,8 @@ void main() {
         'an entry the keystore keeps failing to read',
         {_testnetEntry: null},
         false,
-        List<Object?>.generate(5, (_) => PlatformException(code: 'read')),
+        // The words of the seam read the slot, then the keys read it again for an external key (review of #292): two read budgets of failures.
+        List<Object?>.generate(10, (_) => PlatformException(code: 'read')),
       ),
     ]) {
       testWidgets(
@@ -546,6 +547,7 @@ void main() {
           final stored = Map.of(storage.entries);
           await searchMissingOrder(tester);
           final requests = List.of(transport.requested);
+          await letTheVaultSettle(tester);
           await letTheVaultSettle(tester);
 
           expect(wait, findsNothing);
@@ -563,11 +565,11 @@ void main() {
     testWidgets(
       'the wait is as tall as « This order is not available », which comes without a jump, and is announced',
       (tester) async {
-        // An entry the keystore keeps failing to read: about 4.5 s of retries, then « This order is not available ».
+        // An entry the keystore keeps failing to read: twice about 4.5 s of retries (the words of the seam read the slot, then the keys read it again, review of #292), then « This order is not available ».
         keystoreHolding(
           {_testnetEntry: null},
           scripted: List<Object?>.generate(
-            5,
+            10,
             (_) => PlatformException(code: 'read'),
           ),
         );
@@ -581,6 +583,7 @@ void main() {
         expect(wait, findsOneWidget);
         final waiting = tester.getSize(card);
 
+        await letTheVaultSettle(tester);
         await letTheVaultSettle(tester);
 
         expect(wait, findsNothing);
@@ -609,7 +612,7 @@ void main() {
         keystoreHolding(
           {_testnetEntry: null},
           scripted: List<Object?>.generate(
-            5,
+            10,
             (_) => PlatformException(code: 'read'),
           ),
         );
@@ -642,6 +645,7 @@ void main() {
         expect(missDialog, findsOneWidget);
         expect(wait, findsOneWidget);
 
+        await letTheVaultSettle(tester);
         await letTheVaultSettle(tester);
         expect(find.bySemanticsLabel('Acknowledged'), findsOneWidget);
         semantics.dispose();
@@ -3177,7 +3181,9 @@ void main() {
             words: await wordsOf(tester),
             databaseOpener: opener,
           );
-          final l10n = P2pLocalizations.of(tester.element(find.byType(GarageView)));
+          final l10n = P2pLocalizations.of(
+            tester.element(find.byType(GarageView)),
+          );
           await tapText(tester, l10n.p2pCommonAcknowledged);
           tester.view
             ..physicalSize = const Size(320 * 3, 2400 * 3)
@@ -3191,9 +3197,17 @@ void main() {
                 final paragraph = element.renderObject;
                 if (paragraph is! RenderParagraph) continue;
                 final text = paragraph.text.toPlainText();
+                // The paragraph's own text, width and scale, laid out again to read where its lines break.
+                final painter = TextPainter(
+                  text: paragraph.text,
+                  textDirection: paragraph.textDirection,
+                  textAlign: paragraph.textAlign,
+                  textScaler: paragraph.textScaler,
+                )..layout(maxWidth: paragraph.size.width);
+                addTearDown(painter.dispose);
                 var offset = 0;
                 while (offset < text.length) {
-                  final line = paragraph.getLineBoundary(
+                  final line = painter.getLineBoundary(
                     TextPosition(offset: offset),
                   );
                   if (line.end >= text.length || line.end <= offset) break;
@@ -3210,6 +3224,11 @@ void main() {
               }
             }
           }
+
+          Finder iconButton(String tooltip) => find.ancestor(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(IconButton),
+          );
 
           void targets(List<Finder> finders, String reason) {
             for (final finder in finders) {
@@ -3230,9 +3249,7 @@ void main() {
             await tester.pump();
             await settle(tester);
             // The external key, its line under the field, « Back » and its delete.
-            await tester.ensureVisible(
-              find.text(l10n.p2pGarageDeleteExternal),
-            );
+            await tester.ensureVisible(find.text(l10n.p2pGarageDeleteExternal));
             await tester.pump();
             expect(tester.takeException(), isNull, reason: reason);
             wordsWhole([
@@ -3245,8 +3262,8 @@ void main() {
                 of: find.text(l10n.p2pGarageDeleteExternal),
                 matching: find.byType(TextButton),
               ),
-              find.byTooltip(l10n.p2pGarageKeyExplain),
-              find.byTooltip(l10n.p2pGarageKeyReveal),
+              iconButton(l10n.p2pGarageKeyExplain),
+              iconButton(l10n.p2pGarageKeyReveal),
             ], reason);
             // Its delete, with the trade in progress named.
             await tapText(tester, l10n.p2pGarageDeleteExternal);
@@ -3277,9 +3294,9 @@ void main() {
               l10n.p2pGarageTradeInProgress('42'),
             ], reason);
             targets([
-              find.byTooltip(l10n.p2pGaragePreviousKey),
-              find.byTooltip(l10n.p2pGarageNextKey),
-              find.byTooltip(l10n.p2pGarageKeyExplain),
+              iconButton(l10n.p2pGaragePreviousKey),
+              iconButton(l10n.p2pGarageNextKey),
+              iconButton(l10n.p2pGarageKeyExplain),
             ], reason);
             await tapText(tester, l10n.p2pGarageNewKey);
             expect(tester.takeException(), isNull, reason: reason);

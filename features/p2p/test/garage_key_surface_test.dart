@@ -116,25 +116,29 @@ void main() {
     },
   );
 
-  test('the failures carry no field but the reason of an invalid key, and the number of an internal key imported', () {
-    final unit = unitOf('lib/src/domain/p2p_failure.dart');
+  test(
+    'the failures carry no field but the reason of an invalid key, and the number of an internal key imported',
+    () {
+      final unit = unitOf('lib/src/domain/p2p_failure.dart');
 
-    expect(_parts(unit), isEmpty);
-    final fields = {
-      for (final declaration in unit.declarations.whereType<ClassDeclaration>())
-        declaration.namePart.typeName.lexeme: _fieldsOf(declaration),
-    };
-    expect(fields, containsPair('GarageKeyMissingFailure', isEmpty));
-    expect(fields.values.expand((f) => f), [
-      'final GarageKeyFailure reason',
-      'final int index',
-    ]);
-    expect(fields['GarageKeyIsInternalFailure'], ['final int index']);
-    expect(fields['GarageKeyInvalidFailure'], [
-      'final GarageKeyFailure reason',
-    ]);
-    expect(unit.declarations, everyElement(isA<ClassDeclaration>()));
-  });
+      expect(_parts(unit), isEmpty);
+      final fields = {
+        for (final declaration
+            in unit.declarations.whereType<ClassDeclaration>())
+          declaration.namePart.typeName.lexeme: _fieldsOf(declaration),
+      };
+      expect(fields, containsPair('GarageKeyMissingFailure', isEmpty));
+      expect(fields.values.expand((f) => f), [
+        'final GarageKeyFailure reason',
+        'final int index',
+      ]);
+      expect(fields['GarageKeyIsInternalFailure'], ['final int index']);
+      expect(fields['GarageKeyInvalidFailure'], [
+        'final GarageKeyFailure reason',
+      ]);
+      expect(unit.declarations, everyElement(isA<ClassDeclaration>()));
+    },
+  );
 
   test('the check refuses each public way out of the repository', () {
     // A public method and a public static field are the two ways out a review found the custody gate blind to.

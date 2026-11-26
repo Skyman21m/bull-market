@@ -17,6 +17,9 @@ import 'recovery_dialog.dart';
 /// Where the ⓘ of the card sits: `false` at the right of the line under the field (placement A of the mock-up of 2026-11-26, built until the owner chooses), `true` in the title, beside the key's name (placement B).
 const bool _infoInTitle = false;
 
+/// The least room of each icon button of the card, a target of 48 points whatever the theme's density: never under the 44 points a finger needs.
+const BoxConstraints _target = BoxConstraints(minWidth: 48, minHeight: 48);
+
 /// The card « Garage Key » of the Garage (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 6; the mock-up decided on 2026-11-26), under the robot's panel, where the official client puts its Garage Key and its copy: the one thing of the Garage that changes with the Garage Keys.
 ///
 /// On an internal Garage Key (a key of the default wallet's words), its title carries the arrows, « ‹ Internal Garage Key #N › »: they select another internal Garage Key without the PIN, as the robot arrows move between robots, from key 0 up to the highest this device activated, and never create one nor reach the external Garage Key. Under the field, « Backed up by the 12 words of your Bull Wallet. » and its ⓘ; then « New internal Garage Key », which asks « New Garage Key » and activates the key after the highest; then « Switch to the external Garage Key » when the vault keeps one, otherwise the discreet link « Import an external Garage Key », which opens « Robot recovery ».
@@ -234,6 +237,7 @@ class _KeyNavigator extends StatelessWidget {
     return Row(
       children: [
         IconButton(
+          constraints: _target,
           tooltip: l10n.p2pGaragePreviousKey,
           onPressed: onPrevious,
           icon: const Icon(Icons.chevron_left),
@@ -243,6 +247,7 @@ class _KeyNavigator extends StatelessWidget {
         Expanded(child: _Title(title: title)),
         ?info,
         IconButton(
+          constraints: _target,
           tooltip: l10n.p2pGarageNextKey,
           onPressed: onNext,
           icon: const Icon(Icons.chevron_right),
@@ -313,6 +318,7 @@ class _InfoButton extends StatelessWidget {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     return IconButton(
+      constraints: _target,
       tooltip: l10n.p2pGarageKeyExplain,
       onPressed: () => GarageKeyInfoDialog.show(context, external: external),
       icon: const Icon(Icons.info_outline),
@@ -402,6 +408,7 @@ class _MaskedKey extends StatelessWidget {
             ),
           ),
           IconButton(
+            constraints: _target,
             tooltip: l10n.p2pGarageKeyReveal,
             onPressed: onReveal,
             icon: const Icon(Icons.visibility),

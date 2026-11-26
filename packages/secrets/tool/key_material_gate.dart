@@ -1130,6 +1130,13 @@ const _garageKeyReaders = {
           'Future<Result<GarageKeyring, P2pFailure>> Function(RobosatsNetwork)',
       'read':
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+      // The decisions of 2026-11-26 on the Garage Key card (#81): the external key read alone, « Back to internal Garage Keys », an internal key refused at an import by its fingerprint, « Your Garage Keys » shown once.
+      'external':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+      'selectInternal': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+      'internalIndexOf':
+          'Future<Result<int?, P2pFailure>> Function(RobosatsNetwork, GarageKeyFingerprint)',
+      'externalNoticeShown': 'Future<Result<void, P2pFailure>> Function()',
       'derived':
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork, int)',
       'forNewTrade':
@@ -1170,6 +1177,7 @@ const _readerTypes = {
   'bool': 'dart:core',
   'int': 'dart:core',
   'GarageKeyring': 'package:p2p/src/domain/garage_keyring.dart',
+  'GarageKeyFingerprint': 'package:p2p/src/domain/garage_key_fingerprint.dart',
   'GarageKeySelection': 'package:p2p/src/domain/garage_keyring.dart',
   'GarageKeyBookRepository':
       'package:p2p/src/domain/repositories/garage_key_book_repository.dart',
