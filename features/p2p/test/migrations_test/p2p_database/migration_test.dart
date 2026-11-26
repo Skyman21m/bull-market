@@ -204,14 +204,14 @@ void main() {
       () async {
         await writeSchema1();
 
-        final first = P2pDatabase.open(() async => directory);
+        final first = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         await expectRowsKept(first);
         expect(await versionOf(first), P2pDatabase.schema);
         await first.validateDatabaseSchema();
         await first.close();
 
         // Opened a second time: nothing to migrate, the same rows.
-        final second = P2pDatabase.open(() async => directory);
+        final second = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await versionOf(second), P2pDatabase.schema);
         await expectRowsKept(second);
         await second.validateDatabaseSchema();
@@ -221,7 +221,7 @@ void main() {
 
     test('its keys and bindings follow the rules of schema 2 once migrated', () async {
       await writeSchema1();
-      final database = P2pDatabase.open(() async => directory);
+      final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
       final repository = RobotBindingRepositoryImpl(
         database,
         clock: () => testNow,
@@ -324,7 +324,7 @@ void main() {
       'every commit is still synced to disk, in write-ahead logging',
       () async {
         await writeSchema1();
-        final database = P2pDatabase.open(() async => directory);
+        final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
 
         expect(await versionOf(database), P2pDatabase.schema);
         expect(
@@ -377,7 +377,7 @@ void main() {
         expect(await versionOf(half), 1);
         await half.close();
 
-        final database = P2pDatabase.open(() async => directory);
+        final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         await expectRowsKept(database);
         expect(await versionOf(database), P2pDatabase.schema);
         await database.validateDatabaseSchema();
@@ -566,13 +566,13 @@ void main() {
       () async {
         await writeSchema2();
 
-        final first = P2pDatabase.open(() async => directory);
+        final first = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         await expectRowsKept(first);
         expect(await versionOf(first), P2pDatabase.schema);
         await first.validateDatabaseSchema();
         await first.close();
 
-        final second = P2pDatabase.open(() async => directory);
+        final second = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await versionOf(second), P2pDatabase.schema);
         await expectRowsKept(second);
         await second.validateDatabaseSchema();
@@ -584,7 +584,7 @@ void main() {
       'a file of schema 3 opened again is unchanged, rows and schema alike',
       () async {
         await writeSchema2();
-        final first = P2pDatabase.open(() async => directory);
+        final first = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         final trades = TradeRecordRepositoryImpl(first, clock: () => testNow);
         final reservation = switch (await trades.reserveForNewTrade(
           RobotSlot(testnet, drawn, 1),
@@ -603,7 +603,7 @@ void main() {
         final schema = await schemaOf(first);
         await first.close();
 
-        final second = P2pDatabase.open(() async => directory);
+        final second = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await versionOf(second), P2pDatabase.schema);
         expect(await rowsOf(second), rows);
         expect(await schemaOf(second), schema);
@@ -614,7 +614,7 @@ void main() {
 
     test('its keys and bindings follow the rules of schema 3 once migrated', () async {
       await writeSchema2();
-      final database = P2pDatabase.open(() async => directory);
+      final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
       final trades = TradeRecordRepositoryImpl(database, clock: () => testNow);
       Matcher refusedWith<T>() => isA<Err<Object?, P2pFailure>>().having(
         (err) => err.failure,
@@ -738,7 +738,7 @@ void main() {
         expect(expected.keys, unorderedEquals(_schema3Objects));
 
         await writeSchema2();
-        final migrated = P2pDatabase.open(() async => directory);
+        final migrated = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await objectsOf(migrated), expected);
         await migrated.close();
       },
@@ -776,7 +776,7 @@ void main() {
           expect(await versionOf(half), 2, reason: '$parts');
           await half.close();
 
-          final database = P2pDatabase.open(() async => directory);
+          final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
           await expectRowsKept(database);
           expect(
             await versionOf(database),
@@ -959,7 +959,7 @@ void main() {
         };
         await old.close();
 
-        final first = P2pDatabase.open(() async => directory);
+        final first = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         final rows = await rowsOf(first);
         expect(await versionOf(first), P2pDatabase.schema);
         expect({for (final table in before.keys) table: rows[table]}, before);
@@ -975,7 +975,7 @@ void main() {
         );
         await first.close();
 
-        final second = P2pDatabase.open(() async => directory);
+        final second = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await versionOf(second), P2pDatabase.schema);
         expect(await rowsOf(second), rows);
         await second.close();
@@ -986,7 +986,7 @@ void main() {
       'its open trades take terms and a trail, its closed one neither',
       () async {
         await writeSchema3();
-        final database = P2pDatabase.open(() async => directory);
+        final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         final records = TradeRecordRepositoryImpl(
           database,
           clock: () => testNow,
@@ -1078,7 +1078,7 @@ void main() {
             );
         await old.close();
 
-        final database = P2pDatabase.open(() async => directory);
+        final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await versionOf(database), P2pDatabase.schema);
         expect(
           await database
@@ -1124,7 +1124,7 @@ void main() {
         expect(expected.keys, unorderedEquals(_schema4Objects));
 
         await writeSchema3();
-        final migrated = P2pDatabase.open(() async => directory);
+        final migrated = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await objectsOf(migrated), expected);
         await migrated.close();
       },
@@ -1160,7 +1160,7 @@ void main() {
           expect(await versionOf(half), 3, reason: '$parts');
           await half.close();
 
-          final database = P2pDatabase.open(() async => directory);
+          final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
           expect(
             await versionOf(database),
             P2pDatabase.schema,
@@ -1203,7 +1203,7 @@ void main() {
     /// A file of schema 4 with rows: the file of schema 3 migrated, then brought back to schema 4 by dropping what schema 5 adds (the table of the payments takes its triggers with it).
     Future<void> writeSchema4() async {
       await writeSchema3();
-      final database = P2pDatabase.open(() async => directory);
+      final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
       expect(await versionOf(database), P2pDatabase.schema);
       await database.customStatement('DROP TABLE IF EXISTS trade_chat_pins');
       await database.customStatement(
@@ -1231,7 +1231,7 @@ void main() {
         expect(await paymentObjectsOf(old), isEmpty);
         await old.close();
 
-        final migrated = P2pDatabase.open(() async => directory);
+        final migrated = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
         expect(await versionOf(migrated), P2pDatabase.schema);
         await migrated.validateDatabaseSchema();
         expect(await paymentObjectsOf(migrated), expected);
@@ -1277,7 +1277,7 @@ void main() {
           expect(await versionOf(half), 4, reason: '$parts');
           await half.close();
 
-          final database = P2pDatabase.open(() async => directory);
+          final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
           expect(
             await versionOf(database),
             P2pDatabase.schema,
@@ -1296,7 +1296,7 @@ void main() {
 
     test('a payment of a trade never read is refused by the file', () async {
       await writeSchema4();
-      final database = P2pDatabase.open(() async => directory);
+      final database = P2pDatabase.openWithoutSwitchForTesting(() async => directory);
       // The trades of this file have no trail: none can be paid.
       await expectLater(
         database.customStatement(

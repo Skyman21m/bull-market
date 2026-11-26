@@ -134,7 +134,10 @@ class _GarageUnavailable extends StatelessWidget {
             const Gap(BullSpacing.sm),
           ],
           Text(
-            failure.toTranslated(context),
+            // A database that cannot be read says so: the keys activated on this device are recorded there (#81).
+            failure is P2pStorageFailure
+                ? l10n.p2pRobotRecordsUnreadable
+                : failure.toTranslated(context),
             textAlign: TextAlign.center,
             style: text.bodyLarge?.copyWith(color: colors.text),
           ),

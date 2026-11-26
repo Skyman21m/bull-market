@@ -110,9 +110,10 @@ void main() {
       final before = await _rowsOf(old, _schema8Columns);
       await old.close();
 
-      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
-      expect(P2pDatabase.schema, 9);
+      // Schema 10 (#81) adds two tables after this step, which changes no row of it; the switch is left out here (`withoutSwitchForTesting`), `schema10_migration_test.dart` and `garage_key_repository_test.dart` play it.
+      expect(P2pDatabase.schema, 10);
       await migrated.validateDatabaseSchema();
       expect(await _rowsOf(migrated, _schema8Columns), before);
       // The new columns of every older row: empty, « unknown » and « no trace recorded », never 0.
@@ -174,12 +175,12 @@ void main() {
         'p2p-fresh-',
       );
       addTearDown(() => freshDirectory.delete(recursive: true));
-      final fresh = P2pDatabase.open(() async => freshDirectory);
+      final fresh = P2pDatabase.openWithoutSwitchForTesting(() async => freshDirectory);
       expect(objects, await _objectsOf(fresh));
       await fresh.close();
 
       // Opened again: nothing moves.
-      final again = P2pDatabase.forTesting(NativeDatabase(file));
+      final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(await _versionOf(again), P2pDatabase.schema);
       expect(
         await _rowsOf(again, {..._schema8Columns, ..._schema9Columns}),
@@ -196,10 +197,10 @@ void main() {
       final first = await schema8File();
       final reference = copyOf(first, 'reference.sqlite');
       final recorder = _StopAfter(null);
-      final once = P2pDatabase.forTesting(
+      final once = P2pDatabase.withoutSwitchForTesting(
         NativeDatabase(reference).interceptWith(recorder),
       );
-      expect(await _versionOf(once), 9);
+      expect(await _versionOf(once), P2pDatabase.schema);
       final columns = {..._schema8Columns, ..._schema9Columns};
       final expectedRows = await _rowsOf(once, columns);
       final expectedObjects = await _objectsOf(once);
@@ -209,7 +210,7 @@ void main() {
 
       for (var stop = 0; stop < statements.length; stop++) {
         final file = copyOf(first, 'stop-$stop.sqlite');
-        final stopped = P2pDatabase.forTesting(
+        final stopped = P2pDatabase.withoutSwitchForTesting(
           NativeDatabase(file).interceptWith(_StopAfter(stop)),
         );
         await expectLater(
@@ -222,8 +223,8 @@ void main() {
         expect(await _versionOf(left), 8, reason: '$stop');
         await left.close();
 
-        final again = P2pDatabase.forTesting(NativeDatabase(file));
-        expect(await _versionOf(again), 9, reason: '$stop');
+        final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+        expect(await _versionOf(again), P2pDatabase.schema, reason: '$stop');
         expect(await _rowsOf(again, columns), expectedRows, reason: '$stop');
         expect(await _objectsOf(again), expectedObjects, reason: '$stop');
         await again.close();
@@ -236,16 +237,16 @@ void main() {
     'done to its last statement but its version not written, the step runs again and changes nothing',
     () async {
       final file = await schema8File();
-      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
-      expect(await _versionOf(migrated), 9);
+      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      expect(await _versionOf(migrated), P2pDatabase.schema);
       final columns = {..._schema8Columns, ..._schema9Columns};
       final rows = await _rowsOf(migrated, columns);
       final objects = await _objectsOf(migrated);
       await migrated.customStatement('PRAGMA user_version = 8');
       await migrated.close();
 
-      final again = P2pDatabase.forTesting(NativeDatabase(file));
-      expect(await _versionOf(again), 9);
+      final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      expect(await _versionOf(again), P2pDatabase.schema);
       expect(await _rowsOf(again, columns), rows);
       expect(await _objectsOf(again), objects);
       await again.close();
@@ -257,8 +258,8 @@ void main() {
 
     setUp(() async {
       final file = await schema8File();
-      database = P2pDatabase.forTesting(NativeDatabase(file));
-      expect(await _versionOf(database), 9);
+      database = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      expect(await _versionOf(database), P2pDatabase.schema);
     });
 
     tearDown(() => database.close());
@@ -430,8 +431,8 @@ void main() {
   test(
     'on a new file, the trigger keeps the trace as on a migrated one (security verification of schema 9, R8)',
     () async {
-      final fresh = P2pDatabase.forTesting(NativeDatabase.memory());
-      expect(await _versionOf(fresh), 9);
+      final fresh = P2pDatabase.withoutSwitchForTesting(NativeDatabase.memory());
+      expect(await _versionOf(fresh), P2pDatabase.schema);
       // The same trails, written as schema 9 writes them (its three new columns empty); the payments, which schema 9 never starts without an amount, are not needed here.
       for (final statement in _schema8Rows) {
         if (statement.startsWith(_payments)) continue;

@@ -94,7 +94,7 @@ void main() {
       final before = await _rowsOf(old, _schema7Columns);
       await old.close();
 
-      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
       await migrated.validateDatabaseSchema();
       expect(await _rowsOf(migrated, _schema7Columns), before);
@@ -152,12 +152,12 @@ void main() {
         'p2p-fresh-',
       );
       addTearDown(() => freshDirectory.delete(recursive: true));
-      final fresh = P2pDatabase.open(() async => freshDirectory);
+      final fresh = P2pDatabase.openWithoutSwitchForTesting(() async => freshDirectory);
       expect(objects, await _objectsOf(fresh));
       await fresh.close();
 
       // Opened again: nothing is rebuilt, nothing moves.
-      final again = P2pDatabase.forTesting(NativeDatabase(file));
+      final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(await _versionOf(again), P2pDatabase.schema);
       expect(await _rowsOf(again, _schema8Columns), rows);
       expect(await _objectsOf(again), objects);
@@ -169,7 +169,7 @@ void main() {
     'the two payments of one hash and the two open trades of one order are kept, and a third of either is refused',
     () async {
       final file = await schema7File();
-      final database = P2pDatabase.forTesting(NativeDatabase(file));
+      final database = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(
         await database
             .customSelect(
@@ -293,13 +293,13 @@ void main() {
     () async {
       final file = await schema7File();
       final reference = copyOf(file, 'reference.sqlite');
-      final once = P2pDatabase.forTesting(NativeDatabase(reference));
+      final once = P2pDatabase.withoutSwitchForTesting(NativeDatabase(reference));
       expect(await _versionOf(once), P2pDatabase.schema);
       final rows = await _rowsOf(once, _schema8Columns);
       final objects = await _objectsOf(once);
       await once.close();
 
-      final on = P2pDatabase.forTesting(
+      final on = P2pDatabase.withoutSwitchForTesting(
         NativeDatabase(
           file,
           setup: (database) => database.execute('PRAGMA foreign_keys = ON'),
@@ -332,7 +332,7 @@ void main() {
       for (var turn = 0; turn < 2; turn++) {
         // A connection where turning them off does nothing, as inside a transaction.
         final stuck = _KeepsForeignKeysOn();
-        final on = P2pDatabase.forTesting(
+        final on = P2pDatabase.withoutSwitchForTesting(
           NativeDatabase(
             file,
             setup: (database) => database.execute('PRAGMA foreign_keys = ON'),
@@ -360,7 +360,7 @@ void main() {
       }
 
       // The app's own connection, whose foreign keys are off during a step, migrates it.
-      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
       expect(await _rowsOf(migrated, _schema7Columns), rows);
       await migrated.close();
@@ -374,7 +374,7 @@ void main() {
         'p2p-fresh-',
       );
       addTearDown(() => freshDirectory.delete(recursive: true));
-      final fresh = P2pDatabase.open(() async => freshDirectory);
+      final fresh = P2pDatabase.openWithoutSwitchForTesting(() async => freshDirectory);
       final expected = await _objectsOf(fresh);
       await fresh.close();
       // The order of the triggers of the trades, as a new file has them: the one that writes nothing on a robot already recorded fires before the one that aborts on an order already open, SQLite firing the newest first.
@@ -406,7 +406,7 @@ void main() {
         final old = open(NativeDatabase(file));
         expect(await _versionOf(old), version);
         await old.close();
-        final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+        final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
         expect(await _versionOf(migrated), P2pDatabase.schema);
         expect(
           await _objectsOf(migrated),
@@ -417,7 +417,7 @@ void main() {
       }
       // And the file of schema 7 with its rows.
       final rows = await schema7File();
-      final migrated = P2pDatabase.forTesting(NativeDatabase(rows));
+      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(rows));
       expect(await _objectsOf(migrated), expected);
       await migrated.close();
     },
@@ -427,7 +427,7 @@ void main() {
     'a pending take written again for a robot already recorded on an open order is a robot already recorded, on a migrated file as on a new one',
     () async {
       final file = await schema7File();
-      final database = P2pDatabase.forTesting(NativeDatabase(file));
+      final database = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       final records = TradeRecordRepositoryImpl(
         database,
         clock: () => DateTime.utc(2026, 11, 16),
@@ -515,7 +515,7 @@ void main() {
         final rows = await _rowsOf(old, _schema7Columns);
         await old.close();
 
-        final stopped = P2pDatabase.forTesting(NativeDatabase(file));
+        final stopped = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
         await expectLater(
           _versionOf(stopped),
           throwsA(
@@ -560,7 +560,7 @@ void main() {
       await old.close();
 
       for (var turn = 0; turn < 2; turn++) {
-        final stopped = P2pDatabase.forTesting(NativeDatabase(file));
+        final stopped = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
         await expectLater(
           _versionOf(stopped),
           throwsA(
@@ -599,7 +599,7 @@ void main() {
       );
       final withBinding = await _rowsOf(fixed, _schema7Columns);
       await fixed.close();
-      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
       expect(await _rowsOf(migrated, _schema7Columns), withBinding);
       expect(
@@ -613,7 +613,7 @@ void main() {
 
 /// The database opened on [executor] as an app of schema 8 opened it: only the steps up to 8 run, and drift writes version 8 (schema 9, #204, #231, #233, is the next step, tested apart).
 P2pDatabase _atSchema8(QueryExecutor executor) =>
-    P2pDatabase.forTesting(executor.interceptWith(_UpToSchema(8)));
+    P2pDatabase.withoutSwitchForTesting(executor.interceptWith(_UpToSchema(8)));
 
 /// An opening that tells drift the database's schema is [version], so that the steps run up to it only.
 final class _UpToSchema extends QueryInterceptor {

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:meta/meta.dart';
 
 import 'p2p_database.steps.dart';
 import 'p2p_tables.dart';
@@ -195,14 +196,32 @@ final class P2pDatabase extends _$P2pDatabase {
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
 
-  P2pDatabase._(super.executor);
+  P2pDatabase._(super.executor, {bool switchOnOpen = true})
+    : _switchOnOpen = switchOnOpen;
+
+  /// Whether the opening plays the one-time switch of #81 ([_resumeSwitch]): always in the app; the tests of the migration steps alone turn it off, so that what they check is the steps, not the emptying.
+  final bool _switchOnOpen;
 
   /// The database in the directory [directory] completes with, opened at the first query: creating it touches no file.
   ///
   /// Every commit is synced to disk (`synchronous = FULL`), so that a binding written survives a power cut before the request of its robot leaves.
   /// Prepared statements are not cached (#128): `package:sqlite3` leaves a statement whose step failed unreset until its next use, and a cached write that met `SQLITE_BUSY` stays active, so every later write of the connection, reported written, stays uncommitted under its write lock and is rolled back when that statement is reset: run again, evicted from drift's cache, or its connection closed. Each statement is finalized after its use instead, whatever it gave.
   factory P2pDatabase.open(Future<Directory> Function() directory) =>
-      P2pDatabase._(
+      P2pDatabase._(_connectionIn(directory));
+
+  /// [P2pDatabase.open] without the one-time switch of #81 at its openings: for the tests of the migration steps alone, never the app.
+  @visibleForTesting
+  factory P2pDatabase.openWithoutSwitchForTesting(
+    Future<Directory> Function() directory,
+  ) => P2pDatabase._(_connectionIn(directory), switchOnOpen: false);
+
+  /// [P2pDatabase.forTesting] without the one-time switch of #81 at its openings: for the tests of the migration steps alone.
+  @visibleForTesting
+  factory P2pDatabase.withoutSwitchForTesting(QueryExecutor executor) =>
+      P2pDatabase._(executor, switchOnOpen: false);
+
+  /// The connection to the file of the database in [directory], as [P2pDatabase.open] describes it.
+  static QueryExecutor _connectionIn(Future<Directory> Function() directory) =>
         LazyDatabase(() async {
           final file = File.fromUri((await directory()).uri.resolve(fileName));
           return NativeDatabase.createInBackground(
@@ -214,8 +233,7 @@ final class P2pDatabase extends _$P2pDatabase {
               database.execute('PRAGMA synchronous = FULL;');
             },
           );
-        }),
-      );
+        });
 
   factory P2pDatabase.forTesting(QueryExecutor executor) = P2pDatabase._;
 
@@ -471,7 +489,10 @@ final class P2pDatabase extends _$P2pDatabase {
     ),
     // The switch of #81 goes as far as it can before any query of this run, then every connection, the app's and the tests', enforces the foreign key of the trades.
     beforeOpen: (details) async {
-      await _resumeSwitch(created: details.wasCreated);
+      // Only on a file of schema 10 or later: the tests of the steps open files at an older version.
+      if (_switchOnOpen && details.versionNow >= 10) {
+        await _resumeSwitch(created: details.wasCreated);
+      }
       await customStatement(_foreignKeysOn);
     },
   );

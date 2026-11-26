@@ -140,7 +140,8 @@ final class _App {
         },
       ),
     );
-    for (var i = 0; i < 400 && !done; i++) {
+    // Up to 20 s of the fake clock: two empty slots of the vault settle in about 9 s (#81 stores a second key at the start).
+    for (var i = 0; i < 1000 && !done; i++) {
       await tester.pump(const Duration(milliseconds: 20));
     }
     if (error case final error?) throw error;
