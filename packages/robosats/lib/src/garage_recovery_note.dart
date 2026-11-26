@@ -106,7 +106,7 @@ abstract final class GarageRecoveryNote {
   /// [latestAccount] with the identities [identities] in place of a Garage Key, for an isolate that must not receive it.
   ///
   /// A note counts for an identity when its wrap has a `p` tag naming it (what the filter of that identity returns), it unwraps with that identity's key as `unwrapEvent` unwraps it ([NostrGiftUnwrap]), its rumor is that identity's (`RoboPool/index.ts:684-685`), and the rumor reads as `parseAccountRecoveryEvent` reads it (`accountRecovery.ts:32-53`): kind [kind], the first `d` tag [dTagValue], the first `account` tag a canonical decimal (no sign, no leading zero) of a robot index; the content is not read, as in the reference.
-  /// Two points are stricter than the reference, where only a holder of the key could make a note differ: every tag of the rumor must be a list of strings, and its `created_at` an integer of at least 0.
+  /// Besides the `p` tag, which the reference leaves to the relay's filter, two points are stricter than the reference, where only a holder of the key could make a note differ: every tag of the rumor must be a list of strings, and its `created_at` an integer of at least 0.
   /// The choice is the reference's: the latest rumor `created_at`, the larger index on a tie, whichever identity wrote it; a note dated in the future is not set apart.
   /// Everything else is ignored, without an exception or a log; at most [maxEvents] events are looked at, and none longer than [maxEventLength].
   static int? latestAccountFor(
