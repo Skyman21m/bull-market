@@ -329,77 +329,88 @@ void main() {
       }
     });
 
-    test('a secret with a passphrase is refused, and its key never computed', () async {
-      // What the words with « TREZOR » would give at mainnet index 0: the refusal withholds exactly this.
-      const neverProduced =
-          '73c94c4bdbdad068444c58e28897b4f22a0d025125d66c7e2429fa0dd15b3bca';
-      FakeSecureStoragePlatform().install();
-      final repository = SecretRepository();
-      final info = ok(
-        await repository.store(words: abandon, passphrase: 'TREZOR'),
-      );
-      final root = ok(
-        await repository.use(info, (m) => Deriver.bip85.root(m)),
-      );
-      expect(
-        hexOf(Deriver.garage.keyFromRoot(root, network: mainnet, index: 0)),
-        neverProduced,
-      );
-
-      final secret = await imported(
-        service(FakeSecureStoragePlatform()),
-        abandon,
-        passphrase: 'TREZOR',
-      );
-      for (final network in GarageKeySlot.values) {
-        expect(
-          err(await secret.derive.garageKey(network: network, index: 0)),
-          isA<PassphraseUnsupportedFailure>(),
-          reason: network.name,
+    test(
+      'a secret with a passphrase is refused, and its key never computed',
+      () async {
+        // What the words with « TREZOR » would give at mainnet index 0: the refusal withholds exactly this.
+        const neverProduced =
+            '73c94c4bdbdad068444c58e28897b4f22a0d025125d66c7e2429fa0dd15b3bca';
+        FakeSecureStoragePlatform().install();
+        final repository = SecretRepository();
+        final info = ok(
+          await repository.store(words: abandon, passphrase: 'TREZOR'),
         );
-      }
-    });
+        final root = ok(
+          await repository.use(info, (m) => Deriver.bip85.root(m)),
+        );
+        expect(
+          hexOf(Deriver.garage.keyFromRoot(root, network: mainnet, index: 0)),
+          neverProduced,
+        );
 
-    test('a seed-only secret is refused: the words must give the key back', () async {
-      final storage = FakeSecureStoragePlatform(
-        entries: {
-          'seed_aabbccdd': jsonEncode({
-            'bytes': List<int>.filled(64, 7),
-            'runtimeType': 'bytes',
-          }),
-        },
-      );
-      final secret = ok(await service(storage).fetch(Fingerprint('aabbccdd')));
-      expect(
-        err(await secret.derive.garageKey(network: mainnet, index: 0)),
-        isA<MnemonicRequiredFailure>(),
-      );
-    });
-
-    test('an index outside 0 … 2^31−1 is refused before any keystore read', () async {
-      final storage = FakeSecureStoragePlatform();
-      final secret = await imported(service(storage), abandon);
-      storage.locked = true;
-      final before = storage.reads;
-      for (final index in [-1, 0x80000000, 0x100000000]) {
+        final secret = await imported(
+          service(FakeSecureStoragePlatform()),
+          abandon,
+          passphrase: 'TREZOR',
+        );
         for (final network in GarageKeySlot.values) {
           expect(
-            () => secret.derive.garageKey(network: network, index: index),
-            throwsArgumentError,
-            reason: '${network.name} $index',
+            err(await secret.derive.garageKey(network: network, index: 0)),
+            isA<PassphraseUnsupportedFailure>(),
+            reason: network.name,
           );
         }
-      }
-      expect(storage.reads, before);
+      },
+    );
 
-      for (final index in [0, 0x7fffffff]) {
-        expect(
-          err(await secret.derive.garageKey(network: mainnet, index: index)),
-          isA<KeystoreLockedFailure>(),
+    test(
+      'a seed-only secret is refused: the words must give the key back',
+      () async {
+        final storage = FakeSecureStoragePlatform(
+          entries: {
+            'seed_aabbccdd': jsonEncode({
+              'bytes': List<int>.filled(64, 7),
+              'runtimeType': 'bytes',
+            }),
+          },
         );
-      }
-      expect(storage.reads, greaterThan(before));
-    });
+        final secret = ok(
+          await service(storage).fetch(Fingerprint('aabbccdd')),
+        );
+        expect(
+          err(await secret.derive.garageKey(network: mainnet, index: 0)),
+          isA<MnemonicRequiredFailure>(),
+        );
+      },
+    );
+
+    test(
+      'an index outside 0 … 2^31−1 is refused before any keystore read',
+      () async {
+        final storage = FakeSecureStoragePlatform();
+        final secret = await imported(service(storage), abandon);
+        storage.locked = true;
+        final before = storage.reads;
+        for (final index in [-1, 0x80000000, 0x100000000]) {
+          for (final network in GarageKeySlot.values) {
+            expect(
+              () => secret.derive.garageKey(network: network, index: index),
+              throwsArgumentError,
+              reason: '${network.name} $index',
+            );
+          }
+        }
+        expect(storage.reads, before);
+
+        for (final index in [0, 0x7fffffff]) {
+          expect(
+            err(await secret.derive.garageKey(network: mainnet, index: index)),
+            isA<KeystoreLockedFailure>(),
+          );
+        }
+        expect(storage.reads, greaterThan(before));
+      },
+    );
   });
 
   test('the key never prints itself', () async {
@@ -412,66 +423,80 @@ void main() {
     expect(result.toString(), isNot(contains('f7286792')));
   });
 
-  test('no key collides with the other children the package derives from the same words', () async {
-    FakeSecureStoragePlatform().install();
-    final repository = SecretRepository();
-    final info = ok(await repository.store(words: abandon));
-    final material = ok(await repository.use(info, (m) => m));
-    final root = Deriver.bip85.root(material);
-    expect(root, _abandonMaster);
+  test(
+    'no key collides with the other children the package derives from the same words',
+    () async {
+      FakeSecureStoragePlatform().install();
+      final repository = SecretRepository();
+      final info = ok(await repository.store(words: abandon));
+      final material = ok(await repository.use(info, (m) => m));
+      final root = Deriver.bip85.root(material);
+      expect(root, _abandonMaster);
 
-    const indexes = 16;
-    final garage = <String>{
-      for (final network in GarageKeySlot.values)
-        for (var index = 0; index < indexes; index++)
-          hexOf(
-            Deriver.garage.keyFromRoot(root, network: network, index: index),
-          ),
-    };
-    expect(garage, hasLength(2 * indexes), reason: 'Garage Keys among themselves');
-
-    String entropyOf(List<String> words) =>
-        bip39.Mnemonic.fromWords(words: words).entropy
-            .map((b) => b.toRadixString(16).padLeft(2, '0'))
-            .join();
-    final others = <String>[
-      for (var index = 0; index < indexes; index++) ...[
-        Deriver.bip85.hex(material, numBytes: 32, index: index),
-        Deriver.bip85
-            .hex(material, numBytes: 64, index: index)
-            .substring(0, 64),
-        Backup.recoverbull.backupKey(
-          masterXprv: root,
-          path: "1608'/0'/$index'",
-        ),
-        for (final length in [
-          bip39.MnemonicLength.words12,
-          bip39.MnemonicLength.words24,
-        ])
-          entropyOf(
-            Deriver.bip85.mnemonic(
-              material,
-              language: bip39.Language.english,
-              length: length,
-              index: index,
+      const indexes = 16;
+      final garage = <String>{
+        for (final network in GarageKeySlot.values)
+          for (var index = 0; index < indexes; index++)
+            hexOf(
+              Deriver.garage.keyFromRoot(root, network: network, index: index),
             ),
+      };
+      expect(
+        garage,
+        hasLength(2 * indexes),
+        reason: 'Garage Keys among themselves',
+      );
+
+      String entropyOf(List<String> words) => bip39.Mnemonic.fromWords(
+        words: words,
+      ).entropy.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      final others = <String>[
+        for (var index = 0; index < indexes; index++) ...[
+          Deriver.bip85.hex(material, numBytes: 32, index: index),
+          Deriver.bip85
+              .hex(material, numBytes: 64, index: index)
+              .substring(0, 64),
+          Backup.recoverbull.backupKey(
+            masterXprv: root,
+            path: "1608'/0'/$index'",
           ),
-      ],
-      // The swap key's mnemonic, the child boltz derives (`swap_key_vector_test.dart`).
-      entropyOf(
-        Deriver.bip85.mnemonic(
-          material,
-          language: bip39.Language.english,
-          length: bip39.MnemonicLength.words12,
-          index: 26589,
+          for (final length in [
+            bip39.MnemonicLength.words12,
+            bip39.MnemonicLength.words24,
+          ])
+            entropyOf(
+              Deriver.bip85.mnemonic(
+                material,
+                language: bip39.Language.english,
+                length: length,
+                index: index,
+              ),
+            ),
+        ],
+        // The swap key's mnemonic, the child boltz derives (`swap_key_vector_test.dart`).
+        entropyOf(
+          Deriver.bip85.mnemonic(
+            material,
+            language: bip39.Language.english,
+            length: bip39.MnemonicLength.words12,
+            index: 26589,
+          ),
         ),
-      ),
-    ];
-    for (final other in others) {
-      expect(garage.any((key) => other.startsWith(key)), isFalse, reason: other);
-      expect(garage.any((key) => key.startsWith(other)), isFalse, reason: other);
-    }
-  });
+      ];
+      for (final other in others) {
+        expect(
+          garage.any((key) => other.startsWith(key)),
+          isFalse,
+          reason: other,
+        );
+        expect(
+          garage.any((key) => key.startsWith(other)),
+          isFalse,
+          reason: other,
+        );
+      }
+    },
+  );
 }
 
 /// The master xprv of « abandon … about » without a passphrase, pinned in `derivation_vectors_test.dart`.

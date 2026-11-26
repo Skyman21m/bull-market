@@ -2803,28 +2803,30 @@ Object key(Secret secret) =>
       }
     });
 
-    test('the flat operation, a tear-off, an alias and a pattern keep the identity', () async {
-      for (final (name, source, symbol) in [
-        (
-          'garage_derived_flat',
-          '''
+    test(
+      'the flat operation, a tear-off, an alias and a pattern keep the identity',
+      () async {
+        for (final (name, source, symbol) in [
+          (
+            'garage_derived_flat',
+            '''
 import 'package:secrets/secrets.dart';
 Object key(Secret secret) =>
     secret.garageKey(network: GarageKeySlot.testnet, index: 1);
 ''',
-          '#Secret.garageKey',
-        ),
-        (
-          'garage_derived_tear_off',
-          '''
+            '#Secret.garageKey',
+          ),
+          (
+            'garage_derived_tear_off',
+            '''
 import 'package:secrets/secrets.dart';
 Object key(Secret secret) => secret.derive.garageKey;
 ''',
-          '#SecretDerivation.garageKey',
-        ),
-        (
-          'garage_derived_alias',
-          '''
+            '#SecretDerivation.garageKey',
+          ),
+          (
+            'garage_derived_alias',
+            '''
 import 'package:secrets/secrets.dart' as custody;
 typedef Handle = custody.Secret;
 Object key(Handle secret) => secret.derive.garageKey(
@@ -2832,27 +2834,28 @@ Object key(Handle secret) => secret.derive.garageKey(
   index: 2,
 );
 ''',
-          '#SecretDerivation.garageKey',
-        ),
-        (
-          'garage_derived_pattern',
-          '''
+            '#SecretDerivation.garageKey',
+          ),
+          (
+            'garage_derived_pattern',
+            '''
 import 'package:secrets/secrets.dart';
 Object key(Object value) => switch (value) {
   Secret(garageKey: final derive) => derive,
   _ => 0,
 };
 ''',
-          '#Secret.garageKey',
-        ),
-      ]) {
-        expect(
-          (await inspect(name, source)).single,
-          allOf(contains('package:secrets/'), endsWith(symbol)),
-          reason: name,
-        );
-      }
-    });
+            '#Secret.garageKey',
+          ),
+        ]) {
+          expect(
+            (await inspect(name, source)).single,
+            allOf(contains('package:secrets/'), endsWith(symbol)),
+            reason: name,
+          );
+        }
+      },
+    );
 
     test('dynamic access fails closed', () async {
       final violations = await inspect('garage_derived_dynamic', '''

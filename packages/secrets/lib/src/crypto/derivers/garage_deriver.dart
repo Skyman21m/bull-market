@@ -82,7 +82,11 @@ final class GarageDeriver {
       final match = RegExp(r"^(0|[1-9][0-9]{0,9})'$").firstMatch(step);
       final number = match == null ? null : int.parse(match.group(1) ?? '');
       if (number == null || number >= _hardened) {
-        throw ArgumentError.value(path, 'path', 'a step is not hardened, or not a canonical number below 2^31');
+        throw ArgumentError.value(
+          path,
+          'path',
+          'a step is not hardened, or not a canonical number below 2^31',
+        );
       }
       numbers.add(number);
     }

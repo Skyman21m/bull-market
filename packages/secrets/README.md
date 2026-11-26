@@ -45,7 +45,8 @@ Secret
 |   |   |-- hex(numBytes:, index:) -> String
 |   |   `-- mnemonic(wordCount:, index:, [language: Language.english]) -> List<String>
 |   |-- xpub(network:, scriptType:, [accountIndex: 0]) -> String
-|   `-- swapKey(network:) -> SwapMasterKey
+|   |-- swapKey(network:) -> SwapMasterKey
+|   `-- garageKey(network:, index:) -> GarageKeyMaterial
 |-- sign
 |   |-- psbt(psbt, network:, scriptType:, [accountIndex: 0]) -> String
 |   `-- pset(pset, network:) -> String
