@@ -1856,6 +1856,204 @@ void main() {
         await tester.pump(const Duration(seconds: 11));
       },
     );
+
+    // Status 15 with the owner's payment rule (#283), as the app shows it, the wallet's port lent: a taker buyer whose payout failed and whose invoice expired, the new invoice compared with the Bull wallet's price (the gap « (indicative) »), then, the coordinator asking fewer sats than at 6, the red alert « Fewer sats than the first invoice » (#281). The wallet of the test gives the Bull wallet's price only: no wallet, no swap service, no money.
+    testWidgets(
+      'captures of status 15 with the payment rule in ${locale.languageCode}',
+      skip: directory == null,
+      timeout: const Timeout(Duration(minutes: 15)),
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        Future<void> waitFor(Finder finder) async {
+          for (var i = 0; i < 1200 && finder.evaluate().isEmpty; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 50)),
+            );
+            await tester.pump(const Duration(milliseconds: 200));
+          }
+          if (finder.evaluate().isEmpty) throw StateError('not shown: $finder');
+          await settle();
+        }
+
+        final l10n = lookupP2pLocalizations(locale);
+        final now = DateTime.utc(2026, 11, 14, 9);
+        final transport = _TradeTransport(now);
+        // The Bull wallet's price of the order's 106,900 sats for 100 EUR at a premium of 2 % (93,545 EUR/BTC with it): 91,711 EUR/BTC, a gap of −0.18 % (rounded away from zero) for the 106,713 sats paid.
+        final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
+          ..rate = P2pWalletRateRead(91711);
+
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        setUpP2pForTesting(
+          locator,
+          transport: transport,
+          torStates: () => tor.stream,
+          clock: () => now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          bolt11Decoder: transport,
+          wallet: wallet,
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.mainnet,
+          ),
+        );
+        await settle();
+
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
+        await tester.pump(const Duration(seconds: 6));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
+        await settle();
+        await tester.pump(const Duration(seconds: 6));
+        await settle();
+        final shownKey = find.byWidgetPredicate(
+          (widget) => widget is Text && (widget.data ?? '').startsWith('robo1'),
+        );
+        await waitFor(shownKey);
+        final key = switch (GarageKey.parse(
+          tester.widget<Text>(shownKey).data ?? '',
+        )) {
+          Ok(:final value) => value,
+          Err() => throw StateError('not a key'),
+        };
+        final identities = [
+          for (var i = 0; i < 12; i++)
+            if (key.deriveIdentity(i) case Ok(:final value)) value,
+        ];
+        final coordinator = ScriptedCoordinator(
+          network: RobosatsNetwork.mainnet,
+          robots: identities,
+          clock: () => now,
+        );
+        transport.temple = coordinator;
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        tor.add(P2pTorState.ready);
+        await settle();
+
+        Future<void> nextRead() async {
+          for (var i = 0; i < 12; i++) {
+            await tester.pump(const Duration(seconds: 1));
+            await settle();
+          }
+        }
+
+        // The take: « Take Order », the order read by the robot, « Continue » brought into view, « Done ».
+        await tester.tap(find.text(l10n.p2pNavOffers));
+        await settle();
+        final row = find.text('100 EUR', findRichText: true);
+        await waitFor(row);
+        await tester.tap(row);
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await tester.tap(find.text(l10n.p2pTakeOrder));
+        await waitFor(find.text(l10n.p2pTakerBond));
+        await tester.scrollUntilVisible(
+          find.text(l10n.p2pCommonContinue),
+          200,
+          scrollable: find
+              .ancestor(
+                of: find.text(l10n.p2pTakerBond),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonDone));
+        await waitFor(find.text(l10n.p2pTradeTabContract));
+
+        // The bond locked by the coordinator (6): the payout's breakdown with the gap, the largest sum asked kept for 15; then the escrow locked (8), the chat (9), « fiat sent » (10) and the payout tried (13).
+        final taker = identities.firstWhere(coordinator.holdsPreTake);
+        coordinator.lockBond(taker);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pPayoutBreakdownGap));
+        coordinator.lockEscrow();
+        await nextRead();
+        for (final status in const [9, 10, 13]) {
+          coordinator.moveTo(status);
+          await nextRead();
+        }
+
+        // 15, the invoice expired: the same sum asked as at 6, compared with the Bull wallet's price.
+        coordinator
+          ..payoutExpired = true
+          ..moveTo(15);
+        await nextRead();
+        final breakdown = find.text(l10n.p2pPayoutBreakdownTitle);
+        await waitFor(breakdown);
+        await waitFor(find.text(l10n.p2pPayoutBreakdownGap));
+        await tester.ensureVisible(breakdown);
+        await settle();
+        await capture('reception-15-regle');
+
+        // A new invoice tried (13), failed again (15) with 105,000 sats fixed (−1.78 %, within the state machine's 2 %): 104,816 paid, fewer than the 106,713 of 6.
+        coordinator.moveTo(13);
+        await nextRead();
+        coordinator
+          ..lastSatoshis = 105000
+          ..moveTo(15);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pPayoutFirstFewer));
+        await tester.ensureVisible(breakdown);
+        await settle();
+        await capture('reception-15-moins-de-sats');
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(seconds: 3)),
+        );
+        await tester.pump(const Duration(seconds: 11));
+      },
+    );
   }
 
   // The take and the trade screen (#88), on mainnet, the whole path of the app: a Garage Key drawn in the Garage (so recorded as drawn here, which a take needs), the book, the order details with « Take Order », « Store your garage key », the take for a fresh robot of the key, then each panel as the coordinator moves the order on.
@@ -2337,7 +2535,7 @@ void main() {
         await capture('echange-annule');
         await backToTab();
 
-        // Take 4: a failed payout (15), while the coordinator retries, then once the invoice expired (#91).
+        // Take 4: a failed payout (15), while the coordinator retries (#91).
         coordinator
           ..backToPublic()
           ..swapAllowed = false;
@@ -2348,10 +2546,10 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pPayoutNextAttempt));
         await capture('reception-15-essai');
+        // Once the invoice expired, a new one asked: captured with the owner's payment rule in « captures of status 15 with the payment rule » (#283), as the app shows it with the wallet's port lent; this test lends none, a composition the app does not use.
         coordinator.payoutExpired = true;
         await nextRead();
         await waitFor(find.text(l10n.p2pPayoutInvoiceExpiredSubmitNew));
-        await capture('reception-15-nouvelle-facture');
         // The trade ends (14), so that the order's next take is a new trade.
         coordinator.moveTo(14);
         await nextRead();
