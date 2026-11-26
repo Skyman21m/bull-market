@@ -1123,7 +1123,7 @@ const _garageKeyReaders = {
     declarations: {'GarageKeyRepositoryImpl'},
     supertypes: {'GarageKeyRepository'},
     surface: {
-      // The vault's handle, for the key drawn at random until the book is emptied once, the port of the keys of the words, and the book of their indexes (#81).
+      // The vault's handle, for the external key (drawn at random on this device before #81, or pasted), the port of the keys of the words, and the book of their indexes and of the key selected (#81).
       'new':
           'GarageKeyRepositoryImpl Function(GarageKeys, P2pGarageKeyPort, GarageKeyBookRepository)',
       'keyring':
@@ -1138,11 +1138,14 @@ const _garageKeyReaders = {
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobotSlot)',
       'activateNext':
           'Future<Result<int, P2pFailure>> Function(RobosatsNetwork, {required int after})',
+      'select':
+          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKeySelection)',
       'exists': 'Future<Result<bool, P2pFailure>> Function(RobosatsNetwork)',
       'firstUsableRobot':
           'Future<Result<NetworkRobot, P2pFailure>> Function(RobosatsNetwork)',
       'import':
           'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKey)',
+      'delete': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
     },
   ),
   'features/p2p/lib/src/ui/widgets/garage_key_view.dart': (
@@ -1167,6 +1170,7 @@ const _readerTypes = {
   'bool': 'dart:core',
   'int': 'dart:core',
   'GarageKeyring': 'package:p2p/src/domain/garage_keyring.dart',
+  'GarageKeySelection': 'package:p2p/src/domain/garage_keyring.dart',
   'GarageKeyBookRepository':
       'package:p2p/src/domain/repositories/garage_key_book_repository.dart',
   'P2pGarageKeyPort': 'package:p2p/public/p2p_garage_key_port.dart',
