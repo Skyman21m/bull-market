@@ -54,50 +54,59 @@ void main() {
         Err(:final failure) => throw StateError('${failure.reason}'),
       };
 
-  test('it gives the vectors of the design note, per network and index', () async {
-    final secret = await stored();
-    final adapter = DerivedGarageKeyAdapter(
-      secrets,
-      () => _Wallets({
-        Environment.mainnet: secret.id.hex,
-        Environment.testnet: secret.id.hex,
-      }),
-    );
-    expect(
-      hexOf(await adapter.garageKey(RobosatsNetwork.mainnet, index: 0)),
-      mainnet0,
-    );
-    expect(
-      hexOf(await adapter.garageKey(RobosatsNetwork.mainnet, index: 1)),
-      mainnet1,
-    );
-    expect(
-      hexOf(await adapter.garageKey(RobosatsNetwork.testnet, index: 0)),
-      testnet0,
-    );
-    // The other path of the same 32 bytes' shape, which the custody gate does not fence: not what the adapter gives.
-    final bip85 = switch (await secret.derive.bip85.hex(numBytes: 32, index: 0)) {
-      Ok(:final value) => value,
-      Err(:final failure) => throw StateError('$failure'),
-    };
-    expect(bip85, isNot(mainnet0));
-    expect(bip85, isNot(testnet0));
-  });
+  test(
+    'it gives the vectors of the design note, per network and index',
+    () async {
+      final secret = await stored();
+      final adapter = DerivedGarageKeyAdapter(
+        secrets,
+        () => _Wallets({
+          Environment.mainnet: secret.id.hex,
+          Environment.testnet: secret.id.hex,
+        }),
+      );
+      expect(
+        hexOf(await adapter.garageKey(RobosatsNetwork.mainnet, index: 0)),
+        mainnet0,
+      );
+      expect(
+        hexOf(await adapter.garageKey(RobosatsNetwork.mainnet, index: 1)),
+        mainnet1,
+      );
+      expect(
+        hexOf(await adapter.garageKey(RobosatsNetwork.testnet, index: 0)),
+        testnet0,
+      );
+      // The other path of the same 32 bytes' shape, which the custody gate does not fence: not what the adapter gives.
+      final bip85 = switch (await secret.derive.bip85.hex(
+        numBytes: 32,
+        index: 0,
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      expect(bip85, isNot(mainnet0));
+      expect(bip85, isNot(testnet0));
+    },
+  );
 
-  test('the environment is the network\'s: testnet asks the testnet wallet only', () async {
-    final secret = await stored();
-    final wallets = _Wallets({Environment.mainnet: secret.id.hex});
-    final adapter = DerivedGarageKeyAdapter(secrets, () => wallets);
-    expect(
-      await adapter.garageKey(RobosatsNetwork.testnet, index: 0),
-      isA<Err<GarageKeyMaterial, P2pGarageKeyRefusal>>().having(
-        (err) => err.failure.reason,
-        'reason',
-        P2pGarageKeyRefusalReason.noDefaultWallet,
-      ),
-    );
-    expect(wallets.asked, [Environment.testnet]);
-  });
+  test(
+    'the environment is the network\'s: testnet asks the testnet wallet only',
+    () async {
+      final secret = await stored();
+      final wallets = _Wallets({Environment.mainnet: secret.id.hex});
+      final adapter = DerivedGarageKeyAdapter(secrets, () => wallets);
+      expect(
+        await adapter.garageKey(RobosatsNetwork.testnet, index: 0),
+        isA<Err<GarageKeyMaterial, P2pGarageKeyRefusal>>().having(
+          (err) => err.failure.reason,
+          'reason',
+          P2pGarageKeyRefusalReason.noDefaultWallet,
+        ),
+      );
+      expect(wallets.asked, [Environment.testnet]);
+    },
+  );
 
   test('a passphrase is refused, and nothing is drawn or stored', () async {
     final secret = await stored(passphrase: 'TREZOR');
@@ -115,17 +124,20 @@ void main() {
     );
   });
 
-  test('an index outside 0 … 2^31−1 is a bug, before any wallet is read', () async {
-    final wallets = _Wallets(const {});
-    final adapter = DerivedGarageKeyAdapter(secrets, () => wallets);
-    for (final index in [-1, 0x80000000]) {
-      expect(
-        () => adapter.garageKey(RobosatsNetwork.mainnet, index: index),
-        throwsArgumentError,
-      );
-    }
-    expect(wallets.asked, isEmpty);
-  });
+  test(
+    'an index outside 0 … 2^31−1 is a bug, before any wallet is read',
+    () async {
+      final wallets = _Wallets(const {});
+      final adapter = DerivedGarageKeyAdapter(secrets, () => wallets);
+      for (final index in [-1, 0x80000000]) {
+        expect(
+          () => adapter.garageKey(RobosatsNetwork.mainnet, index: index),
+          throwsArgumentError,
+        );
+      }
+      expect(wallets.asked, isEmpty);
+    },
+  );
 }
 
 /// The default Bitcoin wallet of each environment given, by its secret's fingerprint; it records the environments asked.
