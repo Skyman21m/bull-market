@@ -2774,7 +2774,7 @@ final class GarageKeyRepositoryImpl {
     });
   });
 
-  group('the Garage Key derived from the words has no caller yet (#81)', () {
+  group('the Garage Key derived from the words has one caller (#81)', () {
     const grouped = '''
 import 'package:secrets/secrets.dart';
 Object key(Secret secret) =>
@@ -2893,6 +2893,262 @@ Object slot() => GarageKeySlot.testnet;
       expect((await checkKeyMaterial(root.path)).violations, [
         'lib/app.dart: package:secrets/src/public/extensions.dart#SecretDerivation.garageKey',
       ]);
+    });
+  });
+
+  group('the adapter of the derived Garage Key (#81)', () {
+    const adapterPath =
+        'lib/features/p2p_garage_key/derived_garage_key_adapter.dart';
+    const call = '''return secret.derive.garageKey(
+      network: GarageKeySlot.mainnet,
+      index: index,
+    );''';
+    const adapter =
+        '''
+import 'package:primitives/primitives.dart';
+import 'package:secrets/secrets.dart';
+final class DerivedGarageKeyAdapter {
+  final Secrets _secrets;
+  DerivedGarageKeyAdapter(this._secrets);
+  Future<Object> garageKey(Fingerprint id, {required int index}) async {
+    final secret = switch (await _secrets.fetch(id)) {
+      Ok(:final value) => value,
+      Err() => throw StateError('no secret'),
+    };
+    $call
+  }
+}
+''';
+
+    test('its one call is accepted in its file, class and method', () async {
+      expect(
+        await inspect('derived_adapter', adapter, policyPath: adapterPath),
+        isEmpty,
+      );
+    });
+
+    test(
+      'the same call is refused in any other file, class or method',
+      () async {
+        for (final (name, source, path) in [
+          (
+            'derived_adapter_elsewhere',
+            adapter,
+            'lib/features/p2p/adapter.dart',
+          ),
+          ('derived_adapter_core', adapter, 'lib/core/bip85/adapter.dart'),
+          (
+            'derived_adapter_other_class',
+            adapter.replaceAll('DerivedGarageKeyAdapter', 'OtherAdapter'),
+            adapterPath,
+          ),
+          (
+            'derived_adapter_other_method',
+            adapter.replaceAll(
+              'Future<Object> garageKey(',
+              'Future<Object> key(',
+            ),
+            adapterPath,
+          ),
+        ]) {
+          expect(
+            keyReads(await inspect(name, source, policyPath: path)),
+            contains(
+              allOf(
+                contains('package:secrets/'),
+                endsWith('#SecretDerivation.garageKey'),
+              ),
+            ),
+            reason: name,
+          );
+        }
+      },
+    );
+
+    test('another shape of the call is refused', () async {
+      for (final (name, source, symbol) in [
+        (
+          'derived_adapter_tear_off',
+          adapter.replaceAll(call, 'return secret.derive.garageKey;'),
+          '#SecretDerivation.garageKey',
+        ),
+        (
+          'derived_adapter_flat',
+          adapter.replaceAll('secret.derive.garageKey(', 'secret.garageKey('),
+          '#Secret.garageKey',
+        ),
+      ]) {
+        expect(
+          await inspect(name, source, policyPath: adapterPath),
+          contains(allOf(contains('package:secrets/'), endsWith(symbol))),
+          reason: name,
+        );
+      }
+    });
+
+    test(
+      'its file takes nothing else from the vault: bip85.hex is refused there',
+      () async {
+        final violations = await inspect(
+          'derived_adapter_bip85',
+          adapter.replaceAll(
+            call,
+            'return secret.derive.bip85.hex(numBytes: 32, index: index);',
+          ),
+          policyPath: adapterPath,
+        );
+        expect(
+          violations,
+          containsAll([
+            '$adapterPath: package:secrets#SecretDerivation.bip85 in the Garage Key adapter',
+            '$adapterPath: package:secrets#SecretBip85.hex in the Garage Key adapter',
+          ]),
+        );
+      },
+    );
+
+    test(
+      'a file of the adapter without the one call, or with two, fails the whole check',
+      () async {
+        for (final (name, source) in [
+          ('derived_root_none', adapter.replaceAll(call, 'return secret;')),
+          (
+            'derived_root_two',
+            adapter.replaceAll(
+              call,
+              'await secret.derive.garageKey(network: GarageKeySlot.testnet, index: 0);\n    $call',
+            ),
+          ),
+        ]) {
+          final root = Directory('${fixture.path}/$name')..createSync();
+          File('${root.path}/$adapterPath')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(source);
+          expect(
+            (await checkKeyMaterial(root.path)).violations,
+            contains(
+              '$adapterPath: DerivedGarageKeyAdapter.garageKey#not one call of secret.derive.garageKey of the allowed shape',
+            ),
+            reason: name,
+          );
+        }
+      },
+    );
+
+    group('the composition builds it in one place and shape', () {
+      String shell(String argument) =>
+          """
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart' show P2pFeature;
+import 'package:path_provider/path_provider.dart';
+import 'package:secrets/secrets.dart';
+import 'lib/features/p2p_garage_key/derived_garage_key_adapter.dart';
+class AppLocator {
+  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+        derivedGarageKeys: $argument,
+        databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,
+      );
+}
+""";
+      const allowed =
+          'withGarageKeys ? DerivedGarageKeyAdapter(locator<Secrets>()) : null';
+
+      setUpAll(() {
+        File('${fixture.path}/$adapterPath')
+          ..createSync(recursive: true)
+          ..writeAsStringSync("""
+import 'package:p2p/p2p.dart';
+final class DerivedGarageKeyAdapter implements P2pGarageKeyPort {
+  DerivedGarageKeyAdapter(Object secrets);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+""");
+      });
+
+      test('under the flag, for P2pFeature.setup, in setupP2p', () async {
+        expect(
+          await inspect(
+            'derived_shell',
+            shell(allowed),
+            policyPath: 'lib/locator.dart',
+          ),
+          isEmpty,
+        );
+      });
+
+      test('anywhere else, or in another shape, it is refused', () async {
+        for (final (name, source, path) in [
+          ('derived_shell_elsewhere', shell(allowed), 'lib/init.dart'),
+          (
+            'derived_shell_unflagged',
+            shell('DerivedGarageKeyAdapter(locator<Secrets>())'),
+            'lib/locator.dart',
+          ),
+          (
+            'derived_shell_tear_off',
+            shell(
+              'withGarageKeys ? DerivedGarageKeyAdapter.new(locator<Secrets>()) : null',
+            ).replaceAll(
+              'class AppLocator {',
+              'final make = DerivedGarageKeyAdapter.new;\nclass AppLocator {',
+            ),
+            'lib/locator.dart',
+          ),
+        ]) {
+          expect(
+            await inspect(name, source, policyPath: path),
+            contains(
+              '$path: DerivedGarageKeyAdapter#built outside AppLocator.setupP2p',
+            ),
+            reason: name,
+          );
+        }
+      });
+    });
+
+    test('the port of the derived key is named only by its files', () async {
+      const source = '''
+import 'package:p2p/p2p.dart';
+Object derive(P2pGarageKeyPort port) =>
+    port.garageKey(RobosatsNetwork.mainnet, index: 0);
+''';
+      expect(
+        await inspect(
+          'derived_port_elsewhere',
+          source,
+          policyPath: 'features/p2p/lib/src/ui/garage/garage_view.dart',
+        ),
+        contains(
+          'features/p2p/lib/src/ui/garage/garage_view.dart: package:p2p#P2pGarageKeyPort outside the files that may hold it',
+        ),
+      );
+      expect(
+        (await inspect(
+          'derived_port_repository',
+          source,
+          policyPath:
+              'features/p2p/lib/src/data/garage_key_repository_impl.dart',
+        )).where((v) => v.contains('P2pGarageKeyPort outside')),
+        isEmpty,
+      );
+    });
+
+    test('the port never goes into a container', () async {
+      expect(
+        await inspect('derived_port_container', '''
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart';
+void keep(GetIt locator, P2pGarageKeyPort port) =>
+    locator.registerSingleton<P2pGarageKeyPort>(port);
+''', policyPath: adapterPath),
+        contains(
+          '$adapterPath: package:get_it#P2pGarageKeyPort in a container',
+        ),
+      );
     });
   });
 }

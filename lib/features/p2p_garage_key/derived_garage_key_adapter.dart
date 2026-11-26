@@ -29,7 +29,11 @@ final class DerivedGarageKeyAdapter implements P2pGarageKeyPort {
     required int index,
   }) async {
     if (index < 0 || index > 0x7fffffff) {
-      throw ArgumentError.value(index, 'index', 'must be between 0 and 0x7fffffff');
+      throw ArgumentError.value(
+        index,
+        'index',
+        'must be between 0 and 0x7fffffff',
+      );
     }
     final List<Wallet> wallets;
     switch (await _wallets().getWallets(
@@ -40,7 +44,9 @@ final class DerivedGarageKeyAdapter implements P2pGarageKeyPort {
       case Ok(:final value):
         wallets = value;
       case Err():
-        return const Err(P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable));
+        return const Err(
+          P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
+        );
     }
     if (wallets.isEmpty) {
       return const Err(
@@ -48,7 +54,10 @@ final class DerivedGarageKeyAdapter implements P2pGarageKeyPort {
       );
     }
     final id = Fingerprint.tryParse(wallets.first.masterFingerprint);
-    if (id == null) return const Err(P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable));
+    if (id == null)
+      return const Err(
+        P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
+      );
     final Secret secret;
     switch (await _secrets.fetch(id)) {
       case Ok(:final value):

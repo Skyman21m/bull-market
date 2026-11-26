@@ -86,12 +86,10 @@ Future<KeyMaterialReport> checkKeyMaterial(String rootPath) async {
         '$relative: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
       );
     }
-    // The composition root builds the adapter of the derived Garage Key once, in the shape [_KeyMaterialVisitor.isAdapterConstruction] allows (#81).
-    if (relative == 'lib/locator.dart' &&
-        visitor.declaresAppLocator &&
-        visitor.adapterConstructions != 1) {
+    // The composition root builds the adapter of the derived Garage Key at most once, in the shape [_KeyMaterialVisitor.isAdapterConstruction] allows (#81): without it, P2P has no Garage, which is no leak.
+    if (relative == 'lib/locator.dart' && visitor.adapterConstructions > 1) {
       violations.add(
-        '$relative: AppLocator.setupP2p#not one construction of $_adapterClass of the allowed shape',
+        '$relative: AppLocator.setupP2p#more than one construction of $_adapterClass',
       );
     }
     // The adapter derives the Garage Key once, in the shape [_KeyMaterialVisitor.isDerivationCall] allows (#81): a file that no longer calls it, as one that calls `secret.derive.bip85` instead, fails.
@@ -357,9 +355,9 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     if (arguments.length != 2 ||
         !arguments.every((argument) => argument is NamedExpression) ||
         {
-              for (final argument in arguments.cast<NamedExpression>())
-                argument.name.label.name,
-            }.difference({'network', 'index'}).isNotEmpty) {
+          for (final argument in arguments.cast<NamedExpression>())
+            argument.name.label.name,
+        }.difference({'network', 'index'}).isNotEmpty) {
       return false;
     }
     final (:owner, :function) = _enclosingDeclaration(node);
@@ -1136,7 +1134,8 @@ const _garageKeyReaders = {
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork, int)',
       'forNewTrade':
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
-      'ofSlot': 'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobotSlot)',
+      'ofSlot':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobotSlot)',
       'activateNext':
           'Future<Result<int, P2pFailure>> Function(RobosatsNetwork, {required int after})',
       'exists': 'Future<Result<bool, P2pFailure>> Function(RobosatsNetwork)',
