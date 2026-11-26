@@ -649,16 +649,79 @@ void main() {
     );
 
     group('the rule\'s check where the breakdown cannot draw it (#250)', () {
-      PayoutCheck compared(int given, {required bool warns}) =>
-          PayoutCheckCompared(
-            given: Sats.fromInt(given),
-            expected: Sats.fromInt(130000),
-            price: '100 EUR at 91,711 EUR/BTC, premium included',
-            gap: warns ? '-17.91%' : '-0.27%',
-            warns: warns,
-            threshold: '10%',
-            small: !warns,
+      PayoutCheck compared(
+        int given, {
+        required bool warns,
+        PayoutFirstInvoice? first,
+      }) => PayoutCheckCompared(
+        given: Sats.fromInt(given),
+        expected: Sats.fromInt(130000),
+        price: '100 EUR at 91,711 EUR/BTC, premium included',
+        gap: warns ? '-17.91%' : '-0.27%',
+        warns: warns,
+        threshold: '10%',
+        small: !warns,
+        first: first,
+      );
+
+      testWidgets(
+        '#283: at 15 with nothing kept of 6 or 8, a comparison within the threshold of other sats than the breakdown\'s (a payout given awaiting its answer, a read bringing other sats meanwhile), or with no form: « Not compared with the first invoice » and its reason said alone above the form, in its grey, never the comparison\'s gap; fewer sats or as many, nothing more than before',
+        (tester) async {
+          for (final seen in [six, seven]) {
+            await show(
+              tester,
+              cubitOf(_Sender()),
+              seen,
+              check: compared(
+                106700,
+                warns: false,
+                first: const PayoutFirstUnknown(),
+              ),
+            );
+            expect(find.byKey(PayoutPanel.looseCheck), findsOneWidget);
+            expect(
+              find.text('Not compared with the first invoice'),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(PayoutCheckLines.unknownExplanation),
+              findsOneWidget,
+            );
+            expect(find.byKey(PayoutCheckLines.gapRow), findsNothing);
+            expect(
+              find.text('Gap to the Bull price (indicative)'),
+              findsNothing,
+            );
+          }
+          // The same sats as the breakdown's: in the breakdown, as before.
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(
+              106713,
+              warns: false,
+              first: const PayoutFirstUnknown(),
+            ),
           );
+          expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+          expect(
+            find.descendant(
+              of: find.byType(PayoutBreakdownView),
+              matching: find.byKey(PayoutCheckLines.unknownLine),
+            ),
+            findsOneWidget,
+          );
+          // Other sats with nothing said of the first invoice: nothing alone, as before.
+          await show(
+            tester,
+            cubitOf(_Sender()),
+            six,
+            check: compared(106700, warns: false),
+          );
+          expect(find.byKey(PayoutPanel.looseCheck), findsNothing);
+        },
+      );
 
       testWidgets(
         'a red alert of other sats than those the breakdown shows (a figure that changed while the rule compares again): said alone above the form, never left out; within the threshold, nothing',
