@@ -87,10 +87,11 @@ abstract final class GarageRecoveryNote {
   }
 
   /// The two requests the official client makes to a relay for the notes of [key]: the recovery identity's, then the legacy one's.
-  static List<GarageRecoveryFilter> filters(GarageKey key) => List.unmodifiable([
-    GarageRecoveryFilter._(key.recoveryNostrKeyPair.publicKeyHex),
-    GarageRecoveryFilter._(key.legacyRecoveryNostrKeyPair.publicKeyHex),
-  ]);
+  static List<GarageRecoveryFilter> filters(GarageKey key) =>
+      List.unmodifiable([
+        GarageRecoveryFilter._(key.recoveryNostrKeyPair.publicKeyHex),
+        GarageRecoveryFilter._(key.legacyRecoveryNostrKeyPair.publicKeyHex),
+      ]);
 
   /// The robot index of the latest note of [key] among [events], or `null` when none counts.
   ///

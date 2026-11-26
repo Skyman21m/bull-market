@@ -86,10 +86,15 @@ abstract final class NostrGiftUnwrap {
     }
     final computed = NostrEvent.idOf(pubkey, createdAt, kind, tags, content);
     if (computed != id) return false;
-    return Bip340.verify(
-      hex.decode(pubkey),
-      hex.decode(computed),
-      hex.decode(signature),
-    );
+    try {
+      return Bip340.verify(
+        hex.decode(pubkey),
+        hex.decode(computed),
+        hex.decode(signature),
+      );
+    } on Error {
+      // The `bip340` package forces non-null points with `!` and throws a bare `Error` on a point it cannot lift: a signature that cannot be checked is a signature that does not verify.
+      return false;
+    }
   }
 }

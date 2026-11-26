@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
@@ -45,16 +44,15 @@ void main() {
     DateTime? at,
     NostrKeyPair? writer,
     String label = 'note',
-  }) =>
-      switch (GarageRecoveryNote.composeFor(
-        writer ?? identity,
-        accountIndex: accountIndex,
-        now: at ?? now,
-        random: DeterministicRandom('$label/$accountIndex/$at'),
-      )) {
-        Ok(:final value) => value.wrap.toJson(),
-        Err(:final failure) => throw StateError('$failure'),
-      };
+  }) => switch (GarageRecoveryNote.composeFor(
+    writer ?? identity,
+    accountIndex: accountIndex,
+    now: at ?? now,
+    random: DeterministicRandom('$label/$accountIndex/$at'),
+  )) {
+    Ok(:final value) => value.wrap.toJson(),
+    Err(:final failure) => throw StateError('$failure'),
+  };
 
   int? read(List<String> events) =>
       GarageRecoveryNote.latestAccount(key, events);
@@ -75,7 +73,11 @@ void main() {
     final to = recipient ?? identity.publicKeyHex;
     final seal = from.sign(
       kind: sealKind,
-      content: Nip44.encrypt(rumorJson, from.conversationKeyWith(to), bytes32()),
+      content: Nip44.encrypt(
+        rumorJson,
+        from.conversationKeyWith(to),
+        bytes32(),
+      ),
       createdAt: 1767200000,
       tags: const [],
       aux: bytes32(),
@@ -269,15 +271,14 @@ void main() {
     });
 
     test('reads the note built by nostr-tools', () {
-      expect(
-        read([jsonOf(nostrToolsNote['wrap'])]),
-        nostrToolsNote['account'],
-      );
+      expect(read([jsonOf(nostrToolsNote['wrap'])]), nostrToolsNote['account']);
     });
 
     test('reads the legacy identity\'s notes too', () {
       expect(read([noteJson(12, writer: legacy)]), 12);
-      expect(read([noteJson(12, writer: legacy), noteJson(5)]), 5);
+      final earlier = DateTime.utc(2026, 11);
+      expect(read([noteJson(12, writer: legacy, at: earlier), noteJson(5)]), 5);
+      expect(read([noteJson(5, at: earlier), noteJson(12, writer: legacy)]), 12);
     });
 
     test('gives nothing without a note', () {
@@ -733,25 +734,43 @@ void main() {
       expect(read([withSeal((_) {})]), 7);
     });
 
-    for (final (reason, change) in <(String, void Function(Map<String, dynamic>))>[
-      (
-        'another signature',
-        (seal) => seal['sig'] = (seal['sig'] as String).replaceRange(
-          0,
-          2,
-          (seal['sig'] as String).startsWith('00') ? '01' : '00',
-        ),
-      ),
-      ('an uppercase signature', (seal) => seal['sig'] = (seal['sig'] as String).toUpperCase()),
-      ('no signature', (seal) => seal.remove('sig')),
-      ('another id', (seal) => seal['id'] = '0' * 64),
-      ('another date', (seal) => seal['created_at'] = 1767200001),
-      ('a decimal date', (seal) => seal['created_at'] = 1767200000.5),
-      ('a tag added', (seal) => seal['tags'] = [
-        ['p', identity.publicKeyHex],
-      ]),
-      ('an uppercase pubkey', (seal) => seal['pubkey'] = (seal['pubkey'] as String).toUpperCase()),
-    ]) {
+    for (final (reason, change)
+        in <(String, void Function(Map<String, dynamic>))>[
+          (
+            'another signature',
+            (seal) => seal['sig'] = (seal['sig'] as String).replaceRange(
+              0,
+              2,
+              (seal['sig'] as String).startsWith('00') ? '01' : '00',
+            ),
+          ),
+          (
+            'an uppercase signature',
+            (seal) => seal['sig'] = (seal['sig'] as String).toUpperCase(),
+          ),
+          ('no signature', (seal) => seal.remove('sig')),
+          ('a signature of zeros', (seal) => seal['sig'] = '0' * 128),
+          ('a signature of ones', (seal) => seal['sig'] = 'f' * 128),
+          (
+            'a signature whose s is zero',
+            (seal) => seal['sig'] =
+                '${(seal['sig'] as String).substring(0, 64)}${'0' * 64}',
+          ),
+          ('a short signature', (seal) => seal['sig'] = 'ab' * 32),
+          ('another id', (seal) => seal['id'] = '0' * 64),
+          ('another date', (seal) => seal['created_at'] = 1767200001),
+          ('a decimal date', (seal) => seal['created_at'] = 1767200000.5),
+          (
+            'a tag added',
+            (seal) => seal['tags'] = [
+              ['p', identity.publicKeyHex],
+            ],
+          ),
+          (
+            'an uppercase pubkey',
+            (seal) => seal['pubkey'] = (seal['pubkey'] as String).toUpperCase(),
+          ),
+        ]) {
       test(reason, () {
         expect(read([withSeal(change)]), isNull);
       });
@@ -794,43 +813,51 @@ void main() {
       );
     });
 
-    test('reads a thousand hostile events addressed to both identities', () {
-      // The costliest events a third party can make: each decrypts with the identity's key, holds a seal of the third party that verifies, and names the legacy identity too, so that it is tried with both keys.
-      final attackerConversation = stranger.conversationKeyWith(
-        identity.publicKeyHex,
-      );
-      final throwaway = NostrKeyPair.generate(DeterministicRandom('flood'));
-      final wrapConversation = throwaway.conversationKeyWith(
-        identity.publicKeyHex,
-      );
-      final seal = stranger.sign(
-        kind: NostrGiftWrap.sealKind,
-        content: Nip44.encrypt(
-          rumorJson(pubkey: stranger.publicKeyHex),
-          attackerConversation,
-          bytes32(),
-        ),
-        createdAt: 1767200000,
-        tags: const [],
-        aux: bytes32(),
-      );
-      final flood = [
-        for (var i = 0; i < GarageRecoveryNote.maxEvents - 1; i++)
-          jsonOf({
-            'kind': 1059,
-            'content': Nip44.encrypt(seal.toJson(), wrapConversation, bytes32()),
-            'created_at': 1767210000,
-            'tags': [
-              ['p', identity.publicKeyHex],
-              ['p', legacy.publicKeyHex],
-            ],
-            'pubkey': throwaway.publicKeyHex,
-            'id': '0' * 64,
-            'sig': '0' * 128,
-          }),
-      ];
-      expect(read([...flood, noteJson(5)]), 5);
-    }, timeout: const Timeout(Duration(minutes: 5)));
+    test(
+      'reads a thousand hostile events addressed to both identities',
+      () {
+        // The costliest events a third party can make: each decrypts with the identity's key, holds a seal of the third party that verifies, and names the legacy identity too, so that it is tried with both keys.
+        final attackerConversation = stranger.conversationKeyWith(
+          identity.publicKeyHex,
+        );
+        final throwaway = NostrKeyPair.generate(DeterministicRandom('flood'));
+        final wrapConversation = throwaway.conversationKeyWith(
+          identity.publicKeyHex,
+        );
+        final seal = stranger.sign(
+          kind: NostrGiftWrap.sealKind,
+          content: Nip44.encrypt(
+            rumorJson(pubkey: stranger.publicKeyHex),
+            attackerConversation,
+            bytes32(),
+          ),
+          createdAt: 1767200000,
+          tags: const [],
+          aux: bytes32(),
+        );
+        final flood = [
+          for (var i = 0; i < GarageRecoveryNote.maxEvents - 1; i++)
+            jsonOf({
+              'kind': 1059,
+              'content': Nip44.encrypt(
+                seal.toJson(),
+                wrapConversation,
+                bytes32(),
+              ),
+              'created_at': 1767210000,
+              'tags': [
+                ['p', identity.publicKeyHex],
+                ['p', legacy.publicKeyHex],
+              ],
+              'pubkey': throwaway.publicKeyHex,
+              'id': '0' * 64,
+              'sig': '0' * 128,
+            }),
+        ];
+        expect(read([...flood, noteJson(5)]), 5);
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
   });
 
   group('secrecy', () {
