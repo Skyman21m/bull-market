@@ -18,10 +18,50 @@ sealed class PayoutCheck {
   /// The sats the rule compared: the payout panel draws the check in the breakdown only for the very sats the breakdown shows as paid ([PayoutBreakdownView.drawnOf]).
   final Sats given;
 
-  const PayoutCheck(this.given);
+  /// At 15 only, what the rule said of [given] against the invoice asked at 6 or 8 for the same contract (#281): fewer sats ([PayoutFirstFewer], a red alert of its own) or nothing kept to compare with ([PayoutFirstUnknown]); `null` at 6 and 8, and at 15 for as many sats or more.
+  final PayoutFirstInvoice? first;
 
-  /// Whether it is an alert (red beyond the threshold, orange for a price not read): drawn above the panel's form when no breakdown can draw it, never left out ([PayoutCheckLines]).
-  bool get alert;
+  const PayoutCheck(this.given, {this.first});
+
+  /// Whether the comparison with the Bull wallet's price is itself an alert (red beyond the threshold, orange for a price not read, the orange alert since the order was made).
+  bool get priceAlert;
+
+  /// Whether at 15 the sats are fewer than at 6 or 8 for the same contract (#281).
+  bool get fewer => first is PayoutFirstFewer;
+
+  /// Whether it is an alert ([priceAlert], or [fewer]): drawn above the panel's form when no breakdown can draw it, never left out ([PayoutCheckLines]).
+  bool get alert => priceAlert || fewer;
+}
+
+/// What the rule said at 15 (the payout failed, a new invoice asked) of the sats now asked against the invoice asked at 6 or 8 for the same contract (#281; design note `docs/design/phase-3-making-an-order.md` § 3.3 bis, point 4): in the reference both are the same sum, to the sat.
+@immutable
+sealed class PayoutFirstInvoice {
+  const PayoutFirstInvoice();
+}
+
+/// Fewer sats than [first], the largest the payout panel asked at 6 or 8 for the contract, as this run of the app kept it: a red alert in two lines, its explanation in the detail; beside it no line that reassures (« A small gap is normal », the gap « (indicative) »).
+final class PayoutFirstFewer extends PayoutFirstInvoice {
+  final Sats first;
+
+  const PayoutFirstFewer(this.first);
+
+  @override
+  bool operator ==(Object other) =>
+      other is PayoutFirstFewer && other.first == first;
+
+  @override
+  int get hashCode => Object.hash(PayoutFirstFewer, first);
+}
+
+/// Nothing kept of the invoice asked at 6 or 8 for the contract (the app started again since, or the trade screen not shown then): « Not compared with the first invoice », and never « A small gap is normal ».
+final class PayoutFirstUnknown extends PayoutFirstInvoice {
+  const PayoutFirstUnknown();
+
+  @override
+  bool operator ==(Object other) => other is PayoutFirstUnknown;
+
+  @override
+  int get hashCode => 9;
 }
 
 /// The comparison with the Bull wallet's price: [expected] the sats the contract's amount is worth at it with the order's premium, rounded down; [price] its line (the amount, the price and the premium, written by the trade screen); [gap] the gap of [given] from it, written with its sign; [warns] beyond the owner's threshold ([threshold], written), the red alert; [small] whether the gap is within the threshold both ways (`PriceCheckLines.smallGap`), the only case where « A small gap is normal » is said.
@@ -41,10 +81,11 @@ final class PayoutCheckCompared extends PayoutCheck {
     required this.warns,
     required this.threshold,
     required this.small,
-  }) : super(given);
+    PayoutFirstInvoice? first,
+  }) : super(given, first: first);
 
   @override
-  bool get alert => warns;
+  bool get priceAlert => warns;
 
   @override
   bool operator ==(Object other) =>
@@ -55,45 +96,49 @@ final class PayoutCheckCompared extends PayoutCheck {
       other.gap == gap &&
       other.warns == warns &&
       other.threshold == threshold &&
-      other.small == small;
+      other.small == small &&
+      other.first == first;
 
   @override
   int get hashCode =>
-      Object.hash(given, expected, price, gap, warns, threshold, small);
+      Object.hash(given, expected, price, gap, warns, threshold, small, first);
 }
 
 /// The Bull wallet's price could not be read: « Amount not checked », in orange, with « Retry ».
 final class PayoutCheckUnverified extends PayoutCheck {
-  const PayoutCheckUnverified(super.given);
+  const PayoutCheckUnverified(super.given, {super.first});
 
   @override
-  bool get alert => true;
+  bool get priceAlert => true;
 
   @override
   bool operator ==(Object other) =>
-      other is PayoutCheckUnverified && other.given == given;
+      other is PayoutCheckUnverified &&
+      other.given == given &&
+      other.first == first;
 
   @override
-  int get hashCode => Object.hash(PayoutCheckUnverified, given);
+  int get hashCode => Object.hash(PayoutCheckUnverified, given, first);
 }
 
 /// The Bull wallet does not price the order's currency: the grey « not quoted » line (the owner's decision of 2026-11-24, #250, #249); for an order made here whose contract's sats are more than the owner's threshold against the buyer since the order was made, [against] the gap written without its sign and the currency's code, the orange alert under it and its explanation in the detail (the owner's decision of 2026-11-20, #237); never for an order taken here.
 final class PayoutCheckNotPriced extends PayoutCheck {
   final ({String gap, String currency})? against;
 
-  const PayoutCheckNotPriced(super.given, {this.against});
+  const PayoutCheckNotPriced(super.given, {this.against, super.first});
 
   @override
-  bool get alert => against != null;
+  bool get priceAlert => against != null;
 
   @override
   bool operator ==(Object other) =>
       other is PayoutCheckNotPriced &&
       other.given == given &&
-      other.against == against;
+      other.against == against &&
+      other.first == first;
 
   @override
-  int get hashCode => Object.hash(PayoutCheckNotPriced, given, against);
+  int get hashCode => Object.hash(PayoutCheckNotPriced, given, against, first);
 }
 
 /// This device's records of the trade could not be read, so nothing was compared (#237): « Amount not checked », in orange, with « Retry », and its own second line, the Bull wallet's price having never been asked.
@@ -101,7 +146,7 @@ final class PayoutCheckTermsUnread extends PayoutCheck {
   const PayoutCheckTermsUnread(super.given);
 
   @override
-  bool get alert => true;
+  bool get priceAlert => true;
 
   @override
   bool operator ==(Object other) =>
@@ -175,7 +220,10 @@ class PayoutBreakdownView extends StatelessWidget {
     String sats(Sats sats) => formats.bigSats(sats.value);
     String less(Sats sats) => formats.bigSats(-sats.value);
     final drawn = drawnOf(breakdown, check);
-    final warns = drawn is PayoutCheckCompared && drawn.warns;
+    // The figure at fault: beyond the Bull wallet's threshold, or at 15 fewer sats than at 6 or 8 (#281).
+    final warns =
+        (drawn is PayoutCheckCompared && drawn.warns) ||
+        (drawn?.fewer ?? false);
     final fees = breakdown.fees;
     final received = breakdown.received;
     return AmountCard(
@@ -261,11 +309,96 @@ class PayoutCheckLines extends StatelessWidget {
   static const unverifiedLine = PriceCheckLines.unverifiedLine;
   static const notPricedRow = PriceCheckLines.notPricedRow;
 
+  /// The keys of the lines of 15 against the invoice of 6 or 8 (#281), for the tests.
+  static const fewerRow = ValueKey('payout-first-fewer');
+  static const fewerFigures = ValueKey('payout-first-fewer-figures');
+  static const fewerExplanation = ValueKey('payout-first-fewer-explanation');
+  static const unknownLine = ValueKey('payout-first-unknown');
+  static const unknownExplanation = ValueKey(
+    'payout-first-unknown-explanation',
+  );
+
   @override
   Widget build(BuildContext context) {
+    final price = _priceLines(context);
+    final first = _firstLines(context);
+    if (first == null) return price ?? const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [?price, first],
+    );
+  }
+
+  /// At 15, the lines against the invoice of 6 or 8 (#281): fewer sats, the red alert in two lines (its explanation under them where no detail holds it); nothing kept, the discreet line; `null` otherwise.
+  Widget? _firstLines(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    Widget line(Key key, String words, Color color) => Padding(
+      padding: const EdgeInsets.only(bottom: BullSpacing.xxs / 2),
+      child: WordFitText(
+        words,
+        key: key,
+        style: text.bodyMedium?.copyWith(color: color),
+      ),
+    );
+    return switch (check.first) {
+      PayoutFirstFewer(:final first) => Semantics(
+        container: true,
+        liveRegion: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AmountRow(
+              key: fewerRow,
+              label: l10n.p2pPayoutFirstFewer,
+              tone: AmountRowTone.alert,
+              icon: Icons.warning_amber_rounded,
+            ),
+            line(
+              fewerFigures,
+              l10n.p2pPayoutFirstFewerFigures(
+                formats.bigSats(first.value),
+                formats.bigSats(check.given.value),
+              ),
+              colors.error,
+            ),
+            if (explained)
+              line(
+                fewerExplanation,
+                l10n.p2pPayoutFirstFewerDetail,
+                colors.error,
+              ),
+          ],
+        ),
+      ),
+      PayoutFirstUnknown() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          WordFitText(
+            l10n.p2pPayoutFirstUnknown,
+            key: unknownLine,
+            style: text.bodySmall?.copyWith(color: colors.textMuted),
+          ),
+          if (explained)
+            line(
+              unknownExplanation,
+              l10n.p2pPayoutFirstUnknownDetail,
+              colors.textMuted,
+            ),
+        ],
+      ),
+      null => null,
+    };
+  }
+
+  /// The lines of the comparison with the Bull wallet's price; `null` for a gap within the threshold beside the alert of fewer sats than at 6 or 8, a line « (indicative) » that would reassure beside it (#281).
+  Widget? _priceLines(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     return switch (check) {
+      PayoutCheckCompared(:final warns) when !warns && check.fewer => null,
       PayoutCheckCompared(:final warns, :final gap) when !warns =>
         PriceCheckLines.gap(gap),
       PayoutCheckCompared(
@@ -353,8 +486,9 @@ class PayoutBreakdownDetail extends StatelessWidget {
     final invoice = breakdown.invoice;
     final swap = breakdown.swap;
     final paragraph = switch (check) {
-      // Within the threshold both ways only (functional review of #268, C1).
+      // Within the threshold both ways only (functional review of #268, C1); never at 15 when the sum is not known to be that of 6 or 8, fewer or not kept (#281).
       PayoutCheckCompared(warns: false, small: false) => null,
+      PayoutCheckCompared(warns: false, first: PayoutFirstInvoice()) => null,
       PayoutCheckCompared(warns: false) => (
         l10n.p2pPayoutBreakdownSmallGap,
         colors.text,
@@ -436,6 +570,26 @@ class PayoutBreakdownDetail extends StatelessWidget {
             style: text.bodyMedium?.copyWith(color: color),
           ),
         ],
+        // At 15, the explanation of the lines against the invoice of 6 or 8, after the Bull wallet's (#281): an alert never silences another.
+        ...switch (check?.first) {
+          PayoutFirstFewer() => [
+            const Gap(BullSpacing.xs),
+            WordFitText(
+              l10n.p2pPayoutFirstFewerDetail,
+              key: PayoutCheckLines.fewerExplanation,
+              style: text.bodyMedium?.copyWith(color: colors.error),
+            ),
+          ],
+          PayoutFirstUnknown() => [
+            const Gap(BullSpacing.xs),
+            WordFitText(
+              l10n.p2pPayoutFirstUnknownDetail,
+              key: PayoutCheckLines.unknownExplanation,
+              style: text.bodyMedium?.copyWith(color: colors.text),
+            ),
+          ],
+          null => const <Widget>[],
+        },
       ],
     );
   }

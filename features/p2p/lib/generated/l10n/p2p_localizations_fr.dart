@@ -3900,6 +3900,25 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Sans eux, il ne peut pas comparer le montant du coordinateur.';
 
   @override
+  String get p2pPayoutFirstFewer => 'Moins de sats qu’à la première facture';
+
+  @override
+  String p2pPayoutFirstFewerFigures(String first, String now) {
+    return 'Première demande : $first sats, le coordinateur en verse maintenant $now.';
+  }
+
+  @override
+  String get p2pPayoutFirstFewerDetail =>
+      'Pour un même contrat, le coordinateur doit redemander le même montant. Vous avez déjà envoyé votre paiement et aucun litige n’est plus possible à cette étape : contactez le coordinateur avant de donner cette facture.';
+
+  @override
+  String get p2pPayoutFirstUnknown => 'Non comparé à la première facture';
+
+  @override
+  String get p2pPayoutFirstUnknownDetail =>
+      'Bull Market ne connaît le montant de la première facture que s’il l’a vu depuis le dernier démarrage de l’app. Comparez-le vous-même à celui-ci.';
+
+  @override
   String p2pRateAgainstSinceMade(String gap) {
     return 'Écart de $gap en votre défaveur depuis la création de l’ordre';
   }
