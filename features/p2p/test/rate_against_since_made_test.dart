@@ -144,4 +144,64 @@ void main() {
     );
     expect(gap.toString(), 'TradeRateGap');
   });
+
+  group(
+    'equality (#283): the two sats [TradeRateGap.againstFor] compares are part of a gap',
+    () {
+      final ranged = terms(max: 200);
+
+      /// The gap of the contract of [range] GBP of the range 50 to 200 (or the order's 100 GBP) taken for [sats] sats.
+      TradeRateGap gapOf(MakerTerms maker, int sats, {double? range}) => some(
+        maker.rateGap(
+          rangeAmount: range == null ? null : FiatAmount.tryCreate(range),
+          tradeSatoshis: Sats.fromInt(sats),
+        ),
+      );
+
+      void expectSameDoubles(TradeRateGap one, TradeRateGap other) {
+        expect(one.fixedRate, other.fixedRate);
+        expect(one.createdRate, other.createdRate);
+        expect(one.percent, other.percent);
+      }
+
+      test('the same contract and sats: equal, the same hash', () {
+        final one = gapOf(ranged, 200000, range: 100);
+        final other = gapOf(ranged, 200000, range: 100);
+        expect(one, other);
+        expect(one.hashCode, other.hashCode);
+      });
+
+      test(
+        '100 GBP for 200,000 sats and 200 GBP for 400,000: the same three figures in doubles, another gap (both sats differ)',
+        () {
+          final one = gapOf(ranged, 200000, range: 100);
+          final other = gapOf(ranged, 400000, range: 200);
+          expectSameDoubles(one, other);
+          expect(one, isNot(other));
+        },
+      );
+
+      test(
+        'the contract\'s sats alone differ (2^60 and 2^60 + 1 sats, the same doubles): another gap',
+        () {
+          final one = gapOf(terms(), 1 << 60);
+          final other = gapOf(terms(), (1 << 60) + 1);
+          expectSameDoubles(one, other);
+          expect(one, isNot(other));
+        },
+      );
+
+      test(
+        'the sats at the rate of the creation alone differ (100 GBP and the next double above it, the same 9,999,999,000 sats, the same doubles): another gap',
+        () {
+          const next = 100.0 + 1.4210854715202004e-14;
+          expect(next, greaterThan(100.0));
+          final one = gapOf(ranged, 9999999000, range: 100);
+          final other = gapOf(ranged, 9999999000, range: next);
+          expectSameDoubles(one, other);
+          expect(one, isNot(other));
+        },
+      );
+    },
+  );
 }
