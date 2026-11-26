@@ -47,8 +47,12 @@ class GarageKeyView extends StatelessWidget {
           children: [
             Expanded(
               child: ExcludeSemantics(
+                // One line, cut at its end as the official client's field shows it (the mock-up of 2026-11-26, question 3): the copy button gives the whole text.
                 child: Text(
                   garageKey.revealBech32(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                   style: text.bodyMedium?.copyWith(
                     color: colors.text,
                     // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.

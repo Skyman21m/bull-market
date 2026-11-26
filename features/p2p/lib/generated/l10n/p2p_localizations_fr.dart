@@ -4444,4 +4444,71 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pHistoryEndUnknown => 'Fin inconnue';
+
+  @override
+  String p2pGarageKeyNumber(int index) {
+    return 'Clé de garage n° $index';
+  }
+
+  @override
+  String get p2pGarageKeyHelperWords =>
+      'Gardez cette clé précieusement et ne la partagez pas. Vos 12 mots la refont.';
+
+  @override
+  String get p2pGarageKeyMasked => 'robo1••••••••••••';
+
+  @override
+  String get p2pGaragePreviousKey => 'Clé précédente';
+
+  @override
+  String get p2pGarageNextKey => 'Clé suivante';
+
+  @override
+  String get p2pGarageNewKey => 'Nouvelle clé';
+
+  @override
+  String get p2pGarageNewKeyTitle => 'Nouvelle clé ?';
+
+  @override
+  String p2pGarageNewKeyText(int index) {
+    return 'Vos nouveaux échanges utiliseront la clé n° $index.';
+  }
+
+  @override
+  String get p2pGarageNewKeyKept =>
+      'Les clés précédentes et leurs robots restent accessibles avec les flèches de la carte « Clé de garage ».';
+
+  @override
+  String p2pGarageNewKeyConfirm(int index) {
+    return 'Créer la clé n° $index';
+  }
+
+  @override
+  String p2pGarageEarlierKey(int index) {
+    return 'Clé précédente : les nouveaux échanges utilisent la clé n° $index.';
+  }
+
+  @override
+  String get p2pGarageKeySwitchPending =>
+      'Terminez vos échanges en cours : la clé tirée de vos 12 mots viendra ensuite.';
+
+  @override
+  String get p2pGarageKeyNoWallet =>
+      'Aucun portefeuille Bitcoin par défaut : la clé de garage vient de ses 12 mots.';
+
+  @override
+  String get p2pGarageKeyPassphrase =>
+      'Ce portefeuille a une phrase secrète : ses 12 mots seuls ne peuvent pas refaire la clé de garage.';
+
+  @override
+  String get p2pGarageKeyNoWords =>
+      'Ce portefeuille n\'a pas de mots dont refaire la clé de garage.';
+
+  @override
+  String get p2pGarageKeyMismatch =>
+      'Les 12 mots de ce portefeuille ne redonnent pas la clé de garage enregistrée sur cet appareil. Rien n\'a été signé.';
+
+  @override
+  String get p2pGarageKeyLastIndex =>
+      'Il n\'y a pas de clé de garage après celle-ci.';
 }

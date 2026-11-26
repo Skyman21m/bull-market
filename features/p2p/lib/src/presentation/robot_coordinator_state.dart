@@ -232,6 +232,13 @@ final class RobotRequestRefused extends RobotRequestProblem {
     RobotNotBoundFailure() ||
     RobotCoordinatorTooManyRefusalsFailure() ||
     RobotReleasedFailure() ||
+    // The failures of the keys of the words (#81): no robot request of the panel gives them.
+    GarageKeyNoWalletFailure() ||
+    GarageKeyPassphraseFailure() ||
+    GarageKeyNoWordsFailure() ||
+    GarageKeyMismatchFailure() ||
+    GarageKeySwitchPendingFailure() ||
+    GarageKeyLastIndexFailure() ||
     // The failures of the trade records and of the robot of a new trade (#85): no robot request of the panel gives them.
     GarageKeyNotForTradesFailure() ||
     TradeCoordinatorNotOnNetworkFailure() ||

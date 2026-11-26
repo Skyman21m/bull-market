@@ -10,7 +10,7 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../presentation/host_rating_cubit.dart';
-import '../garage/garage_wizard.dart' show simplexGroupUrl;
+import '../garage/robosats_links.dart' show simplexGroupUrl;
 import '../widgets/coordinator_link_sheet.dart';
 import '../widgets/word_fit_text.dart';
 

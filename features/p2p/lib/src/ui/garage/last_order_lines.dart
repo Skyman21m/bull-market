@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
@@ -111,7 +112,8 @@ class _LastOrderLinesState extends State<LastOrderLines> {
       _opening = false;
     }
     return BlocBuilder<LastOrdersCubit, LastOrdersState>(
-      builder: (context, state) {
+      builder: (context, listed) {
+        final state = _ofHistoryKey(listed);
         final lines = switch (state) {
           LastOrdersLoading() ||
           LastOrdersListed(orders: []) => const SizedBox.shrink(),
@@ -150,6 +152,22 @@ class _LastOrderLinesState extends State<LastOrderLines> {
         );
       },
     );
+  }
+
+  /// [state] with only the orders of the robots of [historyKey] when one is given (#81): each Garage Key shows its own last orders, as it shows its own robots and history.
+  LastOrdersState _ofHistoryKey(LastOrdersState state) {
+    final key = widget.historyKey;
+    final fingerprint = switch (key?.fingerprint) {
+      Ok(:final value) => value,
+      _ => null,
+    };
+    if (key == null || state is! LastOrdersListed) return state;
+    return LastOrdersListed([
+      for (final record in state.orders)
+        if (record.robot.network == key.network &&
+            record.robot.keyFingerprint == fingerprint)
+          record,
+    ]);
   }
 
   /// « See history » and, open, its lines (#253): no link while the lines are read or cannot be (they say so), nor when the history holds nothing they do not show.

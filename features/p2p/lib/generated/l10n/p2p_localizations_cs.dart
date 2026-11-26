@@ -4386,4 +4386,70 @@ class P2pLocalizationsCs extends P2pLocalizations {
 
   @override
   String get p2pHistoryEndUnknown => 'End unknown';
+
+  @override
+  String p2pGarageKeyNumber(int index) {
+    return 'Garage Key #$index';
+  }
+
+  @override
+  String get p2pGarageKeyHelperWords =>
+      'Keep this key safe and do not share it. Your 12 words remake it.';
+
+  @override
+  String get p2pGarageKeyMasked => 'robo1••••••••••••';
+
+  @override
+  String get p2pGaragePreviousKey => 'Previous key';
+
+  @override
+  String get p2pGarageNextKey => 'Next key';
+
+  @override
+  String get p2pGarageNewKey => 'New key';
+
+  @override
+  String get p2pGarageNewKeyTitle => 'New key?';
+
+  @override
+  String p2pGarageNewKeyText(int index) {
+    return 'Your new trades will use key #$index.';
+  }
+
+  @override
+  String get p2pGarageNewKeyKept =>
+      'Earlier keys and their robots stay within reach with the arrows of the « Garage Key » card.';
+
+  @override
+  String p2pGarageNewKeyConfirm(int index) {
+    return 'Create key #$index';
+  }
+
+  @override
+  String p2pGarageEarlierKey(int index) {
+    return 'Earlier key: new trades use key #$index.';
+  }
+
+  @override
+  String get p2pGarageKeySwitchPending =>
+      'Finish your trades in progress: the Garage Key from your 12 words will come next.';
+
+  @override
+  String get p2pGarageKeyNoWallet =>
+      'No default Bitcoin wallet: the Garage Key comes from its 12 words.';
+
+  @override
+  String get p2pGarageKeyPassphrase =>
+      'This wallet has a passphrase: its 12 words alone cannot remake the Garage Key.';
+
+  @override
+  String get p2pGarageKeyNoWords =>
+      'This wallet has no words to remake the Garage Key from.';
+
+  @override
+  String get p2pGarageKeyMismatch =>
+      'The 12 words of this wallet do not give back the Garage Key recorded on this device. Nothing was signed.';
+
+  @override
+  String get p2pGarageKeyLastIndex => 'There is no Garage Key after this one.';
 }

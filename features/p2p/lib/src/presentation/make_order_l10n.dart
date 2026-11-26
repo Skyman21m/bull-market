@@ -151,6 +151,8 @@ extension MakeProblemL10n on MakeProblem {
     final l10n = P2pLocalizations.of(context);
     return switch (failure) {
       GarageKeyNotForTradesFailure() => l10n.p2pMakeKeyNotForTrades,
+      // While a trade of the key drawn at random before #81 is in progress, no new trade starts (#81).
+      GarageKeySwitchPendingFailure() => l10n.p2pGarageKeySwitchPending,
       RobotNotForNewTradeFailure() => l10n.p2pMakeRobotNotNew(coordinator),
       P2pStorageFailure() => l10n.p2pMakeNotRecorded,
       GarageKeyMissingFailure() ||

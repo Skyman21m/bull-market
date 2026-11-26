@@ -1098,5 +1098,22 @@
   "p2pHistoryExpired": "Expiré",
   "p2pHistoryCancelled": "Annulé",
   "p2pHistoryDispute": "Litige",
-  "p2pHistoryEndUnknown": "Fin inconnue"
+  "p2pHistoryEndUnknown": "Fin inconnue",
+  "p2pGarageKeyNumber": "Clé de garage n° {index}",
+  "p2pGarageKeyHelperWords": "Gardez cette clé précieusement et ne la partagez pas. Vos 12 mots la refont.",
+  "p2pGarageKeyMasked": "robo1••••••••••••",
+  "p2pGaragePreviousKey": "Clé précédente",
+  "p2pGarageNextKey": "Clé suivante",
+  "p2pGarageNewKey": "Nouvelle clé",
+  "p2pGarageNewKeyTitle": "Nouvelle clé ?",
+  "p2pGarageNewKeyText": "Vos nouveaux échanges utiliseront la clé n° {index}.",
+  "p2pGarageNewKeyKept": "Les clés précédentes et leurs robots restent accessibles avec les flèches de la carte « Clé de garage ».",
+  "p2pGarageNewKeyConfirm": "Créer la clé n° {index}",
+  "p2pGarageEarlierKey": "Clé précédente : les nouveaux échanges utilisent la clé n° {index}.",
+  "p2pGarageKeySwitchPending": "Terminez vos échanges en cours : la clé tirée de vos 12 mots viendra ensuite.",
+  "p2pGarageKeyNoWallet": "Aucun portefeuille Bitcoin par défaut : la clé de garage vient de ses 12 mots.",
+  "p2pGarageKeyPassphrase": "Ce portefeuille a une phrase secrète : ses 12 mots seuls ne peuvent pas refaire la clé de garage.",
+  "p2pGarageKeyNoWords": "Ce portefeuille n'a pas de mots dont refaire la clé de garage.",
+  "p2pGarageKeyMismatch": "Les 12 mots de ce portefeuille ne redonnent pas la clé de garage enregistrée sur cet appareil. Rien n'a été signé.",
+  "p2pGarageKeyLastIndex": "Il n'y a pas de clé de garage après celle-ci."
 }

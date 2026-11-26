@@ -99,7 +99,7 @@ void main() {
     );
 
     test(
-      'setupP2p gives P2P the handle, the directory of its database and the wallet\'s port under that one flag',
+      'setupP2p gives P2P the handle, the derived Garage Keys, the directory of its database and the wallet\'s port under that one flag',
       () {
         expect(
           _calls(
@@ -110,6 +110,8 @@ void main() {
             [
               'locator',
               'garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null',
+              // The adapter of the Garage Key derived from the words (#81), the only caller of `secret.derive.garageKey`, under the same flag.
+              'derivedGarageKeys: withGarageKeys ? DerivedGarageKeyAdapter( locator<Secrets>(), () => locator<WalletRepository>(), ) : null',
               'databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null',
               'wallet: withGarageKeys ? () => locator<P2pWalletFacade>() : null',
               // The BOLT11 decoder (#86, #87): pure code, read by the trade use cases only, which exist with the database alone.

@@ -8,7 +8,13 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:bb_mobile/core/entities/signer_entity.dart';
+import 'package:bb_mobile/core/settings/domain/settings_entity.dart';
 import 'package:bb_mobile/core/themes/app_theme.dart';
+import 'package:bb_mobile/core/wallet/data/repositories/wallet_repository.dart';
+import 'package:bb_mobile/core/wallet/domain/entities/wallet.dart';
+import 'package:bb_mobile/core/wallet/domain/wallet_failure.dart';
+import 'package:bb_mobile/features/p2p_garage_key/derived_garage_key_adapter.dart';
 import 'package:bb_mobile/generated/l10n/localization.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +26,7 @@ import 'package:go_router/go_router.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/testing.dart';
-import 'package:secrets/secrets.dart' show Secrets;
+import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
 /// The books were recorded on 2026-11-10 between 13:51 and 13:55 UTC: the screens are rendered a few minutes later.
@@ -1010,235 +1016,180 @@ void main() {
     );
   }
 
-  // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery », then a key drawn in memory, never shown: its backup alert, and the robot step and profile of a draw whose history could not be recorded.
+  // The Garage on the keys of the words (#81), over a vault in memory, on testnet, with the public test phrase « abandon ×11 about » as the default wallet's words (never a real wallet's), derived by the app's own adapter: key 0 at the first opening, « New key? », key 1, an earlier key, the key shown after the PIN (the public vector of key 0), and, in a second run, the card during an update with a trade of the key drawn at random still in progress.
   for (final locale in const [Locale('fr'), Locale('en')]) {
-    testWidgets('captures of the Garage in ${locale.languageCode}', skip: directory == null, (
-      tester,
-    ) async {
-      final out = Directory(directory ?? '.')..createSync(recursive: true);
-      tester.view
-        ..physicalSize = const Size(780, 1688)
-        ..devicePixelRatio = 2;
-      addTearDown(tester.view.reset);
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      messenger.setMockMethodCallHandler(_privacyChannel, (call) async => true);
-      addTearDown(
-        () => messenger.setMockMethodCallHandler(_privacyChannel, null),
-      );
-
-      Future<void> capture(String name) async {
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.runAsync(() async {
-          final boundary =
-              tester.renderObject(find.byKey(_frame)) as RenderRepaintBoundary;
-          final image = await boundary.toImage(pixelRatio: 2);
-          final png = await image.toByteData(format: ui.ImageByteFormat.png);
-          if (png == null) throw StateError('no PNG for $name');
-          File(
-            '${out.path}/${locale.languageCode}-$name.png',
-          ).writeAsBytesSync(png.buffer.asUint8List());
-        });
-      }
-
-      Future<void> settle() async {
-        for (var i = 0; i < 10; i++) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
-          );
-          await tester.pump(const Duration(milliseconds: 20));
-        }
-        // A page or a dialog opened or closed.
-        await tester.pump(const Duration(seconds: 1));
-      }
-
-      // An empty slot is believed after the vault's full read budget, about 4.5 s.
-      Future<void> vault() async {
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-      }
-
-      FakeSecureStoragePlatform().install();
-      final locator = GetIt.asNewInstance();
-      final tor = StreamController<P2pTorState>.broadcast();
-      addTearDown(tor.close);
-      addTearDown(locator.reset);
-      setUpP2pForTesting(
-        locator,
-        transport: const _RecordedTransport(RobosatsNetwork.testnet),
-        torStates: () => tor.stream,
-        clock: () => _now,
-        garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
-      );
-      await tester.pumpWidget(
-        _App(
-          locale: locale,
-          locator: locator,
-          network: RobosatsNetwork.testnet,
-        ),
-      );
-      tor.add(P2pTorState.ready);
-      await settle();
-      final l10n = lookupP2pLocalizations(locale);
-      final example = _exampleGarageKey();
-
-      await tester.tap(find.text(l10n.p2pNavGarage));
-      await vault();
-      await capture('garage-accueil');
-      await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-      await settle();
-      await capture('garage-etape1');
-      await tester.enterText(find.byType(EditableText), example);
-      await settle();
-      await capture('garage-etape1-cle-collee');
-      await tester.tap(find.text(l10n.p2pCommonContinue));
-      await vault();
-      await capture('garage-etape2');
-      await tester.tap(find.text(l10n.p2pCommonContinue));
-      await settle();
-      await capture('garage-etape3');
-      await tester.tapOnText(
-        find.textRange.ofSubstring(l10n.p2pGarageOnboardingHelpLink),
-      );
-      await settle();
-      await capture('garage-lien-simplex');
-      await tester.tapAt(const Offset(4, 4));
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageSeeProfile));
-      await settle();
-      // The Tor of the test seam tells its state to the listeners it has when it changes: the robot panel, shown now, is told that Tor is ready.
-      tor.add(P2pTorState.ready);
-      await settle();
-      await capture('garage-profil');
-      await tester.tap(find.text(l10n.p2pGarageKeyReveal));
-      await settle();
-      await capture('garage-pin-factice');
-      await tester.tap(find.text('PIN'));
-      await settle();
-      // The robot panel sits above the key: the key and « Delete All » are scrolled to.
-      await tester.ensureVisible(find.text(l10n.p2pGarageProfileDeleteAll));
-      await settle();
-      await capture('garage-profil-cle');
-      await tester.tap(find.text(l10n.p2pGarageProfileDeleteAll));
-      await settle();
-      await capture('garage-supprimer');
-      await tester.tap(find.text(l10n.p2pDeleteKeyConfirm));
-      await settle();
-      // The pasted key may have robots on a coordinator: the PIN comes after the confirmation.
-      await tester.tap(find.text('PIN'));
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageWelcomeRecovery));
-      await settle();
-      await tester.enterText(find.byType(EditableText), example);
-      await settle();
-      await capture('garage-recuperation');
-
-      // The backup step of a key drawn in memory, after a trip to the background: the alert stays and the key is behind the PIN, so the capture holds no key.
-      await tester.tapAt(const Offset(4, 4));
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
-      await vault();
-      for (final state in [
-        AppLifecycleState.inactive,
-        AppLifecycleState.hidden,
-        AppLifecycleState.paused,
-        AppLifecycleState.hidden,
-        AppLifecycleState.inactive,
-        AppLifecycleState.resumed,
-      ]) {
-        tester.binding.handleAppLifecycleStateChanged(state);
-        await tester.pump();
-      }
-      await settle();
-      if (find.text(l10n.p2pGarageKeyReveal).evaluate().isEmpty) {
-        throw StateError('the backup step does not hide the key');
-      }
-      await capture('garage-alerte-sauvegarde');
-
-      // A draw whose history the feature's database could not record: the robot step and the profile say so.
-      // The key is drawn in memory and never captured: hidden by a trip to the background, then shown behind the PIN only to reach « Continue », and captured only on the steps that do not show it.
-      FakeSecureStoragePlatform().install();
-      final unrecorded = GetIt.asNewInstance();
-      addTearDown(unrecorded.reset);
-      setUpP2pForTesting(
-        unrecorded,
-        transport: const _RecordedTransport(RobosatsNetwork.testnet),
-        torStates: () => tor.stream,
-        clock: () => _now,
-        garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
-        databaseUnavailable: true,
-      );
-      await tester.pumpWidget(
-        _App(
-          locale: locale,
-          locator: unrecorded,
-          network: RobosatsNetwork.testnet,
-        ),
-      );
-      // The first Garage is gone: its database is closed before the second one opens.
-      await locator.reset();
-      tor.add(P2pTorState.ready);
-      await settle();
-      await tester.tap(find.text(l10n.p2pNavGarage));
-      await vault();
-      await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
-      await vault();
-      for (final state in [
-        AppLifecycleState.inactive,
-        AppLifecycleState.hidden,
-        AppLifecycleState.paused,
-        AppLifecycleState.hidden,
-        AppLifecycleState.inactive,
-        AppLifecycleState.resumed,
-      ]) {
-        tester.binding.handleAppLifecycleStateChanged(state);
-        await tester.pump();
-      }
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageKeyReveal));
-      await settle();
-      await tester.tap(find.text('PIN'));
-      await settle();
-      await tester.tap(find.text(l10n.p2pCommonContinue));
-      await settle();
-      if (find.text(l10n.p2pGarageKeyHistoryNotRecorded).evaluate().isEmpty) {
-        throw StateError('the robot step does not say the history');
-      }
-      await capture('garage-etape2-historique-non-enregistre');
-      await tester.tap(find.text(l10n.p2pCommonContinue));
-      await settle();
-      await tester.tap(find.text(l10n.p2pGarageSeeProfile));
-      await settle();
-      await capture('garage-profil-historique-non-enregistre');
-
-      // « Search order » with a Garage Key stored, for an order the book does not hold, on the Garage whose records cannot be written: the order's page (#245) stops on the take's records before any robot asks the coordinator for the order.
-      await tester.tap(find.text(l10n.p2pNavOffers));
-      await settle();
-      await tester.tap(find.text(l10n.p2pCommonSearch));
-      await settle();
-      final temple = Federation.robosats.byAlias('temple')?.testnet.onion;
-      await tester.enterText(find.byType(TextField), '$temple/order/temple/1');
-      await tester.tap(find.text(l10n.p2pCommonSearch).last);
-      await settle();
-      for (
-        var i = 0;
-        i < 20 && find.text(l10n.p2pTakeNotRecorded).evaluate().isEmpty;
-        i++
-      ) {
-        await settle();
-      }
-      if (find.text(l10n.p2pTakeNotRecorded).evaluate().isEmpty) {
-        throw StateError(
-          'the order page does not say its records stay unwritten',
+    testWidgets(
+      'captures of the Garage in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
         );
-      }
-      await capture('ordre-registres-non-ecrits');
-    });
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          // A page or a dialog opened or closed.
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        Future<void> tap(Finder finder) async {
+          await tester.ensureVisible(finder);
+          await settle();
+          await tester.tap(finder);
+          await settle();
+        }
+
+        FakeSecureStoragePlatform().install();
+        final secrets = Secrets(scratchDirectory: () async => '.');
+        final imported = await tester.runAsync(
+          () => secrets.import(words: _abandonWords),
+        );
+        final fingerprint = switch (imported) {
+          Ok(:final value) => value.id.hex,
+          _ => throw StateError('the test words were not stored'),
+        };
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        setUpP2pForTesting(
+          locator,
+          transport: const _RecordedTransport(RobosatsNetwork.testnet),
+          torStates: () => tor.stream,
+          clock: () => _now,
+          garageKeys: secrets.garageKeys(),
+          derivedGarageKeys: DerivedGarageKeyAdapter(
+            secrets,
+            () => _DefaultWallet(fingerprint),
+          ),
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.testnet,
+          ),
+        );
+        tor.add(P2pTorState.ready);
+        await settle();
+        final l10n = lookupP2pLocalizations(locale);
+
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
+        tor.add(P2pTorState.ready);
+        await settle();
+        await capture('garage-cle-0');
+        await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(0)));
+        await settle();
+        await capture('garage-carte-cle-0');
+        await tap(find.text(l10n.p2pGarageNewKey));
+        await capture('garage-nouvelle-cle');
+        await tap(find.text(l10n.p2pGarageNewKeyConfirm(1)));
+        tor.add(P2pTorState.ready);
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(1)));
+        await settle();
+        await capture('garage-plusieurs-cles');
+        await tap(find.byTooltip(l10n.p2pGaragePreviousKey));
+        tor.add(P2pTorState.ready);
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pGarageEarlierKey(1)));
+        await settle();
+        await capture('garage-cle-precedente');
+        await tap(find.byTooltip(l10n.p2pGarageKeyReveal));
+        await capture('garage-pin-factice');
+        await tester.tap(find.text('PIN'));
+        await settle();
+        final shown = find.text(_abandonTestnetKey0);
+        if (shown.evaluate().isEmpty) {
+          throw StateError('the public key 0 is not shown after the PIN');
+        }
+        await tester.ensureVisible(shown);
+        await settle();
+        await capture('garage-cle-affichee');
+
+        // The card during an update, a trade of the key drawn at random still in progress: the public example key of the RoboSats frontend tests stands for it, stored in the slot of the network.
+        FakeSecureStoragePlatform().install();
+        final second = Secrets(scratchDirectory: () async => '.');
+        final example = switch (GarageKey.parse(_exampleGarageKey())) {
+          Ok(:final value) => value,
+          Err() => throw StateError('not a key'),
+        };
+        final legacy = GetIt.asNewInstance();
+        addTearDown(legacy.reset);
+        setUpP2pForTesting(
+          legacy,
+          transport: const _RecordedTransport(RobosatsNetwork.testnet),
+          torStates: () => tor.stream,
+          clock: () => _now,
+          garageKeys: second.garageKeys(),
+        );
+        await tester.runAsync(() async {
+          await second.garageKeys().import(
+            slot: GarageKeySlot.testnet,
+            bytes: example.revealBytes(),
+          );
+          await seedLegacyBookForTesting(
+            legacy,
+            example,
+            RobosatsNetwork.testnet,
+          );
+        });
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: legacy,
+            network: RobosatsNetwork.testnet,
+          ),
+        );
+        // The first Garage is gone: its database is closed before the second one opens.
+        await locator.reset();
+        tor.add(P2pTorState.ready);
+        await settle();
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
+        tor.add(P2pTorState.ready);
+        await settle();
+        final waiting = find.text(l10n.p2pGarageKeySwitchPending);
+        if (waiting.evaluate().isEmpty) {
+          throw StateError('the card does not say the trades must finish');
+        }
+        await tester.ensureVisible(waiting);
+        await settle();
+        await capture('garage-mise-a-jour-echange-en-cours');
+      },
+    );
   }
 
   // The robot panel of the Garage, on mainnet so that « Select Host » lists every coordinator (Gumpellite, not recorded, shows as offline), over the public example key, pasted, so of unknown history: Tor on its way, a robot without a coordinator, « Select Host » and its « Robots from elsewhere », asked once for the key, the confirmation, the first contact and its long wait, the card of a robot in its states, every failure with a text, a coordinator closed by its refusals, and a robot read back.
@@ -1366,18 +1317,14 @@ void main() {
           await settle();
         }
 
-        // The example key, pasted from the welcome screen: its history is unknown.
+        // The example key, stored in the slot of the network, which the test seam takes as key 0 of the words (#81): a key activated here, recorded as drawn here. « Robots from elsewhere », asked for a pasted key, is not reachable in this version (the paste of a key comes back with #79), so it has no capture here.
+        await tester.runAsync(
+          () => Secrets(scratchDirectory: () async => '.').garageKeys().import(
+            slot: GarageKeySlot.mainnet,
+            bytes: example.revealBytes(),
+          ),
+        );
         await tester.tap(find.text(l10n.p2pNavGarage));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageWelcomeRecovery));
-        await settle();
-        await tester.enterText(find.byType(EditableText), exampleText);
-        await settle();
-        await tester.tap(find.text(l10n.p2pRecoveryRecover));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
         await settle();
         await tester.ensureVisible(find.text(l10n.p2pRobotSelectHost));
         await settle();
@@ -1393,14 +1340,8 @@ void main() {
           await settle();
         }
 
-        // « Select Host »: « Robots from elsewhere » first, for this pasted key, then the sheet once « I understand » records the acknowledgement; then the confirmation, and the first contact with Temple of Sats, which takes its time.
+        // « Select Host »: the sheet, then the confirmation, and the first contact with Temple of Sats, which takes its time.
         await tester.tap(find.text(l10n.p2pRobotSelectHost));
-        await settle();
-        if (find.text(l10n.p2pRobotHistoryTitle).evaluate().isEmpty) {
-          throw StateError('« Select Host » does not ask the acknowledgement');
-        }
-        await capture('robot-historique');
-        await tester.tap(find.text(l10n.p2pRobotHistoryConfirm));
         await settle();
         await capture('robot-choisir-hote');
         await tester.tap(find.text('Temple of Sats'));
@@ -1700,26 +1641,19 @@ void main() {
         );
         await settle();
 
-        await tester.tap(find.text(l10n.p2pNavGarage));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        final shownKey = find.byWidgetPredicate(
-          (widget) => widget is Text && (widget.data ?? '').startsWith('robo1'),
-        );
-        await waitFor(shownKey);
-        final key = switch (GarageKey.parse(
-          tester.widget<Text>(shownKey).data ?? '',
-        )) {
+        // The Garage Key of the trades of this test (#81): key 0 of the public test phrase « abandon ×11 about » on mainnet, the design note's vector, stored in the slot of the network, which the test seam takes as key 0 of the words; it is never captured.
+        final key = switch (GarageKey.parse(_abandonMainnetKey0)) {
           Ok(:final value) => value,
           Err() => throw StateError('not a key'),
         };
+        await tester.runAsync(
+          () => Secrets(scratchDirectory: () async => '.').garageKeys().import(
+            slot: GarageKeySlot.mainnet,
+            bytes: key.revealBytes(),
+          ),
+        );
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
         final identities = [
           for (var i = 0; i < 12; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
@@ -1730,8 +1664,6 @@ void main() {
           clock: () => now,
         );
         transport.temple = coordinator;
-        await tester.tap(find.text(l10n.p2pCommonContinue));
-        await settle();
         tor.add(P2pTorState.ready);
         await settle();
 
@@ -1944,26 +1876,19 @@ void main() {
         );
         await settle();
 
-        await tester.tap(find.text(l10n.p2pNavGarage));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        final shownKey = find.byWidgetPredicate(
-          (widget) => widget is Text && (widget.data ?? '').startsWith('robo1'),
-        );
-        await waitFor(shownKey);
-        final key = switch (GarageKey.parse(
-          tester.widget<Text>(shownKey).data ?? '',
-        )) {
+        // The Garage Key of the trades of this test (#81): key 0 of the public test phrase « abandon ×11 about » on mainnet, the design note's vector, stored in the slot of the network, which the test seam takes as key 0 of the words; it is never captured.
+        final key = switch (GarageKey.parse(_abandonMainnetKey0)) {
           Ok(:final value) => value,
           Err() => throw StateError('not a key'),
         };
+        await tester.runAsync(
+          () => Secrets(scratchDirectory: () async => '.').garageKeys().import(
+            slot: GarageKeySlot.mainnet,
+            bytes: key.revealBytes(),
+          ),
+        );
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
         final identities = [
           for (var i = 0; i < 12; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
@@ -1974,8 +1899,6 @@ void main() {
           clock: () => now,
         );
         transport.temple = coordinator;
-        await tester.tap(find.text(l10n.p2pCommonContinue));
-        await settle();
         tor.add(P2pTorState.ready);
         await settle();
 
@@ -2150,26 +2073,19 @@ void main() {
         await settle();
 
         // A Garage Key drawn here: the robots of a take come from it. Its text, shown for backup right after the draw, gives the test the robots the scripted coordinator knows; it is never captured.
-        await tester.tap(find.text(l10n.p2pNavGarage));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-        await settle();
-        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
-        await settle();
-        await tester.pump(const Duration(seconds: 6));
-        await settle();
-        final shownKey = find.byWidgetPredicate(
-          (widget) => widget is Text && (widget.data ?? '').startsWith('robo1'),
-        );
-        await waitFor(shownKey);
-        final key = switch (GarageKey.parse(
-          tester.widget<Text>(shownKey).data ?? '',
-        )) {
+        // The Garage Key of the trades of this test (#81): key 0 of the public test phrase « abandon ×11 about » on mainnet, the design note's vector, stored in the slot of the network, which the test seam takes as key 0 of the words; it is never captured.
+        final key = switch (GarageKey.parse(_abandonMainnetKey0)) {
           Ok(:final value) => value,
           Err() => throw StateError('not a key'),
         };
+        await tester.runAsync(
+          () => Secrets(scratchDirectory: () async => '.').garageKeys().import(
+            slot: GarageKeySlot.mainnet,
+            bytes: key.revealBytes(),
+          ),
+        );
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
         final identities = [
           for (var i = 0; i < 24; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
@@ -2200,8 +2116,6 @@ void main() {
           maker: maker,
         );
         transport.temple = coordinator;
-        await tester.tap(find.text(l10n.p2pCommonContinue));
-        await settle();
         tor.add(P2pTorState.ready);
         await settle();
 
@@ -3531,4 +3445,64 @@ final class _CaptureWallet implements P2pWalletPort {
     RobosatsNetwork network,
     RobosatsCurrency currency,
   ) async => const P2pWalletRateUnavailable();
+}
+
+/// The public test phrase « abandon ×11 about », the default wallet's words of the Garage captures (#81): never a real wallet's.
+const _abandonWords = [
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'abandon',
+  'about',
+];
+
+/// Key 0 of those words on mainnet, the design note's vector: the Garage Key of the captures of trades.
+const _abandonMainnetKey0 =
+    'robo17u5x0ykpntv26907967s76hh058dwwjc8936zq55wcyyk9r3h87qd7k9t2';
+
+/// Key 0 of those words on testnet, the design note's vector (`docs/design/garage-key-from-the-words.md` § 1): the only key text a capture of the Garage shows.
+const _abandonTestnetKey0 =
+    'robo1vsap3v8a45z0uw66q26hywyyl0kh727q48dqeac9wra7wt2dgg2s3mfwmz';
+
+/// The wallet's repository of the Garage captures: one default Bitcoin wallet on testnet, whose secret is the test words' ([fingerprint]); nothing else is asked of it.
+final class _DefaultWallet implements WalletRepository {
+  final String fingerprint;
+
+  _DefaultWallet(this.fingerprint);
+
+  @override
+  Future<Result<List<Wallet>, WalletFailure>> getWallets({
+    Environment? environment,
+    bool? onlyDefaults,
+    bool? onlyBitcoin,
+    bool? onlyLiquid,
+    bool sync = false,
+  }) async => Ok([
+    if (environment == Environment.testnet)
+      Wallet(
+        origin: 'testnet-default',
+        label: 'Secure Bitcoin',
+        network: Network.bitcoinTestnet,
+        isDefault: true,
+        masterFingerprint: fingerprint,
+        xpubFingerprint: fingerprint,
+        scriptType: ScriptType.bip84,
+        xpub: 'tpub',
+        externalPublicDescriptor: 'desc',
+        internalPublicDescriptor: 'desc',
+        signer: SignerEntity.local,
+        signerDevice: null,
+        balanceSat: BigInt.zero,
+      ),
+  ]);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

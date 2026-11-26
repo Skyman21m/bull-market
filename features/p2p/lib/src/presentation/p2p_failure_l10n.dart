@@ -53,6 +53,13 @@ extension P2pFailureL10n on P2pFailure {
         l10n,
       ),
       GarageRobotUnavailableFailure() => l10n.p2pGarageRobotUnavailable,
+      // The keys of the words (#81): why the words cannot give a key, why a key they give again is refused, why no new trade starts yet, and why « New key » did nothing.
+      GarageKeyNoWalletFailure() => l10n.p2pGarageKeyNoWallet,
+      GarageKeyPassphraseFailure() => l10n.p2pGarageKeyPassphrase,
+      GarageKeyNoWordsFailure() => l10n.p2pGarageKeyNoWords,
+      GarageKeyMismatchFailure() => l10n.p2pGarageKeyMismatch,
+      GarageKeySwitchPendingFailure() => l10n.p2pGarageKeySwitchPending,
+      GarageKeyLastIndexFailure() => l10n.p2pGarageKeyLastIndex,
       // An action on the Garage Key gives it when the record of an imported key could not be written and the key was not stored; the robot panel has its own text ([toRobotText]).
       P2pStorageFailure() => l10n.p2pGarageKeyNotSaved,
       // Only the robot panel shows a robot failure, with [toRobotText], which names the coordinator; here, the texts that need no name.
@@ -106,6 +113,12 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyNotDeletedFailure() ||
       GarageKeyInvalidFailure() ||
       GarageRobotUnavailableFailure() ||
+      GarageKeyNoWalletFailure() ||
+      GarageKeyPassphraseFailure() ||
+      GarageKeyNoWordsFailure() ||
+      GarageKeyMismatchFailure() ||
+      GarageKeySwitchPendingFailure() ||
+      GarageKeyLastIndexFailure() ||
       // Not a robot request: the panel never gets them.
       GarageKeyNotForTradesFailure() ||
       TradeCoordinatorNotOnNetworkFailure() ||
