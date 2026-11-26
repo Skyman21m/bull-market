@@ -7,21 +7,20 @@ import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
 import '../widgets/garage_key_clipboard.dart';
 import '../widgets/garage_key_view.dart';
+import 'delete_garage_key_dialog.dart';
 import 'garage_reauthentication.dart';
 import 'new_garage_key_dialog.dart';
+import 'recovery_dialog.dart';
 
 /// Whether the text of the key is asked for with an eye in a masked field, as the official client's field looks (the mock-up of 2026-11-26, question 3, answer A by default); `false` for today's button « Show Garage Key ».
 const bool _revealWithEye = true;
 
-/// Whether « New key » is shown on an earlier key too (question 6, answer B); by default it is shown on the highest key only, where it creates the next one.
-const bool _newKeyOnEarlierKeys = false;
-
 /// The card « Garage Key » of the Garage (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 6), under the robot's panel, where the official client puts its Garage Key and its copy: the one thing of the Garage that changes with the keys of the words.
 ///
-/// For a key of the words, its title carries the arrows of the keys, « ‹ Garage Key n° N › »: they move between the keys this device activated, without the PIN, as the robot arrows move between robots; « › » goes up to the highest key and no further (greyed there, it creates nothing), « ‹ » down to key 0.
-/// « New key », in place of the official client's « Delete All », asks « New key? » and activates the next key; it is shown on the highest key. An earlier key says so in one line, since no new trade starts from it.
-/// For the key drawn at random before #81, kept while its trades finish, the card is today's, without arrows or « New key », with the line that says the key of the words comes next.
-/// The text of every key, the current one as an earlier one or the key drawn at random, is shown only after the wallet's re-authentication, which [reauthenticate] brings from the shell; without it the text cannot be shown. It is hidden again when the app goes to the background, and the card is built anew for each key, so that moving to another key hides the text. It is copied only through [clipboard], which empties the clipboard after 30 seconds.
+/// Its title carries the arrows of the keys, « ‹ Garage Key n° N › », « ‹ External Key › »: they select another key without the PIN, as the robot arrows move between robots, from key 0 up to the highest key of the words this device activated, then the external key when the vault keeps one, one position further (the defaults of the owner's decision of 2026-11-26, until the mock-up of the external key); « › » creates nothing. The key shown is the key of new trades (the owner's decisions of 2026-11-26).
+/// « New key », in place of the official client's « Delete All », on every key, asks « New Garage Key » and activates the key of the words after the highest, which it selects.
+/// The external key has today's helper text and, besides « New key », « Delete Garage Key », which asks today's « Delete Garage Key? » and, when a robot of it may live on a coordinator, the PIN, which the cubit decides. Without an external key, a link opens « Robot recovery », where one is pasted.
+/// The text of every key is shown only after the wallet's re-authentication, which [reauthenticate] brings from the shell; without it the text cannot be shown. It is hidden again when the app goes to the background, and the card is built anew for each key, so that moving to another key hides the text. It is copied only through [clipboard], which empties the clipboard after 30 seconds.
 class GarageKeyCard extends StatefulWidget {
   final GarageWithKey state;
   final GarageKeyClipboard clipboard;
@@ -94,10 +93,7 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
     final index = state.key.index;
     final highest = state.highest;
     final reauthenticate = widget.reauthenticate;
-    final showNewKey =
-        index != null &&
-        highest != null &&
-        (_newKeyOnEarlierKeys || index == highest);
+    final deleteDisabled = state.deletionNeedsPin && reauthenticate == null;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(BullSpacing.md),
@@ -109,30 +105,15 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (index == null || highest == null)
-            Text(
-              l10n.p2pGarageKeyLabel,
-              style: text.labelMedium?.copyWith(color: colors.textMuted),
-            )
-          else
-            _KeyNavigator(
-              index: index,
-              onPrevious: index == 0 ? null : cubit.previousKey,
-              onNext: index >= highest ? null : cubit.nextKey,
-            ),
-          if (state.isLegacy) ...[
-            const Gap(BullSpacing.xs),
-            Text(
-              l10n.p2pGarageKeySwitchPending,
-              style: text.bodyMedium?.copyWith(color: colors.text),
-            ),
-          ] else if (state.isEarlierKey && highest != null) ...[
-            const Gap(BullSpacing.xs),
-            Text(
-              l10n.p2pGarageEarlierKey(highest),
-              style: text.bodyMedium?.copyWith(color: colors.text),
-            ),
-          ],
+          _KeyNavigator(
+            title: index == null
+                ? l10n.p2pGarageExternalKey
+                : l10n.p2pGarageKeyNumber(index),
+            onPrevious: index == 0 ? null : cubit.previousKey,
+            onNext: index != null && (index < highest || state.hasExternal)
+                ? cubit.nextKey
+                : null,
+          ),
           const Gap(BullSpacing.xs),
           if (_revealed)
             GarageKeyView(garageKey: state.key.key, clipboard: widget.clipboard)
@@ -158,24 +139,58 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
             ),
           const Gap(BullSpacing.xs),
           Text(
-            state.isLegacy
+            state.isExternal
                 ? l10n.p2pGarageKeyHelper
                 : l10n.p2pGarageKeyHelperWords,
             style: text.labelMedium?.copyWith(
               color: _revealed ? colors.text : colors.textMuted,
             ),
           ),
-          if (showNewKey) ...[
-            const Gap(BullSpacing.md),
+          const Gap(BullSpacing.md),
+          BullButton.big(
+            label: l10n.p2pGarageNewKey,
+            iconData: Icons.add,
+            iconFirst: true,
+            onPressed: () => _newKey(highest + 1),
+            outlined: true,
+            bgColor: colors.transparent,
+            textColor: colors.primary,
+            borderColor: colors.primary,
+          ),
+          if (state.isExternal) ...[
+            const Gap(BullSpacing.sm),
+            // Without the shell's re-authentication, a key whose delete asks the PIN cannot be deleted here, as it cannot be shown.
             BullButton.big(
-              label: l10n.p2pGarageNewKey,
-              iconData: Icons.add,
+              label: l10n.p2pDeleteKeyConfirm,
+              iconData: Icons.delete_sweep,
               iconFirst: true,
-              onPressed: () => _newKey(highest + 1),
+              disabled: deleteDisabled,
+              onPressed: () async {
+                if (deleteDisabled ||
+                    !await DeleteGarageKeyDialog.show(context) ||
+                    !context.mounted) {
+                  return;
+                }
+                await cubit.delete(
+                  reauthenticate: reauthenticationFrom(context, reauthenticate),
+                );
+              },
               outlined: true,
               bgColor: colors.transparent,
-              textColor: colors.primary,
-              borderColor: colors.primary,
+              textColor: colors.error,
+              borderColor: colors.error,
+            ),
+          ] else if (!state.hasExternal) ...[
+            const Gap(BullSpacing.xs),
+            Center(
+              child: TextButton(
+                onPressed: () => RecoveryDialog.show(context, cubit),
+                child: Text(
+                  l10n.p2pGarageWelcomeRecoverHint,
+                  textAlign: TextAlign.center,
+                  style: text.labelLarge?.copyWith(color: colors.primary),
+                ),
+              ),
             ),
           ],
         ],
@@ -184,14 +199,14 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
   }
 }
 
-/// « ‹ Garage Key n° N › », in the title of the card, drawn as the robot navigator: the previous key, disabled at key 0, and the next one, disabled on the highest key, where it creates nothing.
+/// « ‹ Garage Key n° N › » or « ‹ External Key › », in the title of the card, drawn as the robot navigator: the previous key, disabled at key 0, and the next one, disabled on the last position, where it creates nothing.
 class _KeyNavigator extends StatelessWidget {
-  final int index;
+  final String title;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
 
   const _KeyNavigator({
-    required this.index,
+    required this.title,
     required this.onPrevious,
     required this.onNext,
   });
@@ -215,7 +230,7 @@ class _KeyNavigator extends StatelessWidget {
           child: FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
-              l10n.p2pGarageKeyNumber(index),
+              title,
               textAlign: TextAlign.center,
               style: text.titleSmall?.copyWith(color: colors.text),
             ),

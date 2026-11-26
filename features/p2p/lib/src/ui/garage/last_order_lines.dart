@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/garage_key_fingerprint.dart';
 import '../../domain/network_garage_key.dart';
 import '../../domain/order_history.dart';
 import '../../domain/robot_binding.dart';
@@ -23,14 +23,26 @@ import '../widgets/word_fit_text.dart';
 ///
 /// The reference's line is the robot shown's; here each trade has a robot of its own, so the lines come from the device's records ([LastOrdersCubit]): the last finished order made here and the last finished trade taken here, the newest end first, each with its coordinator, a tap opening its trade screen ([onOpen]). Nothing while the records are read or when there is none (the reference's « No existing orders found » stays the robot panel's, which reads the robot shown); when they cannot be read, the app's line that says so.
 /// One tap opens one screen (security review of #220, R4): another tap does nothing until the Garage is shown again, or the screen opened is left; so one tap also shows its order's robot once (#227, `GarageProfile`).
-/// With [historyKey] and an [OrderHistoryCubit] above, under the lines, « See history » (#253, design note `docs/design/phase-3-order-history.md`), an addition of Bull Market: only when the history holds an order the lines do not show; open, every finished order of that key, the newest end first, ten then « See more », each line its order number and coordinator, its side, made or taken here, the day of its end, its robot, and how it ended; a tap opens its order as a line above does, under the same guard. Folded at each arrival: when the Garage is covered by a page (a line tapped included) and when the app is hidden or paused, as the Garage Key shown is hidden then.
+/// With [historyKey] and an [OrderHistoryCubit] above, under the lines, « See history » (#253, design note `docs/design/phase-3-order-history.md`), an addition of Bull Market: only when the history holds an order the lines do not show; open, every finished order of every key of the network (#81), the newest end first, ten then « See more », each line its order number and coordinator, its side, made or taken here, the day of its end, its robot, and how it ended; a tap opens its order as a line above does, under the same guard. Folded at each arrival: when the Garage is covered by a page (a line tapped included) and when the app is hidden or paused, as the Garage Key shown is hidden then.
 class LastOrderLines extends StatefulWidget {
   final Future<void> Function(TradeRecord record) onOpen;
 
   /// The Garage Key whose history is shown under the lines, which names each line's robot; `null` for no history.
   final NetworkGarageKey? historyKey;
 
-  const LastOrderLines({super.key, required this.onOpen, this.historyKey});
+  /// The number of each key of the words of the network, by its fingerprint (#81): each line of the history, which covers every key, says its key.
+  final Map<GarageKeyFingerprint, int> keyNumbers;
+
+  /// The fingerprint of the external key of the network, `null` when the vault keeps none: its lines say « External key ». A robot of a key in neither says its robot alone.
+  final GarageKeyFingerprint? externalKey;
+
+  const LastOrderLines({
+    super.key,
+    required this.onOpen,
+    this.historyKey,
+    this.keyNumbers = const {},
+    this.externalKey,
+  });
 
   @override
   State<LastOrderLines> createState() => _LastOrderLinesState();
@@ -112,8 +124,7 @@ class _LastOrderLinesState extends State<LastOrderLines> {
       _opening = false;
     }
     return BlocBuilder<LastOrdersCubit, LastOrdersState>(
-      builder: (context, listed) {
-        final state = _ofHistoryKey(listed);
+      builder: (context, state) {
         final lines = switch (state) {
           LastOrdersLoading() ||
           LastOrdersListed(orders: []) => const SizedBox.shrink(),
@@ -152,22 +163,6 @@ class _LastOrderLinesState extends State<LastOrderLines> {
         );
       },
     );
-  }
-
-  /// [state] with only the orders of the robots of [historyKey] when one is given (#81): each Garage Key shows its own last orders, as it shows its own robots and history.
-  LastOrdersState _ofHistoryKey(LastOrdersState state) {
-    final key = widget.historyKey;
-    final fingerprint = switch (key?.fingerprint) {
-      Ok(:final value) => value,
-      _ => null,
-    };
-    if (key == null || state is! LastOrdersListed) return state;
-    return LastOrdersListed([
-      for (final record in state.orders)
-        if (record.robot.network == key.network &&
-            record.robot.keyFingerprint == fingerprint)
-          record,
-    ]);
   }
 
   /// « See history » and, open, its lines (#253): no link while the lines are read or cannot be (they say so), nor when the history holds nothing they do not show.
@@ -226,6 +221,11 @@ class _LastOrderLinesState extends State<LastOrderLines> {
                         key: ValueKey(('history', order.record.robot)),
                         order: order,
                         nickname: _nicknameOf(key, order.record.robot),
+                        keyNumber: widget
+                            .keyNumbers[order.record.robot.keyFingerprint],
+                        external:
+                            widget.externalKey ==
+                            order.record.robot.keyFingerprint,
                         onTap: () => _open(order.record, current: current),
                       ),
                     ],
@@ -256,14 +256,22 @@ class _LastOrderLinesState extends State<LastOrderLines> {
 class _HistoryRow extends StatelessWidget {
   final FinishedOrder order;
 
-  /// The robot's nickname, `null` when the key shown does not give it: the line then says « Robot #N » alone.
+  /// The robot's nickname, `null` when the key shown does not give it (a robot of another key): the line then says « Robot #N » alone.
   final String? nickname;
+
+  /// The number of the robot's key (#81), `null` for a key that is not one of the words.
+  final int? keyNumber;
+
+  /// Whether the robot's key is the external key of the network (#81).
+  final bool external;
   final VoidCallback onTap;
 
   const _HistoryRow({
     super.key,
     required this.order,
     required this.nickname,
+    required this.keyNumber,
+    required this.external,
     required this.onTap,
   });
 
@@ -289,9 +297,15 @@ class _HistoryRow extends StatelessWidget {
     };
     // « Robot #N » as the account navigator writes it.
     final number = '${l10n.p2pGarageRobotLabel} #${record.robot.accountIndex}';
-    final robot = switch (nickname) {
+    final named = switch (nickname) {
       final nickname? => l10n.p2pHistoryRobotNamed(number, nickname),
       null => number,
+    };
+    // « Key #2 · Robot #5 », « External key · Robot #3 »: the history covers every key of the network (#81).
+    final robot = switch (keyNumber) {
+      final key? => l10n.p2pGarageHistoryKeyRobot(key, named),
+      null when external => l10n.p2pGarageHistoryExternalRobot(named),
+      null => named,
     };
     final (end, endColor) = switch (order.end) {
       OrderEnd.traded => (l10n.p2pHistoryTraded, colors.text),

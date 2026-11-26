@@ -6846,10 +6846,10 @@ abstract class P2pLocalizations {
   /// **'Garage Key #{index}'**
   String p2pGarageKeyNumber(int index);
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Helper text under a key of the words, as plain as the official client's « Store your Garage Key safely » (the owner's decision of 2026-11-26).
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the owner's answers of 2026-11-26 on the mock-up, the English composed on the model of the French; « Bull Wallet » and « 12 words » as the app names the wallet and its backup. Helper text under a key of the words, as plain as the official client's « Store your Garage Key safely » (the owner's decision of 2026-11-26).
   ///
   /// In en, this message translates to:
-  /// **'Keep this key safe and do not share it. Your 12 words remake it.'**
+  /// **'Keep this key safe and do not share it. The 12 words of your Bull Wallet back up your Garage Keys.'**
   String get p2pGarageKeyHelperWords;
 
   /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The masked text of the Garage Key field before the re-authentication: the prefix of every key and dots, never any part of the key.
@@ -6876,22 +6876,22 @@ abstract class P2pLocalizations {
   /// **'New key'**
   String get p2pGarageNewKey;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Title of the confirmation of « New key ».
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (the owner's answers of 2026-11-26), the English composed on the model of the French. Title of the confirmation of « New key ».
   ///
   /// In en, this message translates to:
-  /// **'New key?'**
+  /// **'New Garage Key'**
   String get p2pGarageNewKeyTitle;
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Text of the confirmation of « New key ». {index} is the index of the key it creates.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (the owner's answers of 2026-11-26), the English composed on the model of the French. Text of the confirmation of « New key ». {index} is the index of the key it creates.
   ///
   /// In en, this message translates to:
-  /// **'Your new trades will use key #{index}.'**
+  /// **'Your trades will use key #{index}.'**
   String p2pGarageNewKeyText(int index);
 
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Second line of the confirmation of « New key »: nothing is erased.
+  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (the owner's answers of 2026-11-26), the English composed on the model of the French. Second line of the confirmation of « New key »: nothing is erased.
   ///
   /// In en, this message translates to:
-  /// **'Earlier keys and their robots stay within reach with the arrows of the « Garage Key » card.'**
+  /// **'Earlier keys stay within reach in the Garage.'**
   String get p2pGarageNewKeyKept;
 
   /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Button of the confirmation of « New key ». {index} is the index of the key it creates.
@@ -6899,18 +6899,6 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Create key #{index}'**
   String p2pGarageNewKeyConfirm(int index);
-
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Line of the Garage Key card on an earlier key, from which no new trade starts. {index} is the highest key, the key of new trades.
-  ///
-  /// In en, this message translates to:
-  /// **'Earlier key: new trades use key #{index}.'**
-  String p2pGarageEarlierKey(int index);
-
-  /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). The words of the mock-up of 2026-11-26 (default answers, questions still open), the English composed on the model of the French. Line of the Garage Key card while a trade of the key drawn at random before is in progress, and why a new take or make is refused then.
-  ///
-  /// In en, this message translates to:
-  /// **'Finish your trades in progress: the Garage Key from your 12 words will come next.'**
-  String get p2pGarageKeySwitchPending;
 
   /// Not in the RoboSats texts: the project's own (#81, the Garage Key from the wallet's words, design note `docs/design/garage-key-from-the-words.md`). Why no Garage Key can be shown or used: no default Bitcoin wallet on this network. Never a key drawn in its place.
   ///
@@ -6941,6 +6929,24 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'There is no Garage Key after this one.'**
   String get p2pGarageKeyLastIndex;
+
+  /// Not in the RoboSats texts: the project's own (#81, the owner's answers of 2026-11-26 on the mock-up). The key and the robot of a line of the history of finished orders, which covers every key of the network: {key} is the key's number, {robot} the robot as the line said it before (« Robot #5 » or « Robot #5, its nickname »).
+  ///
+  /// In en, this message translates to:
+  /// **'Key #{key} · {robot}'**
+  String p2pGarageHistoryKeyRobot(int key, String robot);
+
+  /// Not in the RoboSats texts: the project's own (#81, the owner's decision of 2026-11-26: the Garage Key the vault kept before #81, or one pasted in « Robot recovery », becomes the external key; default words until the mock-up of the external key, the English composed on the model of the French). Title of the Garage Key card for the external key, between the arrows of the keys, one position after the highest key of the words.
+  ///
+  /// In en, this message translates to:
+  /// **'External Key'**
+  String get p2pGarageExternalKey;
+
+  /// Not in the RoboSats texts: the project's own (#81, the owner's decision of 2026-11-26: the Garage Key the vault kept before #81, or one pasted in « Robot recovery », becomes the external key; default words until the mock-up of the external key, the English composed on the model of the French). The key and the robot of a line of the history of finished orders, or of a trade in progress, of the external key: {robot} is the robot as the line said it before (« Robot #5 » or « Robot #5, its nickname »).
+  ///
+  /// In en, this message translates to:
+  /// **'External key · {robot}'**
+  String p2pGarageHistoryExternalRobot(String robot);
 }
 
 class _P2pLocalizationsDelegate

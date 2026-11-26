@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/p2p_failure.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../widgets/garage_key_field.dart';
 
-/// « Robot recovery » in Garage Key mode, opened by « Recovery » on the welcome screen (`components/Dialogs/Recovery.tsx` at commit ff1998c): the user pastes a Garage Key and « Recover » stores it, then the Garage shows its profile.
+/// « Robot recovery » in Garage Key mode (`components/Dialogs/Recovery.tsx` at commit ff1998c), opened by the link of the Garage Key card when the vault keeps no external key (#81): the user pastes a Garage Key and « Recover » stores it as the external key, then the Garage shows it.
 ///
 /// The official client then asks Nostr relays for the last robot used and the coordinators for the robot; Troc only stores the key, so its first robot is robot 0.
 /// « Recover » is disabled until the field holds a Garage Key; a tap outside closes the dialog, except while the key is stored.
@@ -37,15 +38,21 @@ class _RecoveryDialogState extends State<RecoveryDialog> {
     super.dispose();
   }
 
+  /// Why the text pasted is not a Garage Key, after « Recover »; cleared by the next one.
+  P2pFailure? _failure;
+
   Future<void> _recover() async {
     final cubit = context.read<GarageCubit>();
-    await cubit.import(_key.text);
+    setState(() => _failure = null);
+    final failure = await cubit.import(_key.text);
     if (!mounted) return;
-    // Stored, or the vault cannot tell any more: the Garage itself says what follows.
-    if (cubit.state is GarageWithKey || cubit.state is GarageUnknown) {
-      _key.clear();
-      Navigator.of(context).pop();
+    if (failure != null) {
+      setState(() => _failure = failure);
+      return;
     }
+    // Stored, or the vault cannot tell any more: the Garage itself says what follows.
+    _key.clear();
+    Navigator.of(context).pop();
   }
 
   @override
@@ -55,10 +62,7 @@ class _RecoveryDialogState extends State<RecoveryDialog> {
     final l10n = P2pLocalizations.of(context);
     final state = context.watch<GarageCubit>().state;
     final working = state is GarageWorking;
-    final failure = switch (state) {
-      GarageWithoutKey(:final failure?) => failure,
-      _ => null,
-    };
+    final failure = _failure;
     return PopScope(
       canPop: !working,
       child: SingleChildScrollView(

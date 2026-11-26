@@ -1,5 +1,6 @@
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
+import '../domain/garage_key_fingerprint.dart';
 import '../domain/network_garage_key.dart';
 import '../domain/p2p_failure.dart';
 
@@ -22,23 +23,27 @@ final class GarageWorking extends GarageState {
   const GarageWorking(super.network);
 }
 
-/// While a trade of the key drawn at random before #81 is in progress, the vault holds no such key for this network, as it concluded after its full read budget: the Garage only says that the key of the words comes once the trades are finished.
-final class GarageWithoutKey extends GarageState {
-  /// Why the last action of the user failed, when it did.
-  final P2pFailure? failure;
-
-  const GarageWithoutKey(super.network, {this.failure});
-}
-
 /// A Garage Key shown: its robot shown, and the key itself for `GarageKeyView`.
 ///
-/// A key of the words (#81) has an index, `key.index`, from 0 to [highest]: the highest is the key of every new trade, the others are earlier keys, shown with the arrows of the Garage Key card to finish their trades. The key drawn at random before #81 has neither, while the trades it finishes are in progress.
+/// The key shown is the key selected on the network, the key of every new trade (the owner's decisions of 2026-11-26): a key of the words (#81), with an index, `key.index`, from 0 to [highest], or the external key, without one, the key the vault keeps for the network (drawn at random on this device before #81, or pasted in « Robot recovery »).
 final class GarageWithKey extends GarageState {
   final NetworkGarageKey key;
   final GarageRobotFace robot;
 
-  /// The highest key of the words activated on this network, the key of new trades; `null` for the key drawn at random before #81.
-  final int? highest;
+  /// The highest key of the words activated on this network: « New key » activates the one after it, whichever key is shown. The external key does not count.
+  final int highest;
+
+  /// The number of each key of the words activated on this network, by its fingerprint: which key a line of the history is of (#81).
+  final Map<GarageKeyFingerprint, int> keyNumbers;
+
+  /// Whether the vault keeps an external key for this network, readable or not: one more position of the arrows of the keys, after [highest].
+  final bool hasExternal;
+
+  /// The fingerprint of the external key, when it can be read: which lines of the history are of it.
+  final GarageKeyFingerprint? externalKey;
+
+  /// Whether removing the external key shown asks the wallet's PIN after « Delete Garage Key? », as the feature's database said when the user last asked (`NeedsPinToDeleteGarageKeyUsecase`): `true` until then, so that the button is never shown as free of the PIN by mistake.
+  final bool deletionNeedsPin;
 
   /// Why the last action of the user failed, when it did: a robot that could not be derived, or a key that could not be activated.
   final P2pFailure? failure;
@@ -50,30 +55,33 @@ final class GarageWithKey extends GarageState {
     super.network, {
     required this.key,
     required this.robot,
-    this.highest,
+    required this.highest,
+    this.keyNumbers = const {},
+    this.hasExternal = false,
+    this.externalKey,
+    this.deletionNeedsPin = true,
     this.failure,
     this.ordersNotServed = const {},
   });
 
-  /// Whether this is the key drawn at random before #81, kept only to finish its trades: no arrows of keys, no « New key ».
-  bool get isLegacy => key.index == null;
-
-  /// Whether this is a key of the words before the highest: shown to finish its trades, never the key of a new trade.
-  bool get isEarlierKey => switch ((key.index, highest)) {
-    (final index?, final top?) => index < top,
-    _ => false,
-  };
+  /// Whether the key shown is the external key.
+  bool get isExternal => key.index == null;
 
   /// This state with the fields given changed; [failure] is the outcome of the action that leads to the copy, so it is replaced, by nothing when it is not given.
   GarageWithKey copyWith({
     GarageRobotFace? robot,
     Set<(String, int)>? ordersNotServed,
+    bool? deletionNeedsPin,
     P2pFailure? failure,
   }) => GarageWithKey(
     network,
     key: key,
     robot: robot ?? this.robot,
     highest: highest,
+    keyNumbers: keyNumbers,
+    hasExternal: hasExternal,
+    externalKey: externalKey,
+    deletionNeedsPin: deletionNeedsPin ?? this.deletionNeedsPin,
     failure: failure,
     ordersNotServed: ordersNotServed ?? this.ordersNotServed,
   );
@@ -87,7 +95,15 @@ final class GarageUnknown extends GarageState {
   /// Why the last action of the user failed, when it did.
   final P2pFailure? actionFailure;
 
-  const GarageUnknown(super.network, this.failure, {this.actionFailure});
+  /// The highest key of the words when the key that cannot be shown is the external key, selected: the Garage then offers the way back to that key, and, unless the keystore is only locked, the way out of a key that cannot be read, its delete, which always asks the PIN. `null` otherwise.
+  final int? externalHighest;
+
+  const GarageUnknown(
+    super.network,
+    this.failure, {
+    this.actionFailure,
+    this.externalHighest,
+  });
 }
 
 /// What the screens show of a robot: its number, nickname and hash id, all public, and never its token.

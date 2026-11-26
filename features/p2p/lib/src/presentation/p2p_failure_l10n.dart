@@ -58,7 +58,6 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyPassphraseFailure() => l10n.p2pGarageKeyPassphrase,
       GarageKeyNoWordsFailure() => l10n.p2pGarageKeyNoWords,
       GarageKeyMismatchFailure() => l10n.p2pGarageKeyMismatch,
-      GarageKeySwitchPendingFailure() => l10n.p2pGarageKeySwitchPending,
       GarageKeyLastIndexFailure() => l10n.p2pGarageKeyLastIndex,
       // An action on the Garage Key gives it when the record of an imported key could not be written and the key was not stored; the robot panel has its own text ([toRobotText]).
       P2pStorageFailure() => l10n.p2pGarageKeyNotSaved,
@@ -117,7 +116,6 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyPassphraseFailure() ||
       GarageKeyNoWordsFailure() ||
       GarageKeyMismatchFailure() ||
-      GarageKeySwitchPendingFailure() ||
       GarageKeyLastIndexFailure() ||
       // Not a robot request: the panel never gets them.
       GarageKeyNotForTradesFailure() ||

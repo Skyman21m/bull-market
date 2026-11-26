@@ -4394,7 +4394,7 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pGarageKeyHelperWords =>
-      'Keep this key safe and do not share it. Your 12 words remake it.';
+      'Keep this key safe and do not share it. The 12 words of your Bull Wallet back up your Garage Keys.';
 
   @override
   String get p2pGarageKeyMasked => 'robo1••••••••••••';
@@ -4409,30 +4409,21 @@ class P2pLocalizationsZh extends P2pLocalizations {
   String get p2pGarageNewKey => 'New key';
 
   @override
-  String get p2pGarageNewKeyTitle => 'New key?';
+  String get p2pGarageNewKeyTitle => 'New Garage Key';
 
   @override
   String p2pGarageNewKeyText(int index) {
-    return 'Your new trades will use key #$index.';
+    return 'Your trades will use key #$index.';
   }
 
   @override
   String get p2pGarageNewKeyKept =>
-      'Earlier keys and their robots stay within reach with the arrows of the « Garage Key » card.';
+      'Earlier keys stay within reach in the Garage.';
 
   @override
   String p2pGarageNewKeyConfirm(int index) {
     return 'Create key #$index';
   }
-
-  @override
-  String p2pGarageEarlierKey(int index) {
-    return 'Earlier key: new trades use key #$index.';
-  }
-
-  @override
-  String get p2pGarageKeySwitchPending =>
-      'Finish your trades in progress: the Garage Key from your 12 words will come next.';
 
   @override
   String get p2pGarageKeyNoWallet =>
@@ -4452,4 +4443,17 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pGarageKeyLastIndex => 'There is no Garage Key after this one.';
+
+  @override
+  String p2pGarageHistoryKeyRobot(int key, String robot) {
+    return 'Key #$key · $robot';
+  }
+
+  @override
+  String get p2pGarageExternalKey => 'External Key';
+
+  @override
+  String p2pGarageHistoryExternalRobot(String robot) {
+    return 'External key · $robot';
+  }
 }

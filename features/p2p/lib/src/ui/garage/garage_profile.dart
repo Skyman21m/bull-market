@@ -99,6 +99,8 @@ class _GarageProfileState extends State<GarageProfile> {
                 create: (_) => history(state.key)..start(),
                 child: LastOrderLines(
                   historyKey: state.key,
+                  keyNumbers: state.keyNumbers,
+                  externalKey: state.externalKey,
                   onOpen: (record) {
                     cubit.showOrderRobot(record);
                     return open(record);
