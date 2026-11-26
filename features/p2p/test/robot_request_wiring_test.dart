@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/testing.dart';

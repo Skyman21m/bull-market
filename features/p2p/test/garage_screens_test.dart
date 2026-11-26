@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_logger/bull_logger.dart';
@@ -15,23 +14,19 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' show NumberFormat;
 import 'package:p2p/p2p.dart';
-import 'package:p2p/src/data/garage_key_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_request_limiter.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
-import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
 import 'package:p2p/src/domain/book_requests_in_flight.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
-import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
@@ -42,7 +37,6 @@ import 'package:p2p/src/domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'package:p2p/src/presentation/book_cubit.dart';
 import 'package:p2p/src/presentation/coordinator_details_cubit.dart';
 import 'package:p2p/src/presentation/garage_cubit.dart';
-import 'package:p2p/src/presentation/garage_state.dart';
 import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/garage/garage_view.dart';
@@ -55,7 +49,6 @@ import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/unlisted_order_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
-import 'package:p2p/src/ui/widgets/garage_key_field.dart';
 import 'package:p2p/src/ui/widgets/garage_key_view.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/order_search_miss_dialog.dart';
@@ -80,20 +73,6 @@ const _privacyChannel = MethodChannel('com.flutterplaza.no_screenshot_methods');
 const _mainnetEntry = 'com.bullbitcoin.secrets/garage/p2p/mainnet';
 const _testnetEntry = 'com.bullbitcoin.secrets/garage/p2p/testnet';
 
-/// The network the tab reads, which a test can change while the tab is shown.
-/// A keystore whose writes take two seconds, as a slow device's could: long enough to leave the Garage while a key is stored.
-final class _SlowWrites extends FakeSecureStoragePlatform {
-  @override
-  Future<void> write({
-    required String key,
-    required String value,
-    required Map<String, String> options,
-  }) async {
-    await Future<void>.delayed(const Duration(seconds: 2));
-    await super.write(key: key, value: value, options: options);
-  }
-}
-
 final class _NetworkCubit extends Cubit<RobosatsNetwork> {
   _NetworkCubit(super.network);
 
@@ -114,20 +93,6 @@ void main() {
     Err(:final failure) => throw StateError('$failure'),
   };
 
-  // The example key of the RoboSats frontend tests, the only real key the tests type, as `packages/robosats` records it.
-  final vector =
-      (jsonDecode(
-                File(
-                  '../../packages/robosats/test/fixtures/robot-identity-vectors.json',
-                ).readAsStringSync(),
-              )
-              as Map<String, dynamic>)['garage_key']
-          as Map<String, dynamic>;
-  final exampleText = vector['garage_key'] as String;
-  final exampleNickname =
-      ((vector['derived'] as List).first as Map<String, dynamic>)['nickname']
-          as String;
-
   late GetIt locator;
   late StreamController<P2pTorState> tor;
   late FakeSecureStoragePlatform storage;
@@ -142,7 +107,6 @@ void main() {
   /// The text on the fake clipboard, every text written to it, how many times it was read, and whether it refuses writes or reads.
   String? clipboard;
   late List<String?> clipboardWrites;
-  late int clipboardReads;
   late bool clipboardWriteFails;
   late bool clipboardUnreadable;
 
@@ -206,7 +170,6 @@ void main() {
     privacyCalls = [];
     clipboard = null;
     clipboardWrites = [];
-    clipboardReads = 0;
     clipboardWriteFails = false;
     clipboardUnreadable = false;
     reauthentications = 0;
@@ -223,7 +186,6 @@ void main() {
           clipboard = (call.arguments as Map)['text'] as String?;
           clipboardWrites.add(clipboard);
         case 'Clipboard.getData':
-          clipboardReads++;
           return clipboardUnreadable ? null : {'text': clipboard};
       }
       return null;
@@ -318,17 +280,6 @@ void main() {
   Future<void> letTheVaultSettle(WidgetTester tester) async {
     await tester.pump(const Duration(seconds: 6));
     await settle(tester);
-  }
-
-  /// Taps « Delete All » of the profile, [label] in the language shown, scrolled to first: the robot panel makes the profile taller than the screen.
-  Future<void> tapDeleteAll(
-    WidgetTester tester, {
-    String label = 'Delete All',
-    bool warnIfMissed = true,
-  }) async {
-    await tester.ensureVisible(find.text(label));
-    await tester.pump();
-    await tester.tap(find.text(label), warnIfMissed: warnIfMissed);
   }
 
   /// Lets a page that was pushed or popped finish its transition.
@@ -871,61 +822,7 @@ void main() {
       expect(reauthentications, 0);
       expect(find.byType(GarageKeyView), findsNothing);
     });
-
-    for (final (locale, texts) in [
-      (
-        const Locale('en'),
-        [
-          'Delete Garage Key?',
-          'Are you sure you want to permanently delete this Garage Key and ALL associated robots?',
-          '⚠️ This action cannot be undone!',
-          'Before deleting, make sure you have:',
-          '•  Stored your Garage Key safely',
-          '•  No active or pending orders in ANY robot',
-          '•  Exported any important data',
-          'Delete Garage Key',
-          'Cancel',
-        ],
-      ),
-      (
-        const Locale('fr'),
-        [
-          'Supprimer la clé de garage ?',
-          'Êtes-vous sûr de vouloir supprimer définitivement cette clé de garage et TOUS les robots associés ?',
-          '⚠️ Cette action ne peut pas être annulée !',
-          "Avant de supprimer, assurez-vous d'avoir :",
-          '•  Conservé votre clé de garage en lieu sûr',
-          '•  Aucun ordre actif ou en attente, sur TOUS vos robots',
-          '•  Exporté toutes les données importantes',
-          'Supprimer la clé de garage',
-          'Annuler',
-        ],
-      ),
-    ]) {}
   });
-
-  group('a change of network', () {});
-
-  /// The paste field of step 1 and its editable text.
-  Finder pasteInput() => find.descendant(
-    of: find.byType(GarageKeyField),
-    matching: find.byType(EditableText),
-  );
-
-  Future<void> openWizard(
-    WidgetTester tester, {
-    Map<String, String?>? held,
-    bool slowWrites = false,
-  }) async {
-    if (slowWrites) {
-      storage = _SlowWrites();
-    } else {
-      keystoreHolding(held ?? {});
-    }
-    await openGarage(tester);
-    await tester.tap(find.text('Start'));
-    await settle(tester);
-  }
 
   group('the re-authentication', () {
     testWidgets('the key is not built under the gate before it answers', (
@@ -1009,105 +906,6 @@ void main() {
     );
   });
 
-  /// The app goes to the background and comes back.
-  Future<void> backgroundAndBack(WidgetTester tester) async {
-    for (final state in [
-      AppLifecycleState.inactive,
-      AppLifecycleState.hidden,
-      AppLifecycleState.paused,
-      AppLifecycleState.hidden,
-      AppLifecycleState.inactive,
-      AppLifecycleState.resumed,
-    ]) {
-      tester.binding.handleAppLifecycleStateChanged(state);
-      await tester.pump();
-    }
-    await settle(tester);
-  }
-
-  /// The app goes to the background, and stays there.
-  Future<void> toBackground(WidgetTester tester) async {
-    for (final state in [
-      AppLifecycleState.inactive,
-      AppLifecycleState.hidden,
-      AppLifecycleState.paused,
-    ]) {
-      tester.binding.handleAppLifecycleStateChanged(state);
-      await tester.pump();
-    }
-  }
-
-  /// The app comes back from the background.
-  Future<void> backToForeground(WidgetTester tester) async {
-    for (final state in [
-      AppLifecycleState.hidden,
-      AppLifecycleState.inactive,
-      AppLifecycleState.resumed,
-    ]) {
-      tester.binding.handleAppLifecycleStateChanged(state);
-      await tester.pump();
-    }
-    await settle(tester);
-  }
-
-  Finder backupAlert() =>
-      find.textContaining('Store it somewhere safe!', findRichText: true);
-
-  /// Records the fixed key as drawn here on [network] and binds its robot [index] to temple there, in the database of the tab: what a screen that sends a robot will write.
-  Future<void> bindFixedRobot({
-    RobosatsNetwork network = RobosatsNetwork.testnet,
-    int index = 0,
-  }) async {
-    final bindings = locator<RobotBindingRepository>();
-    final fingerprint = switch (GarageKeyFingerprint.of(fixedKey)) {
-      Ok(:final value) => value,
-      Err(:final failure) => throw StateError('$failure'),
-    };
-    final temple = switch (CoordinatorIdentity.of(
-      coordinator('temple'),
-      network,
-    )) {
-      final identity? => identity,
-      null => throw StateError('no temple'),
-    };
-    expect(
-      await bindings.recordGeneratedKey(network, fingerprint),
-      isA<Ok<void, P2pFailure>>(),
-    );
-    expect(
-      await bindings.bind(RobotSlot(network, fingerprint, index), temple),
-      isA<Ok<void, P2pFailure>>(),
-    );
-  }
-
-  /// Opens the Garage of the testnet slot, which holds the fixed key, once [prepare] wrote what it needs in the database of the tab.
-  Future<void> openGarageAfter(
-    WidgetTester tester,
-    Future<void> Function() prepare, {
-    Locale locale = const Locale('en'),
-    bool withReauthentication = true,
-    Map<String, String?>? held,
-  }) async {
-    keystoreHolding(held ?? {_testnetEntry: null});
-    await openTab(
-      tester,
-      locale: locale,
-      withReauthentication: withReauthentication,
-    );
-    await prepare();
-    await tester.tap(find.text('Garage'));
-    await settle(tester);
-    await letTheVaultSettle(tester);
-  }
-
-  /// The « Delete All » button of the profile.
-  TextButton deleteAllButton(WidgetTester tester) => tester.widget<TextButton>(
-    find.ancestor(
-      of: find.text('Delete All'),
-      matching: find.byWidgetPredicate((widget) => widget is TextButton),
-    ),
-  );
-
   group('the robot panel, in the Garage', () {
     bool robotRequestsMade() =>
         transport.requested.any((path) => path.contains('/api/robot'));
@@ -1160,17 +958,46 @@ void main() {
       },
     );
 
-    // Security review of step 6: what the panel opened closes with it when the Garage changes under it, and nothing is recorded or sent.
-    for (final opened in [
-      '« Robots from elsewhere »',
-      '« Select Host »',
-      'the confirmation',
-    ]) {
-      for (final change in [
-        'the network',
-        'the next robot',
-        'the key deleted',
-      ]) {}
+    // Security review of step 6: what the panel opened closes with it when the Garage changes under it, and nothing is sent; since #81, another key shown is one more such change.
+    for (final opened in ['« Select Host »', 'the confirmation']) {
+      for (final change in ['the network', 'the next robot', 'a new key']) {
+        testWidgets(
+          '$change while $opened is open: it closes, and nothing is sent',
+          (tester) async {
+            keystoreHolding({});
+            await openGarage(tester, words: TestWordsPort());
+            tor.add(P2pTorState.ready);
+            await letTheVaultSettle(tester);
+            await tester.ensureVisible(find.text('Select Host'));
+            await settle(tester);
+            await tester.tap(find.text('Select Host'));
+            await afterRoute(tester);
+            expect(find.byType(SelectHostSheet), findsOneWidget);
+            if (opened == 'the confirmation') {
+              await tester.tap(find.text('Temple of Sats'));
+              await afterRoute(tester);
+              expect(find.byType(SendRobotDialog), findsOneWidget);
+            }
+            final garage = tester
+                .element(find.byType(GarageView))
+                .read<GarageCubit>();
+            switch (change) {
+              case 'the network':
+                network.switchTo(RobosatsNetwork.mainnet);
+              case 'the next robot':
+                garage.next();
+              default:
+                unawaited(garage.newKey());
+            }
+            await settle(tester);
+            await letTheVaultSettle(tester);
+            expect(find.byType(SelectHostSheet), findsNothing);
+            expect(find.byType(SendRobotDialog), findsNothing);
+            expect(find.byType(GarageView), findsOneWidget);
+            expect(robotRequestsMade(), isFalse);
+          },
+        );
+      }
     }
 
     // Second security pass on #77: the coordinator dialog that an info button of « Select Host » opens sits above the sheet; the sheet's own route goes, not the one on top, and the dialog goes too.

@@ -107,7 +107,10 @@ final class NetworkGarageKey {
   int get hashCode => Object.hash(network, key, index);
 
   @override
-  String toString() => 'NetworkGarageKey(${network.name}, $index, <redacted>)';
+  String toString() => switch (index) {
+    null => 'NetworkGarageKey(${network.name}, <redacted>)',
+    final index => 'NetworkGarageKey(${network.name}, #$index, <redacted>)',
+  };
 }
 
 /// A robot of the Garage Key of one network, with that network: the only form in which a robot leaves the repository.

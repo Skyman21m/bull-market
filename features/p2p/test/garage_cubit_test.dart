@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -17,7 +16,6 @@ import 'package:p2p/src/domain/garage_opening.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/order_history.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
@@ -32,61 +30,14 @@ import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
-import 'support/fakes.dart';
 import 'support/garage_words.dart';
 import 'support/key_output.dart';
-import 'support/robot_bindings.dart';
-
-/// The keystore of the tests, counting the writes and the deletes that reach it.
-final class _CountingStorage extends FakeSecureStoragePlatform {
-  int writes = 0;
-  int deletes = 0;
-
-  _CountingStorage({super.entries});
-
-  @override
-  Future<void> write({
-    required String key,
-    required String value,
-    required Map<String, String> options,
-  }) {
-    writes++;
-    return super.write(key: key, value: value, options: options);
-  }
-
-  @override
-  Future<void> delete({
-    required String key,
-    required Map<String, String> options,
-  }) {
-    deletes++;
-    return super.delete(key: key, options: options);
-  }
-}
-
-/// A stand-in for the wallet's re-authentication: it records, each time it is asked, whether the slot still held a key then, and answers [answer], or waits for [pending] when it is set.
-final class _Gate {
-  final FakeSecureStoragePlatform storage;
-  final String entry;
-  bool answer;
-  Completer<bool>? pending;
-  final List<bool> heldKeyWhenAsked = [];
-
-  _Gate(this.storage, this.entry, {this.answer = true});
-
-  int get asked => heldKeyWhenAsked.length;
-
-  Future<bool> call() {
-    heldKeyWhenAsked.add(storage.entries.containsKey(entry));
-    return pending?.future ?? Future.value(answer);
-  }
-}
 
 /// The Garage of one network over the real vault of `package:secrets`, on its in-memory keystore: empty, holding a key, corrupt, locked or unreadable, and the slot of the other network never touched.
 ///
 /// The vault settles an empty slot with its full read budget, so each test that finds a slot empty waits about 4.5 s of real time.
 void main() {
-  const mainnetEntry = 'com.bullbitcoin.secrets/garage/p2p/mainnet';
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   const testnetEntry = 'com.bullbitcoin.secrets/garage/p2p/testnet';
   const slow = Timeout(Duration(seconds: 120));
 
@@ -116,8 +67,6 @@ void main() {
               as Map<String, dynamic>)['garage_key']
           as Map<String, dynamic>;
   final exampleText = vector['garage_key'] as String;
-  final exampleRobot =
-      (vector['derived'] as List).first as Map<String, dynamic>;
 
   // The fixed key stored in each slot, the way the vault stores it.
   late Map<String, String> storedFixedKeys;
@@ -168,20 +117,6 @@ void main() {
     scripted: scripted,
     scriptedWrites: scriptedWrites,
   );
-
-  /// The key stored in [slot], read through the vault itself: the test compares it, never shows it.
-  Future<GarageKey?> storedIn(GarageKeySlot slot) async =>
-      switch (await Secrets(
-        scratchDirectory: () async => '.',
-      ).garageKeys().read(slot: slot)) {
-        Ok(:final value) => switch (GarageKey.fromBytes(
-          Uint8List.fromList(value.bytes),
-        )) {
-          Ok(:final value) => value,
-          Err() => null,
-        },
-        Err() => null,
-      };
 
   setUpAll(() async {
     final storage = FakeSecureStoragePlatform()..install();
@@ -601,16 +536,17 @@ void main() {
       );
 
       test(
-        'the vault read again while following, the key gone from it: nothing followed any more (review of #229, R6)',
+        'the keys read again while following, the key no longer given: nothing followed any more (review of #229, R6)',
         () async {
           final trades = recordsStarting(recordsOf(locked: [3]));
           final storage = holding([testnetEntry]);
           final cubit = cubitOver(storage, tradesOf: trades.follow);
           await cubit.load();
           expect(trades.records.hasListener, isTrue);
+          // Key 0 of the words is the key of the slot here: gone from it, the words no longer give it.
           storage.entries.remove(testnetEntry);
           await cubit.load();
-          expect(cubit.state, isA<GarageWithoutKey>());
+          expect(cubit.state, isA<GarageUnknown>());
           expect(trades.records.hasListener, isFalse);
           await cubit.close();
           await trades.records.close();

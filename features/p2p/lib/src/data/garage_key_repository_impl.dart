@@ -192,6 +192,10 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
       case Ok(value: DerivedGarageKeyring(:final highest)):
         if (highest != after) return const Err(GarageKeyMissingFailure());
     }
+    // The words must still give back the highest key recorded: a key after another wallet's is never activated.
+    if (await derived(network, after) case Err(:final failure)) {
+      return Err(failure);
+    }
     final next = after + 1;
     final NetworkGarageKey key;
     switch (await _derive(network, next)) {

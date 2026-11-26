@@ -40,6 +40,16 @@ void main() {
       identical(facts, libraries['lib/src/data/p2p_database.dart']) &&
       _schema8RebuildTexts.contains(text);
 
+  /// Whether [text] of [facts] is a statement of the one-time switch of #81, exactly, in `p2p_database.dart` only: the emptying of the book of the key drawn at random, once, when no trade is in progress.
+  bool isOneTimeEmptying(_Facts facts, String text) =>
+      identical(facts, libraries['lib/src/data/p2p_database.dart']) &&
+      _oneTimeEmptying.contains(text);
+
+  /// Whether [text] of [facts] is a statement of the test seam's `seedLegacyBookForTesting` (#81), exactly, in `lib/testing.dart` only.
+  bool isLegacySeed(_Facts facts, String text) =>
+      identical(facts, libraries['lib/testing.dart']) &&
+      _legacySeed.contains(text);
+
   test('the scan reads every Dart file of lib/, the translations included', () {
     for (final (path, scanned) in [
       // The translations gen-l10n writes are code too: a hand-written file named like one was not seen before (review of #67).
@@ -1054,6 +1064,8 @@ class RobotCoordinatorCubit {
             facts.imports.any((uri) => uri.endsWith('p2p_database.dart')),
       ),
       {
+        // Schema 10 (#81): the keys of the words activated, and the one-time switch.
+        'lib/src/data/garage_key_book_repository_impl.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
@@ -1075,6 +1087,8 @@ class RobotCoordinatorCubit {
         'lib/src/data/p2p_tables.dart',
         // The migration steps `make drift-migrations` writes from the snapshots.
         'lib/src/data/p2p_database.steps.dart',
+        // Schema 10 (#81): the keys of the words activated, and the one-time switch.
+        'lib/src/data/garage_key_book_repository_impl.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
@@ -1124,6 +1138,8 @@ class RobotCoordinatorCubit {
                 caseSensitive: false,
               ).hasMatch(text) &&
               !isDriftTrigger(facts, text) &&
+              !isOneTimeEmptying(facts, text) &&
+              !isLegacySeed(facts, text) &&
               !isSchema8Rebuild(facts, text),
         ),
       ),
@@ -1144,6 +1160,8 @@ class RobotCoordinatorCubit {
                   caseSensitive: false,
                 ).hasMatch(text) &&
                 !isDriftTrigger(facts, text) &&
+                !isOneTimeEmptying(facts, text) &&
+                !isLegacySeed(facts, text) &&
                 !(identical(
                       facts,
                       libraries['lib/src/data/p2p_database.dart'],
@@ -1237,6 +1255,8 @@ class RobotCoordinatorCubit {
         if (identical(facts, database) && _rebuildDrops.contains(text)) {
           continue;
         }
+        // The one-time emptying of the book of the key drawn at random (#81), pinned as written below: the one place that deletes a binding, once, when no trade is in progress.
+        if (isOneTimeEmptying(facts, text)) continue;
         expect(
           RegExp(
             r'\b(delete|update|drop|replace|alter)\b',
@@ -1697,6 +1717,11 @@ class RobotCoordinatorCubit {
       _drifted(File('lib/src/data/trade_payouts.drift').readAsStringSync()),
       '${_payoutTriggers.join(';')};',
     );
+    // And on the keys of the words and the one-time switch, as written in `garage_keys.drift` (schema 10, #81).
+    expect(
+      _drifted(File('lib/src/data/garage_keys.drift').readAsStringSync()),
+      '${_garageKeyTriggers.join(';')};',
+    );
     // No other file holds SQL that writes either table of the pins, but the triggers as drift copies them.
     expect(
       where(
@@ -1706,7 +1731,9 @@ class RobotCoordinatorCubit {
                 r'\b(into|update|delete\s+from)\s+"?trade_chat_(nostr_)?pins\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !isDriftTrigger(facts, text),
+              !isDriftTrigger(facts, text) &&
+              !isOneTimeEmptying(facts, text) &&
+              !isLegacySeed(facts, text),
         ),
       ),
       {'lib/src/data/trade_chat_pin_repository_impl.dart'},
@@ -1726,6 +1753,8 @@ class RobotCoordinatorCubit {
                   caseSensitive: false,
                 ).hasMatch(text) &&
                 !isDriftTrigger(facts, text) &&
+                !isOneTimeEmptying(facts, text) &&
+                !isLegacySeed(facts, text) &&
                 !isSchema8Rebuild(facts, text),
           ),
         ),
@@ -1927,6 +1956,8 @@ class RobotCoordinatorCubit {
       // And no other file names `customStatement`, called or torn off, through which any statement could run unseen by the pins of the repositories' writes.
       expect(where((facts) => facts.names.contains('customStatement')), {
         'lib/src/data/p2p_database.dart',
+        // The test seam's `seedLegacyBookForTesting` (#81), for the captures of the Garage while the switch waits: its statements pinned by value (`_legacySeed`), and no production library imports the seam (`test/features/p2p/p2p_testing_seam_test.dart`).
+        'lib/testing.dart',
       });
       // Nor makes a table, a trigger, an index or a view: the database's copies of the step to schema 8 and drift's code only (a repository could otherwise copy a table aside unseen).
       expect(
@@ -2101,7 +2132,9 @@ class RobotCoordinatorCubit {
                 r'\b(update|delete)\b[^;]*\btrades\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !isDriftTrigger(facts, text),
+              !isDriftTrigger(facts, text) &&
+              !isOneTimeEmptying(facts, text) &&
+              !isLegacySeed(facts, text),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -2255,7 +2288,9 @@ class RobotCoordinatorCubit {
                   caseSensitive: false,
                 ).hasMatch(text) &&
                 // The step to schema 8 copies the trades back from their copy, as pinned in the database (#176).
-                !isSchema8Rebuild(facts, text),
+                !isSchema8Rebuild(facts, text) &&
+                // The test seam's book of an update with a trade in progress (#81), pinned by value.
+                !isLegacySeed(facts, text),
           ),
         ),
         {
@@ -3099,6 +3134,21 @@ final _payoutTriggers = [
   for (final trigger in _payoutTriggersAsWritten) _squeezed(trigger),
 ];
 
+/// The triggers of the keys of the words and of the one-time switch (schema 10, #81), as `garage_keys.drift` writes them.
+const _garageKeyTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_deleted BEFORE DELETE ON derived_garage_keys BEGIN SELECT RAISE(ABORT, 'an activated Garage Key is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_changed BEFORE UPDATE ON derived_garage_keys BEGIN SELECT RAISE(ABORT, 'an activated Garage Key never changes'); END",
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1) BEGIN SELECT RAISE(ABORT, 'a Garage Key out of order'); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_switch_never_deleted BEFORE DELETE ON garage_switch BEGIN SELECT RAISE(ABORT, 'the switch of the Garage Keys is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_switch_forward BEFORE UPDATE ON garage_switch WHEN NOT (NEW.id = OLD.id AND (NEW.state = OLD.state OR (OLD.state = 'legacy' AND NEW.state = 'emptying') OR (OLD.state = 'emptying' AND NEW.state = 'vaultPending') OR (OLD.state = 'vaultPending' AND NEW.state = 'derived'))) BEGIN SELECT RAISE(ABORT, 'the switch of the Garage Keys only moves forward'); END",
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_switch_inserted_once BEFORE INSERT ON garage_switch WHEN EXISTS (SELECT 1 FROM garage_switch) BEGIN SELECT RAISE(IGNORE); END",
+];
+
+final _garageKeyTriggers = [
+  for (final trigger in _garageKeyTriggersAsWritten) _squeezed(trigger),
+];
+
 /// The triggers schema 8 replaced (#176), as the `.drift` files wrote them up to schema 7: the migration steps keep them in the schemas of their versions, as drift copies them.
 const _replacedTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
@@ -3112,6 +3162,7 @@ const _replacedTriggersAsWritten = [
 
 /// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
 final _driftTriggers = {
+  ..._garageKeyTriggers,
   ..._tradeTriggers,
   ..._trailTriggers,
   ..._paymentTriggers,
@@ -3155,6 +3206,11 @@ const _rebuildDrops = {
   'DROP TRIGGER IF EXISTS trade_payouts_forward',
   'DROP TRIGGER IF EXISTS trade_payouts_of_their_trade',
   'DROP TRIGGER IF EXISTS trade_payouts_inserted_once',
+  // The one-time emptying of #81 drops the delete triggers of the tables it empties, then makes them again: four are above, these are the others.
+  'DROP TRIGGER IF EXISTS trade_terms_never_deleted',
+  'DROP TRIGGER IF EXISTS maker_terms_never_deleted',
+  'DROP TRIGGER IF EXISTS trade_chat_pins_never_deleted',
+  'DROP TRIGGER IF EXISTS trade_chat_nostr_pins_never_deleted',
 };
 
 /// The statements of the step to schema 8 (#176) that copy the rows of the trades, their trails and their payments aside and back, as `P2pDatabase` writes them (pinned there by value), each as the literals its constant is written with.
@@ -3188,4 +3244,31 @@ final _schema8Rebuild = {
 final _schema8RebuildTexts = {
   ..._schema8Rebuild,
   for (final parts in _schema8RebuildParts) ...parts,
+};
+
+/// The statements of the one-time switch of #81 (design note `docs/design/garage-key-from-the-words.md` § 8), as `P2pDatabase` writes them: the switch written, `legacy` moved to `emptying` only while no trade is in progress, the tables of the book emptied children first, and `vaultPending`.
+const _oneTimeEmptying = {
+  'INSERT OR IGNORE INTO garage_switch (id, state) VALUES (1, ?)',
+  "UPDATE garage_switch SET state = 'emptying' WHERE id = 1 AND state = 'legacy' AND NOT EXISTS (SELECT 1 FROM trades WHERE closed_at IS NULL)",
+  'SELECT state FROM garage_switch WHERE id = 1',
+  "UPDATE garage_switch SET state = 'vaultPending' WHERE id = 1 AND state = 'emptying'",
+  'DELETE FROM trade_payouts',
+  'DELETE FROM trade_payments',
+  'DELETE FROM trade_chat_nostr_pins',
+  'DELETE FROM trade_chat_pins',
+  'DELETE FROM maker_terms',
+  'DELETE FROM trade_trails',
+  'DELETE FROM trade_terms',
+  'DELETE FROM trades',
+  'DELETE FROM robot_bindings',
+  'DELETE FROM garage_key_histories',
+};
+
+/// The statements of the test seam's `seedLegacyBookForTesting` (#81), as `lib/testing.dart` writes them: the switch put back at `legacy` for a test's database, and a trade of robot 0 open.
+const _legacySeed = {
+  'DROP TRIGGER IF EXISTS garage_switch_forward',
+  "UPDATE garage_switch SET state = 'legacy'",
+  "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES (?, ?, 'generated', 1)",
+  "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES (?, ?, 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')",
+  "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES (?, ?, 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, NULL)",
 };

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
@@ -887,7 +888,10 @@ void main() {
         final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
         // « New key » since the order (#81): key 1 is the key in use, the order's key an earlier one.
-        expect(await app.wait(_newKey(app)), const Ok<int, P2pFailure>(1));
+        expect(
+          await app.wait(_newKey(app)),
+          isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
+        );
         await app.openGarage();
         // Each key shows its own last orders: the order of key 0 is not on key 1, and comes back with « ‹ », where a tap opens it.
         expect(_lastOrder(id), findsNothing);
@@ -1259,7 +1263,10 @@ void main() {
         await lockAndRead(app, made);
         await endAndRead(app, made, (order) => order.status = 5);
         // « New key » since the order (#81): key 1 is the key in use, the order's key an earlier one.
-        expect(await app.wait(_newKey(app)), const Ok<int, P2pFailure>(1));
+        expect(
+          await app.wait(_newKey(app)),
+          isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
+        );
         await app.openGarage();
         // The order of key 0 is not among the last orders of key 1 (#81).
         expect(_lastOrder(made.orderId), findsNothing);
@@ -1276,7 +1283,10 @@ void main() {
         expect(made.robot.accountIndex, greaterThan(0));
         await lockAndRead(app, made);
         // « New key » since the order (#81): key 1 is the key in use, the order's key an earlier one.
-        expect(await app.wait(_newKey(app)), const Ok<int, P2pFailure>(1));
+        expect(
+          await app.wait(_newKey(app)),
+          isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
+        );
         await app.openGarage();
         expect(shown(tester), 0);
         expect(find.text('Robot #0'), findsOneWidget);

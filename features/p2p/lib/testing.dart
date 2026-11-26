@@ -254,16 +254,22 @@ Future<void> seedLegacyBookForTesting(
     Err(:final failure) => throw StateError('$failure'),
   };
   final database = locator<P2pDatabase>();
-  for (final statement in [
-    'DROP TRIGGER IF EXISTS garage_switch_forward',
-    "UPDATE garage_switch SET state = 'legacy'",
-    "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES ('${network.name}', '$fingerprint', 'generated', 1)",
-    "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('${network.name}', '$fingerprint', 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')",
-    "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('${network.name}', '$fingerprint', 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, NULL)",
-  ]) {
-    await database.customStatement(statement);
-  }
+  await database.customStatement(_seedDropForward);
+  await database.customStatement(_seedLegacy);
+  await database.customStatement(_seedHistory, [network.name, fingerprint]);
+  await database.customStatement(_seedBinding, [network.name, fingerprint]);
+  await database.customStatement(_seedTrade, [network.name, fingerprint]);
 }
+
+/// The statements of [seedLegacyBookForTesting], pinned by value in `test/robot_bindings_architecture_test.dart`.
+const String _seedDropForward = 'DROP TRIGGER IF EXISTS garage_switch_forward';
+const String _seedLegacy = "UPDATE garage_switch SET state = 'legacy'";
+const String _seedHistory =
+    "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES (?, ?, 'generated', 1)";
+const String _seedBinding =
+    "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES (?, ?, 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')";
+const String _seedTrade =
+    "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES (?, ?, 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, NULL)";
 
 /// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.
 @visibleForTesting

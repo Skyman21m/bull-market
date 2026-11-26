@@ -2132,11 +2132,16 @@ final class Holder {
       );
       expect(
         await inspect('vault_use_repository', '''
+import 'package:p2p/public/p2p_garage_key_port.dart';
+import 'package:p2p/src/domain/repositories/garage_key_book_repository.dart';
 import 'package:primitives/primitives.dart';
 import 'package:secrets/secrets.dart';
 final class GarageKeyRepositoryImpl {
   final GarageKeys _garageKeys;
-  const GarageKeyRepositoryImpl(this._garageKeys);
+  final P2pGarageKeyPort _words;
+  final GarageKeyBookRepository _book;
+  const GarageKeyRepositoryImpl(this._garageKeys, this._words, this._book);
+  Object get _sources => (_words, _book);
   Future<bool> _exists() async =>
       switch (await _garageKeys.read(slot: GarageKeySlot.mainnet)) {
         Ok(value: final GarageKeyMaterial material) => material.bytes.isNotEmpty,
@@ -2272,23 +2277,28 @@ extension Extras on Holder {
     const repositoryPath =
         'features/p2p/lib/src/data/garage_key_repository_impl.dart';
     const viewPath = 'features/p2p/lib/src/ui/widgets/garage_key_view.dart';
-    // The members of the table whose types exist on main; `read` and `firstUsableRobot` return types of #54; `create` returns the key it drew since the review of #60.
+    // Members of the table (#81: the vault's handle, the port of the keys of the words and the book of their indexes; « New key »); `read` and `firstUsableRobot` return types of #54.
     const repository = '''
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:p2p/public/p2p_garage_key_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/garage_key_book_repository.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart';
 final class GarageKeyRepositoryImpl {
   final GarageKeys _garageKeys;
+  final P2pGarageKeyPort _words;
+  final GarageKeyBookRepository _book;
 
-  const GarageKeyRepositoryImpl(this._garageKeys);
+  const GarageKeyRepositoryImpl(this._garageKeys, this._words, this._book);
 
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) async => throw UnimplementedError();
+  Future<Result<int, P2pFailure>> activateNext(
+    RobosatsNetwork network, {
+    required int after,
+  }) async => throw UnimplementedError();
 
   Future<Result<void, P2pFailure>> import(
     RobosatsNetwork network,
@@ -2302,17 +2312,16 @@ final class GarageKeyRepositoryImpl {
   Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network) async =>
       const Ok(false);
 
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) async =>
-      const Ok(null);
-
   Uint8List _copyOf(GarageKeyMaterial material) => material.bytes;
 
   GarageKeys get _handle => _garageKeys;
+
+  Object get _sources => (_words, _book);
 }
 ''';
     String withMember(String member) => repository.replaceAll(
-      '  const GarageKeyRepositoryImpl(this._garageKeys);',
-      '  const GarageKeyRepositoryImpl(this._garageKeys);\n\n  $member',
+      '  const GarageKeyRepositoryImpl(this._garageKeys, this._words, this._book);',
+      '  const GarageKeyRepositoryImpl(this._garageKeys, this._words, this._book);\n\n  $member',
     );
     String notInTable(String member, String signature) =>
         '$repositoryPath: GarageKeyRepositoryImpl.$member#$signature, not in the table of readers';
@@ -2409,23 +2418,37 @@ final class GarageKeyRepositoryImpl {
           reason: name,
         );
       }
-      // The repository before the review of #60: `create` returned nothing, and the draw read the slot back to record a key, maybe not the one it drew.
+      // The repository before #81: `create` drew a key in the vault, which no member does any more.
       expect(
         await inspect(
-          'reader_create_void',
-          repository.replaceAll(
-            '  Future<Result<NetworkGarageKey, P2pFailure>> create(\n'
-                '    RobosatsNetwork network,\n'
-                '  ) async => throw UnimplementedError();',
-            '  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>\n'
-                '      const Ok(null);',
+          'reader_create_back',
+          withMember(
+            'Future<Result<NetworkGarageKey, P2pFailure>> create(RobosatsNetwork network) async =>\n'
+            '      throw UnimplementedError();',
           ),
           policyPath: repositoryPath,
         ),
         [
           notInTable(
             'create',
-            'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+            'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+          ),
+        ],
+      );
+      // « New key » with another signature: an index of the caller's own choice.
+      expect(
+        await inspect(
+          'reader_activate_at',
+          repository.replaceAll(
+            '    required int after,',
+            '    required int after,\n    int? at,',
+          ),
+          policyPath: repositoryPath,
+        ),
+        [
+          notInTable(
+            'activateNext',
+            'Future<Result<int, P2pFailure>> Function(RobosatsNetwork, {required int after, int? at})',
           ),
         ],
       );
@@ -2451,16 +2474,16 @@ final class GarageKeyRepositoryImpl {
         await inspect(
           'reader_constructor',
           repository.replaceAll(
-            '  const GarageKeyRepositoryImpl(this._garageKeys);',
+            '  const GarageKeyRepositoryImpl(this._garageKeys, this._words, this._book);',
             '  final Sink<List<int>>? _tap;\n\n'
-                '  const GarageKeyRepositoryImpl(this._garageKeys, [this._tap]);',
+                '  const GarageKeyRepositoryImpl(this._garageKeys, this._words, this._book, [this._tap]);',
           ),
           policyPath: repositoryPath,
         ),
         [
           notInTable(
             'new',
-            'GarageKeyRepositoryImpl Function(GarageKeys, [Sink<List<int>>?])',
+            'GarageKeyRepositoryImpl Function(GarageKeys, P2pGarageKeyPort, GarageKeyBookRepository, [Sink<List<int>>?])',
           ),
         ],
       );
@@ -2478,7 +2501,7 @@ final class GarageKeyRepositoryImpl {
           policyPath: repositoryPath,
         ),
         containsAll([
-          contains('GarageKeyRepositoryImpl.create#P2pFailure of file:'),
+          contains('GarageKeyRepositoryImpl.activateNext#P2pFailure of file:'),
           contains('GarageKeyRepositoryImpl.exists#P2pFailure of file:'),
         ]),
       );

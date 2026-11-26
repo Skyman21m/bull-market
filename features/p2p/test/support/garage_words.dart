@@ -10,6 +10,7 @@ import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:primitives/primitives.dart';
+import 'package:test/test.dart' show Matcher, equals, isA;
 import 'package:secrets/secrets.dart';
 
 /// The public test phrase « abandon ×11 about »: never a real wallet's.
@@ -175,3 +176,24 @@ final class SlotAsWordsPort implements P2pGarageKeyPort {
     };
   }
 }
+
+/// A result that is `Ok` with [value] (`Ok` and `Err` have no equality of their own).
+Matcher isOk(Object? value) => isA<Ok<Object?, Failure>>().having(
+  (ok) => ok.value,
+  'value',
+  value is Matcher ? value : equals(value),
+);
+
+/// A result that is `Err` with a failure of type [F].
+Matcher isErr<F extends Failure>() => isA<Err<Object?, Failure>>().having(
+  (err) => err.failure,
+  'failure',
+  isA<F>(),
+);
+
+/// A result that is `Err` with a failure of the type of [failure].
+Matcher isErrLike(Failure failure) => isA<Err<Object?, Failure>>().having(
+  (err) => err.failure.runtimeType,
+  'failure',
+  failure.runtimeType,
+);

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -104,7 +103,7 @@ void main() {
         final repository = repositoryOver(database);
         expect(
           await repository.keyring(mainnet),
-          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(0)),
+          isOk(const DerivedGarageKeyring(0)),
         );
         final key = keyOf(await repository.read(mainnet));
         expect(key.index, 0);
@@ -142,10 +141,7 @@ void main() {
           await repository.keyring(mainnet),
           isA<Ok<GarageKeyring, P2pFailure>>(),
         );
-        expect(
-          await repository.activateNext(mainnet, after: 0),
-          const Ok<int, P2pFailure>(1),
-        );
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
         expect(
           keyOf(await repository.read(mainnet)).key.revealBech32(),
           abandonMainnet1,
@@ -159,11 +155,11 @@ void main() {
         // A second tap after the first one won: nothing more.
         expect(
           await repository.activateNext(mainnet, after: 0),
-          const Err<int, P2pFailure>(GarageKeyMissingFailure()),
+          isErr<GarageKeyMissingFailure>(),
         );
         expect(
           await repository.keyring(mainnet),
-          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(1)),
+          isOk(const DerivedGarageKeyring(1)),
         );
         // Two taps at once: one key.
         final both = await Future.wait([
@@ -180,11 +176,11 @@ void main() {
         // « › » never creates: a key above the highest is not given.
         expect(
           await repository.derived(mainnet, 3),
-          const Err<NetworkGarageKey, P2pFailure>(GarageKeyMissingFailure()),
+          isErr<GarageKeyMissingFailure>(),
         );
         expect(
           await repository.keyring(mainnet),
-          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(2)),
+          isOk(const DerivedGarageKeyring(2)),
         );
       },
       timeout: slow,
@@ -199,7 +195,7 @@ void main() {
       );
       expect(
         await repository.activateNext(mainnet, after: 0x7fffffff),
-        const Err<int, P2pFailure>(GarageKeyLastIndexFailure()),
+        isErr<GarageKeyLastIndexFailure>(),
       );
       final book = GarageKeyBookRepositoryImpl(database, clock: () => now);
       final fingerprint = fingerprintOf(keyOf(await repository.read(mainnet)));
@@ -230,10 +226,7 @@ void main() {
           await repository.forNewTrade(mainnet),
           await repository.ofSlot(robot.slot),
         ]) {
-          expect(
-            result,
-            const Err<NetworkGarageKey, P2pFailure>(GarageKeyMismatchFailure()),
-          );
+          expect(result, isErr<GarageKeyMismatchFailure>());
         }
         expect(
           await repository.activateNext(mainnet, after: 0),
@@ -248,10 +241,7 @@ void main() {
       () async {
         final repository = repositoryOver(memory());
         final first = keyOf(await repository.read(mainnet));
-        expect(
-          await repository.activateNext(mainnet, after: 0),
-          const Ok<int, P2pFailure>(1),
-        );
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
         final robot = switch (first.firstUsableRobot(3)) {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
@@ -261,7 +251,7 @@ void main() {
         expect(found.key.revealBech32(), abandonMainnet0);
         expect(
           await repository.ofSlot(RobotSlot(mainnet, drawnFingerprint, 0)),
-          const Err<NetworkGarageKey, P2pFailure>(TradeKeyMissingFailure()),
+          isErr<TradeKeyMissingFailure>(),
         );
       },
       timeout: slow,
@@ -298,12 +288,12 @@ void main() {
           final repository = repositoryOver(database);
           expect(
             await repository.keyring(mainnet),
-            Err<GarageKeyring, P2pFailure>(failure),
+            isErrLike(failure),
             reason: reason.name,
           );
           expect(
             await repository.forNewTrade(mainnet),
-            Err<NetworkGarageKey, P2pFailure>(failure),
+            isErrLike(failure),
             reason: reason.name,
           );
           expect(await countOf(database, 'derived_garage_keys'), 0);
@@ -376,7 +366,7 @@ void main() {
         final repository = repositoryOver(database);
         expect(
           await repository.keyring(mainnet),
-          const Ok<GarageKeyring, P2pFailure>(LegacyGarageKeyring()),
+          isOk(const LegacyGarageKeyring()),
         );
         final legacy = keyOf(await repository.read(mainnet));
         expect(legacy.index, isNull);
@@ -390,19 +380,15 @@ void main() {
         // No new trade, on that key or any other, and no key of the words yet.
         expect(
           await repository.forNewTrade(mainnet),
-          const Err<NetworkGarageKey, P2pFailure>(
-            GarageKeySwitchPendingFailure(),
-          ),
+          isErr<GarageKeySwitchPendingFailure>(),
         );
         expect(
           await repository.activateNext(mainnet, after: 0),
-          const Err<int, P2pFailure>(GarageKeySwitchPendingFailure()),
+          isErr<GarageKeySwitchPendingFailure>(),
         );
         expect(
           await repository.derived(mainnet, 0),
-          const Err<NetworkGarageKey, P2pFailure>(
-            GarageKeySwitchPendingFailure(),
-          ),
+          isErr<GarageKeySwitchPendingFailure>(),
         );
         expect(await statesOf(database), ['legacy']);
         expect(await countOf(database, 'trades'), 1);
@@ -463,7 +449,7 @@ void main() {
         final repository = repositoryOver(database);
         expect(
           await repository.keyring(mainnet),
-          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(0)),
+          isOk(const DerivedGarageKeyring(0)),
         );
         expect(storage.entries.keys, isNot(contains(mainnetEntry)));
         expect(await statesOf(database), ['derived']);
@@ -501,7 +487,7 @@ void main() {
         final repository = repositoryOver(database);
         expect(
           await repository.keyring(mainnet),
-          const Ok<GarageKeyring, P2pFailure>(DerivedGarageKeyring(0)),
+          isOk(const DerivedGarageKeyring(0)),
         );
         expect(storage.entries.keys, isNot(contains(mainnetEntry)));
       },
@@ -530,7 +516,7 @@ void main() {
               nostrKey: 'abc',
             ),
           ),
-          const Ok<void, P2pFailure>(null),
+          isOk(null),
         );
         await database.close();
         final again = open(file);

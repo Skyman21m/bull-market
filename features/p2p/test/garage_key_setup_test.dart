@@ -19,7 +19,6 @@ import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/new_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
-import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
@@ -247,7 +246,7 @@ void main() {
       expect(File('${directory.path}/p2p.sqlite').existsSync(), isTrue);
       expect(
         await locator<NewGarageKeyUsecase>().execute(network, after: 0),
-        const Ok<int, P2pFailure>(1),
+        isOk(1),
       );
       // Nothing of a key in the vault: the words give the keys back.
       expect(

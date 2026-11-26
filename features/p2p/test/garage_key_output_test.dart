@@ -12,7 +12,7 @@ import 'package:p2p/src/data/garage_key_repository_impl.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
+import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/garage_words.dart';
@@ -106,9 +106,14 @@ void main() {
           'package:primitives/primitives.dart',
           'package:robosats/robosats.dart',
           'package:secrets/secrets.dart',
+          // The port of the keys of the words, the keyring, the book of their indexes and the slot of a robot (#81).
+          '../../public/p2p_garage_key_port.dart',
+          '../domain/garage_keyring.dart',
           '../domain/network_garage_key.dart',
           '../domain/p2p_failure.dart',
+          '../domain/repositories/garage_key_book_repository.dart',
           '../domain/repositories/garage_key_repository.dart',
+          '../domain/robot_binding.dart',
         ]),
       );
     });

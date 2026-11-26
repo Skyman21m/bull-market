@@ -162,36 +162,35 @@ final class P2pDatabase extends _$P2pDatabase {
 
   /// `legacy` becomes `emptying` in one statement, only while no trade is in progress: no row of `trades` without its `closed_at` (a pending take, a pending make, a trade taken or made and not closed). A trade is closed only once a terminal position was read, or a take turned out never to have left.
   static const String _startEmptying =
-      "UPDATE garage_switch SET state = 'emptying' WHERE id = 1 AND state = 'legacy' "
-      'AND NOT EXISTS (SELECT 1 FROM trades WHERE closed_at IS NULL)';
+      "UPDATE garage_switch SET state = 'emptying' WHERE id = 1 AND state = 'legacy' AND NOT EXISTS (SELECT 1 FROM trades WHERE closed_at IS NULL)";
   static const String _readSwitch =
       'SELECT state FROM garage_switch WHERE id = 1';
   static const String _emptied =
       "UPDATE garage_switch SET state = 'vaultPending' WHERE id = 1 AND state = 'emptying'";
 
-  /// The triggers that refuse a delete, dropped for the emptying and made again after it, and the tables emptied, children first: everything of the key drawn at random, nothing of the words' keys or of the wallet.
-  static const List<String> _neverDeletedTriggers = [
-    'trade_payouts_never_deleted',
-    'trade_payments_never_deleted',
-    'trade_chat_nostr_pins_never_deleted',
-    'trade_chat_pins_never_deleted',
-    'maker_terms_never_deleted',
-    'trade_trails_never_deleted',
-    'trade_terms_never_deleted',
-    'trades_never_deleted',
-  ];
-  static const List<String> _emptiedTables = [
-    'trade_payouts',
-    'trade_payments',
-    'trade_chat_nostr_pins',
-    'trade_chat_pins',
-    'maker_terms',
-    'trade_trails',
-    'trade_terms',
-    'trades',
-    'robot_bindings',
-    'garage_key_histories',
-  ];
+  /// The triggers that refuse a delete on the tables the emptying empties, dropped for it and made again after it (four of them are the step to schema 8's and 9's constants, above).
+  static const String _dropTradeTermsNeverDeleted =
+      'DROP TRIGGER IF EXISTS trade_terms_never_deleted';
+  static const String _dropMakerTermsNeverDeleted =
+      'DROP TRIGGER IF EXISTS maker_terms_never_deleted';
+  static const String _dropTradeChatPinsNeverDeleted =
+      'DROP TRIGGER IF EXISTS trade_chat_pins_never_deleted';
+  static const String _dropTradeChatNostrPinsNeverDeleted =
+      'DROP TRIGGER IF EXISTS trade_chat_nostr_pins_never_deleted';
+
+  /// The tables of the book of the key drawn at random, each emptied once by [_resumeSwitch], children first: everything of that key, nothing of the keys of the words, of the switch or of the wallet.
+  static const String _emptyTradePayouts = 'DELETE FROM trade_payouts';
+  static const String _emptyTradePayments = 'DELETE FROM trade_payments';
+  static const String _emptyTradeChatNostrPins =
+      'DELETE FROM trade_chat_nostr_pins';
+  static const String _emptyTradeChatPins = 'DELETE FROM trade_chat_pins';
+  static const String _emptyMakerTerms = 'DELETE FROM maker_terms';
+  static const String _emptyTradeTrails = 'DELETE FROM trade_trails';
+  static const String _emptyTradeTerms = 'DELETE FROM trade_terms';
+  static const String _emptyTrades = 'DELETE FROM trades';
+  static const String _emptyRobotBindings = 'DELETE FROM robot_bindings';
+  static const String _emptyGarageKeyHistories =
+      'DELETE FROM garage_key_histories';
 
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
@@ -489,12 +488,24 @@ final class P2pDatabase extends _$P2pDatabase {
       _readSwitch,
     ).getSingleOrNull())?.read<String>('state');
     if (state != 'emptying') return;
-    for (final trigger in _neverDeletedTriggers) {
-      await customStatement('DROP TRIGGER IF EXISTS $trigger');
-    }
-    for (final table in _emptiedTables) {
-      await customStatement('DELETE FROM $table');
-    }
+    await customStatement(_dropTradePayoutsNeverDeleted);
+    await customStatement(_dropTradePaymentsNeverDeleted);
+    await customStatement(_dropTradeChatNostrPinsNeverDeleted);
+    await customStatement(_dropTradeChatPinsNeverDeleted);
+    await customStatement(_dropMakerTermsNeverDeleted);
+    await customStatement(_dropTradeTrailsNeverDeleted);
+    await customStatement(_dropTradeTermsNeverDeleted);
+    await customStatement(_dropTradesNeverDeleted);
+    await customStatement(_emptyTradePayouts);
+    await customStatement(_emptyTradePayments);
+    await customStatement(_emptyTradeChatNostrPins);
+    await customStatement(_emptyTradeChatPins);
+    await customStatement(_emptyMakerTerms);
+    await customStatement(_emptyTradeTrails);
+    await customStatement(_emptyTradeTerms);
+    await customStatement(_emptyTrades);
+    await customStatement(_emptyRobotBindings);
+    await customStatement(_emptyGarageKeyHistories);
     final m = createMigrator();
     await m.createTrigger(tradePayoutsNeverDeleted);
     await m.createTrigger(tradePaymentsNeverDeleted);
