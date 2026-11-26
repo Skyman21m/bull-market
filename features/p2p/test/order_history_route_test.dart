@@ -23,6 +23,7 @@ import 'package:p2p/src/presentation/order_history_cubit.dart';
 import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/garage/account_navigator.dart';
+import 'package:p2p/src/ui/garage/garage_wizard.dart' show RobotNickname;
 import 'package:p2p/src/ui/garage/last_order_lines.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -34,6 +35,7 @@ import 'package:secrets/testing.dart';
 import 'support/fakes.dart' show FakeTransport, coordinator;
 import 'support/harness.dart' show testTheme;
 import 'support/history_records.dart';
+import 'support/lean_confirmation.dart' show loadAppFont;
 import 'support/trade_harness.dart' show HarnessKeys, tradeKey;
 
 /// The history of finished orders in the Garage (#253, design note `docs/design/phase-3-order-history.md`), on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`): the real router, records, use cases and pages, by real gestures, the records written through the feature's own repositories, nothing asked of a real coordinator.
@@ -336,11 +338,13 @@ final class _App {
 }
 
 /// Every paragraph of the robot navigator, of the « Last order #N » lines and of the history, its link and « See more » included, breaks its lines between words only, never inside one (#253; the navigator and the lines since #273): an order's number, a coordinator's name and « Robot #N » are never cut.
-void _expectNoWordBroken(WidgetTester tester, String reason) {
+void _expectNoWordBroken(WidgetTester tester, String reason, {Finder? of}) {
   final ours = find.descendant(
-    of: find.byWidgetPredicate(
-      (widget) => widget is LastOrderLines || widget is AccountNavigator,
-    ),
+    of:
+        of ??
+        find.byWidgetPredicate(
+          (widget) => widget is LastOrderLines || widget is AccountNavigator,
+        ),
     matching: find.byType(RichText),
   );
   expect(ours, findsWidgets);
@@ -349,6 +353,8 @@ void _expectNoWordBroken(WidgetTester tester, String reason) {
       if (element.renderObject case final RenderParagraph paragraph) paragraph,
   ]) {
     final text = paragraph.text.toPlainText();
+    // Drawn whole: neither elided nor cut after its last line.
+    expect(paragraph.didExceedMaxLines, isFalse, reason: '$reason: « $text »');
     final style = paragraph.text.style;
     final room = paragraph.constraints.maxWidth;
     for (final word in text.split(RegExp(r'[ \t\n]+'))) {
@@ -806,7 +812,123 @@ void main() {
       );
     });
   }
+
+  // Follow-ups of #270, #273 and #283: the robot panel's title and the robot's nickname with a large text.
+  for (final (locale, language) in const [
+    (Locale('en'), 'en'),
+    (Locale('fr'), 'fr'),
+  ]) {
+    group('the robot\'s nickname and its panel\'s title, in $language', () {
+      /// The title of the robot's panel and the nickname above the robot's avatar.
+      (Finder, Finder) titleAndNickname(_App app) => (
+        find.text(app.l10n.p2pRobotCoordinatorTitle),
+        find.descendant(
+          of: find.byType(RobotNickname),
+          matching: find.byType(Text),
+        ),
+      );
+
+      for (final textScale in [1.0, 2.0, 3.0]) {
+        testWidgets(
+          'at 320 points and text size $textScale: the title and the nickname break no word that fits a line, elide nothing, and are said as before',
+          (tester) async {
+            await loadAppFont();
+            final app = await _App.start(
+              tester,
+              locale: locale,
+              width: 320,
+              textScale: textScale,
+            );
+            await app.openGarage();
+            expect(tester.takeException(), isNull);
+            final (title, nickname) = titleAndNickname(app);
+            expect(title, findsOneWidget);
+            expect(nickname, findsOneWidget);
+            final name = tester.widget<Text>(nickname).data ?? '';
+            expect(name, isNotEmpty);
+            for (final (finder, what) in [
+              (title, 'title'),
+              (nickname, 'nickname'),
+            ]) {
+              await tester.ensureVisible(finder);
+              await tester.pump();
+              _expectNoWordBroken(
+                tester,
+                '$language ×$textScale, $what',
+                of: finder,
+              );
+              expect(
+                tester.getRect(finder).right <= 320,
+                isTrue,
+                reason: '$what ${tester.getRect(finder)}',
+              );
+            }
+            // A screen reader says the title as a header, and the nickname, in their words.
+            expect(
+              tester.getSemantics(title),
+              isSemantics(
+                label: app.l10n.p2pRobotCoordinatorTitle,
+                isHeader: true,
+              ),
+            );
+            expect(tester.getSemantics(nickname), isSemantics(label: name));
+            await app.close();
+          },
+        );
+      }
+
+      testWidgets(
+        'at 360 points and the normal text size, the title, the nickname and « See history » / « Hide history » are laid out exactly as before the follow-ups of #270, #273 and #283',
+        (tester) async {
+          await loadAppFont();
+          final app = await _App.start(tester, locale: locale, width: 360);
+          await app.write(_finished.sublist(18));
+          await app.openGarage();
+          expect(tester.takeException(), isNull);
+          final (title, nickname) = titleAndNickname(app);
+          Finder buttonOf(Finder text) =>
+              find.ancestor(of: text, matching: find.byType(TextButton));
+          final folded = [
+            tester.getRect(title),
+            tester.getRect(nickname),
+            tester.getRect(find.byType(RobotNickname)),
+            tester.getRect(buttonOf(app.seeHistory)),
+            tester.getRect(app.seeHistory),
+          ];
+          await app.tap(app.seeHistory);
+          final open = [
+            tester.getRect(buttonOf(app.hideHistory)),
+            tester.getRect(app.hideHistory),
+          ];
+          expect([...folded, ...open], _panelLayoutBefore[language]);
+          await app.close();
+        },
+      );
+    });
+  }
 }
+
+/// The places of the robot panel's title, of the robot's nickname (its words, then with its two bolts), of « See history » (its button, its words), then of « Hide history » (its button, its words), at 360 points and the normal text size, with the app's font, as `main` drew them before the follow-ups of #270, #273 and #283 (0e8bb8a84).
+const _panelLayoutBefore = <String, List<Rect>>{
+  'en': [
+    Rect.fromLTWH(33.0, 616.0, 294.0, 21.0),
+    Rect.fromLTWH(97.55850219726562, 147.0, 164.88299560546875, 20.0),
+    Rect.fromLTWH(73.55850219726562, 145.0, 212.88299560546875, 24.0),
+    Rect.fromLTWH(122.68976211547852, 535.0, 114.62047576904297, 48.0),
+    Rect.fromLTWH(134.68976211547852, 550.5, 66.62047576904297, 17.0),
+    Rect.fromLTWH(120.14974212646484, 535.0, 119.70051574707031, 48.0),
+    Rect.fromLTWH(132.14974212646484, 550.5, 71.70051574707031, 17.0),
+  ],
+  'fr': [
+    Rect.fromLTWH(33.0, 616.0, 294.0, 21.0),
+    Rect.fromLTWH(97.55850219726562, 147.0, 164.88299560546875, 20.0),
+    Rect.fromLTWH(73.55850219726562, 145.0, 212.88299560546875, 24.0),
+    Rect.fromLTWH(109.51966857910156, 535.0, 140.96066284179688, 48.0),
+    Rect.fromLTWH(121.51966857910156, 550.5, 92.96066284179688, 17.0),
+    Rect.fromLTWH(95.68958282470703, 535.0, 168.62083435058594, 48.0),
+    Rect.fromLTWH(107.68958282470703, 550.5, 120.62083435058594, 17.0),
+  ],
+};
 
 /// The places of the robot navigator's arrows and label, then of each « Last order #N » line, its label and its coordinator's name, top to bottom, at 360 points and the normal text size, as `main` drew them before #273 (7a15229b9).
 const _layoutBefore = {
