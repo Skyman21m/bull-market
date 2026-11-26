@@ -106,8 +106,9 @@ void main() {
           'package:primitives/primitives.dart',
           'package:robosats/robosats.dart',
           'package:secrets/secrets.dart',
-          // The port of the keys of the words, the keyring, the book of their indexes and the slot of a robot (#81).
+          // The port of the keys of the words, the fingerprint of the external key, the keyring, the book of their indexes and the slot of a robot (#81).
           '../../public/p2p_garage_key_port.dart',
+          '../domain/garage_key_fingerprint.dart',
           '../domain/garage_keyring.dart',
           '../domain/network_garage_key.dart',
           '../domain/p2p_failure.dart',

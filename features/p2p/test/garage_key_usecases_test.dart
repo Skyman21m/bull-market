@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
-import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/garage_keyring.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
@@ -70,7 +71,7 @@ final class _RecordingRepository implements GarageKeyRepository {
     RobosatsNetwork network,
   ) async {
     calls.add('keyring ${network.name}');
-    return _answer(const DerivedGarageKeyring(0));
+    return _answer(_keyring);
   }
 
   @override
@@ -104,7 +105,24 @@ final class _RecordingRepository implements GarageKeyRepository {
     calls.add('activateNext ${network.name} $after');
     return _answer(after + 1);
   }
+
+  @override
+  Future<Result<void, P2pFailure>> select(
+    RobosatsNetwork network,
+    GarageKeySelection selection,
+  ) async {
+    calls.add('select ${network.name} $selection');
+    return _answer(null);
+  }
+
+  @override
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) async {
+    calls.add('delete ${network.name}');
+    return _answer(null);
+  }
 }
+
+const _keyring = GarageKeyring(highest: 0, selected: SelectedWordsKey(0));
 
 void main() {
   // The example key of the RoboSats frontend tests, as `packages/robosats` records it (tests run in the package directory).
@@ -284,7 +302,17 @@ void main() {
           ),
           'keyring mainnet': (
             (r) => ReadGarageKeyUsecase(r).keyring(RobosatsNetwork.mainnet),
-            const DerivedGarageKeyring(0),
+            _keyring,
+          ),
+          'select mainnet SelectedExternalKey()': (
+            (r) => ReadGarageKeyUsecase(
+              r,
+            ).select(RobosatsNetwork.mainnet, const SelectedExternalKey()),
+            null,
+          ),
+          'delete mainnet': (
+            (r) => DeleteGarageKeyUsecase(r).execute(RobosatsNetwork.mainnet),
+            null,
           ),
           'derived testnet 0': (
             (r) => ReadGarageKeyUsecase(r).derived(RobosatsNetwork.testnet, 0),

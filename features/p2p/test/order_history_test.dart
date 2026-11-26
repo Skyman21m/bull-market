@@ -164,6 +164,20 @@ void main() {
     );
 
     test(
+      'without a key, the finished orders of every key of the network, the newest end first (#81)',
+      () {
+        final history = OrderHistory.of([
+          ClosedTrade(record(index: 1, orderId: 11), TradePosition.succeeded),
+          ClosedTrade(
+            record(index: 5, orderId: 15, of: otherKey),
+            TradePosition.succeeded,
+          ),
+        ]);
+        expect({for (final order in history) order.record.orderId}, {11, 15});
+      },
+    );
+
+    test(
       'the newest end first; equal ends by the higher order, then the higher robot',
       () {
         ClosedTrade at(int index, int orderId, int hours) => ClosedTrade(
@@ -293,7 +307,7 @@ void main() {
         ]);
         final history = switch (await ListOrderHistoryUsecase(
           trades,
-        ).execute(testnet, key).first) {
+        ).execute(testnet).first) {
           Ok(:final value) => value,
           Err(:final failure) => fail('$failure'),
         };
@@ -308,7 +322,7 @@ void main() {
         expect(
           (await ListOrderHistoryUsecase(
             trades,
-          ).execute(testnet, otherKey).first),
+          ).execute(RobosatsNetwork.mainnet).first),
           isA<Ok<List<FinishedOrder>, P2pFailure>>().having(
             (ok) => ok.value,
             'value',
@@ -407,7 +421,7 @@ void main() {
 
   group('the cubit of the history', () {
     late StreamController<Result<List<FinishedOrder>, P2pFailure>> source;
-    final asked = <(RobosatsNetwork, GarageKeyFingerprint)>[];
+    final asked = <RobosatsNetwork>[];
 
     setUp(() {
       source = StreamController.broadcast();
@@ -416,11 +430,10 @@ void main() {
 
     tearDown(() => source.close());
 
-    OrderHistoryCubit cubit({Result<GarageKeyFingerprint, P2pFailure>? of}) =>
-        OrderHistoryCubit(testnet, of ?? Ok(key), (network, key) {
-          asked.add((network, key));
-          return source.stream;
-        });
+    OrderHistoryCubit cubit() => OrderHistoryCubit(testnet, (network) {
+      asked.add(network);
+      return source.stream;
+    });
 
     List<FinishedOrder> orders(int count) => OrderHistory.of([
       for (var i = 0; i < count; i++)
@@ -441,7 +454,7 @@ void main() {
       () async {
         final history = cubit()..start();
         addTearDown(history.close);
-        expect(asked, [(testnet, key)]);
+        expect(asked, [testnet]);
         source.add(Ok(orders(23)));
         await pumpEventQueue();
         expect(history.state.open, isFalse);
@@ -499,11 +512,6 @@ void main() {
       history.open();
       expect(history.state.lines, isEmpty);
       expect(history.state.hasMore, isFalse);
-      // A key whose fingerprint cannot be told reads nothing, and says so.
-      final keyless = cubit(of: const Err(P2pStorageFailure()))..start();
-      addTearDown(keyless.close);
-      expect(keyless.state.read, isA<OrderHistoryUnreadable>());
-      expect(asked, hasLength(1));
     });
 
     test('its state prints counts only', () async {

@@ -46,7 +46,6 @@ import 'package:p2p/src/ui/garage/robot_history_dialog.dart';
 import 'package:p2p/src/ui/garage/select_host_sheet.dart';
 import 'package:p2p/src/ui/garage/send_robot_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
-import 'package:p2p/src/ui/unlisted_order_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_view.dart';
@@ -724,7 +723,8 @@ void main() {
 
       expect(find.text(fixedNickname), findsOneWidget);
       expect(find.text('Robot #0'), findsOneWidget);
-      expect(find.text('Garage Key #0'), findsOneWidget);
+      // The key the vault keeps is the external key, selected at the first opening (#81).
+      expect(find.text('External Key'), findsOneWidget);
       expect(find.byType(GarageKeyView), findsNothing);
       expectKeyOnlyInView(tester);
 
@@ -2335,18 +2335,19 @@ void main() {
     String nickname(WidgetTester tester) =>
         tester.widget<RobotNickname>(find.byType(RobotNickname)).nickname;
 
+    // Each reading of the keys reads the vault slot of the external key, whose empty slot the vault settles with its full budget (#81).
     Future<void> tapText(WidgetTester tester, String text) async {
       await tester.ensureVisible(find.text(text));
       await tester.pump();
       await tester.tap(find.text(text));
-      await settle(tester);
+      await letTheVaultSettle(tester);
     }
 
     Future<void> tapTooltip(WidgetTester tester, String tooltip) async {
       await tester.ensureVisible(find.byTooltip(tooltip));
       await tester.pump();
       await tester.tap(find.byTooltip(tooltip));
-      await settle(tester);
+      await letTheVaultSettle(tester);
     }
 
     testWidgets(
@@ -2358,7 +2359,7 @@ void main() {
         expect(find.text('robo1••••••••••••'), findsOneWidget);
         expect(
           find.text(
-            'Keep this key safe and do not share it. Your 12 words remake it.',
+            'Keep this key safe and do not share it. The 12 words of your Bull Wallet back up your Garage Keys.',
           ),
           findsOneWidget,
         );
@@ -2410,7 +2411,8 @@ void main() {
         await afterRoute(tester);
         final key = shownKey(tester);
         expect(key, abandonTestnet0);
-        await tapTooltip(tester, 'Copy');
+        await tester.tap(find.byTooltip('Copy'));
+        await settle(tester);
         expect(clipboard == key, isTrue);
         await tester.pump(const Duration(seconds: 29));
         expect(clipboard == key, isTrue);
@@ -2506,8 +2508,8 @@ void main() {
         await openGarage(tester, words: await wordsOf(tester));
         final first = nickname(tester);
         await tapText(tester, 'New key');
-        expect(find.text('New key?'), findsOneWidget);
-        expect(find.text('Your new trades will use key #1.'), findsOneWidget);
+        expect(find.text('New Garage Key'), findsOneWidget);
+        expect(find.text('Your trades will use key #1.'), findsOneWidget);
         await tapText(tester, 'Cancel');
         expect(find.text('Garage Key #0'), findsOneWidget);
         await tapText(tester, 'New key');
@@ -2522,7 +2524,7 @@ void main() {
     );
 
     testWidgets(
-      'an earlier key says so and offers no « New key »; the arrows ask no PIN',
+      'the arrows select an earlier key, which keeps « New key » and no line of its own; they ask no PIN',
       (tester) async {
         keystoreHolding({});
         await openGarage(tester, words: await wordsOf(tester));
@@ -2531,11 +2533,8 @@ void main() {
         await tapText(tester, 'Create key #1');
         await tapTooltip(tester, 'Previous key');
         expect(find.text('Garage Key #0'), findsOneWidget);
-        expect(
-          find.text('Earlier key: new trades use key #1.'),
-          findsOneWidget,
-        );
-        expect(find.text('New key'), findsNothing);
+        expect(find.textContaining('Earlier key'), findsNothing);
+        expect(find.text('New key'), findsOneWidget);
         expect(nickname(tester), first);
         await tapTooltip(tester, 'Next key');
         expect(find.text('Garage Key #1'), findsOneWidget);
@@ -2613,29 +2612,47 @@ void main() {
     });
 
     testWidgets(
-      'while a trade of the key drawn at random is in progress, its card is today\'s, without arrows or « New key »',
+      'after the update, the key the vault kept is the external key, selected, after the highest key of the words, with today\'s helper and its delete',
       (tester) async {
         keystoreHolding({_testnetEntry: null});
-        final directory = Directory.systemTemp.createTempSync('p2p-legacy-');
+        final directory = Directory.systemTemp.createTempSync('p2p-external-');
         addTearDown(() => directory.deleteSync(recursive: true));
         final file = File('${directory.path}/nine.sqlite');
-        await tester.runAsync(() => legacyBook(file, fixedKey));
+        await tester.runAsync(() => schema9Book(file, fixedKey));
         await openGarage(
           tester,
           words: await wordsOf(tester),
           databaseOpener: () => NativeDatabase(file),
         );
-        expect(find.text('Garage Key'), findsOneWidget);
-        expect(
-          find.text(
-            'Finish your trades in progress: the Garage Key from your 12 words will come next.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.text('External Key'), findsOneWidget);
         expect(find.text('Store your Garage Key safely'), findsOneWidget);
-        expect(find.text('New key'), findsNothing);
-        expect(find.byTooltip('Previous key'), findsNothing);
-        expect(find.byTooltip('Next key'), findsNothing);
+        expect(find.text('New key'), findsOneWidget);
+        expect(find.text('Delete Garage Key'), findsOneWidget);
+        expect(
+          find.text('Recover an existing robot using your token'),
+          findsNothing,
+        );
+        expect(arrow(tester, 'Previous key').onPressed, isNotNull);
+        expect(arrow(tester, 'Next key').onPressed, isNull);
+        // « ‹ »: key 0 of the words, whose « › » leads back to the external key.
+        await tapTooltip(tester, 'Previous key');
+        expect(find.text('Garage Key #0'), findsOneWidget);
+        expect(find.text('Delete Garage Key'), findsNothing);
+        expect(arrow(tester, 'Next key').onPressed, isNotNull);
+        await tapTooltip(tester, 'Next key');
+        expect(find.text('External Key'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'without an external key, a link of the card opens « Robot recovery »',
+      (tester) async {
+        keystoreHolding({});
+        await openGarage(tester, words: await wordsOf(tester));
+        expect(find.text('Garage Key #0'), findsOneWidget);
+        expect(arrow(tester, 'Next key').onPressed, isNull);
+        await tapText(tester, 'Recover an existing robot using your token');
+        expect(find.text('Robot recovery'), findsOneWidget);
       },
     );
   });
@@ -2660,7 +2677,7 @@ P2pLocalizations _text(WidgetTester tester) =>
     P2pLocalizations.of(tester.element(find.byType(RobotCoordinatorPanel)));
 
 /// A book of schema 9 at [file] with an open trade of a robot of [key], drawn here: what an update finds with a trade in progress (#81).
-Future<void> legacyBook(File file, GarageKey key) async {
+Future<void> schema9Book(File file, GarageKey key) async {
   final fingerprint = switch (GarageKeyFingerprint.of(key)) {
     Ok(:final value) => value.hex,
     Err(:final failure) => throw StateError('$failure'),

@@ -294,179 +294,6 @@ class DerivedGarageKeysCompanion
   }
 }
 
-class GarageSwitch extends Table
-    with TableInfo<GarageSwitch, GarageSwitchData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  GarageSwitch(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> state = GeneratedColumn<String>(
-    'state',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  @override
-  List<GeneratedColumn> get $columns => [id, state];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'garage_switch';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  GarageSwitchData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return GarageSwitchData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      state: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}state'],
-      )!,
-    );
-  }
-
-  @override
-  GarageSwitch createAlias(String alias) {
-    return GarageSwitch(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const [
-    'PRIMARY KEY(id)',
-    'CHECK(typeof(id) = \'integer\' AND typeof(state) = \'text\')',
-    'CHECK(id = 1)',
-    'CHECK(state IN (\'legacy\', \'emptying\', \'vaultPending\', \'derived\'))',
-  ];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class GarageSwitchData extends DataClass
-    implements Insertable<GarageSwitchData> {
-  final int id;
-  final String state;
-  const GarageSwitchData({required this.id, required this.state});
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['state'] = Variable<String>(state);
-    return map;
-  }
-
-  GarageSwitchCompanion toCompanion(bool nullToAbsent) {
-    return GarageSwitchCompanion(id: Value(id), state: Value(state));
-  }
-
-  factory GarageSwitchData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return GarageSwitchData(
-      id: serializer.fromJson<int>(json['id']),
-      state: serializer.fromJson<String>(json['state']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'state': serializer.toJson<String>(state),
-    };
-  }
-
-  GarageSwitchData copyWith({int? id, String? state}) =>
-      GarageSwitchData(id: id ?? this.id, state: state ?? this.state);
-  GarageSwitchData copyWithCompanion(GarageSwitchCompanion data) {
-    return GarageSwitchData(
-      id: data.id.present ? data.id.value : this.id,
-      state: data.state.present ? data.state.value : this.state,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('GarageSwitchData(')
-          ..write('id: $id, ')
-          ..write('state: $state')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, state);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is GarageSwitchData &&
-          other.id == this.id &&
-          other.state == this.state);
-}
-
-class GarageSwitchCompanion extends UpdateCompanion<GarageSwitchData> {
-  final Value<int> id;
-  final Value<String> state;
-  const GarageSwitchCompanion({
-    this.id = const Value.absent(),
-    this.state = const Value.absent(),
-  });
-  GarageSwitchCompanion.insert({
-    this.id = const Value.absent(),
-    required String state,
-  }) : state = Value(state);
-  static Insertable<GarageSwitchData> custom({
-    Expression<int>? id,
-    Expression<String>? state,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (state != null) 'state': state,
-    });
-  }
-
-  GarageSwitchCompanion copyWith({Value<int>? id, Value<String>? state}) {
-    return GarageSwitchCompanion(id: id ?? this.id, state: state ?? this.state);
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (state.present) {
-      map['state'] = Variable<String>(state.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('GarageSwitchCompanion(')
-          ..write('id: $id, ')
-          ..write('state: $state')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class GarageKeyHistories extends Table
     with TableInfo<GarageKeyHistories, GarageKeyHistoriesData> {
   @override
@@ -6242,6 +6069,209 @@ class TradePayoutsCompanion extends UpdateCompanion<TradePayoutsData> {
   }
 }
 
+class SelectedGarageKeys extends Table
+    with TableInfo<SelectedGarageKeys, SelectedGarageKeysData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  SelectedGarageKeys(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> network = GeneratedColumn<String>(
+    'network',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> keyIndex = GeneratedColumn<int>(
+    'key_index',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  @override
+  List<GeneratedColumn> get $columns => [network, keyIndex];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'selected_garage_keys';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {network};
+  @override
+  SelectedGarageKeysData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SelectedGarageKeysData(
+      network: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}network'],
+      )!,
+      keyIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_index'],
+      ),
+    );
+  }
+
+  @override
+  SelectedGarageKeys createAlias(String alias) {
+    return SelectedGarageKeys(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(network)',
+    'CHECK(typeof(network) = \'text\' AND(key_index IS NULL OR typeof(key_index) = \'integer\'))',
+    'CHECK(network IN (\'mainnet\', \'testnet\'))',
+    'CHECK(key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class SelectedGarageKeysData extends DataClass
+    implements Insertable<SelectedGarageKeysData> {
+  final String network;
+  final int? keyIndex;
+  const SelectedGarageKeysData({required this.network, this.keyIndex});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['network'] = Variable<String>(network);
+    if (!nullToAbsent || keyIndex != null) {
+      map['key_index'] = Variable<int>(keyIndex);
+    }
+    return map;
+  }
+
+  SelectedGarageKeysCompanion toCompanion(bool nullToAbsent) {
+    return SelectedGarageKeysCompanion(
+      network: Value(network),
+      keyIndex: keyIndex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyIndex),
+    );
+  }
+
+  factory SelectedGarageKeysData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SelectedGarageKeysData(
+      network: serializer.fromJson<String>(json['network']),
+      keyIndex: serializer.fromJson<int?>(json['keyIndex']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'network': serializer.toJson<String>(network),
+      'keyIndex': serializer.toJson<int?>(keyIndex),
+    };
+  }
+
+  SelectedGarageKeysData copyWith({
+    String? network,
+    Value<int?> keyIndex = const Value.absent(),
+  }) => SelectedGarageKeysData(
+    network: network ?? this.network,
+    keyIndex: keyIndex.present ? keyIndex.value : this.keyIndex,
+  );
+  SelectedGarageKeysData copyWithCompanion(SelectedGarageKeysCompanion data) {
+    return SelectedGarageKeysData(
+      network: data.network.present ? data.network.value : this.network,
+      keyIndex: data.keyIndex.present ? data.keyIndex.value : this.keyIndex,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SelectedGarageKeysData(')
+          ..write('network: $network, ')
+          ..write('keyIndex: $keyIndex')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(network, keyIndex);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SelectedGarageKeysData &&
+          other.network == this.network &&
+          other.keyIndex == this.keyIndex);
+}
+
+class SelectedGarageKeysCompanion
+    extends UpdateCompanion<SelectedGarageKeysData> {
+  final Value<String> network;
+  final Value<int?> keyIndex;
+  final Value<int> rowid;
+  const SelectedGarageKeysCompanion({
+    this.network = const Value.absent(),
+    this.keyIndex = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SelectedGarageKeysCompanion.insert({
+    required String network,
+    this.keyIndex = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : network = Value(network);
+  static Insertable<SelectedGarageKeysData> custom({
+    Expression<String>? network,
+    Expression<int>? keyIndex,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (network != null) 'network': network,
+      if (keyIndex != null) 'key_index': keyIndex,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SelectedGarageKeysCompanion copyWith({
+    Value<String>? network,
+    Value<int?>? keyIndex,
+    Value<int>? rowid,
+  }) {
+    return SelectedGarageKeysCompanion(
+      network: network ?? this.network,
+      keyIndex: keyIndex ?? this.keyIndex,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (network.present) {
+      map['network'] = Variable<String>(network.value);
+    }
+    if (keyIndex.present) {
+      map['key_index'] = Variable<int>(keyIndex.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SelectedGarageKeysCompanion(')
+          ..write('network: $network, ')
+          ..write('keyIndex: $keyIndex, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class DatabaseAtV10 extends GeneratedDatabase {
   DatabaseAtV10(QueryExecutor e) : super(e);
   late final DerivedGarageKeys derivedGarageKeys = DerivedGarageKeys(this);
@@ -6257,22 +6287,9 @@ class DatabaseAtV10 extends GeneratedDatabase {
     'CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1) BEGIN SELECT RAISE (ABORT, \'a Garage Key out of order\');END',
     'derived_garage_keys_in_order',
   );
-  late final GarageSwitch garageSwitch = GarageSwitch(this);
-  late final Trigger garageSwitchNeverDeleted = Trigger(
-    'CREATE TRIGGER IF NOT EXISTS garage_switch_never_deleted BEFORE DELETE ON garage_switch BEGIN SELECT RAISE (ABORT, \'the switch of the Garage Keys is kept\');END',
-    'garage_switch_never_deleted',
-  );
-  late final Trigger garageSwitchForward = Trigger(
-    'CREATE TRIGGER IF NOT EXISTS garage_switch_forward BEFORE UPDATE ON garage_switch WHEN NOT(NEW.id = OLD.id AND(NEW.state = OLD.state OR(OLD.state = \'legacy\' AND NEW.state = \'emptying\')OR(OLD.state = \'emptying\' AND NEW.state = \'vaultPending\')OR(OLD.state = \'vaultPending\' AND NEW.state = \'derived\')))BEGIN SELECT RAISE (ABORT, \'the switch of the Garage Keys only moves forward\');END',
-    'garage_switch_forward',
-  );
   late final Trigger derivedGarageKeysInsertedOnce = Trigger(
     'CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE (IGNORE);END',
     'derived_garage_keys_inserted_once',
-  );
-  late final Trigger garageSwitchInsertedOnce = Trigger(
-    'CREATE TRIGGER IF NOT EXISTS garage_switch_inserted_once BEFORE INSERT ON garage_switch WHEN EXISTS (SELECT 1 FROM garage_switch) BEGIN SELECT RAISE (IGNORE);END',
-    'garage_switch_inserted_once',
   );
   late final GarageKeyHistories garageKeyHistories = GarageKeyHistories(this);
   late final RobotBindings robotBindings = RobotBindings(this);
@@ -6284,6 +6301,7 @@ class DatabaseAtV10 extends GeneratedDatabase {
   late final TradeChatNostrPins tradeChatNostrPins = TradeChatNostrPins(this);
   late final MakerTerms makerTerms = MakerTerms(this);
   late final TradePayouts tradePayouts = TradePayouts(this);
+  late final SelectedGarageKeys selectedGarageKeys = SelectedGarageKeys(this);
   late final Trigger tradePayoutsNeverDeleted = Trigger(
     'CREATE TRIGGER IF NOT EXISTS trade_payouts_never_deleted BEFORE DELETE ON trade_payouts BEGIN SELECT RAISE (ABORT, \'the payout of a contract is kept\');END',
     'trade_payouts_never_deleted',
@@ -6453,11 +6471,7 @@ class DatabaseAtV10 extends GeneratedDatabase {
     derivedGarageKeysNeverDeleted,
     derivedGarageKeysNeverChanged,
     derivedGarageKeysInOrder,
-    garageSwitch,
-    garageSwitchNeverDeleted,
-    garageSwitchForward,
     derivedGarageKeysInsertedOnce,
-    garageSwitchInsertedOnce,
     garageKeyHistories,
     robotBindings,
     trades,
@@ -6468,6 +6482,7 @@ class DatabaseAtV10 extends GeneratedDatabase {
     tradeChatNostrPins,
     makerTerms,
     tradePayouts,
+    selectedGarageKeys,
     tradePayoutsNeverDeleted,
     tradePayoutsForward,
     tradePayoutsOfTheirTrade,
@@ -6534,28 +6549,7 @@ class DatabaseAtV10 extends GeneratedDatabase {
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
-        'garage_switch',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'garage_switch',
-        limitUpdateKind: UpdateKind.update,
-      ),
-      result: [],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
         'derived_garage_keys',
-        limitUpdateKind: UpdateKind.insert,
-      ),
-      result: [],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'garage_switch',
         limitUpdateKind: UpdateKind.insert,
       ),
       result: [],

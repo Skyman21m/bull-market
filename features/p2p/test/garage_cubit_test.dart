@@ -20,7 +20,9 @@ import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/new_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/garage_cubit.dart';
@@ -96,6 +98,10 @@ void main() {
       NewGarageKeyUsecase(repository),
       ImportGarageKeyUsecase(
         repository,
+        RobotBindingRepositoryImpl(database, clock: DateTime.now),
+      ),
+      DeleteGarageKeyUsecase(repository),
+      NeedsPinToDeleteGarageKeyUsecase(
         RobotBindingRepositoryImpl(database, clock: DateTime.now),
       ),
       tradesOf: tradesOf,
@@ -734,13 +740,12 @@ void main() {
         expect(shown(cubit).key.index, 0);
         expect(shown(cubit).highest, 0);
         expect(shown(cubit).key.key.revealBech32(), abandonTestnet0);
-        expect(shown(cubit).isEarlierKey, isFalse);
         await cubit.close();
       },
     );
 
     test(
-      '« › » never creates a key; « New key » does, from the highest key only',
+      '« › » never creates a key; the arrows select a key, kept across a new cubit; « New key » creates the key after the highest from any key',
       () async {
         final words = TestWordsPort();
         final cubit = cubitOver(FakeSecureStoragePlatform(), words: words);
@@ -754,11 +759,7 @@ void main() {
         expect(shown(cubit).robot.index, 0);
         await cubit.previousKey();
         expect(shown(cubit).key.index, 0);
-        expect(shown(cubit).isEarlierKey, isTrue);
-        // From an earlier key, « New key » does nothing.
-        await cubit.newKey();
         expect(shown(cubit).highest, 1);
-        expect(shown(cubit).key.index, 0);
         await cubit.previousKey();
         expect(shown(cubit).key.index, 0);
         await cubit.nextKey();
@@ -766,6 +767,11 @@ void main() {
         await cubit.nextKey();
         expect(shown(cubit).key.index, 1);
         expect(shown(cubit).highest, 1);
+        // From key 0, « New key » creates key 2, the one after the highest, and selects it.
+        await cubit.previousKey();
+        await cubit.newKey();
+        expect(shown(cubit).key.index, 2);
+        expect(shown(cubit).highest, 2);
         await cubit.close();
       },
     );
@@ -815,5 +821,97 @@ void main() {
       expect(storage.entries, isEmpty);
       await cubit.close();
     });
+  });
+
+  group('the external key (#81)', () {
+    GarageWithKey shown(GarageCubit cubit) => cubit.state as GarageWithKey;
+
+    test(
+      'the key the vault kept is selected at the first opening, one position after the highest key of the words, and « New key » from it makes the next key of the words',
+      () async {
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          words: TestWordsPort(),
+        );
+        await cubit.load();
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).key.key, fixedKey);
+        expect(shown(cubit).hasExternal, isTrue);
+        expect(shown(cubit).externalKey, fixedFingerprint);
+        expect(shown(cubit).highest, 0);
+        // « › » on the last position creates nothing.
+        await cubit.nextKey();
+        expect(shown(cubit).isExternal, isTrue);
+        await cubit.previousKey();
+        expect(shown(cubit).key.index, 0);
+        expect(shown(cubit).key.key.revealBech32(), abandonTestnet0);
+        await cubit.nextKey();
+        expect(shown(cubit).isExternal, isTrue);
+        await cubit.newKey();
+        expect(shown(cubit).key.index, 1);
+        expect(shown(cubit).highest, 1);
+        await cubit.nextKey();
+        expect(shown(cubit).isExternal, isTrue);
+        await cubit.close();
+      },
+      timeout: slow,
+    );
+
+    test(
+      'a key pasted becomes the external key, selected; a text that is not a key is given back and changes nothing',
+      () async {
+        final storage = FakeSecureStoragePlatform();
+        final cubit = cubitOver(storage, words: TestWordsPort());
+        await cubit.load();
+        expect(shown(cubit).hasExternal, isFalse);
+        expect(
+          await cubit.import('${exampleText.substring(0, 20)}x'),
+          isA<GarageKeyInvalidFailure>(),
+        );
+        expect(shown(cubit).key.index, 0);
+        expect(storage.entries, isNot(contains(testnetEntry)));
+        expect(await cubit.import(exampleText), isNull);
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).key.key.revealBech32(), exampleText);
+        // One at a time: a second paste is not even tried.
+        expect(await cubit.import(exampleText), isNull);
+        await cubit.close();
+      },
+      timeout: slow,
+    );
+
+    test(
+      'removing the external key asks the PIN when its robots may live on a coordinator, deletes only it, then shows the highest key of the words',
+      () async {
+        final storage = FakeSecureStoragePlatform();
+        final cubit = cubitOver(storage, words: TestWordsPort());
+        await cubit.load();
+        expect(await cubit.import(exampleText), isNull);
+        // Without the re-authentication, a key from elsewhere is not deleted.
+        await cubit.delete(reauthenticate: null);
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).deletionNeedsPin, isTrue);
+        expect(storage.entries, contains(testnetEntry));
+        // A PIN left deletes nothing.
+        await cubit.delete(reauthenticate: () async => false);
+        expect(storage.entries, contains(testnetEntry));
+        var asked = 0;
+        await cubit.delete(
+          reauthenticate: () async {
+            asked++;
+            return true;
+          },
+        );
+        expect(asked, 1);
+        expect(storage.entries, isNot(contains(testnetEntry)));
+        expect(shown(cubit).key.index, 0);
+        expect(shown(cubit).hasExternal, isFalse);
+        // A key of the words is never deleted.
+        await cubit.delete(reauthenticate: () async => true);
+        expect(shown(cubit).key.index, 0);
+        await cubit.close();
+      },
+      timeout: slow,
+    );
   });
 }

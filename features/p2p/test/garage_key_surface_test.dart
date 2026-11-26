@@ -14,7 +14,7 @@ void main() {
   CompilationUnit unitOf(String path) =>
       parseString(content: File(path).readAsStringSync()).unit;
 
-  // The methods of the interface, each with its full signature (#81): which keys the Garage offers, a key (the one the Garage opens on, one of the words by index, the one of a new trade, the one of a robot's slot), « New key », whether a key can be shown, a robot derived from it, each with its network, and the import that no screen reaches in this version.
+  // The methods of the interface, each with its full signature (#81): which keys the Garage offers, a key (the one the Garage opens on, one of the words by index, the one of a new trade, the one of a robot's slot), « New key », the key selected, whether a key can be shown, a robot derived from it, each with its network, and the import and the delete of the external key.
   const allowed = {
     'keyring':
         'Future<Result<GarageKeyring, P2pFailure>> keyring(RobosatsNetwork network)',
@@ -28,12 +28,16 @@ void main() {
         'Future<Result<NetworkGarageKey, P2pFailure>> ofSlot(RobotSlot slot)',
     'activateNext':
         'Future<Result<int, P2pFailure>> activateNext(RobosatsNetwork network, {required int after})',
+    'select':
+        'Future<Result<void, P2pFailure>> select(RobosatsNetwork network, GarageKeySelection selection)',
     'exists':
         'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network)',
     'firstUsableRobot':
         'Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network)',
     'import':
         'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
+    'delete':
+        'Future<Result<void, P2pFailure>> delete(RobosatsNetwork network)',
   };
 
   test(

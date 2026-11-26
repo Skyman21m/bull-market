@@ -110,9 +110,9 @@ void main() {
       final before = await _rowsOf(old, _schema8Columns);
       await old.close();
 
-      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
-      // Schema 10 (#81) adds two tables after this step, which changes no row of it; the switch is left out here (`withoutSwitchForTesting`), `schema10_migration_test.dart` and `garage_key_repository_test.dart` play it.
+      // Schema 10 (#81) adds two tables after this step, which changes no row of it: `schema10_migration_test.dart` plays it.
       expect(P2pDatabase.schema, 10);
       await migrated.validateDatabaseSchema();
       expect(await _rowsOf(migrated, _schema8Columns), before);
@@ -175,12 +175,12 @@ void main() {
         'p2p-fresh-',
       );
       addTearDown(() => freshDirectory.delete(recursive: true));
-      final fresh = P2pDatabase.openWithoutSwitchForTesting(() async => freshDirectory);
+      final fresh = P2pDatabase.open(() async => freshDirectory);
       expect(objects, await _objectsOf(fresh));
       await fresh.close();
 
       // Opened again: nothing moves.
-      final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      final again = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(again), P2pDatabase.schema);
       expect(
         await _rowsOf(again, {..._schema8Columns, ..._schema9Columns}),
@@ -197,7 +197,7 @@ void main() {
       final first = await schema8File();
       final reference = copyOf(first, 'reference.sqlite');
       final recorder = _StopAfter(null);
-      final once = P2pDatabase.withoutSwitchForTesting(
+      final once = P2pDatabase.forTesting(
         NativeDatabase(reference).interceptWith(recorder),
       );
       expect(await _versionOf(once), P2pDatabase.schema);
@@ -207,10 +207,12 @@ void main() {
       await once.close();
       final statements = recorder.statements;
       expect(statements.map(_kindOf).toList(), _stepKinds);
+      // The statements of this step only: a stop in the step to schema 10 leaves a file of schema 9, which `schema10_migration_test.dart` runs again.
+      final ownStatements = _stepKinds.indexOf('create derived_garage_keys');
 
-      for (var stop = 0; stop < statements.length; stop++) {
+      for (var stop = 0; stop < ownStatements; stop++) {
         final file = copyOf(first, 'stop-$stop.sqlite');
-        final stopped = P2pDatabase.withoutSwitchForTesting(
+        final stopped = P2pDatabase.forTesting(
           NativeDatabase(file).interceptWith(_StopAfter(stop)),
         );
         await expectLater(
@@ -223,7 +225,7 @@ void main() {
         expect(await _versionOf(left), 8, reason: '$stop');
         await left.close();
 
-        final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+        final again = P2pDatabase.forTesting(NativeDatabase(file));
         expect(await _versionOf(again), P2pDatabase.schema, reason: '$stop');
         expect(await _rowsOf(again, columns), expectedRows, reason: '$stop');
         expect(await _objectsOf(again), expectedObjects, reason: '$stop');
@@ -237,7 +239,7 @@ void main() {
     'done to its last statement but its version not written, the step runs again and changes nothing',
     () async {
       final file = await schema8File();
-      final migrated = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      final migrated = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
       final columns = {..._schema8Columns, ..._schema9Columns};
       final rows = await _rowsOf(migrated, columns);
@@ -245,7 +247,7 @@ void main() {
       await migrated.customStatement('PRAGMA user_version = 8');
       await migrated.close();
 
-      final again = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      final again = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(again), P2pDatabase.schema);
       expect(await _rowsOf(again, columns), rows);
       expect(await _objectsOf(again), objects);
@@ -258,7 +260,7 @@ void main() {
 
     setUp(() async {
       final file = await schema8File();
-      database = P2pDatabase.withoutSwitchForTesting(NativeDatabase(file));
+      database = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(database), P2pDatabase.schema);
     });
 
@@ -431,7 +433,7 @@ void main() {
   test(
     'on a new file, the trigger keeps the trace as on a migrated one (security verification of schema 9, R8)',
     () async {
-      final fresh = P2pDatabase.withoutSwitchForTesting(NativeDatabase.memory());
+      final fresh = P2pDatabase.forTesting(NativeDatabase.memory());
       expect(await _versionOf(fresh), P2pDatabase.schema);
       // The same trails, written as schema 9 writes them (its three new columns empty); the payments, which schema 9 never starts without an amount, are not needed here.
       for (final statement in _schema8Rows) {
@@ -619,6 +621,13 @@ const _stepKinds = [
   'trigger trade_trails_terms_trace',
   'trigger trade_payments_sats_known',
   'trigger trade_payments_sats_forward',
+  // Then the step to schema 10 (#81), which the file runs right after: two tables and their triggers, no row touched.
+  'create derived_garage_keys',
+  'create selected_garage_keys',
+  'trigger derived_garage_keys_never_deleted',
+  'trigger derived_garage_keys_never_changed',
+  'trigger derived_garage_keys_in_order',
+  'trigger derived_garage_keys_inserted_once',
 ];
 
 Future<int> _versionOf(GeneratedDatabase database) async =>

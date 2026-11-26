@@ -134,7 +134,7 @@ mixin KeysFromRead implements GarageKeyRepository {
   Future<Result<GarageKeyring, P2pFailure>> keyring(
     RobosatsNetwork network,
   ) async => switch (await read(network)) {
-    Ok() => const Ok(DerivedGarageKeyring(0)),
+    Ok() => const Ok(GarageKeyring(highest: 0, selected: SelectedWordsKey(0))),
     Err(:final failure) => Err(failure),
   };
 
@@ -160,6 +160,16 @@ mixin KeysFromRead implements GarageKeyRepository {
     RobosatsNetwork network, {
     required int after,
   }) => throw UnimplementedError();
+
+  @override
+  Future<Result<void, P2pFailure>> select(
+    RobosatsNetwork network,
+    GarageKeySelection selection,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
+      throw UnimplementedError();
 }
 
 /// Key 0 of the words as the key the test stored in the vault's slot of the network, every other index refused, as `setUpP2pForTesting` does by default: for the tests written before #81 around a fixed key, never a derivation.

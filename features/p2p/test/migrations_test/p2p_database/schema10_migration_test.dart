@@ -7,7 +7,7 @@ import 'package:test/test.dart';
 
 import 'generated/schema_v9.dart' as v9;
 
-/// The step from schema 9 to schema 10 of `p2p.sqlite` (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 8): two new tables and their triggers, the switch written `legacy`, and no row of schema 9 copied, changed or deleted by the step itself; the book is emptied only when the file opens with no trade in progress, which `test/garage_key_repository_test.dart` plays.
+/// The step from schema 9 to schema 10 of `p2p.sqlite` (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 8): two new tables and their triggers, and no row of schema 9 copied, changed or deleted: nothing is erased, and the records of the key the vault kept before #81, the external key since, stay under its fingerprint. That its trade in progress goes on after the update is played in `test/garage_key_repository_test.dart`.
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -58,20 +58,28 @@ void main() {
       row.read<String>('name'),
   };
 
+  /// The tables of [database], but drift's and SQLite's own.
+  Future<List<String>> tablesOf(GeneratedDatabase database) async => [
+    for (final row
+        in await database
+            .customSelect(
+              "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .get())
+      row.read<String>('name'),
+  ];
+
   test(
-    'a file of schema 9 with a trade in progress keeps every row, gains the tables of a new file, and its switch waits',
+    'a file of schema 9 with a trade in progress keeps every row of every table, gains the tables of a new file, empty, and erases nothing',
     () async {
       final file = await schema9File();
       final before = v9.DatabaseAtV9(NativeDatabase(file));
       final kept = {
-        for (final table in [
-          'garage_key_histories',
-          'robot_bindings',
-          'trades',
-        ])
+        for (final table in await tablesOf(before))
           table: await rowsOf(before, table),
       };
       await before.close();
+      expect(kept['trades'], hasLength(2));
 
       final migrated = P2pDatabase.forTesting(NativeDatabase(file));
       expect(
@@ -84,12 +92,23 @@ void main() {
       for (final MapEntry(key: table, value: rows) in kept.entries) {
         expect(await rowsOf(migrated, table), rows, reason: table);
       }
-      expect(await rowsOf(migrated, 'garage_switch'), [
-        '{id: 1, state: legacy}',
-      ]);
+      // The trade in progress is still open.
+      expect(
+        (await migrated
+                .customSelect(
+                  'SELECT closed_at FROM trades WHERE order_id = 42',
+                )
+                .getSingle())
+            .data['closed_at'],
+        isNull,
+      );
       expect(await rowsOf(migrated, 'derived_garage_keys'), isEmpty);
+      expect(await rowsOf(migrated, 'selected_garage_keys'), isEmpty);
+      expect(
+        await tablesOf(migrated),
+        [...kept.keys, 'derived_garage_keys', 'selected_garage_keys']..sort(),
+      );
       final fresh = P2pDatabase.forTesting(NativeDatabase.memory());
-      expect(await rowsOf(fresh, 'garage_switch'), ['{id: 1, state: derived}']);
       expect(await namesOf(migrated), await namesOf(fresh));
       await fresh.close();
       await migrated.close();
@@ -109,7 +128,7 @@ void main() {
       ),
     );
     expect(await rowsOf(again, 'trades'), once);
-    expect(await rowsOf(again, 'garage_switch'), ['{id: 1, state: legacy}']);
+    expect(await rowsOf(again, 'derived_garage_keys'), isEmpty);
     await again.close();
   });
 }

@@ -482,9 +482,13 @@ void main() {
               find.descendant(
                 of: line,
                 matching: find.text(
-                  l10n.p2pHistoryRobotNamed(
-                    '${l10n.p2pGarageRobotLabel} #$index',
-                    app.nicknameOf(index),
+                  // Its key first (#81): the seam's key 0 of the words is the key the test stored.
+                  l10n.p2pGarageHistoryKeyRobot(
+                    0,
+                    l10n.p2pHistoryRobotNamed(
+                      '${l10n.p2pGarageRobotLabel} #$index',
+                      app.nicknameOf(index),
+                    ),
                   ),
                 ),
               ),

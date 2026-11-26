@@ -13,6 +13,7 @@ import 'package:p2p/src/domain/garage_keyring.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, GarageKeys, Secrets;
@@ -21,7 +22,7 @@ import 'package:secrets/testing.dart';
 import 'migrations_test/p2p_database/generated/schema_v9.dart' as v9;
 import 'support/garage_words.dart';
 
-/// The Garage Keys of P2P since #81 (design note `docs/design/garage-key-from-the-words.md`), through the real repository, the real vault of `package:secrets` over its in-memory keystore, the real derivation of the public test words and the real database: key 0 at the first opening, « New key », the keys checked against their fingerprints, the refusals that never draw a key, and the book of the key drawn at random emptied once, never while a trade of it is in progress, and never again.
+/// The Garage Keys of P2P since #81 (design note `docs/design/garage-key-from-the-words.md`), through the real repository, the real vault of `package:secrets` over its in-memory keystore, the real derivation of the public test words and the real database: key 0 at the first opening, « New key », the key selected, the keys checked against their fingerprints, the refusals that never draw a key, and the external key, the one the vault kept before #81 or a key pasted, kept with its robots and its trades, nothing erased.
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   const mainnet = RobosatsNetwork.mainnet;
@@ -83,10 +84,14 @@ void main() {
         Err(:final failure) => throw StateError('$failure'),
       };
 
-  Future<List<String>> statesOf(P2pDatabase database) async => [
+  Future<List<String>> selectionsOf(P2pDatabase database) async => [
     for (final row
-        in await database.customSelect('SELECT state FROM garage_switch').get())
-      row.read<String>('state'),
+        in await database
+            .customSelect(
+              'SELECT network, key_index FROM selected_garage_keys ORDER BY network',
+            )
+            .get())
+      '${row.read<String>('network')} ${row.readNullable<int>('key_index')}',
   ];
 
   Future<int> countOf(P2pDatabase database, String table) async =>
@@ -101,9 +106,10 @@ void main() {
       () async {
         final database = memory();
         final repository = repositoryOver(database);
+        // No external key: key 0 is selected, and recorded.
         expect(
           await repository.keyring(mainnet),
-          isOk(const DerivedGarageKeyring(0)),
+          isOk(const GarageKeyring(highest: 0, selected: SelectedWordsKey(0))),
         );
         final key = keyOf(await repository.read(mainnet));
         expect(key.index, 0);
@@ -124,7 +130,7 @@ void main() {
             GarageKeyHistory.drawnHere,
           ),
         );
-        expect(await statesOf(database), ['derived']);
+        expect(await selectionsOf(database), ['mainnet 0', 'testnet 0']);
         // Nothing of the key is at rest: no entry in the vault, only the index and the fingerprint in the database.
         expect(storage.entries.keys, isNot(contains(mainnetEntry)));
         expect(storage.entries.keys, isNot(contains(testnetEntry)));
@@ -159,7 +165,7 @@ void main() {
         );
         expect(
           await repository.keyring(mainnet),
-          isOk(const DerivedGarageKeyring(1)),
+          isOk(const GarageKeyring(highest: 1, selected: SelectedWordsKey(1))),
         );
         // Two taps at once: one key.
         final both = await Future.wait([
@@ -180,8 +186,54 @@ void main() {
         );
         expect(
           await repository.keyring(mainnet),
-          isOk(const DerivedGarageKeyring(2)),
+          isOk(const GarageKeyring(highest: 2, selected: SelectedWordsKey(2))),
         );
+      },
+      timeout: slow,
+    );
+
+    test(
+      'new trades take the key selected, whatever its number, and the selection survives a restart',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(
+          await repository.keyring(mainnet),
+          isA<Ok<GarageKeyring, P2pFailure>>(),
+        );
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        // « New key » selects the key it makes.
+        expect(keyOf(await repository.forNewTrade(mainnet)).index, 1);
+        // « ‹ »: key 0 selected, the key of new trades from then on.
+        expect(
+          await repository.select(mainnet, const SelectedWordsKey(0)),
+          isOk(null),
+        );
+        final forTrades = keyOf(await repository.forNewTrade(mainnet));
+        expect(forTrades.index, 0);
+        expect(forTrades.key.revealBech32(), abandonMainnet0);
+        expect(keyOf(await repository.read(mainnet)).index, 0);
+        // Restarted over the same book: still key 0.
+        final again = repositoryOver(database);
+        expect(
+          await again.keyring(mainnet),
+          isOk(const GarageKeyring(highest: 1, selected: SelectedWordsKey(0))),
+        );
+        expect(keyOf(await again.forNewTrade(mainnet)).index, 0);
+        // Another network keeps its own selection, and a key not activated is never selected.
+        expect(keyOf(await again.forNewTrade(testnet)).index, 0);
+        expect(
+          await again.select(mainnet, const SelectedWordsKey(2)),
+          isErr<GarageKeyMissingFailure>(),
+        );
+        // Nor an external key the vault does not keep.
+        expect(
+          await again.select(mainnet, const SelectedExternalKey()),
+          isErr<GarageKeyMissingFailure>(),
+        );
+        // « New key » from key 0 makes key 2, after the highest, and selects it.
+        expect(await again.activateNext(mainnet, after: 1), isOk(2));
+        expect(keyOf(await again.forNewTrade(mainnet)).index, 2);
       },
       timeout: slow,
     );
@@ -237,11 +289,13 @@ void main() {
     );
 
     test(
-      'the robot of a recorded trade finds its key by fingerprint',
+      'the robot of a recorded trade finds its own key by fingerprint, whichever key is selected',
       () async {
         final repository = repositoryOver(memory());
         final first = keyOf(await repository.read(mainnet));
         expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        // Key 1 selected, the key of new trades; the trade of key 0 goes on with key 0.
+        expect(keyOf(await repository.forNewTrade(mainnet)).index, 1);
         final robot = switch (first.firstUsableRobot(3)) {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
@@ -302,30 +356,10 @@ void main() {
         }
       },
     );
-
-    test(
-      'a book created at schema 10 leaves the vault slots as they are',
-      () async {
-        expect(
-          await vault.import(
-            slot: GarageKeySlot.mainnet,
-            bytes: drawnKey.revealBytes(),
-          ),
-          isA<Ok<Object?, Failure>>(),
-        );
-        final repository = repositoryOver(memory());
-        expect(
-          keyOf(await repository.read(mainnet)).key.revealBech32(),
-          abandonMainnet0,
-        );
-        expect(storage.entries.keys, contains(mainnetEntry));
-      },
-      timeout: slow,
-    );
   });
 
-  group('the book of the key drawn at random, emptied once', () {
-    /// A file of schema 9 with a key drawn here, a robot of it bound and its trade, open unless [closed].
+  group('the external key', () {
+    /// A file of schema 9 with the key drawn here before #81, a robot of it bound and its trade, open unless [closed].
     Future<File> schema9File({required bool closed}) async {
       final file = File('${directory.path}/nine.sqlite');
       final old = v9.DatabaseAtV9(NativeDatabase(file));
@@ -358,217 +392,222 @@ void main() {
     }
 
     test(
-      'nothing is emptied while a trade is in progress: the earlier key only finishes it',
+      'after the update, the key the vault kept is the external key, selected, with its robots and its open trade, which goes on with it',
       () async {
         await storeDrawnKey();
-        final file = await schema9File(closed: false);
-        final database = open(file);
+        final database = open(await schema9File(closed: false));
         final repository = repositoryOver(database);
         expect(
           await repository.keyring(mainnet),
-          isOk(const LegacyGarageKeyring()),
+          isOk(
+            GarageKeyring(
+              highest: 0,
+              selected: const SelectedExternalKey(),
+              external: drawnFingerprint,
+            ),
+          ),
         );
-        final legacy = keyOf(await repository.read(mainnet));
-        expect(legacy.index, isNull);
-        expect(legacy.key, drawnKey);
+        expect(await selectionsOf(database), ['mainnet null']);
+        // The key of new trades is the external key, as it was before the update, with its rights: a key drawn here.
+        final forTrades = keyOf(await repository.forNewTrade(mainnet));
+        expect(forTrades.index, isNull);
+        expect(forTrades.key, drawnKey);
+        final exposure = await RobotBindingRepositoryImpl(
+          database,
+          clock: () => now,
+        ).exposureOf(mainnet, drawnFingerprint);
         expect(
-          keyOf(
-            await repository.ofSlot(RobotSlot(mainnet, drawnFingerprint, 0)),
-          ).key,
-          drawnKey,
+          exposure,
+          isA<Ok<GarageKeyExposure, P2pFailure>>().having(
+            (ok) => ok.value.history,
+            'history',
+            GarageKeyHistory.drawnHere,
+          ),
         );
-        // No new trade, on that key or any other, and no key of the words yet.
-        expect(
-          await repository.forNewTrade(mainnet),
-          isErr<GarageKeySwitchPendingFailure>(),
-        );
-        expect(
-          await repository.activateNext(mainnet, after: 0),
-          isErr<GarageKeySwitchPendingFailure>(),
-        );
-        expect(
-          await repository.derived(mainnet, 0),
-          isErr<GarageKeySwitchPendingFailure>(),
-        );
-        expect(await statesOf(database), ['legacy']);
-        expect(await countOf(database, 'trades'), 1);
-        expect(await countOf(database, 'robot_bindings'), 1);
-        expect(await countOf(database, 'derived_garage_keys'), 0);
-        expect(storage.entries.keys, contains(mainnetEntry));
-        expect(words.asked, isEmpty);
-      },
-      timeout: slow,
-    );
-
-    test(
-      'the first start where every trade is finished empties the book, then the vault, then switches',
-      () async {
-        await storeDrawnKey();
-        final file = await schema9File(closed: false);
-        final first = P2pDatabase.forTesting(NativeDatabase(file));
-        expect(await statesOf(first), ['legacy']);
-        // The trade ends during the run: the switch waits for the next start.
-        await first.customStatement('UPDATE trades SET closed_at = 9');
-        expect(await statesOf(first), ['legacy']);
-        await first.close();
-        final database = open(file);
-        expect(await statesOf(database), ['vaultPending']);
-        for (final table in [
-          'trades',
-          'robot_bindings',
-          'garage_key_histories',
-          'trade_trails',
-          'trade_terms',
-          'trade_payments',
-          'trade_payouts',
-          'trade_chat_pins',
-          'trade_chat_nostr_pins',
-          'maker_terms',
-        ]) {
-          expect(await countOf(database, table), 0, reason: table);
-        }
-        // The triggers that refuse a delete are back.
-        final triggers = [
-          for (final row
-              in await database
-                  .customSelect(
-                    "SELECT name FROM sqlite_master WHERE type = 'trigger'",
-                  )
-                  .get())
-            row.read<String>('name'),
-        ];
-        expect(
-          triggers,
-          containsAll([
-            'trades_never_deleted',
-            'trade_trails_never_deleted',
-            'trade_payouts_never_deleted',
-          ]),
-        );
-        expect(storage.entries.keys, contains(mainnetEntry));
-        final repository = repositoryOver(database);
+        // « New key » makes key 1 of the words above the highest, key 0; the external key does not count.
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
         expect(
           await repository.keyring(mainnet),
-          isOk(const DerivedGarageKeyring(0)),
+          isOk(
+            GarageKeyring(
+              highest: 1,
+              selected: const SelectedWordsKey(1),
+              external: drawnFingerprint,
+            ),
+          ),
         );
-        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
-        expect(await statesOf(database), ['derived']);
         expect(
           keyOf(await repository.forNewTrade(mainnet)).key.revealBech32(),
-          abandonMainnet0,
+          abandonMainnet1,
         );
-      },
-      timeout: slow,
-    );
-
-    test(
-      'an emptying cut at any point resumes at the next opening, never half done',
-      () async {
-        await storeDrawnKey();
-        final killed = File('${directory.path}/killed.sqlite');
-        await _killedMidEmptying(killed, drawnFingerprint.hex);
-        final database = open(killed);
-        expect(await statesOf(database), ['vaultPending']);
-        expect(await countOf(database, 'trades'), 0);
-        expect(await countOf(database, 'robot_bindings'), 0);
-        expect(await countOf(database, 'garage_key_histories'), 0);
-        final triggers = [
-          for (final row
-              in await database
-                  .customSelect(
-                    "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'trades_never_deleted'",
-                  )
-                  .get())
-            row.read<String>('name'),
-        ];
-        expect(triggers, ['trades_never_deleted']);
-        // Killed again between the database and the vault: the slot is still there, and the next reading of the keys deletes it before any key of the words.
+        // The open trade of the external key goes on with the external key, never with the key selected.
+        final ofTrade = keyOf(
+          await repository.ofSlot(RobotSlot(mainnet, drawnFingerprint, 0)),
+        );
+        expect(ofTrade.index, isNull);
+        expect(ofTrade.key, drawnKey);
+        // Nothing erased: the vault entry and every row of the book stay.
         expect(storage.entries.keys, contains(mainnetEntry));
-        final repository = repositoryOver(database);
+        expect(await countOf(database, 'trades'), 1);
+        expect(await countOf(database, 'robot_bindings'), 1);
+        expect(await countOf(database, 'garage_key_histories'), 3);
+        // Back to the external key: « ‹ » and « › » reach it, after the highest key of the words.
         expect(
-          await repository.keyring(mainnet),
-          isOk(const DerivedGarageKeyring(0)),
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
         );
-        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+        expect(keyOf(await repository.forNewTrade(mainnet)).key, drawnKey);
       },
       timeout: slow,
     );
 
     test(
-      'the book of the keys of the words is never emptied again, and the switch never goes back',
+      'a trade of a key of the words goes on with that key while the external key is selected',
       () async {
-        final file = File('${directory.path}/ten.sqlite');
-        final database = P2pDatabase.forTesting(NativeDatabase(file));
+        final database = memory();
         final repository = repositoryOver(database);
-        final key = keyOf(await repository.read(mainnet));
-        final robot = switch (key.firstUsableRobot(0)) {
+        final words0 = keyOf(await repository.read(mainnet));
+        await storeDrawnKey();
+        expect(
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(keyOf(await repository.forNewTrade(mainnet)).key, drawnKey);
+        final robot = switch (words0.firstUsableRobot(2)) {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
         };
+        final found = keyOf(await repository.ofSlot(robot.slot));
+        expect(found.index, 0);
+        expect(found.key.revealBech32(), abandonMainnet0);
+      },
+      timeout: slow,
+    );
+
+    test(
+      'a key pasted is the external key, selected at once, recorded from elsewhere, and only one at a time',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(keyOf(await repository.read(mainnet)).index, 0);
         expect(
-          await RobotBindingRepositoryImpl(database, clock: () => now).bind(
-            robot.slot,
-            CoordinatorIdentity(
-              network: mainnet,
-              alias: 'temple',
-              onion: 'http://temple.onion',
-              nodeKeys: const [],
-              nostrKey: 'abc',
-            ),
-          ),
+          await ImportGarageKeyUsecase(
+            repository,
+            RobotBindingRepositoryImpl(database, clock: () => now),
+          ).execute(mainnet, text: drawnKey.revealBech32()),
           isOk(null),
         );
-        await database.close();
-        final again = open(file);
-        expect(await statesOf(again), ['derived']);
-        expect(await countOf(again, 'robot_bindings'), 1);
-        expect(await countOf(again, 'derived_garage_keys'), 1);
-        for (final state in ['legacy', 'emptying', 'vaultPending']) {
-          await expectLater(
-            again.customStatement("UPDATE garage_switch SET state = '$state'"),
-            throwsA(anything),
-            reason: state,
-          );
-        }
-        await expectLater(
-          again.customStatement('DELETE FROM garage_switch'),
-          throwsA(anything),
+        expect(
+          await repository.keyring(mainnet),
+          isOk(
+            GarageKeyring(
+              highest: 0,
+              selected: const SelectedExternalKey(),
+              external: drawnFingerprint,
+            ),
+          ),
         );
-        await again.customStatement(
-          "INSERT OR REPLACE INTO garage_switch (id, state) VALUES (1, 'legacy')",
+        // Its rights are a key from elsewhere's: it only finishes its trades (`NewTradeStanding`).
+        final exposure = await RobotBindingRepositoryImpl(
+          database,
+          clock: () => now,
+        ).exposureOf(mainnet, drawnFingerprint);
+        expect(
+          exposure,
+          isA<Ok<GarageKeyExposure, P2pFailure>>().having(
+            (ok) => ok.value.history,
+            'history',
+            isNot(GarageKeyHistory.drawnHere),
+          ),
         );
-        expect(await statesOf(again), ['derived']);
+        // A second paste is refused while the vault keeps one: nothing replaced.
+        expect(
+          await repository.import(mainnet, drawnKey),
+          isErr<GarageKeyAlreadyStoredFailure>(),
+        );
+      },
+      timeout: slow,
+    );
+
+    test(
+      'removing the external key deletes its vault entry only, and selects the highest key of the words',
+      () async {
+        await storeDrawnKey();
+        final database = open(await schema9File(closed: true));
+        final repository = repositoryOver(database);
+        expect(await repository.activateNext(mainnet, after: 0), isOk(1));
+        expect(
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(await repository.delete(mainnet), isOk(null));
+        expect(storage.entries.keys, isNot(contains(mainnetEntry)));
+        expect(
+          await repository.keyring(mainnet),
+          isOk(const GarageKeyring(highest: 1, selected: SelectedWordsKey(1))),
+        );
+        // Its records stay: a key pasted back finds its robots bound where they were.
+        expect(await countOf(database, 'trades'), 1);
+        expect(await countOf(database, 'robot_bindings'), 1);
+        expect(await countOf(database, 'derived_garage_keys'), 2);
+      },
+      timeout: slow,
+    );
+
+    test(
+      'an external key that cannot be read keeps its position and is never taken for an empty slot',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(keyOf(await repository.read(mainnet)).index, 0);
+        storage.entries[mainnetEntry] = 'not a key';
+        final keyring = await repository.keyring(mainnet);
+        expect(
+          keyring,
+          isA<Ok<GarageKeyring, P2pFailure>>().having(
+            (ok) => (ok.value.hasExternal, ok.value.external),
+            'external',
+            (true, null),
+          ),
+        );
+        expect(
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(
+          await repository.forNewTrade(mainnet),
+          isA<Err<NetworkGarageKey, P2pFailure>>(),
+        );
+        expect(
+          await repository.import(mainnet, drawnKey),
+          isErr<GarageKeyAlreadyStoredFailure>(),
+        );
+      },
+      timeout: slow,
+    );
+
+    test(
+      'an external key selected that the vault no longer keeps gives way to the highest key of the words',
+      () async {
+        final database = memory();
+        final repository = repositoryOver(database);
+        expect(keyOf(await repository.read(mainnet)).index, 0);
+        await storeDrawnKey();
+        expect(
+          await repository.select(mainnet, const SelectedExternalKey()),
+          isOk(null),
+        );
+        expect(
+          await vault.delete(slot: GarageKeySlot.mainnet),
+          isA<Ok<Object?, Failure>>(),
+        );
+        expect(
+          await repository.keyring(mainnet),
+          isOk(const GarageKeyring(highest: 0, selected: SelectedWordsKey(0))),
+        );
+        expect(await selectionsOf(database), ['mainnet 0']);
       },
       timeout: slow,
     );
   });
-}
-
-/// A file left by a run killed in the middle of the emptying: at schema 10, the switch at `emptying`, `trades_never_deleted` dropped, the bindings deleted, the history and the closed trade still there.
-Future<void> _killedMidEmptying(File file, String fingerprint) async {
-  final old = v9.DatabaseAtV9(NativeDatabase(file));
-  for (final statement in [
-    "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES ('mainnet', '$fingerprint', 'generated', 1)",
-    "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('mainnet', '$fingerprint', 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')",
-    "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('mainnet', '$fingerprint', 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, NULL)",
-  ]) {
-    await old.customStatement(statement);
-  }
-  await old.close();
-  // Upgraded with the trade open: `legacy`, whole.
-  final upgraded = P2pDatabase.forTesting(NativeDatabase(file));
-  expect(
-    (await upgraded.customSelect('SELECT state FROM garage_switch').getSingle())
-        .read<String>('state'),
-    'legacy',
-  );
-  // The trade closed, then a run that started the emptying and was killed in the middle of it.
-  await upgraded.customStatement('UPDATE trades SET closed_at = 9');
-  await upgraded.customStatement(
-    "UPDATE garage_switch SET state = 'emptying' WHERE state = 'legacy'",
-  );
-  await upgraded.customStatement('DROP TRIGGER trades_never_deleted');
-  await upgraded.customStatement('PRAGMA foreign_keys = OFF');
-  await upgraded.customStatement('DELETE FROM robot_bindings');
-  await upgraded.close();
 }

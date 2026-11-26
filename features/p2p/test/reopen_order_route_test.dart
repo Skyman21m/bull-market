@@ -894,15 +894,18 @@ void main() {
           isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
         );
         await app.openGarage();
-        // Each key shows its own last orders: the order of key 0 is not on key 1, and comes back with « ‹ », where a tap opens it.
-        expect(_lastOrder(id), findsNothing);
-        await _tap(tester, find.byTooltip('Previous key'));
-        await app.settle(12);
-        expect(_lastOrder(id), findsOneWidget);
+        await next(app);
+        final before = shown(tester);
+        // The order of key 0 stays among the last orders whatever key is shown (the owner's request of 2026-11-26): a tap opens it, and the Garage of key 1 does not move.
+        final states = <GarageState>[];
+        final listening = garageOf(tester).stream.listen(states.add);
+        addTearDown(listening.cancel);
         await _tap(tester, _lastOrder(id));
         await app.settle(12);
         expect(app.tradePages(), [id]);
+        expect(states, isEmpty);
         await app.back();
+        expect(shown(tester), before);
         await app.close();
       },
     );
@@ -1269,8 +1272,8 @@ void main() {
           isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
         );
         await app.openGarage();
-        // The order of key 0 is not among the last orders of key 1 (#81).
-        expect(_lastOrder(made.orderId), findsNothing);
+        // The order of key 0 stays among the last orders, on key 1 too (the owner's request of 2026-11-26).
+        expect(_lastOrder(made.orderId), findsOneWidget);
         expect(shown(tester), 0);
         await app.close();
       },
