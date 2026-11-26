@@ -12,6 +12,7 @@ import 'package:secrets/secrets.dart'
         SecretNotFoundFailure;
 
 import '../../public/p2p_garage_key_port.dart';
+import '../domain/garage_key_fingerprint.dart';
 import '../domain/garage_keyring.dart';
 import '../domain/network_garage_key.dart';
 import '../domain/p2p_failure.dart';
@@ -19,7 +20,7 @@ import '../domain/repositories/garage_key_book_repository.dart';
 import '../domain/repositories/garage_key_repository.dart';
 import '../domain/robot_binding.dart';
 
-/// The Garage Keys of P2P (#81, design note `docs/design/garage-key-from-the-words.md`): the keys of the default wallet's words, through the shell's port, and, until the book is emptied once, the key drawn at random that the vault keeps in the slot of each network, through the handle the shell passes to the feature.
+/// The Garage Keys of P2P (#81, design note `docs/design/garage-key-from-the-words.md`): the keys of the default wallet's words, through the shell's port, and the external key, the one the vault keeps in the slot of each network (drawn at random on this device before #81, or pasted), through the handle the shell passes to the feature.
 ///
 /// The only class of the feature that reads the bytes of a key: the custody gate allows `GarageKeyMaterial.bytes` and `GarageKey.revealBytes` here and nowhere else.
 /// It turns the bytes into a [GarageKey], and a [GarageKey] into bytes to store it, and never lets the bytes out: its public members are the methods of [GarageKeyRepository], which `test/garage_key_surface_test.dart` pins.
@@ -38,55 +39,69 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
   Future<Result<GarageKeyring, P2pFailure>> keyring(
     RobosatsNetwork network,
   ) async {
-    switch (await _switched()) {
-      case Err(:final failure):
-        return Err(failure);
-      case Ok(value: false):
-        return const Ok(LegacyGarageKeyring());
-      case Ok(value: true):
-    }
-    switch (await _book.activatedKeys(network)) {
-      case Err(:final failure):
-        return Err(failure);
-      case Ok(value: [..., final highest]):
-        return Ok(DerivedGarageKeyring(highest.index));
-      case Ok(value: []):
-    }
-    // The first visit on this network: key 0, recorded with its fingerprint as a key drawn here.
-    final NetworkGarageKey first;
-    switch (await _derive(network, 0)) {
+    final List<ActivatedGarageKey> keys;
+    switch (await _activated(network)) {
       case Ok(:final value):
-        first = value;
+        keys = value;
       case Err(:final failure):
         return Err(failure);
     }
-    switch (first.fingerprint) {
+    GarageKeyFingerprint? external;
+    P2pFailure? externalFailure;
+    switch (await _readSlot(network)) {
       case Ok(:final value):
-        if (await _book.activate(network, 0, value) case Err(:final failure)) {
+        switch (value.fingerprint) {
+          case Ok(value: final fingerprint):
+            external = fingerprint;
+          case Err(:final failure):
+            externalFailure = failure;
+        }
+      case Err(failure: GarageKeyMissingFailure()):
+        break;
+      // A slot that cannot be read may hold a key with trades: its position stays, so that the user may try again or remove it, and it is never taken for an empty slot.
+      case Err(:final failure):
+        externalFailure = failure;
+    }
+    final hasExternal = external != null || externalFailure != null;
+    final highest = keys.last.index;
+    final GarageKeySelection selected;
+    switch (await _book.selected(network)) {
+      case Err(:final failure):
+        return Err(failure);
+      case Ok(value: SelectedExternalKey()) when hasExternal:
+        selected = const SelectedExternalKey();
+      case Ok(value: SelectedWordsKey(:final index)) when index <= highest:
+        selected = SelectedWordsKey(index);
+      case Ok(:final value):
+        // The first opening (nothing recorded): the user stays on the key the vault kept, the external key, when there is one, otherwise key 0. An external key selected that the vault no longer holds: the highest key of the words.
+        selected = value == null
+            ? (hasExternal
+                  ? const SelectedExternalKey()
+                  : const SelectedWordsKey(0))
+            : SelectedWordsKey(highest);
+        if (await _book.select(network, selected) case Err(:final failure)) {
           return Err(failure);
         }
-      case Err(:final failure):
-        return Err(failure);
     }
-    // Written by this call or by another one meanwhile: what is recorded now decides.
-    return switch (await _book.activatedKeys(network)) {
-      Ok(value: [..., final highest]) => Ok(
-        DerivedGarageKeyring(highest.index),
+    return Ok(
+      GarageKeyring(
+        highest: highest,
+        selected: selected,
+        fingerprints: [for (final key in keys) key.fingerprint],
+        external: external,
+        externalFailure: externalFailure,
       ),
-      Ok() => const Err(P2pStorageFailure()),
-      Err(:final failure) => Err(failure),
-    };
+    );
   }
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
   ) async => switch (await keyring(network)) {
-    Ok(value: LegacyGarageKeyring()) => await _readSlot(network),
-    Ok(value: DerivedGarageKeyring(:final highest)) => await derived(
-      network,
-      highest,
-    ),
+    Ok(value: GarageKeyring(selected: SelectedWordsKey(:final index))) =>
+      await derived(network, index),
+    Ok(value: GarageKeyring(selected: SelectedExternalKey())) =>
+      await _readSlot(network),
     Err(:final failure) => Err(failure),
   };
 
@@ -95,15 +110,8 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
     RobosatsNetwork network,
     int index,
   ) async {
-    switch (await _switched()) {
-      case Err(:final failure):
-        return Err(failure);
-      case Ok(value: false):
-        return const Err(GarageKeySwitchPendingFailure());
-      case Ok(value: true):
-    }
     final ActivatedGarageKey activated;
-    switch (await _book.activatedKeys(network)) {
+    switch (await _activated(network)) {
       case Err(:final failure):
         return Err(failure);
       case Ok(:final value):
@@ -130,41 +138,23 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> forNewTrade(
     RobosatsNetwork network,
-  ) async => switch (await keyring(network)) {
-    Ok(value: LegacyGarageKeyring()) => const Err(
-      GarageKeySwitchPendingFailure(),
-    ),
-    // The highest key, never an earlier one: the rule « never a new trade on an earlier key ».
-    Ok(value: DerivedGarageKeyring(:final highest)) => await derived(
-      network,
-      highest,
-    ),
-    Err(:final failure) => Err(failure),
-  };
+  ) async {
+    // The key selected in the Garage Key card, whatever it is (the owner's decisions of 2026-11-26), and no other; read without the vault when it is a key of the words.
+    switch (await _book.selected(network)) {
+      case Err(:final failure):
+        return Err(failure);
+      case Ok(value: SelectedWordsKey(:final index)):
+        return derived(network, index);
+      case Ok(value: SelectedExternalKey()):
+        return _readSlot(network);
+      case Ok(value: null):
+        return read(network);
+    }
+  }
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> ofSlot(RobotSlot slot) async {
     final network = slot.network;
-    switch (await _switched()) {
-      case Err(:final failure):
-        return Err(failure);
-      case Ok(value: false):
-        switch (await _readSlot(network)) {
-          case Ok(:final value):
-            // The key drawn at random of the slot, when the robot is one of its own.
-            return switch (value.fingerprint) {
-              Ok(value: final fingerprint)
-                  when fingerprint == slot.keyFingerprint =>
-                Ok(value),
-              _ => const Err(TradeKeyMissingFailure()),
-            };
-          case Err(failure: GarageKeyMissingFailure()):
-            return const Err(TradeKeyMissingFailure());
-          case Err(:final failure):
-            return Err(failure);
-        }
-      case Ok(value: true):
-    }
     switch (await _book.activatedKeys(network)) {
       case Err(:final failure):
         return Err(failure);
@@ -174,7 +164,20 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
             return derived(network, activated.index);
           }
         }
+    }
+    // Not a key of the words: the external key, when the robot is one of its own.
+    switch (await _readSlot(network)) {
+      case Ok(:final value):
+        return switch (value.fingerprint) {
+          Ok(value: final fingerprint)
+              when fingerprint == slot.keyFingerprint =>
+            Ok(value),
+          _ => const Err(TradeKeyMissingFailure()),
+        };
+      case Err(failure: GarageKeyMissingFailure()):
         return const Err(TradeKeyMissingFailure());
+      case Err(:final failure):
+        return Err(failure);
     }
   }
 
@@ -184,14 +187,15 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
     required int after,
   }) async {
     if (after >= 0x7fffffff) return const Err(GarageKeyLastIndexFailure());
-    switch (await keyring(network)) {
+    final List<ActivatedGarageKey> keys;
+    switch (await _activated(network)) {
+      case Ok(:final value):
+        keys = value;
       case Err(:final failure):
         return Err(failure);
-      case Ok(value: LegacyGarageKeyring()):
-        return const Err(GarageKeySwitchPendingFailure());
-      case Ok(value: DerivedGarageKeyring(:final highest)):
-        if (highest != after) return const Err(GarageKeyMissingFailure());
     }
+    // After the highest key of the words, whichever key is selected; the external key does not count.
+    if (keys.last.index != after) return const Err(GarageKeyMissingFailure());
     // The words must still give back the highest key recorded: a key after another wallet's is never activated.
     if (await derived(network, after) case Err(:final failure)) {
       return Err(failure);
@@ -207,7 +211,14 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
     switch (key.fingerprint) {
       case Ok(:final value):
         return switch (await _book.activate(network, next, value)) {
-          Ok(value: true) => Ok(next),
+          // The new key is selected at once: new trades take it.
+          Ok(value: true) => switch (await _book.select(
+            network,
+            SelectedWordsKey(next),
+          )) {
+            Ok() => Ok(next),
+            Err(:final failure) => Err(failure),
+          },
           // Another call activated it, or a later one, first: nothing written here.
           Ok(value: false) => const Err(GarageKeyMissingFailure()),
           Err(:final failure) => Err(failure),
@@ -215,6 +226,26 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
       case Err(:final failure):
         return Err(failure);
     }
+  }
+
+  @override
+  Future<Result<void, P2pFailure>> select(
+    RobosatsNetwork network,
+    GarageKeySelection selection,
+  ) async {
+    // The external key only when the vault keeps one, readable or not: a key that cannot be read is selected so that the Garage says why, and offers to try again or to remove it.
+    if (selection is SelectedExternalKey) {
+      if (await _readSlot(network) case Err(
+        failure: final GarageKeyMissingFailure failure,
+      )) {
+        return Err(failure);
+      }
+    }
+    return switch (await _book.select(network, selection)) {
+      Ok(value: true) => const Ok(null),
+      Ok(value: false) => const Err(GarageKeyMissingFailure()),
+      Err(:final failure) => Err(failure),
+    };
   }
 
   @override
@@ -240,44 +271,75 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
   ) async {
     final bytes = key.revealBytes();
     try {
-      return switch (await _garageKeys.import(
-        slot: _slotOf(network),
-        bytes: bytes,
-      )) {
-        Ok() => const Ok(null),
-        Err(:final failure) => Err(_writeFailureOf(failure)),
-      };
+      switch (await _garageKeys.import(slot: _slotOf(network), bytes: bytes)) {
+        case Ok():
+          break;
+        case Err(:final failure):
+          return Err(_writeFailureOf(failure));
+      }
     } finally {
       // Zeroed only once the vault is done with the call, so that the vault can never store a zeroed buffer.
       bytes.fillRange(0, bytes.length, 0);
     }
+    // The key pasted is shown at once, as the official client shows the key it recovers. It is stored whatever the book says: a selection that cannot be written leaves the selection as it was, and the Garage, reading the keys again, says the database cannot be read.
+    switch (await _book.select(network, const SelectedExternalKey())) {
+      case Ok() || Err():
+        return const Ok(null);
+    }
   }
 
-  /// Whether the book is on the keys of the words, after finishing the one-time switch where the database left it: at `vaultPending`, the vault's two slots are deleted, then the switch is marked `derived`; a delete that fails leaves the switch where it is, for the next call.
-  ///
-  /// `false` while a trade of the key drawn at random is in progress (`legacy`), and for `emptying`, which only a failed opening leaves.
-  Future<Result<bool, P2pFailure>> _switched() async {
-    switch (await _book.switchState()) {
-      case Err(:final failure):
-        return Err(failure);
-      case Ok(value: GarageSwitchState.derived):
-        return const Ok(true);
-      case Ok(value: GarageSwitchState.legacy || GarageSwitchState.emptying):
-        return const Ok(false);
-      case Ok(value: GarageSwitchState.vaultPending):
+  @override
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) async {
+    switch (await _garageKeys.delete(slot: _slotOf(network))) {
+      case Ok():
+        break;
+      case Err(failure: KeystoreLockedFailure()):
+        return const Err(GarageKeyLockedFailure());
+      case Err():
+        return const Err(GarageKeyNotDeletedFailure());
     }
-    for (final slot in GarageKeySlot.values) {
-      switch (await _garageKeys.delete(slot: slot)) {
-        case Ok() || Err(failure: SecretNotFoundFailure()):
-          continue;
-        case Err(failure: KeystoreLockedFailure()):
-          return const Err(GarageKeyLockedFailure());
-        case Err():
-          return const Err(GarageKeyNotDeletedFailure());
+    // The external key gone, the highest key of the words is selected when the external key was.
+    if (await _book.selected(network) case Ok(value: SelectedExternalKey())) {
+      if (await _activated(network) case Ok(value: [..., final highest])) {
+        if (await _book.select(network, SelectedWordsKey(highest.index))
+            case Err(:final failure)) {
+          return Err(failure);
+        }
       }
     }
-    return switch (await _book.markDerived()) {
-      Ok() => const Ok(true),
+    return const Ok(null);
+  }
+
+  /// The keys of the words activated on [network], key 0 activated first when none is, recorded with its fingerprint as a key drawn here: so at the first opening of the Garage, key 0 is there.
+  Future<Result<List<ActivatedGarageKey>, P2pFailure>> _activated(
+    RobosatsNetwork network,
+  ) async {
+    switch (await _book.activatedKeys(network)) {
+      case Err(:final failure):
+        return Err(failure);
+      case Ok(:final value) when value.isNotEmpty:
+        return Ok(value);
+      case Ok():
+    }
+    final NetworkGarageKey first;
+    switch (await _derive(network, 0)) {
+      case Ok(:final value):
+        first = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
+    switch (first.fingerprint) {
+      case Ok(:final value):
+        if (await _book.activate(network, 0, value) case Err(:final failure)) {
+          return Err(failure);
+        }
+      case Err(:final failure):
+        return Err(failure);
+    }
+    // Written by this call or by another one meanwhile: what is recorded now decides.
+    return switch (await _book.activatedKeys(network)) {
+      Ok(:final value) when value.isNotEmpty => Ok(value),
+      Ok() => const Err(P2pStorageFailure()),
       Err(:final failure) => Err(failure),
     };
   }
@@ -300,7 +362,7 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
     }),
   };
 
-  /// The key drawn at random before #81 that the vault keeps for [network], while the switch waits.
+  /// The external key, the one the vault keeps in the slot of [network]: drawn at random on this device before #81, or pasted from elsewhere.
   Future<Result<NetworkGarageKey, P2pFailure>> _readSlot(
     RobosatsNetwork network,
   ) async => switch (await _garageKeys.read(slot: _slotOf(network))) {

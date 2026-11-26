@@ -20,7 +20,6 @@ import 'package:secrets/secrets.dart'
 import 'public/p2p_garage_key_port.dart';
 import 'public/p2p_wallet_port.dart';
 import 'src/data/p2p_database.dart';
-import 'src/domain/garage_key_fingerprint.dart';
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/checked_bolt11_invoice.dart';
 import 'src/domain/coordinator_sessions_port.dart';
@@ -239,37 +238,6 @@ final class _SlotKeyAsWords implements P2pGarageKeyPort {
 
 /// The draw in the middle of the range, which spreads no wait.
 double _middle() => 0.5;
-
-/// Puts the book of the feature registered in [locator] where an update finds it with a trade in progress (#81, design note `docs/design/garage-key-from-the-words.md` § 8): the switch back at `legacy` (its rule of only moving forward dropped, for this database of the test alone), and a trade of robot 0 of [key] on [network], taken here and open, its key recorded as drawn here and its robot bound to Temple of Sats. The test stores [key] in the vault's slot itself.
-///
-/// For the captures of the Garage during that wait only: the app's switch never goes back.
-@visibleForTesting
-Future<void> seedLegacyBookForTesting(
-  GetIt locator,
-  GarageKey key,
-  RobosatsNetwork network,
-) async {
-  final fingerprint = switch (GarageKeyFingerprint.of(key)) {
-    Ok(:final value) => value.hex,
-    Err(:final failure) => throw StateError('$failure'),
-  };
-  final database = locator<P2pDatabase>();
-  await database.customStatement(_seedDropForward);
-  await database.customStatement(_seedLegacy);
-  await database.customStatement(_seedHistory, [network.name, fingerprint]);
-  await database.customStatement(_seedBinding, [network.name, fingerprint]);
-  await database.customStatement(_seedTrade, [network.name, fingerprint]);
-}
-
-/// The statements of [seedLegacyBookForTesting], pinned by value in `test/robot_bindings_architecture_test.dart`.
-const String _seedDropForward = 'DROP TRIGGER IF EXISTS garage_switch_forward';
-const String _seedLegacy = "UPDATE garage_switch SET state = 'legacy'";
-const String _seedHistory =
-    "INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) VALUES (?, ?, 'generated', 1)";
-const String _seedBinding =
-    "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES (?, ?, 0, 'temple', 'http://temple.onion', '', 'abc', 2, 'generated')";
-const String _seedTrade =
-    "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES (?, ?, 0, 'temple', 'http://temple.onion', 42, 'buyer', 'takenHere', 3, 4, NULL)";
 
 /// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.
 @visibleForTesting

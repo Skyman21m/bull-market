@@ -89,11 +89,6 @@ final class GarageKeyMismatchFailure extends P2pFailure {
   const GarageKeyMismatchFailure();
 }
 
-/// The book of P2P is not emptied yet because a trade is in progress (#81, design note § 8): the Garage Key drawn at random before only finishes those trades, and no new trade starts, neither a take nor a make; the words' key comes at the first start where every trade is finished.
-final class GarageKeySwitchPendingFailure extends P2pFailure {
-  const GarageKeySwitchPendingFailure();
-}
-
 /// The highest key the words give, index 0x7fffffff, is already in use: there is no next key (#81).
 final class GarageKeyLastIndexFailure extends P2pFailure {
   const GarageKeyLastIndexFailure();

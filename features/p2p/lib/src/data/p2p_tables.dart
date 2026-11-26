@@ -643,25 +643,22 @@ class DerivedGarageKeys extends Table {
   ];
 }
 
-/// The one-time switch of the book to the Garage Keys of the words (schema 10, #81; design note `docs/design/garage-key-from-the-words.md` § 8): one row, `GarageSwitchState` by name, which only moves forward (`garage_switch_forward`) and is never deleted.
-@DataClassName('GarageSwitchRow')
-class GarageSwitch extends Table {
-  @override
-  String get tableName => 'garage_switch';
+/// The Garage Key the Garage Key card shows on each network, the key of every new trade there (schema 10, #81; the owner's decisions of 2026-11-26): one row per network, kept across restarts, either a key of the words by its index or, with no index, the external key, the one the vault keeps in the slot of the network (drawn at random before #81, or pasted).
+@DataClassName('SelectedGarageKeyRow')
+class SelectedGarageKeys extends Table {
+  /// `mainnet` or `testnet`.
+  TextColumn get network => text()();
 
-  /// Always 1: the switch is one for the whole book.
-  IntColumn get id => integer()();
-
-  /// `legacy`, `emptying`, `vaultPending` or `derived`.
-  TextColumn get state => text()();
+  /// The index of the key of the words selected, one of `derived_garage_keys` on that network; `NULL` for the external key.
+  IntColumn get keyIndex => integer().nullable()();
 
   @override
-  Set<Column<Object>> get primaryKey => {id};
+  Set<Column<Object>> get primaryKey => {network};
 
   @override
   List<String> get customConstraints => const [
-    "CHECK (typeof(id) = 'integer' AND typeof(state) = 'text')",
-    'CHECK (id = 1)',
-    "CHECK (state IN ('legacy', 'emptying', 'vaultPending', 'derived'))",
+    "CHECK (typeof(network) = 'text' AND (key_index IS NULL OR typeof(key_index) = 'integer'))",
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    'CHECK (key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)',
   ];
 }

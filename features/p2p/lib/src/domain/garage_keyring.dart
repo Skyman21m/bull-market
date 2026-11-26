@@ -1,51 +1,89 @@
 import 'package:meta/meta.dart';
 
 import 'garage_key_fingerprint.dart';
+import 'p2p_failure.dart';
 
-/// Which Garage Keys the Garage of a network offers (#81, design note `docs/design/garage-key-from-the-words.md` § 6, § 8).
-///
-/// It holds no key: the keys are derived again, by their index, whenever a screen or a trade needs one.
-sealed class GarageKeyring {
-  const GarageKeyring();
+/// The Garage Key selected on a network, the key of every new trade there (#81, the owner's decisions of 2026-11-26): a key of the words by its index, or the external key.
+sealed class GarageKeySelection {
+  const GarageKeySelection();
 }
 
-/// The book of P2P is not emptied yet because a trade is in progress: the Garage stays on the key drawn at random before #81, which only finishes those trades (no new trade, no other key), with one line saying so.
-final class LegacyGarageKeyring extends GarageKeyring {
-  const LegacyGarageKeyring();
-
-  @override
-  bool operator ==(Object other) => other is LegacyGarageKeyring;
-
-  @override
-  int get hashCode => (LegacyGarageKeyring).hashCode;
-
-  @override
-  String toString() => 'LegacyGarageKeyring()';
-}
-
-/// The keys of the words this device activated on the network, from 0 up to [highest], the key of every new trade; the earlier ones finish their trades and are shown with the arrows of the Garage Key card.
+/// The key of the words at [index].
 @immutable
-final class DerivedGarageKeyring extends GarageKeyring {
-  /// The highest index activated: the key of every new trade.
-  final int highest;
+final class SelectedWordsKey extends GarageKeySelection {
+  final int index;
 
-  const DerivedGarageKeyring(this.highest);
+  const SelectedWordsKey(this.index);
 
   @override
   bool operator ==(Object other) =>
-      other is DerivedGarageKeyring && other.highest == highest;
+      other is SelectedWordsKey && other.index == index;
 
   @override
-  int get hashCode => highest.hashCode;
+  int get hashCode => index.hashCode;
 
   @override
-  String toString() => 'DerivedGarageKeyring($highest)';
+  String toString() => 'SelectedWordsKey($index)';
 }
 
-/// Where the one-time switch of #81 stands, for the whole book (both networks): what `p2p.sqlite` keeps in `garage_switch`.
-///
-/// It only moves forward: [legacy] while a trade of the key drawn at random is in progress, [emptying] once none is (the database empties its tables when it opens), [vaultPending] once they are empty (the vault's two Garage Key slots are deleted next), then [derived] for good. A database created at schema 10 starts at [derived].
-enum GarageSwitchState { legacy, emptying, vaultPending, derived }
+/// The external key: the one the vault keeps in the slot of the network, drawn at random on this device before #81 or pasted from elsewhere.
+final class SelectedExternalKey extends GarageKeySelection {
+  const SelectedExternalKey();
+
+  @override
+  bool operator ==(Object other) => other is SelectedExternalKey;
+
+  @override
+  int get hashCode => (SelectedExternalKey).hashCode;
+
+  @override
+  String toString() => 'SelectedExternalKey()';
+}
+
+/// Which Garage Keys the Garage of a network offers (#81, design note `docs/design/garage-key-from-the-words.md` § 6): the keys of the words this device activated, from 0 to [highest], the external key when the vault keeps one, and the one [selected]. It holds no key: the keys are derived again, or read from the vault, whenever a screen or a trade needs one.
+@immutable
+final class GarageKeyring {
+  /// The highest index of the words activated: « New key » activates the one after it, whichever key is selected. The external key does not count.
+  final int highest;
+
+  /// The key selected, the key shown and the key of new trades.
+  final GarageKeySelection selected;
+
+  /// The fingerprint recorded for each index of the words, by index: which key a line of the history or of the trades is of. Never a key.
+  final List<GarageKeyFingerprint> fingerprints;
+
+  /// The fingerprint of the external key, `null` when the vault keeps none for the network or it cannot be read.
+  final GarageKeyFingerprint? external;
+
+  /// Why the external key the vault keeps for the network cannot be read, when it cannot (`null` when it can, or when the vault keeps none): its position stays, so that the user may try again or remove it.
+  final P2pFailure? externalFailure;
+
+  const GarageKeyring({
+    required this.highest,
+    required this.selected,
+    this.fingerprints = const [],
+    this.external,
+    this.externalFailure,
+  });
+
+  /// Whether the vault keeps an external key for the network, readable or not.
+  bool get hasExternal => external != null || externalFailure != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GarageKeyring &&
+      other.highest == highest &&
+      other.selected == selected &&
+      other.external == external &&
+      other.externalFailure.runtimeType == externalFailure.runtimeType;
+
+  @override
+  int get hashCode => Object.hash(highest, selected, external);
+
+  @override
+  String toString() =>
+      'GarageKeyring($highest, $selected, external: $hasExternal)';
+}
 
 /// A key of the words this device activated: its index and the fingerprint of the key the words gave there when it was activated, never the key.
 @immutable

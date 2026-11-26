@@ -1,4 +1,4 @@
--- The rules of the Garage Keys of the words and of the one-time switch that the database keeps itself (schema 10, #81): see `DerivedGarageKeys` and `GarageSwitch` in `p2p_tables.dart`.
+-- The rules of the Garage Keys of the words that the database keeps itself (schema 10, #81): see `DerivedGarageKeys` in `p2p_tables.dart`.
 import 'p2p_tables.dart';
 
 -- An activated key is never deleted: its trades finish with it, and its index is how they find it again.
@@ -20,29 +20,9 @@ BEGIN
   SELECT RAISE(ABORT, 'a Garage Key out of order');
 END;
 
--- The switch is never deleted: a book emptied once is never emptied again.
-CREATE TRIGGER IF NOT EXISTS garage_switch_never_deleted BEFORE DELETE ON garage_switch
-BEGIN
-  SELECT RAISE(ABORT, 'the switch of the Garage Keys is kept');
-END;
-
--- The switch only moves forward, one step at a time: legacy, emptying, vaultPending, derived.
-CREATE TRIGGER IF NOT EXISTS garage_switch_forward BEFORE UPDATE ON garage_switch
-WHEN NOT (NEW.id = OLD.id AND (NEW.state = OLD.state OR (OLD.state = 'legacy' AND NEW.state = 'emptying') OR (OLD.state = 'emptying' AND NEW.state = 'vaultPending') OR (OLD.state = 'vaultPending' AND NEW.state = 'derived')))
-BEGIN
-  SELECT RAISE(ABORT, 'the switch of the Garage Keys only moves forward');
-END;
-
 -- A key is written once per index: a second insert, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
 CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys
 WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index)
-BEGIN
-  SELECT RAISE(IGNORE);
-END;
-
--- The switch is written once: a second insert, `INSERT OR REPLACE` included, writes nothing.
-CREATE TRIGGER IF NOT EXISTS garage_switch_inserted_once BEFORE INSERT ON garage_switch
-WHEN EXISTS (SELECT 1 FROM garage_switch)
 BEGIN
   SELECT RAISE(IGNORE);
 END;

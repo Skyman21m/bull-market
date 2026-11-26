@@ -16,7 +16,7 @@ final class ReadGarageKeyUsecase {
 
   const ReadGarageKeyUsecase(this._repository);
 
-  /// Which keys the Garage of [network] offers; it activates key 0 at the first visit, and finishes the one-time switch of the book where it stands ([GarageKeyRepository.keyring]).
+  /// Which keys the Garage of [network] offers; it activates key 0 at the first visit ([GarageKeyRepository.keyring]).
   @useResult
   Future<Result<GarageKeyring, P2pFailure>> keyring(RobosatsNetwork network) =>
       _repository.keyring(network);
@@ -26,6 +26,13 @@ final class ReadGarageKeyUsecase {
   Future<Result<NetworkGarageKey, P2pFailure>> execute(
     RobosatsNetwork network,
   ) => _repository.read(network);
+
+  /// Selects [selection], the key the card shows and new trades take, kept across restarts ([GarageKeyRepository.select]): an arrow of the Garage Key card.
+  @useResult
+  Future<Result<void, P2pFailure>> select(
+    RobosatsNetwork network,
+    GarageKeySelection selection,
+  ) => _repository.select(network, selection);
 
   /// The key of the words at [index], derived again and checked against its fingerprint ([GarageKeyRepository.derived]).
   @useResult

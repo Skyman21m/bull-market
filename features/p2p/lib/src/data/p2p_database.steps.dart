@@ -3575,11 +3575,7 @@ final class Schema10 extends i0.VersionedSchema {
     derivedGarageKeysNeverDeleted,
     derivedGarageKeysNeverChanged,
     derivedGarageKeysInOrder,
-    garageSwitch,
-    garageSwitchNeverDeleted,
-    garageSwitchForward,
     derivedGarageKeysInsertedOnce,
-    garageSwitchInsertedOnce,
     garageKeyHistories,
     robotBindings,
     trades,
@@ -3590,6 +3586,7 @@ final class Schema10 extends i0.VersionedSchema {
     tradeChatNostrPins,
     makerTerms,
     tradePayouts,
+    selectedGarageKeys,
     tradePayoutsNeverDeleted,
     tradePayoutsForward,
     tradePayoutsOfTheirTrade,
@@ -3662,37 +3659,9 @@ final class Schema10 extends i0.VersionedSchema {
     'CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1) BEGIN SELECT RAISE (ABORT, \'a Garage Key out of order\');END',
     'derived_garage_keys_in_order',
   );
-  late final Shape15 garageSwitch = Shape15(
-    source: i0.VersionedTable(
-      entityName: 'garage_switch',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: [
-        'PRIMARY KEY(id)',
-        'CHECK(typeof(id) = \'integer\' AND typeof(state) = \'text\')',
-        'CHECK(id = 1)',
-        'CHECK(state IN (\'legacy\', \'emptying\', \'vaultPending\', \'derived\'))',
-      ],
-      columns: [_column_73, _column_74],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
-  final i1.Trigger garageSwitchNeverDeleted = i1.Trigger(
-    'CREATE TRIGGER IF NOT EXISTS garage_switch_never_deleted BEFORE DELETE ON garage_switch BEGIN SELECT RAISE (ABORT, \'the switch of the Garage Keys is kept\');END',
-    'garage_switch_never_deleted',
-  );
-  final i1.Trigger garageSwitchForward = i1.Trigger(
-    'CREATE TRIGGER IF NOT EXISTS garage_switch_forward BEFORE UPDATE ON garage_switch WHEN NOT(NEW.id = OLD.id AND(NEW.state = OLD.state OR(OLD.state = \'legacy\' AND NEW.state = \'emptying\')OR(OLD.state = \'emptying\' AND NEW.state = \'vaultPending\')OR(OLD.state = \'vaultPending\' AND NEW.state = \'derived\')))BEGIN SELECT RAISE (ABORT, \'the switch of the Garage Keys only moves forward\');END',
-    'garage_switch_forward',
-  );
   final i1.Trigger derivedGarageKeysInsertedOnce = i1.Trigger(
     'CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE (IGNORE);END',
     'derived_garage_keys_inserted_once',
-  );
-  final i1.Trigger garageSwitchInsertedOnce = i1.Trigger(
-    'CREATE TRIGGER IF NOT EXISTS garage_switch_inserted_once BEFORE INSERT ON garage_switch WHEN EXISTS (SELECT 1 FROM garage_switch) BEGIN SELECT RAISE (IGNORE);END',
-    'garage_switch_inserted_once',
   );
   late final Shape0 garageKeyHistories = Shape0(
     source: i0.VersionedTable(
@@ -4046,6 +4015,22 @@ final class Schema10 extends i0.VersionedSchema {
     ),
     alias: null,
   );
+  late final Shape15 selectedGarageKeys = Shape15(
+    source: i0.VersionedTable(
+      entityName: 'selected_garage_keys',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(network)',
+        'CHECK(typeof(network) = \'text\' AND(key_index IS NULL OR typeof(key_index) = \'integer\'))',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)',
+      ],
+      columns: [_column_0, _column_73],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
   final i1.Trigger tradePayoutsNeverDeleted = i1.Trigger(
     'CREATE TRIGGER IF NOT EXISTS trade_payouts_never_deleted BEFORE DELETE ON trade_payouts BEGIN SELECT RAISE (ABORT, \'the payout of a contract is kept\');END',
     'trade_payouts_never_deleted',
@@ -4239,27 +4224,19 @@ i1.GeneratedColumn<int> _column_72(String aliasedName) =>
 
 class Shape15 extends i0.VersionedTable {
   Shape15({required super.source, required super.alias}) : super.aliased();
-  i1.GeneratedColumn<int> get id =>
-      columnsByName['id']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get state =>
-      columnsByName['state']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get network =>
+      columnsByName['network']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get keyIndex =>
+      columnsByName['key_index']! as i1.GeneratedColumn<int>;
 }
 
 i1.GeneratedColumn<int> _column_73(String aliasedName) =>
     i1.GeneratedColumn<int>(
-      'id',
+      'key_index',
       aliasedName,
-      false,
+      true,
       type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL',
-    );
-i1.GeneratedColumn<String> _column_74(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'state',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL',
+      $customConstraints: 'NULL',
     );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,

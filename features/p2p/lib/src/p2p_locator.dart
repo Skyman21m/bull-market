@@ -50,6 +50,7 @@ import 'domain/trade_robots.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
+import 'domain/usecases/delete_garage_key_usecase.dart';
 import 'domain/usecases/derive_first_robot_usecase.dart';
 import 'domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'domain/usecases/fetch_coordinator_limits_usecase.dart';
@@ -59,6 +60,7 @@ import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
 import 'domain/usecases/list_robot_hosts_usecase.dart';
 import 'domain/usecases/load_federation_books_usecase.dart';
+import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'domain/usecases/new_garage_key_usecase.dart';
 import 'domain/usecases/open_map_tiles_usecase.dart';
 import 'domain/usecases/put_robot_on_coordinator_usecase.dart';
@@ -183,7 +185,7 @@ final class P2pLocator {
     }
   }
 
-  /// Registers the Garage Keys of each network, the keys of the default wallet's words that [derivedGarageKeys] derives (#81) and, until the book is emptied once, the key drawn at random that the vault keeps behind [garageKeys], the use-cases that read them and activate the next one, the Garage that shows them, and the bindings of their robots in the database [database] makes, with the request of a robot that checks them over [transport].
+  /// Registers the Garage Keys of each network, the keys of the default wallet's words that [derivedGarageKeys] derives (#81) and the external key that the vault keeps behind [garageKeys], the use-cases that read them, activate the next key of the words, and import or delete the external key, the Garage that shows them, and the bindings of their robots in the database [database] makes, with the request of a robot that checks them over [transport].
   ///
   /// Registering touches no key and no file: the keystore and the database are read or written only when a use-case runs, and the Garage runs them only once the user opens it, and the book asks the vault whether a key is stored only when « Search order » found no order in the books received.
   static void registerGarageKeys(
@@ -265,6 +267,12 @@ final class P2pLocator {
     locator.registerFactory<NewGarageKeyUsecase>(
       () => NewGarageKeyUsecase(locator()),
     );
+    locator.registerFactory<DeleteGarageKeyUsecase>(
+      () => DeleteGarageKeyUsecase(locator()),
+    );
+    locator.registerFactory<NeedsPinToDeleteGarageKeyUsecase>(
+      () => NeedsPinToDeleteGarageKeyUsecase(locator()),
+    );
     // The local reads and records of the Garage's robot panel: nothing outside the feature reaches them.
     locator.registerFactory<ReadRobotStandingUsecase>(
       () => ReadRobotStandingUsecase(locator()),
@@ -278,6 +286,8 @@ final class P2pLocator {
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,
+        locator(),
+        locator(),
         locator(),
         locator(),
         locator(),
@@ -817,14 +827,13 @@ final class P2pLocator {
       (network, _) =>
           LastOrdersCubit(network, locator<ListLastOrdersUsecase>().execute),
     );
-    // The history of finished orders of the Garage (#253): the orders of the Garage Key shown, read from the device only; the cubit keeps the key's fingerprint, never the key.
+    // The history of finished orders of the Garage (#253): the orders of every Garage Key of the network (#81), read from the device only; the cubit keeps no key.
     locator.registerFactory<ListOrderHistoryUsecase>(
       () => ListOrderHistoryUsecase(locator()),
     );
     locator.registerFactoryParam<OrderHistoryCubit, NetworkGarageKey, void>(
       (key, _) => OrderHistoryCubit(
         key.network,
-        key.fingerprint,
         locator<ListOrderHistoryUsecase>().execute,
       ),
     );

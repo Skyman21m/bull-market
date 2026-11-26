@@ -7,9 +7,9 @@ import '../p2p_failure.dart';
 import '../repositories/garage_key_repository.dart';
 import '../repositories/robot_binding_repository.dart';
 
-/// Stores the Garage Key the user restores from the copy they kept, for a network that has none, and records that its history is unknown.
+/// Stores the Garage Key the user pastes in « Robot recovery », for a network whose vault slot is empty, as the external key of that network (#81), and records that its history is unknown.
 ///
-/// Call it only from an action of the user, and only after `HasGarageKeyUsecase` said that no key is stored.
+/// Call it only from an action of the user, and only when the Garage shows no external key for the network.
 /// A stored key is never replaced: a slot that holds anything is a [GarageKeyAlreadyStoredFailure], which the caller reports and never works around.
 final class ImportGarageKeyUsecase {
   final GarageKeyRepository _repository;

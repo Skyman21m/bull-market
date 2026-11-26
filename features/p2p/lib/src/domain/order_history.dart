@@ -116,17 +116,17 @@ abstract final class OrderHistory {
   /// How many lines the history shows when it opens, and how many more « See more » adds.
   static const int page = 10;
 
-  /// Of [closed], the finished orders of the key of [key], the newest end first: each record closed after its order was confirmed, made here or taken here, as the « Last order #N » lines take them (`ListLastOrdersUsecase.lastOrdersOf`); a take or a make that never happened (never confirmed) is no order, and a trade recovered from a pasted key is neither made nor taken here.
+  /// Of [closed], the finished orders of every key of the network, or of the key of [key] when it is given, the newest end first (since #81 the Garage's history covers every key, its lines saying each one's key): each record closed after its order was confirmed, made here or taken here, as the « Last order #N » lines take them (`ListLastOrdersUsecase.lastOrdersOf`); a take or a make that never happened (never confirmed) is no order, and a trade recovered from a pasted key is neither made nor taken here.
   ///
   /// Equal ends are ordered by the higher order number, then the higher robot index, so that the order of the lines never depends on the order of the rows.
   static List<FinishedOrder> of(
-    Iterable<ClosedTrade> closed,
-    GarageKeyFingerprint key,
-  ) {
+    Iterable<ClosedTrade> closed, [
+    GarageKeyFingerprint? key,
+  ]) {
     final orders = <FinishedOrder>[
       for (final ClosedTrade(:record, :lastPosition) in closed)
         if ((record.closedAt, record.confirmedAt) case (final endedAt?, _?)
-            when record.robot.keyFingerprint == key &&
+            when (key == null || record.robot.keyFingerprint == key) &&
                 record.origin != TradeOrigin.recovered)
           FinishedOrder._(record, OrderEnd.of(lastPosition), endedAt),
     ];

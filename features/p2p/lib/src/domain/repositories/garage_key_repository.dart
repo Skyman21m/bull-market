@@ -7,19 +7,19 @@ import '../network_garage_key.dart';
 import '../p2p_failure.dart';
 import '../robot_binding.dart';
 
-/// The RoboSats Garage Keys of each network and the robots derived from them (#81, design note `docs/design/garage-key-from-the-words.md`): the keys of the default wallet's words, by index, and, until the book of P2P is emptied once, the key drawn at random before #81 that the vault keeps, used only to finish its trades.
+/// The RoboSats Garage Keys of each network and the robots derived from them (#81, design note `docs/design/garage-key-from-the-words.md`): the keys of the default wallet's words, by index, and the external key, the one the vault keeps in the slot of each network (drawn at random on this device before #81, or pasted in « Robot recovery »), never derived and never mixed with the keys of the words.
 ///
 /// What leaves it is deliberately narrow: which keys the Garage offers, a key as a [NetworkGarageKey] (for the screens of the Garage and the robots of the trades), and robots derived from it, each with the network of its key. The bytes of a key never leave it, and its text form is made by `GarageKeyView` alone, the only class the custody gate allows to reveal it.
 /// A key of the words is derived on each call and stored nowhere; the database keeps only the indexes activated and their fingerprints, and a key the words give again that does not match its fingerprint is a [GarageKeyMismatchFailure], never a key.
 /// Nothing here draws a key at random: when the words cannot give one, the call fails.
 abstract interface class GarageKeyRepository {
-  /// Which keys the Garage of [network] offers: [LegacyGarageKeyring] while a trade of the key drawn at random is in progress, otherwise the keys of the words activated on [network], from 0 to the highest.
+  /// Which keys the Garage of [network] offers: the keys of the words activated on [network], from 0 to the highest, the external key when the vault keeps one (readable or not), and the one selected.
   ///
-  /// It finishes the one-time switch first when the database emptied the book (the vault's two slots deleted, then the switch marked done), and activates key 0 when none is: so at the first opening of the Garage, key 0 is there.
+  /// It activates key 0 when none is, so at the first opening of the Garage, key 0 is there; and when no key is selected yet, it selects the external key when the vault keeps one, otherwise key 0.
   @useResult
   Future<Result<GarageKeyring, P2pFailure>> keyring(RobosatsNetwork network);
 
-  /// The key the Garage of [network] opens on: the key drawn at random while the switch waits ([GarageKeyMissingFailure] when the vault holds none), otherwise the highest key of the words.
+  /// The key selected on [network] ([select]): the key the Garage opens on.
   ///
   /// For the screens of the Garage and for the line of an order's page that shows the robot the Garage would show; never for a new trade ([forNewTrade]).
   @useResult
@@ -32,30 +32,37 @@ abstract interface class GarageKeyRepository {
     int index,
   );
 
-  /// The key of every new trade on [network]: the highest key of the words activated, and never another.
+  /// The key of every new trade on [network]: the key selected in the Garage Key card, a key of the words whatever its number or the external key (the owner's decisions of 2026-11-26), and never another.
   ///
-  /// While the switch waits for a trade of the key drawn at random to finish, a [GarageKeySwitchPendingFailure]: no new trade starts on that key, nor on any key of the words yet.
+  /// Whether that key may give robots for new trades is the trades' own rule (`NewTradeStanding`): a key pasted from elsewhere only finishes its trades.
   @useResult
   Future<Result<NetworkGarageKey, P2pFailure>> forNewTrade(
     RobosatsNetwork network,
   );
 
-  /// The key whose robot [slot] is, to finish its trade: the key drawn at random while the switch waits, otherwise the key of the words activated with that fingerprint on that network, derived again and checked against it.
+  /// The key whose robot [slot] is, to finish its trade, whichever key is selected: the key of the words activated with that fingerprint on that network, derived again and checked against it, or the external key, when the fingerprint is its own.
   ///
   /// No such key is a [TradeKeyMissingFailure]: nothing is signed.
   @useResult
   Future<Result<NetworkGarageKey, P2pFailure>> ofSlot(RobotSlot slot);
 
-  /// Activates the key after [after] on [network], which must be the highest activated, and gives its index: « New key ».
+  /// Activates the key of the words after [after] on [network], which must be the highest activated, selects it, and gives its index: « New key », from whichever key the card shows, the external key included, which does not count.
   ///
-  /// Index 0x7fffffff has no next key ([GarageKeyLastIndexFailure]); an [after] that is no longer the highest, as after a second tap, activates nothing and is a [GarageKeyMissingFailure]; while the switch waits, a [GarageKeySwitchPendingFailure].
+  /// Index 0x7fffffff has no next key ([GarageKeyLastIndexFailure]); an [after] that is no longer the highest, as after a second tap, activates nothing and is a [GarageKeyMissingFailure].
   @useResult
   Future<Result<int, P2pFailure>> activateNext(
     RobosatsNetwork network, {
     required int after,
   });
 
-  /// Whether the Garage of [network] has a key to open on: `false` only while the switch waits and the vault concluded, after its full read budget, that the slot of [network] is empty.
+  /// Selects [selection] on [network]: the key the card shows and new trades take, kept across restarts. A key of the words only at an index this device activated, the external key only when the vault keeps one; otherwise a [GarageKeyMissingFailure], and nothing is written.
+  @useResult
+  Future<Result<void, P2pFailure>> select(
+    RobosatsNetwork network,
+    GarageKeySelection selection,
+  );
+
+  /// Whether the Garage of [network] has a key to open on: `false` only when the key selected is the external key and the vault concluded, after its full read budget, that the slot of [network] is empty.
   ///
   /// A key that cannot be read or derived is a failure, never `false`.
   @useResult
@@ -67,13 +74,18 @@ abstract interface class GarageKeyRepository {
     RobosatsNetwork network,
   );
 
-  /// Stores [key], a key the user restores, in the vault's slot of [network], which must be empty.
+  /// Stores [key], a key the user pastes in « Robot recovery », in the vault's slot of [network], which must be empty, and selects it: the external key of that network.
   ///
-  /// No screen reaches it in this version: the paste of a key from elsewhere comes back beside the keys of the words with #79.
-  /// A slot that holds anything, readable or not, is a [GarageKeyAlreadyStoredFailure], and nothing is written.
+  /// A slot that holds anything, readable or not, is a [GarageKeyAlreadyStoredFailure], and nothing is written: one external key at a time.
   @useResult
   Future<Result<void, P2pFailure>> import(
     RobosatsNetwork network,
     GarageKey key,
   );
+
+  /// Deletes the external key of [network], whatever its entry holds, and, when it was selected, selects the highest key of the words. The keys of the words are never deleted: the words remake them.
+  ///
+  /// Destructive: the robots of that key are lost unless the user kept a copy of it, so call it only on the user's explicit confirmation.
+  @useResult
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network);
 }

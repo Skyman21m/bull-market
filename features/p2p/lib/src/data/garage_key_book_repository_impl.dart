@@ -8,63 +8,40 @@ import '../domain/p2p_failure.dart';
 import '../domain/repositories/garage_key_book_repository.dart';
 import 'p2p_database.dart';
 
-/// The Garage Keys of the words this device activated, and the one-time switch of the book, in the feature's database (schema 10, #81).
+/// The Garage Keys of the words this device activated, and the key selected on each network, in the feature's database (schema 10, #81).
 ///
 /// Every statement commits on its own, synced to disk, before its future completes; it returns no row of the database, and a [P2pStorageFailure] for any [Exception] the database throws, or for a row this code never writes.
 final class GarageKeyBookRepositoryImpl implements GarageKeyBookRepository {
   /// The history of the key on its network, written as a key drawn here unless one is recorded already (an earlier record wins, as `RobotBindingRepositoryImpl.recordGeneratedKey` writes it).
   static const String _recordDrawnHere =
       'INSERT INTO garage_key_histories (network, key_fingerprint, origin, recorded_at) '
-      "SELECT ?, ?, 'generated', ? WHERE EXISTS (SELECT 1 FROM garage_switch WHERE id = 1 AND state = 'derived') "
+      "VALUES (?, ?, 'generated', ?) "
       'ON CONFLICT (network, key_fingerprint) DO NOTHING';
 
-  /// The key of an index, written only when it is the next one of its network (0 when none is) and the switch is `derived`: one statement, so two calls never both write the same index or skip one.
+  /// The key of an index, written only when it is the next one of its network (0 when none is): one statement, so two calls never both write the same index or skip one.
   static const String _activateNext =
       'INSERT INTO derived_garage_keys (network, key_index, key_fingerprint, activated_at) '
       'SELECT ?, ?, ?, ? '
       'WHERE (SELECT coalesce(max(key_index), -1) FROM derived_garage_keys WHERE network = ?) = ? - 1 '
-      "AND EXISTS (SELECT 1 FROM garage_switch WHERE id = 1 AND state = 'derived') "
       'ON CONFLICT DO NOTHING RETURNING key_fingerprint';
+
+  /// The selection of a key of the words, written only when its index is activated on its network: one statement, so a selection never names a key of the words this device does not have.
+  static const String _selectWords =
+      'INSERT INTO selected_garage_keys (network, key_index) '
+      'SELECT ?, ? WHERE EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = ? AND key_index = ?) '
+      'ON CONFLICT (network) DO UPDATE SET key_index = excluded.key_index '
+      'RETURNING network';
+
+  /// The selection of the external key, with no index.
+  static const String _selectExternal =
+      'INSERT INTO selected_garage_keys (network, key_index) VALUES (?, NULL) '
+      'ON CONFLICT (network) DO UPDATE SET key_index = NULL '
+      'RETURNING network';
 
   final P2pDatabase _database;
   final DateTime Function() _clock;
 
   const GarageKeyBookRepositoryImpl(this._database, {required this._clock});
-
-  @override
-  Future<Result<GarageSwitchState, P2pFailure>> switchState() async {
-    try {
-      final row = await _database
-          .customSelect(
-            'SELECT state FROM garage_switch WHERE id = 1',
-            readsFrom: {_database.garageSwitch},
-          )
-          .getSingleOrNull();
-      return switch (row?.data['state']) {
-        'legacy' => const Ok(GarageSwitchState.legacy),
-        'emptying' => const Ok(GarageSwitchState.emptying),
-        'vaultPending' => const Ok(GarageSwitchState.vaultPending),
-        'derived' => const Ok(GarageSwitchState.derived),
-        // No row, which the opening always writes, or a state the constraints forbid: never read as a switch done.
-        _ => const Err(P2pStorageFailure()),
-      };
-    } on Exception {
-      return const Err(P2pStorageFailure());
-    }
-  }
-
-  @override
-  Future<Result<void, P2pFailure>> markDerived() async {
-    try {
-      await _database.customUpdate(
-        "UPDATE garage_switch SET state = 'derived' WHERE id = 1 AND state = 'vaultPending'",
-        updates: {_database.garageSwitch},
-      );
-      return const Ok(null);
-    } on Exception {
-      return const Err(P2pStorageFailure());
-    }
-  }
 
   @override
   Future<Result<List<ActivatedGarageKey>, P2pFailure>> activatedKeys(
@@ -143,6 +120,61 @@ final class GarageKeyBookRepositoryImpl implements GarageKeyBookRepository {
           const Ok(true),
         _ => const Err(P2pStorageFailure()),
       };
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+  }
+
+  @override
+  Future<Result<GarageKeySelection?, P2pFailure>> selected(
+    RobosatsNetwork network,
+  ) async {
+    try {
+      final row = await _database
+          .customSelect(
+            'SELECT key_index FROM selected_garage_keys WHERE network = ?',
+            variables: [Variable.withString(_networkValue(network))],
+            readsFrom: {_database.selectedGarageKeys},
+          )
+          .getSingleOrNull();
+      return switch (row) {
+        null => const Ok(null),
+        _ => switch (row.data['key_index']) {
+          null => const Ok(SelectedExternalKey()),
+          final int index => Ok(SelectedWordsKey(index)),
+          _ => const Err(P2pStorageFailure()),
+        },
+      };
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+  }
+
+  @override
+  Future<Result<bool, P2pFailure>> select(
+    RobosatsNetwork network,
+    GarageKeySelection selection,
+  ) async {
+    final value = _networkValue(network);
+    try {
+      final written = switch (selection) {
+        SelectedWordsKey(:final index) => await _database.customWriteReturning(
+          _selectWords,
+          variables: [
+            Variable.withString(value),
+            Variable.withInt(index),
+            Variable.withString(value),
+            Variable.withInt(index),
+          ],
+          updates: {_database.selectedGarageKeys},
+        ),
+        SelectedExternalKey() => await _database.customWriteReturning(
+          _selectExternal,
+          variables: [Variable.withString(value)],
+          updates: {_database.selectedGarageKeys},
+        ),
+      };
+      return Ok(written.isNotEmpty);
     } on Exception {
       return const Err(P2pStorageFailure());
     }

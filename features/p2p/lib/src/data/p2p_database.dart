@@ -2,14 +2,13 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:meta/meta.dart';
 
 import 'p2p_database.steps.dart';
 import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys); since schema 10 (#81), the Garage Keys of the wallet's words this device activated, by index and fingerprint, and the one-time switch that emptied the book of the key drawn at random once no trade of it was in progress.
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys); since schema 10 (#81), the Garage Keys of the wallet's words this device activated, by index and fingerprint, and the key selected on each network (a key of the words, or the external key the vault keeps).
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
@@ -28,7 +27,7 @@ part 'p2p_database.g.dart';
     StoredMakerTerms,
     StoredTradePayouts,
     DerivedGarageKeys,
-    GarageSwitch,
+    SelectedGarageKeys,
   ],
   include: {
     'trades.drift',
@@ -157,71 +156,17 @@ final class P2pDatabase extends _$P2pDatabase {
   static const String _foreignKeysOff = 'PRAGMA foreign_keys = OFF';
   static const String _foreignKeyCheck = 'PRAGMA foreign_key_check';
 
-  /// The one-time switch of #81 (design note `docs/design/garage-key-from-the-words.md` § 8), which [_resumeSwitch] plays when the file opens.
-  static const String _insertSwitch =
-      'INSERT OR IGNORE INTO garage_switch (id, state) VALUES (1, ?)';
-
-  /// `legacy` becomes `emptying` in one statement, only while no trade is in progress: no row of `trades` without its `closed_at` (a pending take, a pending make, a trade taken or made and not closed). A trade is closed only once a terminal position was read, or a take turned out never to have left.
-  static const String _startEmptying =
-      "UPDATE garage_switch SET state = 'emptying' WHERE id = 1 AND state = 'legacy' AND NOT EXISTS (SELECT 1 FROM trades WHERE closed_at IS NULL)";
-  static const String _readSwitch =
-      'SELECT state FROM garage_switch WHERE id = 1';
-  static const String _emptied =
-      "UPDATE garage_switch SET state = 'vaultPending' WHERE id = 1 AND state = 'emptying'";
-
-  /// The triggers that refuse a delete on the tables the emptying empties, dropped for it and made again after it (four of them are the step to schema 8's and 9's constants, above).
-  static const String _dropTradeTermsNeverDeleted =
-      'DROP TRIGGER IF EXISTS trade_terms_never_deleted';
-  static const String _dropMakerTermsNeverDeleted =
-      'DROP TRIGGER IF EXISTS maker_terms_never_deleted';
-  static const String _dropTradeChatPinsNeverDeleted =
-      'DROP TRIGGER IF EXISTS trade_chat_pins_never_deleted';
-  static const String _dropTradeChatNostrPinsNeverDeleted =
-      'DROP TRIGGER IF EXISTS trade_chat_nostr_pins_never_deleted';
-
-  /// The tables of the book of the key drawn at random, each emptied once by [_resumeSwitch], children first: everything of that key, nothing of the keys of the words, of the switch or of the wallet.
-  static const String _emptyTradePayouts = 'DELETE FROM trade_payouts';
-  static const String _emptyTradePayments = 'DELETE FROM trade_payments';
-  static const String _emptyTradeChatNostrPins =
-      'DELETE FROM trade_chat_nostr_pins';
-  static const String _emptyTradeChatPins = 'DELETE FROM trade_chat_pins';
-  static const String _emptyMakerTerms = 'DELETE FROM maker_terms';
-  static const String _emptyTradeTrails = 'DELETE FROM trade_trails';
-  static const String _emptyTradeTerms = 'DELETE FROM trade_terms';
-  static const String _emptyTrades = 'DELETE FROM trades';
-  static const String _emptyRobotBindings = 'DELETE FROM robot_bindings';
-  static const String _emptyGarageKeyHistories =
-      'DELETE FROM garage_key_histories';
-
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
 
-  P2pDatabase._(super.executor, {bool switchOnOpen = true})
-    : _switchOnOpen = switchOnOpen;
-
-  /// Whether the opening plays the one-time switch of #81 ([_resumeSwitch]): always in the app; the tests of the migration steps alone turn it off, so that what they check is the steps, not the emptying.
-  final bool _switchOnOpen;
+  P2pDatabase._(super.executor);
 
   /// The database in the directory [directory] completes with, opened at the first query: creating it touches no file.
   ///
   /// Every commit is synced to disk (`synchronous = FULL`), so that a binding written survives a power cut before the request of its robot leaves.
   /// Prepared statements are not cached (#128): `package:sqlite3` leaves a statement whose step failed unreset until its next use, and a cached write that met `SQLITE_BUSY` stays active, so every later write of the connection, reported written, stays uncommitted under its write lock and is rolled back when that statement is reset: run again, evicted from drift's cache, or its connection closed. Each statement is finalized after its use instead, whatever it gave.
   factory P2pDatabase.open(Future<Directory> Function() directory) =>
-      P2pDatabase._(_connectionIn(directory));
-
-  /// [P2pDatabase.open] without the one-time switch of #81 at its openings: for the tests of the migration steps alone, never the app.
-  @visibleForTesting
-  factory P2pDatabase.openWithoutSwitchForTesting(
-    Future<Directory> Function() directory,
-  ) => P2pDatabase._(_connectionIn(directory), switchOnOpen: false);
-
-  /// [P2pDatabase.forTesting] without the one-time switch of #81 at its openings: for the tests of the migration steps alone.
-  @visibleForTesting
-  factory P2pDatabase.withoutSwitchForTesting(QueryExecutor executor) =>
-      P2pDatabase._(executor, switchOnOpen: false);
-
-  /// The connection to the file of the database in [directory], as [P2pDatabase.open] describes it.
-  static QueryExecutor _connectionIn(Future<Directory> Function() directory) =>
+      P2pDatabase._(
         LazyDatabase(() async {
           final file = File.fromUri((await directory()).uri.resolve(fileName));
           return NativeDatabase.createInBackground(
@@ -233,7 +178,8 @@ final class P2pDatabase extends _$P2pDatabase {
               database.execute('PRAGMA synchronous = FULL;');
             },
           );
-        });
+        }),
+      );
 
   factory P2pDatabase.forTesting(QueryExecutor executor) = P2pDatabase._;
 
@@ -243,11 +189,6 @@ final class P2pDatabase extends _$P2pDatabase {
   /// Each step brings a file from one version to the next, and can run again over a file it left halfway: the version is written only once the step is done.
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    // A file created at schema 10 holds nothing of a key drawn at random: its switch starts where the switch ends, and the vault's slots are left as they are (a key the keystore kept across an uninstall may be the user's only copy).
-    onCreate: (m) async {
-      await m.createAll();
-      await customStatement(_insertSwitch, ['derived']);
-    },
     onUpgrade: stepByStep(
       from1To2: (m, schema) async {
         // `acknowledged` widens the CHECK of the histories, which SQLite cannot change in place: the table is rebuilt in one transaction, its rows copied as they are.
@@ -474,70 +415,18 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradePaymentsSatsForward);
       },
       from9To10: (m, schema) async {
-        // The Garage Keys of the words (#81, design note `docs/design/garage-key-from-the-words.md` § 2, § 8): two new tables and their triggers, each made only when missing, and the switch written `legacy` when it is not there yet, so that a step that stopped after any of them runs again over the file it left. No row of an older table is copied, changed or deleted here: the book is emptied later, when the file opens with no trade in progress ([_resumeSwitch]).
+        // The Garage Keys of the words (#81, design note `docs/design/garage-key-from-the-words.md` § 2): the keys this device activated and their triggers, and the key selected per network, each made only when missing, so that a step that stopped after any of them runs again over the file it left. No row of an older table is copied, changed or deleted: the records of the key the vault keeps, the external key since #81, stay as they are, under its fingerprint.
         await m.createTable(schema.derivedGarageKeys);
-        await m.createTable(schema.garageSwitch);
+        await m.createTable(schema.selectedGarageKeys);
         await m.createTrigger(schema.derivedGarageKeysNeverDeleted);
         await m.createTrigger(schema.derivedGarageKeysNeverChanged);
         await m.createTrigger(schema.derivedGarageKeysInOrder);
-        await m.createTrigger(schema.garageSwitchNeverDeleted);
-        await m.createTrigger(schema.garageSwitchForward);
         await m.createTrigger(schema.derivedGarageKeysInsertedOnce);
-        await m.createTrigger(schema.garageSwitchInsertedOnce);
-        await customStatement(_insertSwitch, ['legacy']);
       },
     ),
-    // The switch of #81 goes as far as it can before any query of this run, then every connection, the app's and the tests', enforces the foreign key of the trades.
-    beforeOpen: (details) async {
-      // Only on a file of schema 10 or later: the tests of the steps open files at an older version.
-      if (_switchOnOpen && details.versionNow >= 10) {
-        await _resumeSwitch(created: details.wasCreated);
-      }
-      await customStatement(_foreignKeysOn);
-    },
+    // Every connection, the app's and the tests', enforces the foreign key of the trades.
+    beforeOpen: (details) => customStatement(_foreignKeysOn),
   );
-
-  /// The one-time emptying of the book of the key drawn at random (#81, design note § 8), resumed at each opening until it is done, before any query of the run and with the foreign keys still off.
-  ///
-  /// The switch is written if missing (`derived` for a file just created, `legacy` otherwise), then `legacy` becomes `emptying` only when no trade is in progress, in one statement ([_startEmptying]). At `emptying`, the triggers that refuse a delete are dropped, every table of the book is emptied, children first, the triggers are made again, and only then the switch becomes `vaultPending`; each part is one statement that does the same when it runs again, so a run killed anywhere in between leaves `emptying`, and the next opening does all of it again: the book is either still whole at `legacy`, or emptied by the time anything reads it. Nothing else ever empties it: once past `emptying` the switch never comes back (`garage_switch_forward`).
-  /// `vaultPending` is the vault's: `GarageKeyRepositoryImpl` deletes the two Garage Key slots, then moves the switch to `derived`, before it derives any key.
-  /// The derived keys, `derived_garage_keys`, are never emptied, and the switch is the only row written here.
-  Future<void> _resumeSwitch({required bool created}) async {
-    await customStatement(_insertSwitch, [created ? 'derived' : 'legacy']);
-    await customStatement(_startEmptying);
-    final state = (await customSelect(
-      _readSwitch,
-    ).getSingleOrNull())?.read<String>('state');
-    if (state != 'emptying') return;
-    await customStatement(_dropTradePayoutsNeverDeleted);
-    await customStatement(_dropTradePaymentsNeverDeleted);
-    await customStatement(_dropTradeChatNostrPinsNeverDeleted);
-    await customStatement(_dropTradeChatPinsNeverDeleted);
-    await customStatement(_dropMakerTermsNeverDeleted);
-    await customStatement(_dropTradeTrailsNeverDeleted);
-    await customStatement(_dropTradeTermsNeverDeleted);
-    await customStatement(_dropTradesNeverDeleted);
-    await customStatement(_emptyTradePayouts);
-    await customStatement(_emptyTradePayments);
-    await customStatement(_emptyTradeChatNostrPins);
-    await customStatement(_emptyTradeChatPins);
-    await customStatement(_emptyMakerTerms);
-    await customStatement(_emptyTradeTrails);
-    await customStatement(_emptyTradeTerms);
-    await customStatement(_emptyTrades);
-    await customStatement(_emptyRobotBindings);
-    await customStatement(_emptyGarageKeyHistories);
-    final m = createMigrator();
-    await m.createTrigger(tradePayoutsNeverDeleted);
-    await m.createTrigger(tradePaymentsNeverDeleted);
-    await m.createTrigger(tradeChatNostrPinsNeverDeleted);
-    await m.createTrigger(tradeChatPinsNeverDeleted);
-    await m.createTrigger(makerTermsNeverDeleted);
-    await m.createTrigger(tradeTrailsNeverDeleted);
-    await m.createTrigger(tradeTermsNeverDeleted);
-    await m.createTrigger(tradesNeverDeleted);
-    await customStatement(_emptied);
-  }
 
   /// SQLite's own text of the table [table], `null` when the file has no such table.
   Future<String?> _tableText(String table) async {
