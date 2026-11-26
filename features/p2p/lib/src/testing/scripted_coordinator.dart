@@ -237,6 +237,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   final Map<RobotSessionKey, double> _chosen = {};
   int? _lastSatoshis;
 
+  /// A coordinator that changes the trade's sats fixed at the take (`last_satoshis`) afterwards, which the reference never does (`api/logics.py:1332-1335`): what it pays and asks from then on follows them (#281, a smaller sum asked at 15).
+  set lastSatoshis(int sats) => _lastSatoshis = sats;
+
   final Map<RobotSessionKey, RobotIdentity> _robots;
   final Map<RobotSessionKey, Map<String, Object?>> _kept = {};
   final Map<ScriptedRequest, List<ScriptedFault>> _faults = {};

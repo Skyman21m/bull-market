@@ -66,7 +66,7 @@ final class CheckPayoutRateUsecase {
   static bool takeDisagrees(TradeStatus status) =>
       amountsDisagree(status) || status.has<TradeTermsChanged>();
 
-  /// Whether the line of [check], of sats coming from [basis], would reassure beside an alert [seen] shows (`ShownAlerts.any`: a warning of the state machine, the trace of terms shown otherwise, #231, or at 9 the trace of a payout not given from this wallet, #204): a comparison within the owner's threshold, with no alert of its own (`PayoutRateTold`, `PayoutRateNotSeen`). Such a line is not drawn: an alert speaks alone (the owner's rule; C1 of the functional review and C1, C2 of the security review of #249, for a taker buyer and a maker buyer alike). A comparison that is itself an alert (red, « rate not checked », a currency not priced, a figure that moved since the invoice) is still drawn beside it.
+  /// Whether the line of [check], of sats coming from [basis], would reassure beside an alert [seen] shows (`ShownAlerts.any`: a warning of the state machine, the trace of terms shown otherwise, #231, or at 9 the trace of a payout not given from this wallet, #204): a comparison within the owner's threshold, with no alert of its own (`PayoutRateTold`, `PayoutRateNotSeen`). Such a line is not drawn: an alert speaks alone (the owner's rule; C1 of the functional review and C1, C2 of the security review of #249, for a taker buyer and a maker buyer alike). A comparison that is itself an alert (red, « rate not checked », a currency not priced, a figure that moved since the invoice, at 15 fewer sats than at 6 or 8, #281) is still drawn beside it.
   static bool reassuresBesideAlert(
     TradeSeen seen,
     WalletRateCheck check,
@@ -74,7 +74,8 @@ final class CheckPayoutRateUsecase {
   ) =>
       ShownAlerts.reassuresBeside(seen, check) &&
       basis is! PayoutRateTold &&
-      basis is! PayoutRateNotSeen;
+      basis is! PayoutRateNotSeen &&
+      basis is! PayoutRateBelowFirst;
 
   /// What the rule compares at [seen] for [terms], a maker's ([subjectAt]) or a taker's ([subjectOfTake]).
   static PayoutRateSubject? subjectFor(
@@ -82,29 +83,33 @@ final class CheckPayoutRateUsecase {
     PayoutRateTerms terms,
     TradeSeen seen, {
     Sats? asked,
+    Sats? first,
   }) => switch (terms) {
     MakerPayoutTerms(:final maker) => subjectAt(
       record,
       maker,
       seen,
       asked: asked,
+      first: first,
     ),
     TakerPayoutTerms(:final terms) => subjectOfTake(
       record,
       terms,
       seen,
       asked: asked,
+      first: first,
     ),
   };
 
   /// What the rule compares at [seen], a status of [record] taken with [terms], whose user buys (#249): `null` outside its steps (the payout at 6 or 8, and since #237 at 15 once a new invoice is asked, « fiat sent » at 9) or for a status not marked stored.
   ///
-  /// The amount is the one taken, kept in the terms ([TakenSide.amount]), never the read's. At 6, 8 and 15, the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`), as for a maker buyer; at 9, where the coordinator gives no `trade_satoshis`, the trade's sats (`satoshis_now`, its `last_satoshis`) less the taker fee of the terms ([TakenTradeTerms.payoutAt]), against the smallest invoice's sats this app saw asked at 6 or 8 ([asked]) as for a maker buyer. While the state machine says the terms or the amounts do not agree ([takeDisagrees]), nothing is compared ([PayoutRateMismatch]), the kept invoice included: a taker has none of a maker's per-contract cases (one contract, no amount moved within it but `TradeTermsChanged`), and at 9 a trade's sats missing is itself `TradePriceOutsideOrder`.
+  /// The amount is the one taken, kept in the terms ([TakenSide.amount]), never the read's. At 6, 8 and 15, the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`), as for a maker buyer; at 9, where the coordinator gives no `trade_satoshis`, the trade's sats (`satoshis_now`, its `last_satoshis`) less the taker fee of the terms ([TakenTradeTerms.payoutAt]), against the smallest invoice's sats this app saw asked at 6 or 8 ([asked]) as for a maker buyer; at 15 against the largest the payout panel asked at 6 or 8 ([first], #281: the state machine's 2 % around the price of the take leaves a drop of about 4 % and the fee unseen), as for a maker buyer ([_atPayout]). While the state machine says the terms or the amounts do not agree ([takeDisagrees]), nothing is compared ([PayoutRateMismatch]), the kept invoice included: a taker has none of a maker's per-contract cases (one contract, no amount moved within it but `TradeTermsChanged`), and at 9 a trade's sats missing is itself `TradePriceOutsideOrder`.
   static PayoutRateSubject? subjectOfTake(
     TradeRecord record,
     TradeTerms<TakenSide> terms,
     TradeSeen seen, {
     Sats? asked,
+    Sats? first,
   }) {
     if (!seen.stored) return null;
     final order = seen.order;
@@ -115,25 +120,12 @@ final class CheckPayoutRateUsecase {
       case WaitingForBoth(role: TradeRole.buyer) ||
           WaitingForPayout(role: TradeRole.buyer) ||
           RoutingFailed(role: TradeRole.buyer, invoiceExpired: true):
-        final invoice = switch (PayoutAsk.of(record, seen)) {
-          Ok(:final value) => value.buyerSats,
-          Err() => null,
-        };
-        // Every figure the coordinator gave for what the buyer receives: the smallest is the one kept for 9.
-        final payout = order?.payoutInvoiceAmount;
-        final keep = switch ((invoice, payout)) {
-          (final a?, final b?) => a.value <= b.value ? a : b,
-          (final a?, null) => a,
-          (null, final b?) => b,
-          _ => null,
-        };
-        if (disagree) return PayoutRateMismatch(keep);
-        if (invoice == null) return const PayoutRateNoSats();
-        return PayoutRateCompared(
-          received: invoice,
+        return _atPayout(
+          record,
+          seen,
           amount: amount,
-          basis: const PayoutRateAskedNow(),
-          keep: keep,
+          disagree: disagree,
+          first: first,
         );
       case Chatting(role: TradeRole.buyer, fiatSent: false):
         if (disagree) return const PayoutRateMismatch(null);
@@ -166,12 +158,13 @@ final class CheckPayoutRateUsecase {
   ///
   /// At 15 (the payout failed and its invoice expired) the coordinator asks a new invoice of `trade_satoshis`, `Logics.payout_amount` as at 6 and 8 (`api/views.py:472-488`, `api/logics.py:650-669`): the same figures, compared as at 6 and 8 (design note § 3.3 bis).
   ///
-  /// [asked] is the smallest invoice's sats this app saw asked at 6 or 8 for the contract, when it kept one (in memory only: not after a restart, #204).
+  /// [asked] is the smallest invoice's sats this app saw asked at 6 or 8 for the contract, when it kept one (in memory only: not after a restart, #204); [first] the largest the payout panel asked at 6 or 8 for it, which 15 is compared with ([_atPayout], #281).
   static PayoutRateSubject? subjectAt(
     TradeRecord record,
     MakerTerms maker,
     TradeSeen seen, {
     Sats? asked,
+    Sats? first,
   }) {
     if (!seen.stored) return null;
     final order = seen.order;
@@ -187,25 +180,12 @@ final class CheckPayoutRateUsecase {
       case WaitingForBoth(role: TradeRole.buyer) ||
           WaitingForPayout(role: TradeRole.buyer) ||
           RoutingFailed(role: TradeRole.buyer, invoiceExpired: true):
-        final invoice = switch (PayoutAsk.of(record, seen)) {
-          Ok(:final value) => value.buyerSats,
-          Err() => null,
-        };
-        // Every figure the coordinator gave for what the buyer receives: the smallest is the one kept for 9.
-        final payout = order?.payoutInvoiceAmount;
-        final keep = switch ((invoice, payout)) {
-          (final a?, final b?) => a.value <= b.value ? a : b,
-          (final a?, null) => a,
-          (null, final b?) => b,
-          _ => null,
-        };
-        if (amountsDisagree(status) || moved) return PayoutRateMismatch(keep);
-        if (invoice == null || amount == null) return const PayoutRateNoSats();
-        return PayoutRateCompared(
-          received: invoice,
+        return _atPayout(
+          record,
+          seen,
           amount: amount,
-          basis: const PayoutRateAskedNow(),
-          keep: keep,
+          disagree: amountsDisagree(status) || moved,
+          first: first,
         );
       case Chatting(role: TradeRole.buyer, fiatSent: false):
         final last = order?.satoshisNow;
@@ -254,6 +234,50 @@ final class CheckPayoutRateUsecase {
       case _:
         return null;
     }
+  }
+
+  /// What the rule compares at the payout's step, 6, 8 or 15 ([seen]), for a maker buyer and a taker buyer alike: the sats of the invoice the payout panel asks and « Submit » gives (`PayoutAsk.buyerSats`, the order's `trade_satoshis`) for the contract's [amount]; nothing compared while [disagree] (the state machine's alert alone).
+  ///
+  /// At 6 and 8 the figures to keep beyond the page: the smallest of the coordinator's figures for 9 (`keep`), and the invoice's sats for 15 (`keepFirst`). At 15 (the payout failed, a new invoice asked) the coordinator asks again `Logics.payout_amount`, the very sum of 6 and 8 for the same contract, to the sat (`api/views.py:470-488`, `api/logics.py:650-669`): nothing is kept there, so that 15 is compared with what 6 and 8 asked and never with itself, and the sats asked are compared with [first], the largest the payout panel asked at 6 or 8 for the contract, kept by this run of the app: fewer by any amount is [PayoutRateBelowFirst], an alert; none kept is [PayoutRateFirstUnknown]; as many or more is as at 6 and 8 (design note `docs/design/phase-3-making-an-order.md` § 3.3 bis, point 4).
+  static PayoutRateSubject _atPayout(
+    TradeRecord record,
+    TradeSeen seen, {
+    required FiatAmount? amount,
+    required bool disagree,
+    required Sats? first,
+  }) {
+    final invoice = switch (PayoutAsk.of(record, seen)) {
+      Ok(:final value) => value.buyerSats,
+      Err() => null,
+    };
+    final again = seen.status is RoutingFailed;
+    // Every figure the coordinator gave at 6 or 8 for what the buyer receives: the smallest is the one kept for 9.
+    final payout = seen.order?.payoutInvoiceAmount;
+    final keep = again
+        ? null
+        : switch ((invoice, payout)) {
+            (final a?, final b?) => a.value <= b.value ? a : b,
+            (final a?, null) => a,
+            (null, final b?) => b,
+            _ => null,
+          };
+    final keepFirst = again ? null : invoice;
+    if (disagree) return PayoutRateMismatch(keep, keepFirst: keepFirst);
+    if (invoice == null || amount == null) return const PayoutRateNoSats();
+    return PayoutRateCompared(
+      received: invoice,
+      amount: amount,
+      basis: switch ((again, first)) {
+        (false, _) => const PayoutRateAskedNow(),
+        (true, null) => const PayoutRateFirstUnknown(),
+        // No sat of tolerance: both figures are the coordinator's, from the same function of the same inputs (design note § 3.3 bis, point 4).
+        (true, final first?) when invoice.value < first.value =>
+          PayoutRateBelowFirst(first),
+        (true, _) => const PayoutRateAskedNow(),
+      },
+      keep: keep,
+      keepFirst: keepFirst,
+    );
   }
 
   /// The comparison of [subject] for an order of [maker] at the wallet's price [wallet].
@@ -371,18 +395,20 @@ sealed class PayoutRateSubject {
   const PayoutRateSubject();
 }
 
-/// The sats the buyer receives, [received], for [amount] of the contract, and where they come from ([basis]); at 6 and 8 the invoice's sats to keep for 9 ([keep]).
+/// The sats the buyer receives, [received], for [amount] of the contract, and where they come from ([basis]); at 6 and 8 the smallest figure to keep for 9 ([keep]) and the invoice's sats to keep for 15 ([keepFirst], #281).
 final class PayoutRateCompared extends PayoutRateSubject {
   final Sats received;
   final FiatAmount amount;
   final PayoutRateBasis basis;
   final Sats? keep;
+  final Sats? keepFirst;
 
   const PayoutRateCompared({
     required this.received,
     required this.amount,
     required this.basis,
     this.keep,
+    this.keepFirst,
   });
 
   @override
@@ -410,12 +436,13 @@ final class PayoutRateNoSats extends PayoutRateSubject {
   int get hashCode => Object.hash(0, notSeen);
 }
 
-/// The state machine says the contract's amounts do not agree: nothing compared, its warning said alone, but at 9 for a contract seen late whose invoice this app never saw, said with that alert ([notSeen], #207); at 6 and 8 the smallest figure to keep for 9 ([keep]).
+/// The state machine says the contract's amounts do not agree: nothing compared, its warning said alone, but at 9 for a contract seen late whose invoice this app never saw, said with that alert ([notSeen], #207); at 6 and 8 the smallest figure to keep for 9 ([keep]) and the invoice's sats the payout panel still asks, to keep for 15 ([keepFirst], #281).
 final class PayoutRateMismatch extends PayoutRateSubject {
   final Sats? keep;
+  final Sats? keepFirst;
   final bool notSeen;
 
-  const PayoutRateMismatch(this.keep, {this.notSeen = false});
+  const PayoutRateMismatch(this.keep, {this.keepFirst, this.notSeen = false});
 
   @override
   bool operator ==(Object other) =>
@@ -431,7 +458,7 @@ sealed class PayoutRateBasis {
   const PayoutRateBasis();
 }
 
-/// At 6 and 8: the invoice the payout panel asks now.
+/// At 6 and 8: the invoice the payout panel asks now; at 15 the same, when it is not fewer sats than the largest asked at 6 or 8 for the contract (#281).
 final class PayoutRateAskedNow extends PayoutRateBasis {
   const PayoutRateAskedNow();
 
@@ -499,4 +526,29 @@ final class PayoutRateToldNow extends PayoutRateBasis {
 
   @override
   int get hashCode => 4;
+}
+
+/// At 15 (the payout failed, a new invoice asked): the invoice the payout panel asks now is of fewer sats than [first], the largest it asked at 6 or 8 for the same contract, as this run of the app kept it (#281). In the reference both are the same sum, to the sat: an alert of its own, whatever the Bull wallet's price says, beside which nothing within the threshold reassures.
+final class PayoutRateBelowFirst extends PayoutRateBasis {
+  final Sats first;
+
+  const PayoutRateBelowFirst(this.first);
+
+  @override
+  bool operator ==(Object other) =>
+      other is PayoutRateBelowFirst && other.first == first;
+
+  @override
+  int get hashCode => Object.hash(PayoutRateBelowFirst, first);
+}
+
+/// At 15 with nothing kept of the invoice asked at 6 or 8 for the contract (the app started again since, or the trade screen not shown at 6 or 8 during this run, #281): the invoice the payout panel asks now, compared with the Bull wallet's price only, and said not compared with the first invoice.
+final class PayoutRateFirstUnknown extends PayoutRateBasis {
+  const PayoutRateFirstUnknown();
+
+  @override
+  bool operator ==(Object other) => other is PayoutRateFirstUnknown;
+
+  @override
+  int get hashCode => 8;
 }

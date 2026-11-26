@@ -46,13 +46,8 @@ class PayoutRateLines extends StatelessWidget {
     return switch (state) {
       PayoutRateTermsUnread(:final step, :final given?) when !step.fiatSent =>
         PayoutCheckTermsUnread(given),
-      PayoutRateChecked(
-        :final step,
-        :final check,
-        basis: PayoutRateAskedNow(),
-        :final against,
-      )
-          when !step.fiatSent =>
+      PayoutRateChecked(:final step, :final check, :final basis, :final against)
+          when !step.fiatSent && atPayout(basis) =>
         switch (check) {
           WalletRateCompared() => PayoutCheckCompared(
             given: check.asked,
@@ -66,8 +61,12 @@ class PayoutRateLines extends StatelessWidget {
             warns: check.warns,
             threshold: formats.threshold(TradeTolerances.walletRateGap),
             small: PriceCheckLines.smallGap(check.gapHundredths),
+            first: firstOf(basis),
           ),
-          WalletRateUnverified() => PayoutCheckUnverified(check.asked),
+          WalletRateUnverified() => PayoutCheckUnverified(
+            check.asked,
+            first: firstOf(basis),
+          ),
           WalletRateNotPriced() => PayoutCheckNotPriced(
             check.asked,
             against: against == null
@@ -76,11 +75,27 @@ class PayoutRateLines extends StatelessWidget {
                     gap: formats.gapSize(against),
                     currency: check.currency.code,
                   ),
+            first: firstOf(basis),
           ),
         },
       _ => null,
     };
   }
+
+  /// Whether [basis] is that of the payout's step (6, 8, 15): the invoice the payout panel asks now, at 15 also against the invoice of 6 or 8 (#281).
+  static bool atPayout(PayoutRateBasis basis) => switch (basis) {
+    PayoutRateAskedNow() ||
+    PayoutRateBelowFirst() ||
+    PayoutRateFirstUnknown() => true,
+    _ => false,
+  };
+
+  /// What [basis] says at 15 against the invoice of 6 or 8 (#281), as the breakdown draws it; `null` at 6 and 8, and at 15 for as many sats or more.
+  static PayoutFirstInvoice? firstOf(PayoutRateBasis basis) => switch (basis) {
+    PayoutRateBelowFirst(:final first) => PayoutFirstFewer(first),
+    PayoutRateFirstUnknown() => const PayoutFirstUnknown(),
+    _ => null,
+  };
 
   /// The words of [state], each with its tone, for the panel as for the dialog of « Confirm … sent »; empty where the rule says nothing. With [comparisonInBreakdown], the rule's check at 6 and 8 is left to the payout panel's breakdown (#228, #250): its comparison, its alert, « rate not checked » and a currency not priced are said there, not here.
   static List<TradeDialogLine> linesOf(
@@ -146,12 +161,30 @@ class PayoutRateLines extends StatelessWidget {
         // At 9, a contract seen late whose invoice was never seen here: said first, in the alert colour (second security review of #182, R9).
         if (basis is PayoutRateNotSeen)
           (text: l10n.p2pPayoutRateNotSeen, tone: TradeDialogTone.alert),
-        // At 6 and 8 the payout panel's breakdown says it, where it is drawn (#250).
-        if (!(comparisonInBreakdown && basis is PayoutRateAskedNow))
+        // At 15, fewer sats than at 6 or 8 for the contract (#281), where no breakdown says it: the red alert's two lines and its explanation, there being no detail here.
+        if (basis case PayoutRateBelowFirst(
+          :final first,
+        ) when !comparisonInBreakdown) ...[
+          (text: l10n.p2pPayoutFirstFewer, tone: TradeDialogTone.alert),
+          (
+            text: l10n.p2pPayoutFirstFewerFigures(
+              formats.bigSats(first.value),
+              formats.bigSats(check.asked.value),
+            ),
+            tone: TradeDialogTone.alertFigures,
+          ),
+          (
+            text: l10n.p2pPayoutFirstFewerDetail,
+            tone: TradeDialogTone.alertFigures,
+          ),
+        ],
+        // At 6, 8 and 15 the payout panel's breakdown says it, where it is drawn (#250, #281).
+        if (!(comparisonInBreakdown && atPayout(basis)))
           ...switch (check) {
             WalletRateCompared(:final price, :final expected, :final gapHundredths) => [
-              // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red alert still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219).
-              if (basis is! PayoutRateAskedOnly)
+              // At 9, the invoice this app kept compared alone (`PayoutRateAskedOnly`) arises only beside the state machine's alert (a read refused, the coordinator's figures missing or not agreeing): its neutral line is not said beside that alert, on the screen as in « Confirm … sent »; its red alert still is, and the line comes back with the coordinator's figures once the alert goes (#228, the ticket's comment; R4 of the security review of #219). At 15 beside fewer sats than at 6 or 8, not said either (#281).
+              if (basis is! PayoutRateAskedOnly &&
+                  basis is! PayoutRateBelowFirst)
                 (
                   text: l10n.p2pPayoutRateWallet(
                     formats.orderRate(price),
@@ -218,6 +251,11 @@ class PayoutRateLines extends StatelessWidget {
               ),
             ],
           },
+        // At 15 with nothing kept of 6 or 8 (#281), where no breakdown says it: said, with its explanation, there being no detail here.
+        if (basis is PayoutRateFirstUnknown && !comparisonInBreakdown) ...[
+          (text: l10n.p2pPayoutFirstUnknown, tone: TradeDialogTone.plain),
+          (text: l10n.p2pPayoutFirstUnknownDetail, tone: TradeDialogTone.plain),
+        ],
       ],
     };
   }

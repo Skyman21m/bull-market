@@ -12,6 +12,7 @@ import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
+import 'package:p2p/src/ui/widgets/amount_row.dart';
 import 'package:p2p/src/ui/widgets/detail_toggle.dart';
 import 'package:p2p/src/ui/widgets/price_check_lines.dart';
 import 'package:primitives/primitives.dart';
@@ -507,4 +508,182 @@ void main() {
       }
     },
   );
+
+  group('#281: at 15, the new invoice against the one asked at 6 or 8', () {
+    final first = Sats.fromInt(199950);
+    PayoutCheck compared({
+      required PayoutFirstInvoice first,
+      bool warns = false,
+    }) => PayoutCheckCompared(
+      given: Sats.fromInt(106713),
+      expected: Sats.fromInt(107000),
+      price: '100 EUR at 91,711 EUR/BTC, premium included',
+      gap: warns ? '-15.83%' : '-0.27%',
+      warns: warns,
+      threshold: '10%',
+      small: !warns,
+      first: first,
+    );
+
+    test(
+      'fewer sats is an alert of its own, whatever the price says; nothing kept is none',
+      () {
+        expect(compared(first: PayoutFirstFewer(first)).alert, isTrue);
+        expect(compared(first: const PayoutFirstUnknown()).alert, isFalse);
+        expect(
+          PayoutCheckNotPriced(
+            Sats.fromInt(106713),
+            first: PayoutFirstFewer(first),
+          ).alert,
+          isTrue,
+        );
+        expect(
+          compared(first: PayoutFirstFewer(first)),
+          isNot(compared(first: PayoutFirstFewer(Sats.fromInt(199951)))),
+        );
+      },
+    );
+
+    Future<void> draw(
+      WidgetTester tester,
+      PayoutCheck check,
+    ) => tester.pumpWidget(
+      harness(
+        SingleChildScrollView(
+          child: Column(
+            children: [
+              PayoutBreakdownView(breakdown: breakdownOf(six), check: check),
+              PayoutBreakdownDetail(breakdown: breakdownOf(six), check: check),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    testWidgets(
+      'fewer sats, the gap within the threshold: the red alert in two lines, the figure paid in red, no gap « (indicative) », never « A small gap is normal »; its explanation in the detail',
+      (tester) async {
+        await draw(tester, compared(first: PayoutFirstFewer(first)));
+        expect(find.text('Fewer sats than the first invoice'), findsOneWidget);
+        expect(
+          find.text(
+            'First asked: 199,950 sats, the coordinator now pays 106,713.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.byKey(PayoutCheckLines.gapRow), findsNothing);
+        expect(find.textContaining('(indicative)'), findsNothing);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
+        expect(find.byKey(PayoutCheckLines.fewerExplanation), findsOneWidget);
+        expect(
+          tester
+              .widget<AmountRow>(find.byKey(PayoutBreakdownView.givenRow))
+              .tone,
+          AmountRowTone.alert,
+        );
+      },
+    );
+
+    testWidgets(
+      'fewer sats and the Bull wallet\'s red alert: both drawn, both explanations in the detail',
+      (tester) async {
+        await draw(
+          tester,
+          compared(first: PayoutFirstFewer(first), warns: true),
+        );
+        expect(find.text('Gap against you'), findsOneWidget);
+        expect(find.text('Fewer sats than the first invoice'), findsOneWidget);
+        expect(find.byKey(PayoutBreakdownDetail.explanation), findsOneWidget);
+        expect(find.byKey(PayoutCheckLines.fewerExplanation), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'nothing kept: the gap « (indicative) » and « Not compared with the first invoice », never « A small gap is normal », the reason in the detail',
+      (tester) async {
+        await draw(tester, compared(first: const PayoutFirstUnknown()));
+        expect(find.byKey(PayoutCheckLines.gapRow), findsOneWidget);
+        expect(find.byKey(PayoutCheckLines.unknownLine), findsOneWidget);
+        expect(find.textContaining('A small gap is normal'), findsNothing);
+        expect(find.byKey(PayoutCheckLines.unknownExplanation), findsOneWidget);
+        expect(find.byKey(PayoutCheckLines.fewerRow), findsNothing);
+        expect(
+          tester
+              .widget<AmountRow>(find.byKey(PayoutBreakdownView.givenRow))
+              .tone,
+          AmountRowTone.plain,
+        );
+      },
+    );
+
+    testWidgets(
+      'a narrow phone (320 points) with a text at ×1, ×2 and ×3, in English and in French: every line of 15, alone above the form too, nothing cut',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(320, 2400) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final breakdown = breakdownOf(
+          six,
+          wallet: (amount: sats(106606), received: sats(106400)),
+        );
+        final fewer = PayoutFirstFewer(first);
+        for (final check in [
+          compared(first: fewer),
+          compared(first: fewer, warns: true),
+          compared(first: const PayoutFirstUnknown()),
+          compared(first: const PayoutFirstUnknown(), warns: true),
+          PayoutCheckUnverified(Sats.fromInt(106713), first: fewer),
+          PayoutCheckNotPriced(
+            Sats.fromInt(106713),
+            against: (gap: '10,72 %', currency: 'GBP'),
+            first: fewer,
+          ),
+        ]) {
+          for (final locale in const [Locale('en'), Locale('fr')]) {
+            for (final scale in const [1.0, 2.0, 3.0]) {
+              await tester.pumpWidget(
+                harness(
+                  MediaQuery(
+                    data: MediaQueryData(
+                      size: const Size(320, 2400),
+                      textScaler: TextScaler.linear(scale),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          PayoutBreakdownView(
+                            breakdown: breakdown,
+                            check: check,
+                            onRetry: () {},
+                          ),
+                          DetailToggle(open: true, onPressed: () {}),
+                          PayoutBreakdownDetail(
+                            breakdown: breakdown,
+                            check: check,
+                            onCopy: () {},
+                          ),
+                          PayoutCheckLines(
+                            check: check,
+                            onRetry: () {},
+                            explained: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  locale: locale,
+                ),
+              );
+              expect(
+                tester.takeException(),
+                isNull,
+                reason: '$check $locale $scale',
+              );
+            }
+          }
+        }
+      },
+    );
+  });
 }

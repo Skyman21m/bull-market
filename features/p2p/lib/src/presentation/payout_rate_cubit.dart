@@ -58,9 +58,10 @@ final class PayoutRateStep {
   int get hashCode => Object.hash(take, fiatSent);
 }
 
-/// What the rule keeps beyond one page of a trade, until the app stops (in memory only, never on disk: #204 will keep the invoice given, schema 9): per contract the smallest invoice's sats asked at 6 or 8, and per network and currency the last price read and when.
+/// What the rule keeps beyond one page of a trade, until the app stops (in memory only, never on disk: schema 9 keeps where a payout came from, #204, not its sats): per contract the smallest invoice's sats asked at 6 or 8 (for 9) and the largest the payout panel asked at 6 or 8 (for 15, #281), and per network and currency the last price read and when.
 final class PayoutRateMemory {
   final Map<(RobotSlot, String, int, int), Sats> _asked = {};
+  final Map<(RobotSlot, String, int, int), Sats> _first = {};
   final Map<
     (RobosatsNetwork, String),
     ({P2pWalletBitcoinRate price, DateTime at})
@@ -76,6 +77,17 @@ final class PayoutRateMemory {
     final key = (record.robot, record.coordinatorAlias, record.orderId, take);
     final kept = _asked[key];
     if (kept == null || sats.value < kept.value) _asked[key] = sats;
+  }
+
+  /// The largest invoice's sats the payout panel asked at 6 or 8 for contract [take] of [record], when this run of the app saw one: what 15 is compared with (#281).
+  Sats? firstOf(TradeRecord record, int take) =>
+      _first[(record.robot, record.coordinatorAlias, record.orderId, take)];
+
+  /// [sats] asked by the payout panel at 6 or 8 for contract [take] of [record]: kept when larger than what is kept, so that no earlier read of a smaller sum can make a smaller sum at 15 look unchanged (design note § 3.3 bis, point 4).
+  void keepFirst(TradeRecord record, int take, Sats sats) {
+    final key = (record.robot, record.coordinatorAlias, record.orderId, take);
+    final kept = _first[key];
+    if (kept == null || sats.value > kept.value) _first[key] = sats;
   }
 
   /// The last price read for [currency] on [network], and when.
@@ -344,8 +356,11 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     PayoutRateTermsUnread() => PayoutRateVerdict.termsUnread,
     PayoutRateChecked(:final check, :final basis, :final against) =>
       switch (check) {
-        // A coordinator's figure that moved since the invoice is an alert of its own, whatever the price says.
-        _ when basis is PayoutRateTold || basis is PayoutRateNotSeen =>
+        // A coordinator's figure that moved since the invoice is an alert of its own, whatever the price says; at 15, fewer sats than at 6 or 8 too (#281).
+        _
+            when basis is PayoutRateTold ||
+                basis is PayoutRateNotSeen ||
+                basis is PayoutRateBelowFirst =>
           PayoutRateVerdict.warns,
         WalletRateCompared(:final warns) =>
           warns ? PayoutRateVerdict.warns : PayoutRateVerdict.within,
@@ -378,7 +393,7 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
     Err() => null,
   };
 
-  /// What [seen] compares, the invoice's sats it shows kept for 9.
+  /// What [seen] compares, the figures of 6 and 8 it shows kept for 9 and for 15 (never those of 15, which is compared with them, #281).
   PayoutRateSubject? _subjectOf(PayoutRateTerms terms, TradeSeen seen) {
     final take = seen.status.trail.take;
     final subject = CheckPayoutRateUsecase.subjectFor(
@@ -386,13 +401,15 @@ class PayoutRateCubit extends Cubit<PayoutRateState> {
       terms,
       seen,
       asked: memory.askedOf(record, take),
+      first: memory.firstOf(record, take),
     );
-    final keep = switch (subject) {
-      PayoutRateCompared(:final keep?) ||
-      PayoutRateMismatch(:final keep?) => keep,
-      _ => null,
+    final (keep, keepFirst) = switch (subject) {
+      PayoutRateCompared(:final keep, :final keepFirst) ||
+      PayoutRateMismatch(:final keep, :final keepFirst) => (keep, keepFirst),
+      _ => (null, null),
     };
     if (keep != null) memory.keepAsked(record, take, keep);
+    if (keepFirst != null) memory.keepFirst(record, take, keepFirst);
     return subject;
   }
 

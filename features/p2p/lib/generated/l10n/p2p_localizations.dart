@@ -6026,6 +6026,36 @@ abstract class P2pLocalizations {
   /// **'Without them, it cannot compare the coordinator\'s amount.'**
   String get p2pPayoutRateTermsUnreadDetail;
 
+  /// Not in the RoboSats texts: the project's own (#281, from a security review, not a decision of the owner; proposed to the owner, not validated; the English is composed on the model of the French): the bold line of a red alert, in the payout breakdown at 15 (the payout failed, a new invoice is asked), when the sats the coordinator now pays (`trade_satoshis`) are fewer than the largest it asked at 6 or 8 for the same contract, as this run of the app saw them; in RoboSats both are the same sum, to the sat.
+  ///
+  /// In en, this message translates to:
+  /// **'Fewer sats than the first invoice'**
+  String get p2pPayoutFirstFewer;
+
+  /// Not in the RoboSats texts: the project's own (#281; proposed to the owner, not validated; on the model of the validated p2pPayoutBreakdownAgainstFigures): the second line of the alert p2pPayoutFirstFewer, always shown with it. {first} is the largest sum the coordinator paid the contract (`trade_satoshis`) at 6 or 8, {now} the one it pays at 15, before the routing budget, the « Paid by the coordinator » of the breakdown.
+  ///
+  /// In en, this message translates to:
+  /// **'First asked: {first} sats, the coordinator now pays {now}.'**
+  String p2pPayoutFirstFewerFigures(String first, String now);
+
+  /// Not in the RoboSats texts: the project's own (#281; proposed to the owner, not validated): the explanation of p2pPayoutFirstFewer, in the breakdown's detail, or under the alert where no detail holds it. At 15 the fiat is already sent and RoboSats opens no dispute any more (`open_dispute` only at 9 and 10): what is left is to contact the coordinator; no recourse is promised.
+  ///
+  /// In en, this message translates to:
+  /// **'For the same contract, the coordinator must ask the same amount again. You have already sent your payment and no dispute can be opened at this step: contact the coordinator before giving this invoice.'**
+  String get p2pPayoutFirstFewerDetail;
+
+  /// Not in the RoboSats texts: the project's own (#281; proposed to the owner, not validated; on the model of the validated p2pPayoutBreakdownNotCompared): a discreet line under the gap to the Bull price in the payout breakdown at 15, when this run of the app kept nothing of the invoice asked at 6 or 8 for the contract (the app started again since, or the trade screen not shown at 6 or 8), so that the sum now asked cannot be compared with it.
+  ///
+  /// In en, this message translates to:
+  /// **'Not compared with the first invoice'**
+  String get p2pPayoutFirstUnknown;
+
+  /// Not in the RoboSats texts: the project's own (#281; proposed to the owner, not validated): the explanation of p2pPayoutFirstUnknown, in the breakdown's detail, in place of « A small gap is normal », which this screen can no longer say at 15.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market knows the first invoice\'s amount only if it saw it since the app last started. Compare it yourself with this one.'**
+  String get p2pPayoutFirstUnknownDetail;
+
   /// Not in the RoboSats texts: the project's own (#237; the wording the owner validated on 2026-11-24 on the page « Textes à valider », section « Monnaie que le portefeuille Bull ne cote pas », after his decision of 2026-11-20; the English is a faithful translation of the French): an orange alert line with the warning icon, under the grey « not quoted » line, only for an order made here in a currency the Bull wallet does not price, when the contract's sats fixed at the take are more than 10 % fewer (a buyer) or more (a seller) than its amount's sats at the rate of the creation; never within the threshold, never in the user's favour, never for an order taken here. {gap} the gap in sats, in percent without its sign, always above 10.00 %.
   ///
   /// In en, this message translates to:

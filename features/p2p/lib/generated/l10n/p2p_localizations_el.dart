@@ -3844,6 +3844,25 @@ class P2pLocalizationsEl extends P2pLocalizations {
       'Without them, it cannot compare the coordinator\'s amount.';
 
   @override
+  String get p2pPayoutFirstFewer => 'Fewer sats than the first invoice';
+
+  @override
+  String p2pPayoutFirstFewerFigures(String first, String now) {
+    return 'First asked: $first sats, the coordinator now pays $now.';
+  }
+
+  @override
+  String get p2pPayoutFirstFewerDetail =>
+      'For the same contract, the coordinator must ask the same amount again. You have already sent your payment and no dispute can be opened at this step: contact the coordinator before giving this invoice.';
+
+  @override
+  String get p2pPayoutFirstUnknown => 'Not compared with the first invoice';
+
+  @override
+  String get p2pPayoutFirstUnknownDetail =>
+      'Bull Market knows the first invoice\'s amount only if it saw it since the app last started. Compare it yourself with this one.';
+
+  @override
   String p2pRateAgainstSinceMade(String gap) {
     return 'Gap of $gap against you since the order was made';
   }
