@@ -25,6 +25,7 @@ import 'package:p2p/src/ui/trade/confirm_fiat_sent_dialog.dart';
 import 'package:p2p/src/ui/trade/payout_breakdown_view.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:secrets/secrets.dart' show Secrets;
@@ -299,6 +300,8 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byType(ConfirmFiatSentDialog), findsOneWidget);
+      // The dialog's « Confirm », just shown, ignores taps for a moment (security review of #291, B1): the user's first press comes later.
+      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(
         find.descendant(
           of: find.byType(ConfirmFiatSentDialog),
