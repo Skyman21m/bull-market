@@ -38,7 +38,7 @@ final class GarageRobot {
   String toString() => 'GarageRobot($accountIndex, ${identity.nickname})';
 }
 
-/// A RoboSats Garage Key: 32 random bytes from which one robot token per index is derived.
+/// A RoboSats Garage Key: 32 bytes from which one robot token per index is derived, drawn at random in the official client, and in this app the BIP85 child of the wallet's words since #81 (design note `docs/design/garage-key-from-the-words.md`).
 ///
 /// It reproduces `frontend/src/utils/garageKey.ts` of RoboSats (commit ff1998c).
 /// Its text form is bech32 (BIP173, not bech32m) with the human-readable part `robo`: `robo1` followed by 58 characters.

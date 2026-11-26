@@ -51,6 +51,9 @@ export 'package:robosats/robosats.dart'
         RobotHashId;
 
 export 'public/p2p_facade.dart' show P2pFacade, P2pFeature;
+// The port through which the shell lends the Garage Key derived from the default wallet's words (#81).
+export 'public/p2p_garage_key_port.dart'
+    show P2pGarageKeyPort, P2pGarageKeyRefusal, P2pGarageKeyRefusalReason;
 // The port through which the shell lends the wallet's Instant Payments wallet (#100), and the types of its signatures.
 export 'public/p2p_wallet_port.dart'
     show

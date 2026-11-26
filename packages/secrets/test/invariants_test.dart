@@ -269,7 +269,7 @@ void main() {
   });
 
   test('the Garage Key repository never reaches a seed', () {
-    // A Garage Key is never derived from a seed nor stored with one. The repository therefore imports nothing from `crypto/`, where every derivation lives, and names no operation of the seed namespace.
+    // A stored Garage Key is never derived from a seed nor stored with one; the key derived from the words (#81) is computed in `crypto/` (`Deriver.garage`) and never reaches this repository. The repository therefore imports nothing from `crypto/`, where every derivation lives, and names no operation of the seed namespace.
     final source = code(read('lib/src/data/garage_key_repository.dart'));
     final imports = RegExp(r"import '([^']+)'")
         .allMatches(source)

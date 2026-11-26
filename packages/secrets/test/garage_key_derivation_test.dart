@@ -303,6 +303,33 @@ void main() {
       );
     });
 
+    test(
+      'a step of 2147483648 without apostrophe is read by the library as 0\' and refused by the deriver',
+      () {
+        // Observed during the design study, pinned here (#81, design note § 1): the library takes the unmarked number 2^31 for the hardened index 0, so this path would give key 0 itself. The deriver refuses the path, so no caller can reach a key by that spelling.
+        const key0 =
+            'f7286792c19ad8ad15fe2ebd0f6af77d0ed73a583963a1029476084b1471b9fc';
+        expect(
+          convert.hex.encode(
+            Bip85Entropy.derive(
+              xprvBase58: _abandonMaster,
+              application: CustomApplication.fromNumber(82796679),
+              path: "0'/0'/2147483648",
+            ).sublist(0, 32),
+          ),
+          key0,
+          reason: 'bip85_entropy reads 2147483648 as the hardened index 0',
+        );
+        expect(
+          () => Deriver.garage.keyAtPath(
+            _abandonMaster,
+            "m/83696968'/82796679'/0'/0'/2147483648",
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
+
     test('every path that is not a Garage Key path is refused', () {
       for (final path in [
         "m/83696968'/82796679'/0'/0/0'",
