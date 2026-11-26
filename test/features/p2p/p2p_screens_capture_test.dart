@@ -1070,6 +1070,12 @@ void main() {
           await settle();
         }
 
+        // Each reading of the keys reads the vault slot of the external key, whose empty slot the vault settles with its full budget (#81).
+        Future<void> letTheVaultSettle() async {
+          await tester.pump(const Duration(seconds: 6));
+          await settle();
+        }
+
         FakeSecureStoragePlatform().install();
         final secrets = Secrets(scratchDirectory: () async => '.');
         final imported = await tester.runAsync(
@@ -1109,6 +1115,7 @@ void main() {
         await settle();
         tor.add(P2pTorState.ready);
         await settle();
+        await letTheVaultSettle();
         await capture('garage-cle-0');
         await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(0)));
         await settle();
@@ -1118,12 +1125,14 @@ void main() {
         await tap(find.text(l10n.p2pGarageNewKeyConfirm(1)));
         tor.add(P2pTorState.ready);
         await settle();
+        await letTheVaultSettle();
         await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(1)));
         await settle();
         await capture('garage-plusieurs-cles');
         await tap(find.byTooltip(l10n.p2pGaragePreviousKey));
         tor.add(P2pTorState.ready);
         await settle();
+        await letTheVaultSettle();
         await tester.ensureVisible(find.text(l10n.p2pGarageKeyNumber(0)));
         await settle();
         await capture('garage-cle-precedente');
@@ -1151,6 +1160,7 @@ void main() {
         await tap(find.text(l10n.p2pRecoveryRecover));
         tor.add(P2pTorState.ready);
         await settle();
+        await letTheVaultSettle();
         final external = find.text(l10n.p2pGarageExternalKey);
         if (external.evaluate().isEmpty) {
           throw StateError('the key pasted is not shown as the external key');

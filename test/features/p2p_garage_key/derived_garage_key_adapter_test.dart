@@ -8,7 +8,7 @@ import 'package:convert/convert.dart' show hex;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart'
     show P2pGarageKeyRefusal, P2pGarageKeyRefusalReason, RobosatsNetwork;
-import 'package:primitives/primitives.dart';
+import 'package:primitives/primitives.dart' hide Network, ScriptType;
 import 'package:secrets/secrets.dart';
 import 'package:secrets/testing.dart';
 

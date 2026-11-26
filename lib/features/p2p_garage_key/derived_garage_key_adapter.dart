@@ -54,10 +54,11 @@ final class DerivedGarageKeyAdapter implements P2pGarageKeyPort {
       );
     }
     final id = Fingerprint.tryParse(wallets.first.masterFingerprint);
-    if (id == null)
+    if (id == null) {
       return const Err(
         P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
       );
+    }
     final Secret secret;
     switch (await _secrets.fetch(id)) {
       case Ok(:final value):

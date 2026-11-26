@@ -131,8 +131,8 @@ void main() {
       expect(_occurrences(code, RegExp(r'\bwithGarageKeys\b')), {
         'lib/init.dart': 1,
         'lib/core/background_tasks/handler.dart': 1,
-        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its three uses.
-        'lib/locator.dart': 7,
+        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its four uses (the vault's handle, the adapter of the keys of the words, #81, the directory and the wallet's port).
+        'lib/locator.dart': 8,
       });
     });
 
