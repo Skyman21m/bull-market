@@ -458,21 +458,21 @@ void main() {
       }
 
       testWidgets(
-        'the price service failing: one read at 6, none more at 9 nor at the first 15 within 3 minutes, one in the four minutes of round trips, as with a service that answers; « Retry » reads at once, twice in a row',
+        'the price service failing: one read at 6, one at 9 shown for the first time, none at the first 15 (the payout\'s step, already shown at 6) within 3 minutes, one in the four minutes of round trips (before #283, one at every return to 15); « Retry » reads at once, twice in a row',
         (tester) async {
           final (app, reads) = await roundTrips(
             tester,
             const P2pWalletRateUnavailable(),
           );
-          expect(reads, [1, 1, 2]);
+          expect(reads, [1, 2, 3]);
           final retry = find.text(app.l10n.p2pCommonRetry);
           expect(retry, findsOneWidget);
           await app.tapLater(retry);
           await app.settle();
-          expect(app.wallet.ratesAsked, hasLength(3));
+          expect(app.wallet.ratesAsked, hasLength(4));
           await app.tapLater(retry);
           await app.settle();
-          expect(app.wallet.ratesAsked, hasLength(4));
+          expect(app.wallet.ratesAsked, hasLength(5));
           await app.close();
         },
       );
