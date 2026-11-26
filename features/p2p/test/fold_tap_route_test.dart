@@ -74,6 +74,10 @@ final class _Confirmation {
   /// How many requests the order's coordinator has received.
   final int Function() requests;
 
+  /// For an order made here, its coordinator and its id, for a test that moves it on.
+  final ScriptedMakerCoordinator? maker;
+  final int? orderId;
+
   _Confirmation(
     this.tester,
     this.locale,
@@ -82,6 +86,8 @@ final class _Confirmation {
     this.clock,
     this.close, {
     this.requests = _none,
+    this.maker,
+    this.orderId,
   }) {
     wallet.scriptPayment(
       Ok(P2pWalletPayment(id: 'fold', paymentHash: invoice.facts.paymentHash)),
@@ -371,11 +377,12 @@ Future<void> _imported(WidgetTester tester, GetIt locator) async {
   );
 }
 
-/// A sell order of 100 EUR made here at 50,000 EUR/BTC, on its trade screen: at its bond ([collateral] false), or its bond locked and taken by robot 5, at its collateral; the view at 390 × 490, the confirmation not yet opened.
+/// A sell order of 100 EUR made here at 50,000 EUR/BTC, on its trade screen: at its bond ([collateral] false), or its bond locked and taken by robot 5, at its collateral; the view at 390 × 490, the confirmation not yet opened. With [shell], the P2P pages are in a navigator nested in the root one, as the app's `ShellRoute` places them (`lib/router.dart`), so that the dialogs, opened on the root navigator, are on another navigator than the trade screen (#294).
 Future<_Confirmation> _maker(
   WidgetTester tester, {
   bool collateral = false,
   Locale locale = const Locale('en'),
+  bool shell = false,
 }) async {
   await loadAppFont();
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -411,9 +418,15 @@ Future<_Confirmation> _maker(
     robotKeys: HarnessKeys(),
     bolt11Decoder: coordinator.decoder,
   );
+  final feature = const P2pFeature().route(locator, network: (_) => _net);
   final router = GoRouter(
     initialLocation: P2pFeature.path,
-    routes: [const P2pFeature().route(locator, network: (_) => _net)],
+    routes: [
+      if (shell)
+        ShellRoute(builder: (_, _, child) => child, routes: [feature])
+      else
+        feature,
+    ],
   );
   await _imported(tester, locator);
   await tester.pumpWidget(routerHarness(router, locale: locale));
@@ -449,11 +462,21 @@ Future<_Confirmation> _maker(
   var requests = 0;
   coordinator.onRequest = (_) => requests++;
   await _size(tester);
-  return _Confirmation(tester, locale, wallet, invoice, () => clock, () async {
-    await tester.pumpWidget(const SizedBox.shrink());
-    await settle(tester);
-    await tester.pump(const Duration(seconds: 61));
-  }, requests: () => requests);
+  return _Confirmation(
+    tester,
+    locale,
+    wallet,
+    invoice,
+    () => clock,
+    () async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await settle(tester);
+      await tester.pump(const Duration(seconds: 61));
+    },
+    requests: () => requests,
+    maker: coordinator,
+    orderId: record.orderId,
+  );
 }
 
 // The taker's side: an order of the book taken by the user's gestures, at its bond (3).
@@ -597,6 +620,156 @@ Future<_Confirmation> _taker(
     await settle(tester);
     await tester.pump(const Duration(seconds: 61));
   });
+}
+
+/// « Cancel » of the trade screen (`_CancelRow`).
+Finder _cancelOf(P2pLocalizations l10n) => find.byWidgetPredicate(
+  (widget) => widget is TradeButton && widget.label == l10n.p2pCommonCancel,
+);
+
+/// « Pay with this wallet » tapped, the Bull wallet's price read held; « Cancel » tapped while it is read, « Cancel the order? » opened over the screen; then the read let go: the confirmation is built and brought into view behind the dialog, and [behind] passes with the dialog still open (second security pass of #291, P7). Where « Pay » now stands.
+Future<Offset> _builtBehindTheDialog(
+  WidgetTester tester,
+  _Confirmation confirmation, {
+  Duration behind = const Duration(milliseconds: 1600),
+}) async {
+  final l10n = confirmation.l10n;
+  final held = Completer<void>();
+  confirmation.wallet
+    ..rateHeld = held
+    ..scriptQuote(Ok(confirmation.quote));
+  final payWith = find.text(l10n.p2pPayWithThisWallet);
+  await tester.ensureVisible(payWith);
+  await tester.pump();
+  await tester.tap(payWith);
+  await tester.pump();
+  final cancel = _cancelOf(l10n);
+  await tester.ensureVisible(cancel);
+  await tester.pump();
+  await tester.tap(cancel);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  expect(find.text(l10n.p2pTradeCancelTitle), findsOneWidget);
+  held.complete();
+  for (var i = 0; i < 200 && confirmation.pay.evaluate().isEmpty; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  expect(confirmation.pay, findsOneWidget);
+  // Frame by frame, as the screen's clock draws one every second at least.
+  for (var waited = Duration.zero; waited < behind;) {
+    await tester.pump(const Duration(milliseconds: 100));
+    waited += const Duration(milliseconds: 100);
+  }
+  expect(find.text(l10n.p2pTradeCancelTitle), findsOneWidget);
+  return _payOnTheBarrier(tester, confirmation);
+}
+
+/// The open dialog's card, not the `Dialog`, whose insets fill the screen.
+Finder _dialogCard() => find
+    .descendant(of: find.byType(Dialog), matching: find.byType(Material))
+    .first;
+
+/// A point of « Pay » on the screen that the open dialog's card does not cover: its middle, or the middle of its part above or under the card (the barrier at the bottom of the screen, where the dialog is taller than the screen).
+Offset _payOnTheBarrier(WidgetTester tester, _Confirmation confirmation) {
+  final pay = tester.getRect(confirmation.pay).intersect(_viewport(tester));
+  final card = tester.getRect(_dialogCard());
+  if (!card.contains(pay.center)) return pay.center;
+  if (pay.top < card.top - 2) {
+    return Offset(pay.center.dx, (pay.top + card.top) / 2);
+  }
+  expect(pay.bottom, greaterThan(card.bottom + 2), reason: 'off the card');
+  return Offset(pay.center.dx, (card.bottom + pay.bottom) / 2);
+}
+
+/// The open dialog closed by a double tap at [point], on its barrier, the second tap [gap] after the first: what lay under the finger at the second tap.
+Future<String> _doubleTapOnTheBarrier(
+  WidgetTester tester,
+  _Confirmation confirmation,
+  Offset point, {
+  Duration gap = const Duration(milliseconds: 100),
+}) async {
+  expect(
+    tester.getRect(_dialogCard()).contains(point),
+    isFalse,
+    reason: 'on the barrier',
+  );
+  await tester.tapAt(point);
+  await tester.pump();
+  await tester.pump(gap);
+  final under = _under(tester, point, confirmation);
+  await tester.tapAt(point);
+  await tester.pump();
+  // A payment, had the tap gone through, is asked of the wallet within these frames.
+  await _answered(tester);
+  return under;
+}
+
+/// « Confirm {amount} EUR received », the seller's button of the chat step.
+Finder _receivedOf(P2pLocalizations l10n) {
+  final pattern = RegExp(
+    '^${RegExp.escape(l10n.p2pEndConfirmReceived('<a>', '<c>')).replaceFirst('<a>', '.+').replaceFirst('<c>', 'EUR')}\$',
+  );
+  return find.byWidgetPredicate(
+    (widget) => widget is TradeButton && pattern.hasMatch(widget.label),
+  );
+}
+
+/// The « Confirm » of the open dialog.
+Finder _confirmIn(P2pLocalizations l10n) => find.descendant(
+  of: find.byType(Dialog),
+  matching: find.byWidgetPredicate(
+    (widget) => widget is TradeButton && widget.label == l10n.p2pEndConfirm,
+  ),
+);
+
+/// The order made here as a seller, taken, its escrow locked, the buyer's invoice given and the fiat said sent: 10, its trade screen showing « Confirm … received ».
+Future<_Confirmation> _sellerAt10(
+  WidgetTester tester, {
+  Locale locale = const Locale('en'),
+}) async {
+  final confirmation = await _maker(tester, collateral: true, locale: locale);
+  final maker = confirmation.maker;
+  final id = confirmation.orderId;
+  if (maker == null || id == null) fail('no order made here');
+  maker
+    ..lockEscrow(id)
+    ..buyerGivesInvoice(id)
+    ..buyerSentFiat(id);
+  final received = _receivedOf(confirmation.l10n);
+  for (var i = 0; i < 120 && received.evaluate().isEmpty; i++) {
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+  expect(received, findsOneWidget);
+  await tester.pump(MovedTapGuard.afterMove);
+  return confirmation;
+}
+
+/// Whether the seller's confirmation of the fiat received reached the coordinator.
+bool _released(_Confirmation confirmation) {
+  final maker = confirmation.maker;
+  final id = confirmation.orderId;
+  if (maker == null || id == null) fail('no order made here');
+  return maker.sellerConfirmations > 0;
+}
+
+/// A few frames for an answer of the coordinator to come.
+Future<void> _answered(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+}
+
+/// « Confirm … received » tapped, its dialog shown: at its first frame.
+Future<void> _openReceived(
+  WidgetTester tester,
+  _Confirmation confirmation,
+) async {
+  final received = _receivedOf(confirmation.l10n);
+  await tester.ensureVisible(received);
+  await tester.pump();
+  await tester.tap(received);
+  await tester.pump();
+  expect(find.byType(Dialog), findsOneWidget);
 }
 
 void main() {
@@ -1151,5 +1324,381 @@ void main() {
         },
       );
     }
+  });
+
+  group('#294: « Pay » shown again from under a dialog', () {
+    for (final (width, height, scale, locale) in const [
+      (320.0, 490.0, 3.0, Locale('fr')),
+      (390.0, 490.0, 2.0, Locale('en')),
+    ]) {
+      for (final shell in const [false, true]) {
+        testWidgets(
+          '$width × $height, the text ×$scale, ${locale.languageCode}${shell ? ', the app\'s nested navigator' : ''}: « Cancel » tapped while the quote is asked, the confirmation built behind « Cancel the order? » and its delay spent there; the dialog closed by a double tap on its barrier where « Pay » stands, the second tap 100 ms later on « Pay » pays nothing; the tap after the delay pays (second security pass of #291, P7)',
+          (tester) async {
+            final confirmation = await _maker(
+              tester,
+              locale: locale,
+              shell: shell,
+            );
+            await _size(tester, width: width, height: height, scale: scale);
+            final point = await _builtBehindTheDialog(tester, confirmation);
+            final under = await _doubleTapOnTheBarrier(
+              tester,
+              confirmation,
+              point,
+            );
+            expect(under, 'pay');
+            expect(confirmation.wallet.paid, isEmpty);
+            await tester.pump(MovedTapGuard.afterMove);
+            expect(find.byType(Dialog), findsNothing);
+            await tester.tapAt(point);
+            await tester.pump();
+            await _answered(tester);
+            expect(confirmation.wallet.paid, hasLength(1));
+            await confirmation.close();
+          },
+        );
+      }
+    }
+
+    for (final shell in const [false, true]) {
+      testWidgets(
+        '390 × 490, the text ×2${shell ? ', the app\'s nested navigator' : ''}: the confirmation shown before the dialog, its delay long spent, « Cancel the order? » opened over it and the page behind it brought so that « Pay » stands at its bottom edge, on the barrier (a scroll, which sets no guard off): closed by a double tap there, the second tap pays nothing at 100, 300 and 500 ms; the tap after the delay pays',
+        (tester) async {
+          final confirmation = await _maker(tester, shell: shell);
+          await _size(tester, scale: 2);
+          await confirmation.open();
+          final l10n = confirmation.l10n;
+          for (final gap in const [100, 300, 500]) {
+            final cancel = _cancelOf(l10n);
+            await tester.ensureVisible(cancel);
+            await tester.pump();
+            await tester.pump(MovedTapGuard.afterMove);
+            await tester.tap(cancel);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 300));
+            unawaited(
+              Scrollable.ensureVisible(
+                tester.element(confirmation.pay),
+                alignment: 1,
+              ),
+            );
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 300));
+            final point = _payOnTheBarrier(tester, confirmation);
+            final under = await _doubleTapOnTheBarrier(
+              tester,
+              confirmation,
+              point,
+              gap: Duration(milliseconds: gap),
+            );
+            expect(under, 'pay', reason: '$gap ms');
+            expect(confirmation.wallet.paid, isEmpty, reason: '$gap ms');
+            await tester.pump(MovedTapGuard.afterMove);
+          }
+          await tester.tapAt(tester.getCenter(confirmation.pay));
+          await tester.pump();
+          await _answered(tester);
+          expect(confirmation.wallet.paid, hasLength(1));
+          await confirmation.close();
+        },
+      );
+    }
+
+    void count(String gesture, int ignored) =>
+        debugPrint('GESTURE $gesture: $ignored ignored');
+
+    for (final (width, height, scale, locale) in const [
+      (390.0, 490.0, 1.0, Locale('en')),
+      (320.0, 800.0, 2.0, Locale('fr')),
+    ]) {
+      for (final read in const [false, true]) {
+        final at = '$width × $height ×$scale ${locale.languageCode}';
+        testWidgets(
+          '« Cancel the order? » opened over the confirmation, the page at its end${read ? ', a read of the coordinator while it is open' : ''}, closed by its « Back », then « Pay » tapped on purpose 300, 500, 700 and 900 ms after that tap ($at): the taps within 0.7 s are ignored, the first after pays',
+          (tester) async {
+            final confirmation = await _maker(tester, locale: locale);
+            await _size(tester, width: width, height: height, scale: scale);
+            await confirmation.open();
+            final l10n = confirmation.l10n;
+            final cancel = _cancelOf(l10n);
+            final position = _position(tester);
+            position.jumpTo(position.maxScrollExtent);
+            await tester.pump();
+            await tester.pump(MovedTapGuard.afterMove);
+            for (final shown in [cancel, confirmation.pay]) {
+              expect(
+                _viewport(tester).contains(tester.getCenter(shown)),
+                isTrue,
+              );
+            }
+            await tester.tap(cancel);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 300));
+            if (read) {
+              final before = confirmation.requests();
+              for (
+                var i = 0;
+                i < 400 && confirmation.requests() == before;
+                i++
+              ) {
+                await tester.pump(const Duration(milliseconds: 50));
+              }
+              expect(confirmation.requests(), greaterThan(before));
+              await _answered(tester);
+            }
+            final back = find.descendant(
+              of: find.byType(Dialog),
+              matching: find.text(l10n.p2pTradeCancelBack),
+            );
+            await tester.ensureVisible(back);
+            await tester.pump();
+            await tester.tap(back);
+            await tester.pump();
+            final outcomes = <int, bool>{};
+            var elapsed = 0;
+            for (final ms in const [300, 500, 700, 900]) {
+              await tester.pump(Duration(milliseconds: ms - elapsed));
+              elapsed = ms;
+              await tester.tapAt(tester.getCenter(confirmation.pay));
+              await tester.pump();
+              outcomes[ms] = confirmation.wallet.paid.isNotEmpty;
+              if (outcomes[ms] ?? false) break;
+            }
+            count(
+              'dialog closed${read ? ' after a read' : ''} ($at): paid at $outcomes',
+              outcomes.values.where((paid) => !paid).length,
+            );
+            expect(outcomes[300], isFalse);
+            expect(outcomes[500], isFalse);
+            expect(outcomes[700], isTrue);
+            await confirmation.close();
+          },
+        );
+      }
+    }
+  });
+
+  group('#293: the seller\'s « Confirm » of « Confirm … received »', () {
+    void count(String gesture, int ignored) =>
+        debugPrint('GESTURE $gesture: $ignored ignored');
+
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      testWidgets(
+        'a second tap at the place of the panel\'s « Confirm … received » as its dialog opens, ${locale.languageCode}, at 320 and 390 points × 490, 640 and 800, the text ×1, ×2 and ×3, the button at the top, middle and bottom of the page\'s view, 16, 100, 300 and 600 ms after the first: nothing released; what lay under the finger counted',
+        (tester) async {
+          final confirmation = await _sellerAt10(tester, locale: locale);
+          final l10n = confirmation.l10n;
+          final received = _receivedOf(l10n);
+          final counts = <String, int>{};
+          for (final width in const [320.0, 390.0]) {
+            for (final height in const [490.0, 640.0, 800.0]) {
+              for (final scale in const [1.0, 2.0, 3.0]) {
+                await _size(tester, width: width, height: height, scale: scale);
+                for (final place in const [0.0, 0.5, 1.0]) {
+                  for (final gap in const [16, 100, 300, 600]) {
+                    await tester.ensureVisible(received);
+                    unawaited(
+                      Scrollable.ensureVisible(
+                        tester.element(received),
+                        alignment: place,
+                      ),
+                    );
+                    await tester.pump();
+                    await tester.pump(MovedTapGuard.afterMove);
+                    final page = tester.getRect(
+                      find
+                          .ancestor(
+                            of: received,
+                            matching: find.byType(Scrollable),
+                          )
+                          .first,
+                    );
+                    final point = tester
+                        .getRect(received)
+                        .intersect(page)
+                        .center;
+                    await tester.tapAt(point);
+                    await tester.pump();
+                    await tester.pump(Duration(milliseconds: gap));
+                    final path = {
+                      for (final entry in tester.hitTestOnBinding(point).path)
+                        entry.target,
+                    };
+                    final confirm = _confirmIn(l10n);
+                    final under =
+                        confirm.evaluate().any(
+                          (element) => path.contains(element.renderObject),
+                        )
+                        ? 'confirm'
+                        : find.byType(Dialog).evaluate().isEmpty
+                        ? 'no dialog'
+                        : 'other';
+                    counts[under] = (counts[under] ?? 0) + 1;
+                    await tester.tapAt(point);
+                    await tester.pump();
+                    await _answered(tester);
+                    expect(
+                      _released(confirmation),
+                      isFalse,
+                      reason: '$width × $height ×$scale $place $gap ms',
+                    );
+                    // Closed by its « Go back » when still open.
+                    final goBack = find.descendant(
+                      of: find.byType(Dialog),
+                      matching: find.text(l10n.p2pCommonGoBack),
+                    );
+                    if (goBack.evaluate().isNotEmpty) {
+                      await tester.ensureVisible(goBack);
+                      await tester.pump();
+                      await tester.tap(goBack);
+                      await tester.pump();
+                    }
+                    await tester.pump(MovedTapGuard.afterMove);
+                    expect(find.byType(Dialog), findsNothing);
+                  }
+                }
+              }
+            }
+          }
+          debugPrint('SECOND TAP ${locale.languageCode}: $counts');
+          await confirmation.close();
+        },
+      );
+    }
+
+    for (final (width, height, scale) in const [
+      (390.0, 700.0, 1.0),
+      (360.0, 800.0, 1.0),
+      (320.0, 800.0, 1.0),
+    ]) {
+      testWidgets(
+        '$width × $height, the text ×$scale: the chat\'s keyboard of 280 points open, the dialog opened, the keyboard going in a quarter of a second: « Confirm » moves down; a tap at its new place 136 and 420 ms after the keyboard went is ignored, one at 880 ms releases',
+        (tester) async {
+          final confirmation = await _sellerAt10(tester);
+          addTearDown(tester.view.resetViewInsets);
+          await _size(tester, width: width, height: height, scale: scale);
+          tester.view.viewInsets = const FakeViewPadding(bottom: 280 * 3);
+          await tester.pump();
+          await tester.pump(MovedTapGuard.afterMove);
+          await _openReceived(tester, confirmation);
+          final confirm = _confirmIn(confirmation.l10n);
+          final before = tester.getCenter(confirm);
+          for (var frame = 1; frame <= 16; frame++) {
+            tester.view.viewInsets = FakeViewPadding(
+              bottom: 280 * 3 * (1 - frame / 16),
+            );
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          // The dialog's padding follows the insets in 100 ms.
+          await tester.pump(const Duration(milliseconds: 120));
+          final after = tester.getCenter(confirm);
+          debugPrint(
+            'KEYBOARD $width × $height ×$scale: « Confirm » from ${before.dy} to ${after.dy}',
+          );
+          var elapsed = 120;
+          final outcomes = <int, bool>{};
+          for (final ms in const [136, 420, 880]) {
+            if (ms > elapsed) {
+              await tester.pump(Duration(milliseconds: ms - elapsed));
+              elapsed = ms;
+            }
+            await tester.tapAt(tester.getCenter(confirm));
+            await tester.pump();
+            await _answered(tester);
+            elapsed += 100;
+            outcomes[ms] = _released(confirmation);
+            if (outcomes[ms] ?? false) break;
+          }
+          count(
+            'keyboard going under the seller\'s dialog ($width × $height ×$scale, « Confirm » ${before.dy.round()} → ${after.dy.round()}): released at $outcomes',
+            outcomes.values.where((released) => !released).length,
+          );
+          if ((after.dy - before.dy).abs() > 0.5) {
+            expect(outcomes[136], isFalse);
+            expect(outcomes[420], isFalse);
+          }
+          expect(_released(confirmation), isTrue);
+          await confirmation.close();
+        },
+      );
+    }
+
+    for (final (width, height, scale, locale) in const [
+      (390.0, 800.0, 1.0, Locale('en')),
+      (320.0, 640.0, 3.0, Locale('fr')),
+      (320.0, 490.0, 3.0, Locale('en')),
+    ]) {
+      final at = '$width × $height ×$scale ${locale.languageCode}';
+      testWidgets(
+        'the dialog opened, brought to its end when taller than the screen (a scroll, which never sets the guard off), then « Confirm » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps within 0.7 s are ignored, the first after releases',
+        (tester) async {
+          final confirmation = await _sellerAt10(tester, locale: locale);
+          await _size(tester, width: width, height: height, scale: scale);
+          await _openReceived(tester, confirmation);
+          final confirm = _confirmIn(confirmation.l10n);
+          final dialogPosition = Scrollable.of(
+            tester.element(confirm),
+          ).position;
+          final taller = dialogPosition.maxScrollExtent > 0;
+          dialogPosition.jumpTo(dialogPosition.maxScrollExtent);
+          await tester.pump();
+          final outcomes = <int, bool>{};
+          var elapsed = 0;
+          for (final ms in const [300, 500, 700, 900]) {
+            await tester.pump(Duration(milliseconds: ms - elapsed));
+            elapsed = ms;
+            await tester.tapAt(tester.getCenter(confirm));
+            await tester.pump();
+            await _answered(tester);
+            elapsed += 100;
+            outcomes[ms] = _released(confirmation);
+            if (outcomes[ms] ?? false) break;
+          }
+          count(
+            'seller\'s dialog opened ($at, taller than the screen: $taller): released at $outcomes',
+            outcomes.values.where((released) => !released).length,
+          );
+          expect(outcomes[300], isFalse);
+          expect(outcomes[500], isFalse);
+          expect(_released(confirmation), isTrue);
+          await confirmation.close();
+        },
+      );
+    }
+
+    testWidgets(
+      'a read of the coordinator while the seller\'s dialog is open, then « Confirm » 100 ms after its answer: none ignored',
+      (tester) async {
+        final confirmation = await _sellerAt10(tester);
+        await _openReceived(tester, confirmation);
+        final confirm = _confirmIn(confirmation.l10n);
+        // Taller than the screen of 490 points: brought to its end by a scroll.
+        final dialogPosition = Scrollable.of(tester.element(confirm)).position;
+        dialogPosition.jumpTo(dialogPosition.maxScrollExtent);
+        await tester.pump(const Duration(seconds: 1));
+        final before = confirmation.requests();
+        for (var i = 0; i < 400 && confirmation.requests() == before; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(confirmation.requests(), greaterThan(before));
+        await _answered(tester);
+        await tester.pump(const Duration(milliseconds: 100));
+        var ignored = 0;
+        while (!_released(confirmation)) {
+          expect(ignored, lessThan(5));
+          await tester.tapAt(tester.getCenter(confirm));
+          await tester.pump();
+          await _answered(tester);
+          if (!_released(confirmation)) {
+            ignored++;
+            await tester.pump(const Duration(milliseconds: 500));
+          }
+        }
+        count('a read with the seller\'s dialog open', ignored);
+        expect(ignored, 0);
+        await confirmation.close();
+      },
+    );
   });
 }

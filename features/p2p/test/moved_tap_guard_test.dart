@@ -520,8 +520,8 @@ void main() {
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 1600));
           expect(await closeByDoubleTap(tester), isFalse);
-          expect(find.text('dialog'), findsNothing);
           await tester.pump(MovedTapGuard.afterMove);
+          expect(find.text('dialog'), findsNothing);
           await tester.tap(find.text('Pay'));
           expect(taps, 1);
         },
@@ -537,10 +537,7 @@ void main() {
           for (final gap in const [100, 300]) {
             await openDialog(tester, page);
             expect(
-              await closeByDoubleTap(
-                tester,
-                gap: Duration(milliseconds: gap),
-              ),
+              await closeByDoubleTap(tester, gap: Duration(milliseconds: gap)),
               isFalse,
               reason: '$gap ms',
             );
@@ -560,7 +557,7 @@ void main() {
     }
 
     testWidgets(
-      'a page pushed over it and left: the tap 300 ms after the back is ignored, the one at 700 ms counts',
+      'a page pushed over it and left: the page\'s way out moves the button (the transition of the page under it), as on `main`; a tap 300 ms after it ends is ignored, one 700 ms after counts',
       (tester) async {
         final shown = ValueNotifier<bool>(true);
         addTearDown(shown.dispose);
@@ -577,8 +574,13 @@ void main() {
         expect(find.text('Pay'), findsNothing);
         Navigator.of(page).pop();
         await tester.pump();
+        var frames = 0;
+        while (find.text('above').evaluate().isNotEmpty) {
+          expect(frames++, lessThan(60));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
         await tester.pump(const Duration(milliseconds: 300));
-        await tester.tap(find.text('Pay'), warnIfMissed: false);
+        await tester.tap(find.text('Pay'));
         await tester.pump();
         expect(taps, 0);
         await tester.pump(const Duration(milliseconds: 400));
@@ -597,15 +599,17 @@ void main() {
         final position = Scrollable.of(
           tester.element(find.text('Pay')),
         ).position;
-        position.jumpTo(1200);
+        // Out of view, within the list's cache, so that the button is kept (one built again is a button shown, as on `main`).
+        position.jumpTo(300);
         await tester.pump();
+        expect(find.text('Pay'), findsNothing);
         position.jumpTo(0);
         await tester.pump();
         await tapSoon(tester);
         expect(taps, 1);
-        await tester.drag(find.byType(ListView), const Offset(0, -900));
+        await tester.drag(find.byType(ListView), const Offset(0, -300));
         await tester.pumpAndSettle();
-        await tester.drag(find.byType(ListView), const Offset(0, 900));
+        await tester.drag(find.byType(ListView), const Offset(0, 300));
         await tester.pumpAndSettle();
         await tapSoon(tester);
         expect(taps, 2);
@@ -617,11 +621,7 @@ void main() {
       (tester) async {
         final shown = ValueNotifier<bool>(true);
         addTearDown(shown.dispose);
-        final page = await covered(
-          tester,
-          shown: shown,
-          armsWhenShown: false,
-        );
+        final page = await covered(tester, shown: shown, armsWhenShown: false);
         await openDialog(tester, page);
         expect(await closeByDoubleTap(tester), isTrue);
       },

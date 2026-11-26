@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:ui' show FlutterView;
 
+import 'package:flutter/gestures.dart' show HitTestResult;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -120,8 +122,8 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
         !scrolled &&
         lastOnScreen != null &&
         (onScreen - lastOnScreen).distance > 0.5;
-    // Shown again: what was drawn over it no longer takes a tap there (#294).
-    final reachable = _reachableNow(positions);
+    // Shown again: what was drawn over it no longer takes a tap there (#294). Not while a position around scrolls: a scrolling list ignores the taps on its content (`Scrollable`), which is no cover.
+    final reachable = scrolled ? null : _reachableNow(positions);
     final uncovered = _reachable == false && reachable == true;
     if (reachable != null) _reachable = reachable;
     // Just appeared: the delay starts at its first measure (security review of #291, B1).
@@ -142,14 +144,15 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
     if (box is! RenderBox || !box.attached || !box.hasSize || view == null) {
       return null;
     }
-    Rect onScreen(RenderBox of) =>
-        MatrixUtils.transformRect(of.getTransformTo(null), Offset.zero & of.size);
+    Rect onScreen(RenderBox of) => MatrixUtils.transformRect(
+      of.getTransformTo(null),
+      Offset.zero & of.size,
+    );
     var shown = onScreen(
       box,
     ).intersect(Offset.zero & (view.physicalSize / view.devicePixelRatio));
     for (final position in positions) {
-      final viewport = position.context.notificationContext
-          ?.findRenderObject();
+      final viewport = position.context.notificationContext?.findRenderObject();
       if (viewport is RenderBox && viewport.attached && viewport.hasSize) {
         shown = shown.intersect(onScreen(viewport));
       }
