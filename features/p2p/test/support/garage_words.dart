@@ -65,7 +65,19 @@ final class TestWordsPort implements P2pGarageKeyPort {
   final Secrets _secrets = Secrets(scratchDirectory: () async => '.');
   final Map<String, Secret> _imported = {};
 
+  final Map<(String, RobosatsNetwork, int), GarageKeyMaterial> _derived = {};
+
   TestWordsPort({this.words = abandonWords, this.refusal});
+
+  /// Derives the keys of [keys] now, for a widget test, whose fake time does not run the vault's real work: call it in `tester.runAsync`; the keys are then given from memory.
+  Future<void> precompute(List<(RobosatsNetwork, int)> keys) async {
+    for (final (network, index) in keys) {
+      if (await garageKey(network, index: index) case Ok(:final value)) {
+        _derived[(words.join(' '), network, index)] = value;
+      }
+    }
+    asked.clear();
+  }
 
   @override
   Future<Result<GarageKeyMaterial, P2pGarageKeyRefusal>> garageKey(
@@ -77,6 +89,9 @@ final class TestWordsPort implements P2pGarageKeyPort {
     }
     asked.add((network, index));
     if (refusal case final reason?) return Err(P2pGarageKeyRefusal(reason));
+    if (_derived[(words.join(' '), network, index)] case final material?) {
+      return Ok(material);
+    }
     final secret = _imported[words.join(' ')] ??= await _secretOf(words);
     return switch (await secret.derive.garageKey(
       network: switch (network) {
