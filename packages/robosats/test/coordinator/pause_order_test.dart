@@ -40,7 +40,11 @@ void main() {
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> pause([
     CoordinatorOrder? lastRead,
-  ]) => client.pauseOrder(identity: _us, lastRead: lastRead ?? makerAt(1));
+  ]) => client.pauseOrder(
+    identity: _us,
+    key: interopUnlockedKey,
+    lastRead: lastRead ?? makerAt(1),
+  );
 
   Matcher malformed(String field) => isA<CoordinatorResponseMalformed>().having(
     (f) => f.field,
@@ -69,7 +73,11 @@ void main() {
           'Authorization': 'Token ${_us.tokenSha256Base91}',
         });
         // `frontend/src/components/TradeBox/index.tsx:310-313`.
-        expect(utf8.decode(request.body ?? const []), '{"action":"pause"}');
+        // Then the signature of `pause:{order_id}:{shortAlias}`, last (GHSA-22q8-9ghc-jg3h).
+        expect(
+          unsignedBody(request.body, 'pause:$testOrderId:temple'),
+          '{"action":"pause"}',
+        );
         expect(request.robot, _us.sessionKey);
         expect(request.maxResponseBytes, CoordinatorReadBounds.orderBytes);
       }
@@ -128,6 +136,7 @@ void main() {
       final failure = expectErr(
         await client.pauseOrder(
           identity: interopPeerIdentity,
+          key: interopPeerUnlockedKey,
           lastRead: makerAt(1),
         ),
       );

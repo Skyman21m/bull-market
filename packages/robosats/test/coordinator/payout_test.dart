@@ -137,6 +137,7 @@ void main() {
     RobotIdentity? identity,
   }) => client.submitPayoutInvoice(
     identity: identity ?? _us,
+    key: identity == null ? unlocked : interopUnlockedKeyOf(identity),
     lastRead: lastRead ?? lastReadAt(6),
     invoice: invoice ?? signedInvoice,
     routingBudget: routingBudget ?? budget,
@@ -149,6 +150,7 @@ void main() {
     RobotIdentity? identity,
   }) => client.submitPayoutAddress(
     identity: identity ?? _us,
+    key: identity == null ? unlocked : interopUnlockedKeyOf(identity),
     lastRead: lastRead ?? lastReadAt(6, changes: _swapOffered),
     address: address ?? signedAddress,
     miningFeeRate: miningFeeRate ?? fee,
@@ -592,7 +594,11 @@ void main() {
         'Content-Type': 'application/json',
         'Authorization': 'Token ${_us.tokenSha256Base91}',
       });
-      expect(request.body, utf8.encode(jsonEncode(body)));
+      // Then the action's own signature, last, over `{action}:{order_id}:{shortAlias}` (GHSA-22q8-9ghc-jg3h), beside the payout's.
+      expect(
+        unsignedBody(request.body, '${body['action']}:42:temple'),
+        jsonEncode(body),
+      );
       expect(request.robot, _us.sessionKey);
       expect(request.maxResponseBytes, CoordinatorReadBounds.orderBytes);
     }
@@ -607,7 +613,10 @@ void main() {
           'invoice': signedInvoice.signedMessage,
           'routing_budget_ppm': 1000,
         });
-        final body = utf8.decode(transport.requests.single.body ?? []);
+        final body = unsignedBody(
+          transport.requests.single.body,
+          'update_invoice:42:temple',
+        );
         expect(
           body,
           startsWith(
@@ -639,7 +648,10 @@ void main() {
           'mining_fee_rate': 2.05,
         });
         expect(
-          utf8.decode(transport.requests.single.body ?? []),
+          unsignedBody(
+            transport.requests.single.body,
+            'update_address:42:temple',
+          ),
           endsWith('"mining_fee_rate":2.05}'),
         );
       },
@@ -651,7 +663,10 @@ void main() {
         serveJson(orderAnswer(7));
         await submitAddress(miningFeeRate: MiningFeeRate.of(15));
         expect(
-          utf8.decode(transport.requests.single.body ?? []),
+          unsignedBody(
+            transport.requests.single.body,
+            'update_address:42:temple',
+          ),
           endsWith('"mining_fee_rate":15}'),
         );
       },

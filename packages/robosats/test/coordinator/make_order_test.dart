@@ -37,8 +37,12 @@ void main() {
     temple,
     _testnet,
     identity: _us,
+    key: interopUnlockedKey,
     request: request ?? testMakeRequest(),
   );
+
+  /// The timed text a make to Temple signs at the tests' clock (GHSA-22q8-9ghc-jg3h).
+  final signedMake = 'make:temple:${unixSeconds(recordedAt)}';
 
   Matcher malformed(String field) => isA<CoordinatorResponseMalformed>().having(
     (f) => f.field,
@@ -52,7 +56,7 @@ void main() {
     serveJson(madeAnswer(request));
     expectOk(await make(request));
     return switch (jsonDecode(
-      utf8.decode(transport.requests.single.body ?? const []),
+      unsignedBody(transport.requests.single.body, signedMake),
     )) {
       final Map<String, Object?> body => body,
       _ => fail('the body is no object'),
@@ -418,8 +422,9 @@ void main() {
       expect(request.robot, _us.sessionKey);
       expect(request.maxResponseBytes, CoordinatorReadBounds.orderBytes);
       // `JSON.stringify` of the body of `Order.make` (`frontend/src/models/Order.model.ts:197-215`) for the form's attributes (`MakerForm.tsx:257-275`).
+      // Then the signature of `make:{shortAlias}:{unix_ts}`, last, as the reference's `{ ...body, signature }` (GHSA-22q8-9ghc-jg3h).
       expect(
-        utf8.decode(request.body ?? const []),
+        unsignedBody(request.body, signedMake),
         '{"type":0,"currency":2,"amount":150,"has_range":false,'
         '"min_amount":null,"max_amount":null,"payment_method":"SEPA Revolut",'
         '"is_explicit":false,"premium":1.5,"satoshis":null,'
@@ -554,6 +559,7 @@ void main() {
             freeport,
             _testnet,
             identity: _us,
+            key: interopUnlockedKey,
             request: testMakeRequest(),
           ),
         );
@@ -1241,7 +1247,11 @@ void main() {
           Ok(jsonResponse(orderError(1022), statusCode: 400)),
         );
         final cancel = expectErr(
-          await client.cancelOrder(identity: _us, lastRead: readOrder(at0)),
+          await client.cancelOrder(
+            identity: _us,
+            key: interopUnlockedKey,
+            lastRead: readOrder(at0),
+          ),
         );
         expect(cancel, isA<OrderActionOutcomeUnknown>());
         expect(cancel.cause, isA<OrderMakerBondExpired>());

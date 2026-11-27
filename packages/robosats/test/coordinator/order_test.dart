@@ -61,6 +61,7 @@ void main() {
     temple,
     _testnet,
     identity: _us,
+    key: interopUnlockedKey,
     orderId: _orderId,
     amount: amount,
     password: password == null ? null : OrderPasswordHash.of(password),
@@ -77,7 +78,11 @@ void main() {
 
   Future<Result<CancelOrderOutcome, OrderActionFailure>> cancelAction({
     CoordinatorOrder? lastRead,
-  }) => client.cancelOrder(identity: _us, lastRead: lastRead ?? _readAt(9));
+  }) => client.cancelOrder(
+    identity: _us,
+    key: interopUnlockedKey,
+    lastRead: lastRead ?? _readAt(9),
+  );
 
   /// A cancel after a read of the order in the chat, its failure reduced to its cause.
   Future<Result<CancelOrderOutcome, CoordinatorFailure>> cancel({
@@ -139,7 +144,9 @@ void main() {
         '${temple.testnet.onion}/api/order/?order_id=42',
       );
       expect(request.headers, postHeaders);
-      expect(request.body, utf8.encode(body));
+      // The action's signature, last, over `{action}:{order_id}:{shortAlias}` (GHSA-22q8-9ghc-jg3h).
+      final action = (jsonDecode(body) as Map<String, Object?>)['action'];
+      expect(unsignedBody(request.body, '$action:42:temple'), body);
       expect(request.robot, _us.sessionKey);
       expect(request.maxResponseBytes, CoordinatorReadBounds.orderBytes);
     }
@@ -287,6 +294,7 @@ void main() {
             temple,
             _testnet,
             identity: _us,
+            key: interopUnlockedKey,
             orderId: orderId,
           ),
         );
@@ -328,6 +336,7 @@ void main() {
             bazaar,
             _testnet,
             identity: _us,
+            key: interopUnlockedKey,
             orderId: _orderId,
           )).mapErr((failure) => failure.cause),
         ];
@@ -337,6 +346,7 @@ void main() {
         final cancelled = expectErr(
           await client.cancelOrder(
             identity: _us,
+            key: interopUnlockedKey,
             lastRead: _read(_answer(9), alias: 'bazaar'),
           ),
         );
@@ -2017,7 +2027,13 @@ void main() {
         }
         expect(transport.requests, hasLength(2));
         final outOfRange = expectErr(
-          await client.takeOrder(temple, _testnet, identity: _us, orderId: 0),
+          await client.takeOrder(
+            temple,
+            _testnet,
+            identity: _us,
+            key: interopUnlockedKey,
+            orderId: 0,
+          ),
         );
         expect(outOfRange, isA<OrderActionRefused>());
         expect(outOfRange.cause, isA<OrderNotFound>());
