@@ -687,3 +687,36 @@ class GarageNotices extends Table {
     'CHECK (shown IN (0, 1))',
   ];
 }
+
+/// What this device read of the RoboSats recovery note of each Garage Key on the coordinators' relays of a network (schema 11, #81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): the robot index the note said, the floor of the key's new trades, and whether a reading counted as read for good, so that, in a later run, a majority of the relays that gives no note lets new trades of that key go without waiting for the relays left, and the floor holds across restarts.
+///
+/// One row per network and key, by the key's fingerprint, never the key nor its recovery identity: the floor only goes up (`garage_recovery_notes_forward`), a reading once recorded stays (`read_at` is set once), a row is written once (`garage_recovery_notes_inserted_once`, which keeps `INSERT OR REPLACE` from clearing it) and never deleted. A floor may be recorded without a reading read for good: notes from a relay whose answer was cut short, or found while fewer than a strict majority of the relays answered in full, count, and the key is read again at the next run of the app.
+@DataClassName('GarageRecoveryNoteRow')
+class StoredGarageRecoveryNotes extends Table {
+  @override
+  String get tableName => 'garage_recovery_notes';
+
+  /// `mainnet` or `testnet`: the network whose coordinators' relays were read.
+  TextColumn get network => text()();
+
+  /// The `GarageKeyFingerprint` of the key, 64 lowercase hexadecimal characters.
+  TextColumn get keyFingerprint => text()();
+
+  /// The robot index the latest note read said, at its highest over the readings; new trades of the key take a robot above it. `NULL` while no note was read.
+  IntColumn get accountFloor => integer().nullable()();
+
+  /// When a reading of the key counted as read for good (the whole answer of a strict majority of the network's relays), in milliseconds since the epoch; `NULL` while none did.
+  IntColumn get readAt => integer().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {network, keyFingerprint};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (typeof(network) = 'text' AND typeof(key_fingerprint) = 'text' AND (account_floor IS NULL OR typeof(account_floor) = 'integer') AND (read_at IS NULL OR typeof(read_at) = 'integer'))",
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (account_floor IS NULL OR account_floor BETWEEN 0 AND 2147483647)',
+    'CHECK (read_at IS NULL OR read_at BETWEEN 0 AND 8640000000000000)',
+  ];
+}

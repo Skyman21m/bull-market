@@ -73,7 +73,7 @@ void main() {
       (await database.customSelect('PRAGMA user_version').getSingle())
           .read<int>('user_version');
 
-  /// A file of schema 9 holding a row in every table: the file of schema 8 of [schema8Rows], stepped to schema 9 by the app, its objects of schema 10 removed and its version set back to 9, as an APK of schema 9 leaves it; checked against the generated schema 9.
+  /// A file of schema 9 holding a row in every table: the file of schema 8 of [schema8Rows], stepped to schema 9 by the app, its objects of schema 10 and 11 removed and its version set back to 9, as an APK of schema 9 leaves it; checked against the generated schema 9.
   Future<File> schema9File() async {
     final file = File('${directory.path}/nine.sqlite');
     final eight = v8.DatabaseAtV8(NativeDatabase(file));
@@ -95,6 +95,10 @@ void main() {
             'DROP TRIGGER derived_garage_keys_inserted_once',
             'DROP TRIGGER garage_notices_shown_once',
             'DROP TRIGGER garage_notices_never_deleted',
+            'DROP TRIGGER garage_recovery_notes_never_deleted',
+            'DROP TRIGGER garage_recovery_notes_inserted_once',
+            'DROP TRIGGER garage_recovery_notes_forward',
+            'DROP TABLE garage_recovery_notes',
             'DROP TABLE derived_garage_keys',
             'DROP TABLE selected_garage_keys',
             'DROP TABLE garage_notices',
@@ -139,12 +143,16 @@ void main() {
       );
 
       final migrated = P2pDatabase.forTesting(NativeDatabase(file));
-      expect(await versionOf(migrated), 10);
+      expect(await versionOf(migrated), P2pDatabase.schema);
       await migrated.validateDatabaseSchema();
       for (final MapEntry(key: table, value: rows) in kept.entries) {
         expect(await rowsOf(migrated, table), rows, reason: table);
       }
-      for (final table in ['derived_garage_keys', 'selected_garage_keys']) {
+      for (final table in [
+        'derived_garage_keys',
+        'selected_garage_keys',
+        'garage_recovery_notes',
+      ]) {
         expect(await rowsOf(migrated, table), isEmpty, reason: table);
       }
       // The one row the step writes, in its own new table: « Your Garage Keys » due, since this is an update.
@@ -157,6 +165,7 @@ void main() {
           ...kept.keys,
           'derived_garage_keys',
           'garage_notices',
+          'garage_recovery_notes',
           'selected_garage_keys',
         ]..sort(),
       );
@@ -182,7 +191,7 @@ void main() {
         setup: (raw) => raw.execute('PRAGMA user_version = 9'),
       ),
     );
-    expect(await versionOf(again), 10);
+    expect(await versionOf(again), P2pDatabase.schema);
     for (final MapEntry(key: table, value: rows) in once.entries) {
       expect(await rowsOf(again, table), rows, reason: table);
     }
@@ -193,7 +202,7 @@ void main() {
     'a new file of schema 10 has the same tables and triggers as a migrated one, empty',
     () async {
       final fresh = P2pDatabase.forTesting(NativeDatabase.memory());
-      expect(await versionOf(fresh), 10);
+      expect(await versionOf(fresh), P2pDatabase.schema);
       for (final table in [
         'derived_garage_keys',
         'selected_garage_keys',

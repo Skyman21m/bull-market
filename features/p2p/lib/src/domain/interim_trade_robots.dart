@@ -16,7 +16,7 @@ import 'trade_robots.dart';
 ///
 /// A new trade takes its robot from the key selected in the Garage Key card, a key of the words whatever its number or the external key, and from no other ([GarageKeyRepository.forNewTrade], the owner's decisions of 2026-11-26).
 /// A recorded trade finishes with the key whose robot it is ([GarageKeyRepository.ofSlot]: a key of the words derived again by its index, after its fingerprint was compared with the one recorded, or the external key the vault keeps, when the fingerprint is its own).
-/// A new trade gets the first usable robot of the key ([NextTradeRobot.of], which the Garage shows as the fresh robot, #251), as `NetworkGarageKey.firstUsableRobot` finds it (an index whose token or nickname a coordinator would refuse is skipped, as for the Garage's account navigator), whose index has no binding, on either network, and no trade record.
+/// A new trade gets the first usable robot of the key ([NextTradeRobot.of], which the Garage shows as the fresh robot, #251), strictly above the floor of the key's recovery note read on the relays (#81, its first reading awaited within its limit), as `NetworkGarageKey.firstUsableRobot` finds it (an index whose token or nickname a coordinator would refuse is skipped, as for the Garage's account navigator), whose index has no binding, on either network, and no trade record.
 /// It is bound to the trade's coordinator by `TradeRecordRepository.reserveForNewTrade`, one statement that writes only when the index is still free, and says whether this call wrote: a call that lost the index to another reads what is in use again and goes on to the next one.
 /// So the binding is the reservation: a robot bound and never recorded with a trade, as when the app is killed between the two, stays bound to that coordinator, as every binding does, and is never returned again; the next call takes the next free index.
 /// Every key gives robots for new trades, whatever its origin: a key of the words, the key drawn here before #81, a key imported (decided on 2026-11-26, #81). Any of them may have robots on coordinators from elsewhere (the same words on another device, the key pasted into the official client, a key imported from it): what stands in for that is the refusal of a robot the coordinator of the trade already knows (`RobotOnCoordinatorFace.alreadyExisted`, design note § 3), after which the next call takes the next free index, the robot refused staying bound there.
@@ -27,7 +27,10 @@ final class InterimTradeRobots implements TradeRobots {
   final GarageKeyRepository _keys;
   final TradeRecordRepository _records;
 
-  const InterimTradeRobots(this._keys, this._records);
+  /// `RecoveryNoteSync.beforeNewTrade` (#81): the first reading of the key's recovery note, awaited within its limit before the robot is chosen, so that the robot is above the note's floor; `null` where nothing reads the notes.
+  final Future<void> Function(NetworkGarageKey key)? _beforeNewTrade;
+
+  const InterimTradeRobots(this._keys, this._records, {this._beforeNewTrade});
 
   @override
   Future<Result<ReservedRobot, P2pFailure>> robotForNewTrade(
@@ -52,6 +55,8 @@ final class InterimTradeRobots implements TradeRobots {
       case Err(:final failure):
         return Err(failure);
     }
+    // The floor of the key's recovery note (#81): its first reading, still running or started now, is awaited within its limit; whatever it gave, the standing read below holds the floor recorded.
+    await _beforeNewTrade?.call(key);
     for (var attempt = 0; attempt < maxReservationAttempts; attempt++) {
       final NewTradeStanding standing;
       switch (await _records.newTradeStandingOf(network, fingerprint)) {

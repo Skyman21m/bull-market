@@ -270,17 +270,22 @@ final class OutgoingGarageRecoveryNote implements NostrRelayPublication {
 ///
 /// It prints nothing of the identity, a fixed label of the Garage Key on every relay it is sent to.
 @immutable
-final class GarageRecoveryFilter {
+final class GarageRecoveryFilter implements NostrRelayFilter {
   /// The identity's x-only public key, 64 lowercase hexadecimal characters.
   final String publicKeyHex;
 
   const GarageRecoveryFilter._(this.publicKeyHex);
 
   /// The filter's JSON, to send in a `["REQ", <subscription id>, <filter>]`.
+  @override
   String toJson() => NostrEvent.stringify({
     'kinds': [NostrGiftWrap.giftWrapKind],
     '#p': [publicKeyHex],
   });
+
+  /// `accountRecovery`, the start of the official client's subscription ids for this request (`accountRecovery_<random>`, `RoboPool/index.ts:634`): a relay sees the same word from either client.
+  @override
+  String get subscriptionLabel => 'accountRecovery';
 
   @override
   bool operator ==(Object other) =>

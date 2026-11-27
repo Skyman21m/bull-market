@@ -12,6 +12,8 @@ import '../public/p2p_garage_key_port.dart';
 import '../public/p2p_wallet_port.dart';
 import 'data/garage_key_book_repository_impl.dart';
 import 'data/garage_key_repository_impl.dart';
+import 'data/garage_recovery_note_repository_impl.dart';
+import 'data/isolate_garage_note_compute.dart';
 import 'data/isolate_robot_key_compute.dart';
 import 'data/osm_map_tile_adapter.dart';
 import 'data/p2p_database.dart';
@@ -25,13 +27,16 @@ import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
+import 'domain/garage_note_compute_port.dart';
 import 'domain/garage_opening.dart';
 import 'domain/meeting_point.dart';
 import 'domain/map_tiles.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/p2p_waits.dart';
+import 'domain/recovery_note_sync.dart';
 import 'domain/repositories/garage_key_repository.dart';
+import 'domain/repositories/garage_recovery_note_repository.dart';
 import 'domain/interim_trade_robots.dart';
 import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/repositories/trade_chat_pin_repository.dart';
@@ -173,6 +178,7 @@ final class P2pLocator {
         database: () => P2pDatabase.open(databaseDirectory),
         transport: () => locator<TorCoordinatorTransport>(),
         relays: () => locator<TorCoordinatorTransport>(),
+        noteRelays: () => locator<TorCoordinatorTransport>(),
         clock: DateTime.now,
       );
     }
@@ -195,6 +201,7 @@ final class P2pLocator {
     required P2pDatabase Function() database,
     required CoordinatorTransport Function() transport,
     required NostrRelayTransport Function() relays,
+    OwnSessionNostrRelayTransport Function()? noteRelays,
     required DateTime Function() clock,
   }) {
     // The vault's handle and the port of the keys of the words stay inside the repository: neither is registered in the container.
@@ -212,6 +219,30 @@ final class P2pLocator {
     locator.registerLazySingleton<RobotBindingRepository>(
       () => RobotBindingRepositoryImpl(locator(), clock: clock),
     );
+    // What this device read of the recovery notes of the Garage Keys (schema 11, #81), and, where the shell lent the relays, the note kept on them: read once per run (at the first showing of the P2P tab for the key new trades take and the keys in use, at the visit of a key, before a new trade), its floor recorded relay by relay, awaited by a new trade of any key at most 40 s, written after each confirmed trade and at each opening of the P2P tab once the reading of the run reached a strict majority of the relays. One for the feature: its readings and writes of a run are its memory.
+    locator.registerLazySingleton<GarageRecoveryNoteRepository>(
+      () => GarageRecoveryNoteRepositoryImpl(locator(), clock: clock),
+    );
+    if (noteRelays != null) {
+      locator.registerLazySingleton<GarageNoteComputePort>(
+        () => const IsolateGarageNoteCompute(),
+      );
+      locator.registerLazySingleton<RecoveryNoteSync>(
+        () => RecoveryNoteSync(
+          relays: noteRelays(),
+          compute: locator(),
+          notes: locator(),
+          standing: locator<TradeRecordRepository>().newTradeStandingOf,
+          keysInUse: locator<TradeRecordRepository>().keysInUse,
+          keys: locator(),
+          federation: Federation.robosats,
+          clock: clock,
+          torReports: locator.isRegistered<WatchP2pTorStateUsecase>()
+              ? locator<WatchP2pTorStateUsecase>().execute
+              : null,
+        ),
+      );
+    }
     // The hashing of a robot's key pair, away from the UI isolate.
     locator.registerLazySingleton<RobotKeyComputePort>(
       () => const IsolateRobotKeyCompute(),
@@ -300,6 +331,10 @@ final class P2pLocator {
         readOnce: locator.isRegistered<WatchTradeUsecase>()
             ? locator<WatchTradeUsecase>().readOnce
             : null,
+        // The recovery note of a key read when the Garage shows it (#81), where the relays were lent.
+        visit: locator.isRegistered<RecoveryNoteSync>()
+            ? locator<RecoveryNoteSync>().visit
+            : null,
       ),
     );
     // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases and of the acknowledgement of a key's history.
@@ -359,7 +394,14 @@ final class P2pLocator {
       () => TradeChatPinRepositoryImpl(locator()),
     );
     locator.registerLazySingleton<TradeRobots>(
-      () => InterimTradeRobots(locator(), locator()),
+      () => InterimTradeRobots(
+        locator(),
+        locator(),
+        // The floor of the key's recovery note, its first reading awaited within its limit (#81), where the relays were lent.
+        beforeNewTrade: locator.isRegistered<RecoveryNoteSync>()
+            ? locator<RecoveryNoteSync>().beforeNewTrade
+            : null,
+      ),
     );
     Bolt11Reader invoices() => Bolt11Reader(
       locator.isRegistered<Bolt11Decoder>()
@@ -380,6 +422,10 @@ final class P2pLocator {
         clock: clock,
         requestOrder: locator(),
         payouts: locator(),
+        // Each make and take the coordinator confirmed writes the recovery note of its key (#81), where the relays were lent.
+        confirmed: locator.isRegistered<RecoveryNoteSync>()
+            ? locator<RecoveryNoteSync>().tradeConfirmed
+            : null,
       ),
     );
     // One for the feature: the takes and the payouts of an order run one at a time, whichever use case object runs them.
@@ -496,6 +542,10 @@ final class P2pLocator {
         locator<ListActiveTradesUsecase>().execute,
         locator<TradeRecordRepository>().watchClosedTrades,
         locator<TradeRecordRepository>().newTradeStandingOf,
+        // A note read since moves the robot the Garage opens on and the fresh one (#81).
+        floorChanges: locator.isRegistered<GarageRecoveryNoteRepository>()
+            ? locator<GarageRecoveryNoteRepository>().watchFloor
+            : null,
       ),
     );
     // The robot the Garage would show, for the line of the order page only (#251): no trade takes its robot from it.

@@ -31,7 +31,14 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   static const String _newTradeStandingSql =
       'SELECT (SELECT group_concat(robot_index) FROM (SELECT robot_index FROM robot_bindings '
       'WHERE key_fingerprint = ? UNION SELECT robot_index FROM trades '
-      'WHERE key_fingerprint = ?)) AS in_use';
+      'WHERE key_fingerprint = ?)) AS in_use, '
+      '(SELECT max(account_floor) FROM garage_recovery_notes WHERE key_fingerprint = ?) AS note_floor';
+
+  /// The fingerprints of the keys that have a robot bound, or recorded with a trade, on one network: the keys whose recovery note is written again at each opening of the app (#81).
+  static const String _keysInUseSql =
+      'SELECT key_fingerprint FROM robot_bindings WHERE network = ? '
+      'UNION SELECT key_fingerprint FROM trades WHERE network = ? '
+      'ORDER BY key_fingerprint';
 
   /// Binds a robot for a new trade, only when its index has no binding and no trade, whatever the history of its key (decided on 2026-11-26, #81), with the provenance `generated` a reservation always writes; it returns the index only when it wrote the binding.
   ///
@@ -180,8 +187,13 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
             variables: [
               Variable.withString(key.hex),
               Variable.withString(key.hex),
+              Variable.withString(key.hex),
             ],
-            readsFrom: {_database.robotBindings, _database.trades},
+            readsFrom: {
+              _database.robotBindings,
+              _database.trades,
+              _database.storedGarageRecoveryNotes,
+            },
           )
           .getSingle();
     } on Exception {
@@ -195,7 +207,45 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       _ => null,
     };
     if (inUse == null) return const Err(P2pStorageFailure());
-    return Ok(NewTradeStanding(indexesInUse: inUse));
+    final noteFloor = row.data['note_floor'];
+    if (noteFloor != null &&
+        (noteFloor is! int || noteFloor < 0 || noteFloor > 0x7fffffff)) {
+      return const Err(P2pStorageFailure());
+    }
+    return Ok(
+      NewTradeStanding(indexesInUse: inUse, noteFloor: noteFloor as int?),
+    );
+  }
+
+  @override
+  Future<Result<Set<GarageKeyFingerprint>, P2pFailure>> keysInUse(
+    RobosatsNetwork network,
+  ) async {
+    final List<QueryRow> rows;
+    try {
+      rows = await _database
+          .customSelect(
+            _keysInUseSql,
+            variables: [
+              Variable.withString(_networkValue(network)),
+              Variable.withString(_networkValue(network)),
+            ],
+            readsFrom: {_database.robotBindings, _database.trades},
+          )
+          .get();
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    final keys = <GarageKeyFingerprint>{};
+    for (final row in rows) {
+      final fingerprint = switch (row.data['key_fingerprint']) {
+        final String hex => GarageKeyFingerprint.stored(hex),
+        _ => null,
+      };
+      if (fingerprint == null) return const Err(P2pStorageFailure());
+      keys.add(fingerprint);
+    }
+    return Ok(keys);
   }
 
   @override

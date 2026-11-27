@@ -1096,6 +1096,8 @@ class RobotCoordinatorCubit {
       {
         // Schema 10 (#81): the keys of the words activated, and the key selected.
         'lib/src/data/garage_key_book_repository_impl.dart',
+        // Schema 11 (#81): what this device read of the recovery notes.
+        'lib/src/data/garage_recovery_note_repository_impl.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
@@ -1119,6 +1121,8 @@ class RobotCoordinatorCubit {
         'lib/src/data/p2p_database.steps.dart',
         // Schema 10 (#81): the keys of the words activated, and the key selected.
         'lib/src/data/garage_key_book_repository_impl.dart',
+        // Schema 11 (#81): what this device read of the recovery notes.
+        'lib/src/data/garage_recovery_note_repository_impl.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
@@ -1408,6 +1412,11 @@ class RobotCoordinatorCubit {
       'm.createTable(schema.garageNotices)',
       'm.createTrigger(schema.garageNoticesShownOnce)',
       'm.createTrigger(schema.garageNoticesNeverDeleted)',
+      // Schema 11 (#81): what this device read of the recovery notes, one table and its triggers.
+      'm.createTable(schema.garageRecoveryNotes)',
+      'm.createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'm.createTrigger(schema.garageRecoveryNotesInsertedOnce)',
+      'm.createTrigger(schema.garageRecoveryNotesForward)',
     ]);
     // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and their triggers and the trigger it replaces on `trade_terms` only, and turns the foreign keys off when a connection has them on; and the foreign keys of the trades, on, at each opening.
     expect(database.calls.where((call) => call.startsWith('customStatement(')), [
@@ -1568,6 +1577,11 @@ class RobotCoordinatorCubit {
       'createTrigger(schema.garageNoticesShownOnce)',
       'createTrigger(schema.garageNoticesNeverDeleted)',
       'customStatement(_externalKeyNamedDue)',
+      // Schema 11 (#81): one table and its triggers, no row written.
+      'createTable(schema.garageRecoveryNotes)',
+      'createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'createTrigger(schema.garageRecoveryNotesInsertedOnce)',
+      'createTrigger(schema.garageRecoveryNotesForward)',
       'customStatement(_foreignKeysOn)',
     ]);
     // What the two checks read (an invocation is listed before the one it is made on).
@@ -3178,6 +3192,17 @@ final _garageKeyTriggers = [
   for (final trigger in _garageKeyTriggersAsWritten) _squeezed(trigger),
 ];
 
+/// The triggers of what this device read of the recovery notes (schema 11, #81), as `garage_recovery_notes.drift` writes them: a reading never deleted, a row written once (review of #302), the floor only going up, a reading recorded kept.
+const _noteTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_never_deleted BEFORE DELETE ON garage_recovery_notes BEGIN SELECT RAISE(ABORT, 'a recovery note read is kept'); END",
+  'CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_inserted_once BEFORE INSERT ON garage_recovery_notes WHEN EXISTS (SELECT 1 FROM garage_recovery_notes WHERE network = NEW.network AND key_fingerprint = NEW.key_fingerprint) BEGIN SELECT RAISE(IGNORE); END',
+  "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes WHEN NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR (OLD.account_floor IS NOT NULL AND (NEW.account_floor IS NULL OR NEW.account_floor < OLD.account_floor)) OR (OLD.read_at IS NOT NULL AND NEW.read_at IS NOT OLD.read_at) BEGIN SELECT RAISE(ABORT, 'a recovery note read only goes forward'); END",
+];
+
+final _noteTriggers = [
+  for (final trigger in _noteTriggersAsWritten) _squeezed(trigger),
+];
+
 /// The triggers schema 8 replaced (#176), as the `.drift` files wrote them up to schema 7: the migration steps keep them in the schemas of their versions, as drift copies them.
 const _replacedTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
@@ -3192,6 +3217,7 @@ const _replacedTriggersAsWritten = [
 /// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
 final _driftTriggers = {
   ..._garageKeyTriggers,
+  ..._noteTriggers,
   ..._tradeTriggers,
   ..._trailTriggers,
   ..._paymentTriggers,
