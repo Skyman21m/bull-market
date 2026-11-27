@@ -16,10 +16,13 @@ import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/ui/coordinator_details_dialog.dart'
+    show CoordinatorBadge;
 import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
+import 'package:p2p/src/ui/widgets/order_detail_row.dart' show OrderHostRow;
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -2051,4 +2054,82 @@ void main() {
       );
     },
   );
+
+  group('#300: the coordinator\'s dialog under the tab « Order »', () {
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      testWidgets(
+        'a maker\'s bond, ${locale.languageCode}: the tab « Order », the host tapped; at 320 points (640 high, the text ×1, ×2 and ×3, and 800 high ×2) nothing overflows and the four badges fit the dialog\'s card, each 48 points wide at least, the last one\'s explanation shown on a tap; at 360 and 390 points each badge keeps its 56 points, side by side and centred, as before',
+        (tester) async {
+          final confirmation = await _maker(tester, locale: locale);
+          final l10n = confirmation.l10n;
+          await tester.tap(
+            find.descendant(
+              of: find.byType(BullSegmented),
+              matching: find.text(l10n.p2pNavOrder),
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          final host = find.byType(OrderHostRow);
+          await tester.ensureVisible(host);
+          await tester.pump();
+          await tester.tap(host);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          final badges = find.byType(CoordinatorBadge);
+          expect(badges, findsNWidgets(4));
+          for (final (width, height, scale) in const [
+            (320.0, 640.0, 1.0),
+            (320.0, 640.0, 2.0),
+            (320.0, 640.0, 3.0),
+            (320.0, 800.0, 2.0),
+            (360.0, 640.0, 1.0),
+            (390.0, 800.0, 1.0),
+            (390.0, 800.0, 3.0),
+          ]) {
+            final at = '$width × $height ×$scale';
+            await _size(tester, width: width, height: height, scale: scale);
+            expect(tester.takeException(), isNull, reason: at);
+            final card = tester.getRect(_dialogCard());
+            final rects = [
+              for (final element in badges.evaluate())
+                tester.getRect(find.byWidget(element.widget)),
+            ];
+            for (final rect in rects) {
+              expect(rect.left, greaterThanOrEqualTo(card.left), reason: at);
+              expect(rect.right, lessThanOrEqualTo(card.right), reason: at);
+              expect(rect.width, greaterThanOrEqualTo(48 - 0.01), reason: at);
+            }
+            if (width >= 360) {
+              for (final (index, rect) in rects.indexed) {
+                expect(rect.width, moreOrLessEquals(56), reason: at);
+                if (index > 0) {
+                  expect(
+                    rect.left,
+                    moreOrLessEquals(rects[index - 1].right),
+                    reason: at,
+                  );
+                }
+              }
+              expect(
+                (rects.first.left + rects.last.right) / 2,
+                moreOrLessEquals(card.center.dx),
+                reason: at,
+              );
+            }
+          }
+          await _size(tester, width: 320, height: 640, scale: 2);
+          final last = tester.widget<CoordinatorBadge>(badges.last);
+          await tester.ensureVisible(badges.last);
+          await tester.pump();
+          await tester.tap(badges.last);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.text(last.explanation), findsOneWidget);
+          await tester.pump(const Duration(seconds: 3));
+          await confirmation.close();
+        },
+      );
+    }
+  });
 }

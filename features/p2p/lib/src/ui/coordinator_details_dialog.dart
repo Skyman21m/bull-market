@@ -486,36 +486,42 @@ class CoordinatorBadgesRow extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     final devFund = formats.number(badges.donatesToDevFund.toDouble());
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        CoordinatorBadge(
-          icon: Icons.workspace_premium,
-          lit: badges.isFounder,
-          explanation: badges.isFounder
-              ? l10n.p2pCoordinatorBadgeFounder
-              : l10n.p2pCoordinatorBadgeNotFounder,
+    // The four badges take 224 points, more than the dialog's line on a phone of 320 points (192 points, whatever the text size or the language): there the row shrinks to the line, each badge still 48 points wide, and where it fits it keeps its size and place (#300).
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CoordinatorBadge(
+              icon: Icons.workspace_premium,
+              lit: badges.isFounder,
+              explanation: badges.isFounder
+                  ? l10n.p2pCoordinatorBadgeFounder
+                  : l10n.p2pCoordinatorBadgeNotFounder,
+            ),
+            CoordinatorBadge(
+              icon: Icons.volunteer_activism,
+              lit: badges.donatesToDevFund >= devFundThreshold,
+              explanation: l10n.p2pCoordinatorBadgeDevFund(devFund),
+            ),
+            CoordinatorBadge(
+              icon: Icons.shield,
+              lit: badges.hasGoodOpSec,
+              explanation: badges.hasGoodOpSec
+                  ? l10n.p2pCoordinatorBadgeGoodOpsec
+                  : l10n.p2pCoordinatorBadgeOpsecCouldImprove,
+            ),
+            CoordinatorBadge(
+              icon: Icons.trending_up,
+              lit: sizeLimit.isLarge,
+              explanation: sizeLimit.isLarge
+                  ? l10n.p2pCoordinatorBadgeLargeLimits
+                  : l10n.p2pCoordinatorBadgeNoLargeLimits,
+            ),
+          ],
         ),
-        CoordinatorBadge(
-          icon: Icons.volunteer_activism,
-          lit: badges.donatesToDevFund >= devFundThreshold,
-          explanation: l10n.p2pCoordinatorBadgeDevFund(devFund),
-        ),
-        CoordinatorBadge(
-          icon: Icons.shield,
-          lit: badges.hasGoodOpSec,
-          explanation: badges.hasGoodOpSec
-              ? l10n.p2pCoordinatorBadgeGoodOpsec
-              : l10n.p2pCoordinatorBadgeOpsecCouldImprove,
-        ),
-        CoordinatorBadge(
-          icon: Icons.trending_up,
-          lit: sizeLimit.isLarge,
-          explanation: sizeLimit.isLarge
-              ? l10n.p2pCoordinatorBadgeLargeLimits
-              : l10n.p2pCoordinatorBadgeNoLargeLimits,
-        ),
-      ],
+      ),
     );
   }
 }
