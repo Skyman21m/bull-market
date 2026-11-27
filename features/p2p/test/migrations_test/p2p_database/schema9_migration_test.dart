@@ -113,8 +113,8 @@ void main() {
 
       final migrated = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
-      // Schema 10 (#81) adds two tables after this step, which changes no row of it: `schema10_migration_test.dart` plays it.
-      expect(P2pDatabase.schema, 10);
+      // Schema 10 (#81) adds three tables after this step, and schema 11 (#81) one more, which change no row of it: `schema10_migration_test.dart` and `schema11_migration_test.dart` play them.
+      expect(P2pDatabase.schema, 11);
       await migrated.validateDatabaseSchema();
       expect(await _rowsOf(migrated, _schema8Columns), before);
       // The new columns of every older row: empty, « unknown » and « no trace recorded », never 0.
@@ -633,6 +633,11 @@ const _stepKinds = [
   'trigger garage_notices_shown_once',
   'trigger garage_notices_never_deleted',
   'mark garage_notices',
+  // Then the step to schema 11 (#81): one table of what this device read of the recovery notes, and its triggers, no row written.
+  'create garage_recovery_notes',
+  'trigger garage_recovery_notes_never_deleted',
+  'trigger garage_recovery_notes_inserted_once',
+  'trigger garage_recovery_notes_forward',
 ];
 
 Future<int> _versionOf(GeneratedDatabase database) async =>

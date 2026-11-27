@@ -13,7 +13,7 @@
 /// The client also reads the encrypted chat of a trade as a [ChatPage] and posts to it an [OutgoingChatMessage], which only the robot's unlocked key makes ([UnlockedRobotPgpKey.encryptChatMessageToPost]).
 /// As the official client, a message is also sent over Nostr: an [OutgoingNostrChatMessage] holds its two NIP-59 gift wraps (NIP-44 v2, BIP-340 signatures through the `bip340` package), which the app publishes to the coordinators' relays.
 /// At the end of a trade, the client asks the coordinator for a [HostReviewToken] (`/api/review/`), with which an [OutgoingHostRating] rates the coordinator over Nostr, as « Rate your host » of the official client.
-/// The [GarageRecoveryNote] of a Garage Key, the index of its last robot that the official client keeps on Nostr, is written as an [OutgoingGarageRecoveryNote] and read back, one relay at a time, from the events relays answer to its [GarageRecoveryFilter]s as a [GarageRecoveryReading]; nothing here connects to a relay.
+/// The [GarageRecoveryNote] of a Garage Key, the index of its last robot that the official client keeps on Nostr, is written as an [OutgoingGarageRecoveryNote] and read back, one relay at a time, from the events relays answer to its [GarageRecoveryFilter]s as a [GarageRecoveryReading]; the app publishes and reads it through an [OwnSessionNostrRelayTransport], each call on a Tor session of its own, on every relay [nostrRelaysOfNetwork] gives; nothing here connects to a relay.
 library;
 
 export 'src/bitcoin_address.dart' show BitcoinAddress, BitcoinAddressKind;
@@ -99,14 +99,18 @@ export 'src/coordinator/nostr_relay.dart'
         NostrRelayAccepted,
         NostrRelayBusy,
         NostrRelayFailed,
+        NostrRelayFilter,
         NostrRelayOk,
         NostrRelayOutcome,
         NostrRelayPublication,
+        NostrRelayRead,
         NostrRelayRefused,
         NostrRelayTimedOut,
         NostrRelayTransport,
         NostrRelayUnreachable,
-        nostrRelaysFor;
+        OwnSessionNostrRelayTransport,
+        nostrRelaysFor,
+        nostrRelaysOfNetwork;
 export 'src/coordinator/robosats_currency.dart' show RobosatsCurrency;
 export 'src/coordinator/robosats_network.dart' show RobosatsNetwork;
 export 'src/coordinator/robot_session_key.dart' show RobotSessionKey;

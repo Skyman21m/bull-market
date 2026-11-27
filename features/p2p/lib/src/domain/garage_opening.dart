@@ -25,10 +25,14 @@ final class GarageRecords {
   /// The robot the next trade of the key would reserve ([NextTradeRobot.of] over the same standing), or `null` when there is none: no usable index left.
   final RobotSlot? fresh;
 
+  /// The robot the key's recovery note names, the last robot used for the key as the relays told this device ([NewTradeStanding.noteFloor], #81), or `null` when no note was read: the robot the Garage opens on when the device knows nothing better, as the official client opens on it (design note `docs/design/garage-key-from-the-words.md` § 3).
+  final RobotSlot? noted;
+
   GarageRecords({
     required Iterable<ActiveTrade> inProgress,
     required Iterable<ClosedTrade> closed,
     required this.fresh,
+    this.noted,
   }) : inProgress = List.unmodifiable(inProgress),
        closed = List.unmodifiable(closed);
 
@@ -55,7 +59,7 @@ final class GarageRecords {
 
   @override
   String toString() =>
-      'GarageRecords(${inProgress.length} in progress, ${closed.length} closed, fresh: $fresh)';
+      'GarageRecords(${inProgress.length} in progress, ${closed.length} closed, fresh: $fresh, noted: $noted)';
 }
 
 /// The robot the Garage opens on and moves to by itself (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.1, steps 1 to 3): a pure function of the device's records, nothing asked of a coordinator.
@@ -66,13 +70,19 @@ abstract final class GarageOpening {
   ///
   /// 1. a trade of the key in progress here whose bond this device saw locked ([TradePosition.makerBondLocked]: for a taker from 6 on), made or taken here: the robot of the newest (highest index); never one waiting for its bond, a pending take or a pre-take;
   /// 2. else the newest finished trade, the first « Last order #N » line (`ListLastOrdersUsecase.lastOrdersOf`), when it is of the key: its robot when it has not served ([OrderEnd.served]: an expiry, a take that never started), else the fresh robot, or its own robot when there is none;
-  /// 3. else `null`.
+  /// 3. else the robot the key's recovery note names ([GarageRecords.noted], #81), as the official client opens on the note's robot;
+  /// 4. else `null`.
   ///
   /// Every key follows this rule, whatever its origin, since every key trades here (decided on 2026-11-26, #81).
   static RobotSlot? of(NetworkGarageKey key, GarageRecords records) {
     if (lockedOf(key, records).lastOrNull case final robot?) return robot;
     final line = lastOrderOf(records);
-    if (line == null || !_isOf(key, line.record.robot)) return null;
+    if (line == null || !_isOf(key, line.record.robot)) {
+      return switch (records.noted) {
+        final noted? when _isOf(key, noted) => noted,
+        _ => null,
+      };
+    }
     if (!OrderEnd.served(line.lastPosition)) return line.record.robot;
     return records.fresh ?? line.record.robot;
   }

@@ -8,7 +8,7 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys); since schema 10 (#81), the Garage Keys of the wallet's words this device activated, by index and fingerprint, the key selected on each network (an internal Garage Key, or the external Garage Key the vault keeps) with the last internal one selected, and the Garage's notices shown once.
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys); since schema 10 (#81), the Garage Keys of the wallet's words this device activated, by index and fingerprint, the key selected on each network (an internal Garage Key, or the external Garage Key the vault keeps) with the last internal one selected, and the Garage's notices shown once; since schema 11 (#81), what this device read of the RoboSats recovery note of each Garage Key on each network's relays (the floor of the key's new trades, and whether a reading had an answer).
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
@@ -29,6 +29,7 @@ part 'p2p_database.g.dart';
     DerivedGarageKeys,
     SelectedGarageKeys,
     GarageNotices,
+    StoredGarageRecoveryNotes,
   ],
   include: {
     'trades.drift',
@@ -38,10 +39,11 @@ part 'p2p_database.g.dart';
     'maker_terms.drift',
     'trade_payouts.drift',
     'garage_keys.drift',
+    'garage_recovery_notes.drift',
   },
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 10;
+  static const int schema = 11;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///
@@ -432,6 +434,13 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.garageNoticesShownOnce);
         await m.createTrigger(schema.garageNoticesNeverDeleted);
         await customStatement(_externalKeyNamedDue);
+      },
+      from10To11: (m, schema) async {
+        // What this device read of the RoboSats recovery notes (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): one new table and its three triggers, each made only when missing, so that a step that stopped after any of them runs again over the file it left. The step writes no row: no row of an older table is copied, changed or deleted, and every key is read on the relays at its next visit, its robots used before the update being in the bindings and the records already.
+        await m.createTable(schema.garageRecoveryNotes);
+        await m.createTrigger(schema.garageRecoveryNotesNeverDeleted);
+        await m.createTrigger(schema.garageRecoveryNotesInsertedOnce);
+        await m.createTrigger(schema.garageRecoveryNotesForward);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.

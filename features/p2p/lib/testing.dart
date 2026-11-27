@@ -23,6 +23,7 @@ import 'src/data/p2p_database.dart';
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/checked_bolt11_invoice.dart';
 import 'src/domain/coordinator_sessions_port.dart';
+import 'src/domain/garage_note_compute_port.dart';
 import 'src/domain/map_tiles.dart';
 import 'src/domain/p2p_shuffle.dart';
 import 'src/domain/p2p_tor_state.dart';
@@ -107,6 +108,7 @@ export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 /// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
 /// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
 /// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
+/// With [noteRelays], a port the test wrote (never the app's transport), the recovery notes of the Garage Keys are read and written on it as the app's composition reads and writes them on the coordinators' relays (#81), their events read by [noteCompute] when given (the app's isolate otherwise); without it, as by default, nothing reads or writes the notes.
 /// A meeting point pinned in the create form is moved by [locationDraws] (#189), each from 0 included to 1 excluded; by default 0.5, which leaves it where it was pinned.
 /// The maps' tiles come from [tiles], a provider the test wrote (#246), never OpenStreetMap; by default from none, every tile failing at once without any request.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
@@ -127,6 +129,8 @@ void setUpP2pForTesting(
   P2pWalletPort? wallet,
   RobotKeyComputePort? robotKeys,
   NostrRelayTransport? relays,
+  OwnSessionNostrRelayTransport? noteRelays,
+  GarageNoteComputePort? noteCompute,
   double Function() locationDraws = _middle,
   MapTilePort tiles = const _NoTiles(),
 }) {
@@ -182,8 +186,14 @@ void setUpP2pForTesting(
       ),
       transport: () => transport,
       relays: () => relays ?? const _NoRelays(),
+      noteRelays: noteRelays == null ? null : () => noteRelays,
       clock: clock,
     );
+    if (noteRelays != null && noteCompute != null) {
+      locator
+        ..unregister<GarageNoteComputePort>()
+        ..registerSingleton<GarageNoteComputePort>(noteCompute);
+    }
   }
   if (wallet != null) locator.registerSingleton<P2pWalletPort>(wallet);
   // The key work of the robots, when the test gives its own (#93: the captures date the robots' keys by the screen's clock, so that the chat's messages sign and verify at it).
