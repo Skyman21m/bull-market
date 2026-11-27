@@ -16,6 +16,7 @@ import '../src/domain/usecases/watch_p2p_tor_state_usecase.dart';
 import '../src/p2p_locator.dart';
 import '../src/p2p_router.dart';
 import '../src/ui/garage/garage_reauthentication.dart';
+import 'p2p_garage_key_port.dart';
 import 'p2p_wallet_port.dart';
 
 /// Public application-shell composition for the P2P feature.
@@ -29,7 +30,8 @@ final class P2pFeature {
   ///
   /// [garageKeys] is the vault's handle on the RoboSats Garage Keys, which only the foreground composition of the shell asks `Secrets` for and passes here.
   /// [databaseDirectory] gives the directory of the feature's own database, `p2p.sqlite`, where the coordinator each robot is bound to is kept: a directory kept out of cloud backups, which only the foreground composition passes too.
-  /// Give both or neither: the Garage records in that database how each key came to the device.
+  /// [derivedGarageKeys] is the shell's port that derives the Garage Key from the default wallet's words (#81, design note `docs/design/garage-key-from-the-words.md`), which only the foreground composition passes too: the internal Garage Keys; the vault's handle keeps the external Garage Key of each network (drawn at random before #81, or imported), which trades as any other (decided on 2026-11-26).
+  /// Give all three or none (it is optional so that a composition written before it, such as the WorkManager isolate's, lends nothing by default): the Garage records in that database which keys the device activated, and how each key came to it.
   /// With `null` for both, as in the WorkManager isolate, whose keystore lock does not reach the foreground's and which must never open or migrate the database while the app may, the feature has no Garage Key ability at all: nothing that reads or writes a key, a binding or the database is registered.
   /// Registering reads and writes no key and opens no file either way: the directory is asked for at the first query of the database.
   ///
@@ -41,18 +43,21 @@ final class P2pFeature {
   void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
+    P2pGarageKeyPort? derivedGarageKeys,
     required Future<Directory> Function()? databaseDirectory,
     P2pWalletPort Function()? wallet,
     Bolt11Decoder Function()? bolt11Decoder,
   }) {
-    if ((garageKeys == null) != (databaseDirectory == null)) {
+    if ((garageKeys == null) != (databaseDirectory == null) ||
+        (garageKeys == null) != (derivedGarageKeys == null)) {
       throw ArgumentError(
-        'Give P2P both the Garage Key handle and the database directory, or neither',
+        'Give P2P the Garage Key handle, the derived Garage Keys and the database directory, or none',
       );
     }
     P2pLocator.setup(
       locator,
       garageKeys: garageKeys,
+      derivedGarageKeys: derivedGarageKeys,
       databaseDirectory: databaseDirectory,
       wallet: wallet,
       bolt11Decoder: bolt11Decoder,

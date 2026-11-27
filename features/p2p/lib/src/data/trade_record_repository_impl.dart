@@ -16,7 +16,7 @@ import 'p2p_database.dart';
 
 /// The trade records of the robots, and the binding that reserves a robot for a new trade, in the feature's database.
 ///
-/// Each write is one statement, which SQLite runs atomically, and reads in the same statement everything that decides it: the key's history and the robot's binding and record for [reserveForNewTrade], the robot's binding, record and key's history for a pending take or a pending make, the robot's binding and record for a recovered trade, the record's state for its changes.
+/// Each write is one statement, which SQLite runs atomically, and reads in the same statement everything that decides it: the robot's binding and record for [reserveForNewTrade], the robot's binding, its provenance and its record for a pending take or a pending make, the robot's binding and record for a recovered trade, the record's state for its changes.
 /// So two connections, or two calls on one connection, never reserve one robot twice, record two trades of one robot, or move a closed record.
 /// A pending take needs the [TradeReservation] that only [reserveForNewTrade] gives, when it wrote the robot's binding.
 /// The primary key of `trades` (key fingerprint, robot index) refuses a second record of a robot, its foreign key a record of a robot without a binding on the record's network, and the triggers of `trades.drift` any update but the two times set once, any delete and a second insert of a robot (`INSERT OR REPLACE` included), whatever the code that writes.
@@ -27,33 +27,27 @@ import 'p2p_database.dart';
 final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   static const String _generated = 'generated';
 
-  /// Whether the key is recorded as drawn here on the network and as nothing else anywhere, and the indexes of the key bound or recorded with a trade, joined with commas, in one statement that always gives one row.
+  /// The indexes of the key bound or recorded with a trade, joined with commas, in one statement that always gives one row.
   static const String _newTradeStandingSql =
-      'SELECT EXISTS (SELECT 1 FROM garage_key_histories '
-      'WHERE network = ? AND key_fingerprint = ? AND origin = ?) '
-      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-      'WHERE key_fingerprint = ? AND origin <> ?) AS drawn_here_only, '
-      '(SELECT group_concat(robot_index) FROM (SELECT robot_index FROM robot_bindings '
+      'SELECT (SELECT group_concat(robot_index) FROM (SELECT robot_index FROM robot_bindings '
       'WHERE key_fingerprint = ? UNION SELECT robot_index FROM trades '
       'WHERE key_fingerprint = ?)) AS in_use';
 
-  /// Binds a robot for a new trade, only when its index has no binding and no trade, and its key is recorded as drawn here on the robot's network and as nothing else anywhere, with the provenance `generated` copied from that record; it returns the index only when it wrote the binding.
+  /// Binds a robot for a new trade, only when its index has no binding and no trade, whatever the history of its key (decided on 2026-11-26, #81), with the provenance `generated` a reservation always writes; it returns the index only when it wrote the binding.
   ///
-  /// The history has one row per network and key, so the select gives at most one row; its `WHERE` also keeps SQLite from reading `ON CONFLICT` as a join constraint.
+  /// So a binding made for a new trade is `generated`, and only such a binding, or one of a key drawn here, may take a pending take or make: a robot bound by « Select Host » after « Robots from elsewhere » (`acknowledged`) never does.
+  /// The `WHERE` keeps SQLite from reading `ON CONFLICT` as a join constraint.
   static const String _reserveSql =
       'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
       'coordinator_alias, coordinator_onion, coordinator_node_keys, '
       'coordinator_nostr_key, bound_at, provenance) '
-      'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
-      'WHERE network = ? AND key_fingerprint = ? AND origin = ? '
-      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-      'WHERE key_fingerprint = ? AND origin <> ?) '
-      'AND NOT EXISTS (SELECT 1 FROM trades '
+      'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? '
+      'WHERE NOT EXISTS (SELECT 1 FROM trades '
       'WHERE key_fingerprint = ? AND robot_index = ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING robot_index';
 
-  /// Records a pending take of a robot bound to that very coordinator on the reservation's network under a key drawn here and still recorded as nothing else, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
+  /// Records a pending take of a robot bound to that very coordinator on the reservation's network for a new trade (provenance `generated`), copying the network and the coordinator from the binding; it returns the row only when it wrote it.
   static const String _recordPendingTakeSql =
       'INSERT INTO trades (network, key_fingerprint, robot_index, '
       'coordinator_alias, coordinator_onion, order_id, role, origin, '
@@ -64,8 +58,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'AND network = ? AND provenance = ? AND coordinator_alias = ? '
       'AND coordinator_onion = ? AND coordinator_node_keys = ? '
       'AND coordinator_nostr_key = ? '
-      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-      'WHERE key_fingerprint = ? AND origin <> ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING *';
 
@@ -83,7 +75,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING *';
 
-  /// Records a pending make, with no order id (schema 8, #176), of a robot bound to that very coordinator on the reservation's network under a key drawn here and still recorded as nothing else, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
+  /// Records a pending make, with no order id (schema 8, #176), of a robot bound to that very coordinator on the reservation's network for a new trade (provenance `generated`), copying the network and the coordinator from the binding; it returns the row only when it wrote it.
   static const String _recordPendingMakeSql =
       'INSERT INTO trades (network, key_fingerprint, robot_index, '
       'coordinator_alias, coordinator_onion, order_id, role, origin, '
@@ -94,8 +86,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'AND network = ? AND provenance = ? AND coordinator_alias = ? '
       'AND coordinator_onion = ? AND coordinator_node_keys = ? '
       'AND coordinator_nostr_key = ? '
-      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-      'WHERE key_fingerprint = ? AND origin <> ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING *';
 
@@ -188,29 +178,15 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           .customSelect(
             _newTradeStandingSql,
             variables: [
-              Variable.withString(_networkValue(network)),
-              Variable.withString(key.hex),
-              Variable.withString(_generated),
-              Variable.withString(key.hex),
-              Variable.withString(_generated),
               Variable.withString(key.hex),
               Variable.withString(key.hex),
             ],
-            readsFrom: {
-              _database.garageKeyHistories,
-              _database.robotBindings,
-              _database.trades,
-            },
+            readsFrom: {_database.robotBindings, _database.trades},
           )
           .getSingle();
     } on Exception {
       return const Err(P2pStorageFailure());
     }
-    final drawnHereOnly = switch (row.data['drawn_here_only']) {
-      0 => false,
-      1 => true,
-      _ => null,
-    };
     final inUse = switch (row.data['in_use']) {
       null => const <int>[],
       final String joined => _indexesFrom(joined),
@@ -218,12 +194,8 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       final int index => [index],
       _ => null,
     };
-    if (drawnHereOnly == null || inUse == null) {
-      return const Err(P2pStorageFailure());
-    }
-    return Ok(
-      NewTradeStanding(keyDrawnHereOnly: drawnHereOnly, indexesInUse: inUse),
-    );
+    if (inUse == null) return const Err(P2pStorageFailure());
+    return Ok(NewTradeStanding(indexesInUse: inUse));
   }
 
   @override
@@ -248,10 +220,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           Variable.withString(coordinator.nodeKeys.join(',')),
           Variable.withString(coordinator.nostrKey),
           Variable.withInt(_clock().millisecondsSinceEpoch),
-          Variable.withString(network),
-          Variable.withString(fingerprint),
-          Variable.withString(_generated),
-          Variable.withString(fingerprint),
           Variable.withString(_generated),
           Variable.withString(fingerprint),
           Variable.withInt(robot.accountIndex),
@@ -292,8 +260,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           Variable.withString(_networkValue(reservation.network)),
           Variable.withString(_generated),
           ..._coordinatorVariables(coordinator),
-          Variable.withString(fingerprint),
-          Variable.withString(_generated),
         ],
         updates: {_database.trades},
         updateKind: UpdateKind.insert,
@@ -363,8 +329,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           Variable.withString(_networkValue(reservation.network)),
           Variable.withString(_generated),
           ..._coordinatorVariables(coordinator),
-          Variable.withString(fingerprint),
-          Variable.withString(_generated),
         ],
         updates: {_database.trades},
         updateKind: UpdateKind.insert,
@@ -718,20 +682,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     if (!newTrade) {
       // Bound to that coordinator, with no record, and still not written: a write that another connection's record beat, read here as gone (it is never deleted), which this code does not explain.
       return const Err(P2pStorageFailure());
-    }
-    // Bound to that coordinator under a key drawn here, with no record: the key was pasted in, or acknowledged, since the reservation.
-    if (binding.provenance == BindingProvenance.drawnHere &&
-        binding.coordinator.network == robot.network) {
-      return switch (await newTradeStandingOf(
-        robot.network,
-        robot.keyFingerprint,
-      )) {
-        Ok(value: NewTradeStanding(keyDrawnHereOnly: false)) => const Err(
-          GarageKeyNotForTradesFailure(),
-        ),
-        Ok() => const Err(RobotNotForNewTradeFailure()),
-        Err(:final failure) => Err(failure),
-      };
     }
     return const Err(RobotNotForNewTradeFailure());
   }

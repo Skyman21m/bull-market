@@ -21,6 +21,7 @@ import 'package:robosats/robosats.dart';
 
 import 'support/book_attempts.dart';
 import 'support/fakes.dart';
+import 'support/garage_words.dart';
 
 void main() {
   late FakeTor tor;
@@ -1452,7 +1453,7 @@ void main() {
 }
 
 /// A vault that answers whether a key is stored with [answer], records each question, and fails the test on anything else: « Search order » never reads a key.
-final class _KeyStore implements GarageKeyRepository {
+final class _KeyStore with KeysFromRead implements GarageKeyRepository {
   final Result<bool, P2pFailure> answer;
   final List<String> calls = [];
 
@@ -1463,11 +1464,6 @@ final class _KeyStore implements GarageKeyRepository {
     calls.add('exists ${network.name}');
     return answer;
   }
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw StateError('create');
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -1483,10 +1479,6 @@ final class _KeyStore implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw StateError('firstUsableRobot');
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw StateError('delete');
 }
 
 /// The currency of the RoboSats list with this code.

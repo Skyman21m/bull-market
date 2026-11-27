@@ -8,7 +8,9 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
+import '../public/p2p_garage_key_port.dart';
 import '../public/p2p_wallet_port.dart';
+import 'data/garage_key_book_repository_impl.dart';
 import 'data/garage_key_repository_impl.dart';
 import 'data/isolate_robot_key_compute.dart';
 import 'data/osm_map_tile_adapter.dart';
@@ -54,12 +56,12 @@ import 'domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'domain/usecases/fetch_coordinator_limits_usecase.dart';
 import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/find_public_order_usecase.dart';
-import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
 import 'domain/usecases/list_robot_hosts_usecase.dart';
 import 'domain/usecases/load_federation_books_usecase.dart';
 import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
+import 'domain/usecases/new_garage_key_usecase.dart';
 import 'domain/usecases/open_map_tiles_usecase.dart';
 import 'domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'domain/usecases/read_garage_key_usecase.dart';
@@ -127,12 +129,13 @@ import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
 final class P2pLocator {
-  /// [garageKeys] is the vault's handle on the Garage Keys and [databaseDirectory] gives the directory of the feature's database: without them, nothing that reads or writes a Garage Key, a binding or the database is registered.
+  /// [garageKeys] is the vault's handle on the Garage Keys, [derivedGarageKeys] the shell's port of the keys of the words (#81) and [databaseDirectory] gives the directory of the feature's database: without them, nothing that reads or writes a Garage Key, a binding or the database is registered.
   /// [wallet] gives the wallet's port: without it, no port is registered.
   /// [bolt11Decoder] gives the shell's BOLT11 decoder, which the trade's checks read every invoice with: without it, the trade use cases decode no invoice, so that none is ever shown or paid.
   static void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
+    required P2pGarageKeyPort? derivedGarageKeys,
     required Future<Directory> Function()? databaseDirectory,
     required P2pWalletPort Function()? wallet,
     Bolt11Decoder Function()? bolt11Decoder,
@@ -160,10 +163,13 @@ final class P2pLocator {
       // The tiles of the maps (#246): OpenStreetMap's, outside Tor, the one connection the feature opens itself outside Tor (the wallet's price and swap service also leave outside Tor, through the wallet's port); nothing is created before a map's « Show tiles » is on and acknowledged.
       tiles: () => const OsmMapTileAdapter(),
     );
-    if (garageKeys != null && databaseDirectory != null) {
+    if (garageKeys != null &&
+        derivedGarageKeys != null &&
+        databaseDirectory != null) {
       registerGarageKeys(
         locator,
         garageKeys,
+        derivedGarageKeys,
         database: () => P2pDatabase.open(databaseDirectory),
         transport: () => locator<TorCoordinatorTransport>(),
         relays: () => locator<TorCoordinatorTransport>(),
@@ -179,19 +185,25 @@ final class P2pLocator {
     }
   }
 
-  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, the Garage that shows it, and the bindings of its robots in the database [database] makes, with the request of a robot that checks them over [transport].
+  /// Registers the Garage Keys of each network, the keys of the default wallet's words that [derivedGarageKeys] derives (#81) and the external key that the vault keeps behind [garageKeys], the use-cases that read them, activate the next key of the words, and import or delete the external key, the Garage that shows them, and the bindings of their robots in the database [database] makes, with the request of a robot that checks them over [transport].
   ///
   /// Registering touches no key and no file: the keystore and the database are read or written only when a use-case runs, and the Garage runs them only once the user opens it, and the book asks the vault whether a key is stored only when « Search order » found no order in the books received.
   static void registerGarageKeys(
     GetIt locator,
-    GarageKeys garageKeys, {
+    GarageKeys garageKeys,
+    P2pGarageKeyPort derivedGarageKeys, {
     required P2pDatabase Function() database,
     required CoordinatorTransport Function() transport,
     required NostrRelayTransport Function() relays,
     required DateTime Function() clock,
   }) {
+    // The vault's handle and the port of the keys of the words stay inside the repository: neither is registered in the container.
     locator.registerLazySingleton<GarageKeyRepository>(
-      () => GarageKeyRepositoryImpl(garageKeys),
+      () => GarageKeyRepositoryImpl(
+        garageKeys,
+        derivedGarageKeys,
+        GarageKeyBookRepositoryImpl(locator(), clock: clock),
+      ),
     );
     locator.registerLazySingleton<P2pDatabase>(
       database,
@@ -243,9 +255,6 @@ final class P2pLocator {
     locator.registerFactory<HasGarageKeyUsecase>(
       () => HasGarageKeyUsecase(locator()),
     );
-    locator.registerFactory<GenerateGarageKeyUsecase>(
-      () => GenerateGarageKeyUsecase(locator(), locator()),
-    );
     locator.registerFactory<ImportGarageKeyUsecase>(
       () => ImportGarageKeyUsecase(locator(), locator()),
     );
@@ -254,6 +263,9 @@ final class P2pLocator {
     );
     locator.registerFactory<DeriveFirstRobotUsecase>(
       () => DeriveFirstRobotUsecase(locator()),
+    );
+    locator.registerFactory<NewGarageKeyUsecase>(
+      () => NewGarageKeyUsecase(locator()),
     );
     locator.registerFactory<DeleteGarageKeyUsecase>(
       () => DeleteGarageKeyUsecase(locator()),
@@ -269,16 +281,11 @@ final class P2pLocator {
       () => AcknowledgeGarageKeyHistoryUsecase(locator()),
     );
     // The Garage of a network, created when the user opens it.
-    // The keys drawn and not acknowledged yet, in memory, for the whole run of the app.
-    locator.registerLazySingleton<UnacknowledgedGarageKeys>(
-      UnacknowledgedGarageKeys.new,
-    );
     // Where the user left the Garage of each network by hand (#251), in memory, for the whole run of the app.
     locator.registerLazySingleton<GarageNavigation>(GarageNavigation.new);
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,
-        locator(),
         locator(),
         locator(),
         locator(),
@@ -820,14 +827,13 @@ final class P2pLocator {
       (network, _) =>
           LastOrdersCubit(network, locator<ListLastOrdersUsecase>().execute),
     );
-    // The history of finished orders of the Garage (#253): the orders of the Garage Key shown, read from the device only; the cubit keeps the key's fingerprint, never the key.
+    // The history of finished orders of the Garage (#253): the orders of every Garage Key of the network (#81), read from the device only; the cubit keeps no key.
     locator.registerFactory<ListOrderHistoryUsecase>(
       () => ListOrderHistoryUsecase(locator()),
     );
     locator.registerFactoryParam<OrderHistoryCubit, NetworkGarageKey, void>(
       (key, _) => OrderHistoryCubit(
         key.network,
-        key.fingerprint,
         locator<ListOrderHistoryUsecase>().execute,
       ),
     );

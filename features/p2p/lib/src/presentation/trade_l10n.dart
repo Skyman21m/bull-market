@@ -85,7 +85,6 @@ extension TakeProblemL10n on TakeProblem {
   ) {
     final l10n = P2pLocalizations.of(context);
     return switch (failure) {
-      GarageKeyNotForTradesFailure() => l10n.p2pTakeKeyNotForTrades,
       RobotNotForNewTradeFailure() => l10n.p2pTakeRobotNotNew(coordinator),
       P2pStorageFailure() => l10n.p2pTakeNotRecorded,
       GarageKeyMissingFailure() ||

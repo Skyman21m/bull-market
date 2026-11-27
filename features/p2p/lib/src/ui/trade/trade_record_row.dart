@@ -7,20 +7,24 @@ import '../../presentation/coordinator_text.dart';
 import '../widgets/coordinator_avatar.dart';
 import '../widgets/word_fit_text.dart';
 
-/// One trade of this device as a row: [label] (« Active order #N », « Last order #N », the official client's words in its Garage, `GaragePage/GarageKeyProfile.tsx:209`, `:226`), the coordinator's name and image under it, a chevron; a tap calls [onTap].
+/// One trade of this device as a row: [label] (« Active order #N », « Last order #N », the official client's words in its Garage, `GaragePage/GarageKeyProfile.tsx:209`, `:226`), the coordinator's name, or [subtitle], and the coordinator's image, a chevron; a tap calls [onTap].
 ///
-/// The rows of « Active trades » (#88) and the « Last order #N » lines of the Garage (#216).
+/// The rows of « Active trades » (#88), the « Last order #N » lines of the Garage (#216), and its « Trade in progress #N » lines of another Garage Key than the one shown (#81).
 /// Its texts break between words only ([WordFitText], #273), so that a large text never cuts an order's number or a coordinator's name.
 class TradeRecordRow extends StatelessWidget {
   final TradeRecord record;
   final String label;
   final VoidCallback onTap;
 
+  /// The grey line under [label] in place of the coordinator's name, `null` for the name: « External Garage Key · Robot #3 · LibreBazaar » (#81).
+  final String? subtitle;
+
   const TradeRecordRow({
     super.key,
     required this.record,
     required this.label,
     required this.onTap,
+    this.subtitle,
   });
 
   @override
@@ -54,7 +58,7 @@ class TradeRecordRow extends StatelessWidget {
                     style: text.bodyLarge?.copyWith(color: colors.text),
                   ),
                   WordFitText(
-                    name,
+                    subtitle ?? name,
                     style: text.labelMedium?.copyWith(color: colors.textMuted),
                   ),
                 ],

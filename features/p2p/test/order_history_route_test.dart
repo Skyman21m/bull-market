@@ -23,7 +23,7 @@ import 'package:p2p/src/presentation/order_history_cubit.dart';
 import 'package:p2p/src/presentation/p2p_formats.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/garage/account_navigator.dart';
-import 'package:p2p/src/ui/garage/garage_wizard.dart' show RobotNickname;
+import 'package:p2p/src/ui/garage/robot_nickname.dart' show RobotNickname;
 import 'package:p2p/src/ui/garage/last_order_lines.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -474,6 +474,15 @@ void main() {
                     formats.day(record.closedAt ?? DateTime(0)),
                   ),
                 ),
+              ),
+              findsOneWidget,
+              reason: '${record.orderId}',
+            );
+            // Its key on a line of its own (#81, decided on 2026-11-26): the seam's key 0 of the words is the key the test stored; then its robot.
+            expect(
+              find.descendant(
+                of: line,
+                matching: find.text(l10n.p2pGarageKeyNumber(0)),
               ),
               findsOneWidget,
               reason: '${record.orderId}',

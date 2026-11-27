@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
@@ -31,7 +32,8 @@ import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show Secrets;
+import 'package:secrets/secrets.dart'
+    show GarageKeyMaterial, GarageKeySlot, GarageKeys, Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/fakes.dart' show FakeTransport;
@@ -140,7 +142,8 @@ final class _App {
         },
       ),
     );
-    for (var i = 0; i < 400 && !done; i++) {
+    // Up to 20 s of the fake clock: two empty slots of the vault settle in about 9 s (#81 stores a second key at the start).
+    for (var i = 0; i < 1000 && !done; i++) {
       await tester.pump(const Duration(milliseconds: 20));
     }
     if (error case final error?) throw error;
@@ -218,6 +221,7 @@ final class _App {
     final transport = _Coordinators(coordinator);
     final locator = GetIt.asNewInstance();
     addTearDown(locator.reset);
+    final vault = Secrets(scratchDirectory: () async => '.').garageKeys();
     final tor = StreamController<P2pTorState>.broadcast();
     addTearDown(tor.close);
     setUpP2pForTesting(
@@ -230,7 +234,8 @@ final class _App {
             })
           : () => tor.stream,
       clock: () => clock,
-      garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+      garageKeys: vault,
+      derivedGarageKeys: _TwoKeys(vault),
       wallet: FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
         ..rate = P2pWalletRateRead(91711.15),
       robotKeys: HarnessKeys(),
@@ -249,6 +254,10 @@ final class _App {
     final keyed = await app.wait(
       () async => (
         await locator<GarageKeyRepository>().import(_net, tradeKey),
+        await vault.import(
+          slot: GarageKeySlot.mainnet,
+          bytes: otherTradeKey.revealBytes(),
+        ),
         await locator<RobotBindingRepository>().recordGeneratedKey(
           _net,
           fingerprint,
@@ -256,7 +265,8 @@ final class _App {
       ),
     );
     expect(keyed.$1, isA<Ok<void, Failure>>());
-    expect(keyed.$2, isA<Ok<void, Failure>>());
+    expect(keyed.$2, isA<Ok<Object?, Failure>>());
+    expect(keyed.$3, isA<Ok<void, Failure>>());
     await tester.pumpWidget(routerHarness(router));
     tor.add(P2pTorState.ready);
     await app.settle();
@@ -880,31 +890,15 @@ void main() {
       (tester) async {
         final app = await _App.start(tester, torKnown: true);
         final id = app.first.orderId;
-        // The key changed since the order: deleted, another one in its place, drawn here.
-        final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
-          Ok(:final value) => value,
-          Err(:final failure) => throw StateError('$failure'),
-        };
-        final changed = await app.wait(
-          () async => (
-            await app.locator<GarageKeyRepository>().delete(_net),
-            await app.locator<GarageKeyRepository>().import(
-              _net,
-              otherTradeKey,
-            ),
-            await app.locator<RobotBindingRepository>().recordGeneratedKey(
-              _net,
-              other,
-            ),
-          ),
+        // « New key » since the order (#81): key 1 is the key in use, the order's key an earlier one.
+        expect(
+          await app.wait(_newKey(app)),
+          isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
         );
-        expect(changed.$1, isA<Ok<void, Failure>>());
-        expect(changed.$2, isA<Ok<void, Failure>>());
-        expect(changed.$3, isA<Ok<void, Failure>>());
         await app.openGarage();
         await next(app);
         final before = shown(tester);
-        expect(before, isNot(app.first.robot.accountIndex));
+        // The order of key 0 stays among the last orders whatever key is shown (the owner's request of 2026-11-26): a tap opens it, and the Garage of key 1 does not move.
         final states = <GarageState>[];
         final listening = garageOf(tester).stream.listen(states.add);
         addTearDown(listening.cancel);
@@ -913,9 +907,7 @@ void main() {
         expect(app.tradePages(), [id]);
         expect(states, isEmpty);
         await app.back();
-        expect(find.text('Robot #$before'), findsOneWidget);
         expect(shown(tester), before);
-        expect(states, isEmpty);
         await app.close();
       },
     );
@@ -1276,25 +1268,13 @@ void main() {
         expect(made.robot.accountIndex, greaterThan(0));
         await lockAndRead(app, made);
         await endAndRead(app, made, (order) => order.status = 5);
-        final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
-          Ok(:final value) => value,
-          Err(:final failure) => throw StateError('$failure'),
-        };
-        final changed = await app.wait(
-          () async => (
-            await app.locator<GarageKeyRepository>().delete(_net),
-            await app.locator<GarageKeyRepository>().import(
-              _net,
-              otherTradeKey,
-            ),
-            await app.locator<RobotBindingRepository>().recordGeneratedKey(
-              _net,
-              other,
-            ),
-          ),
+        // « New key » since the order (#81): key 1 is the key in use, the order's key an earlier one.
+        expect(
+          await app.wait(_newKey(app)),
+          isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
         );
-        expect(changed.$2, isA<Ok<void, Failure>>());
         await app.openGarage();
+        // The order of key 0 stays among the last orders, on key 1 too (the owner's request of 2026-11-26).
         expect(_lastOrder(made.orderId), findsOneWidget);
         expect(shown(tester), 0);
         await app.close();
@@ -1308,26 +1288,11 @@ void main() {
         final made = await makeOther(app);
         expect(made.robot.accountIndex, greaterThan(0));
         await lockAndRead(app, made);
-        final other = switch (GarageKeyFingerprint.of(otherTradeKey)) {
-          Ok(:final value) => value,
-          Err(:final failure) => throw StateError('$failure'),
-        };
-        final changed = await app.wait(
-          () async => (
-            await app.locator<GarageKeyRepository>().delete(_net),
-            await app.locator<GarageKeyRepository>().import(
-              _net,
-              otherTradeKey,
-            ),
-            await app.locator<RobotBindingRepository>().recordGeneratedKey(
-              _net,
-              other,
-            ),
-          ),
+        // « New key » since the order (#81): key 1 is the key in use, the order's key an earlier one.
+        expect(
+          await app.wait(_newKey(app)),
+          isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'value', 1),
         );
-        expect(changed.$1, isA<Ok<void, Failure>>());
-        expect(changed.$2, isA<Ok<void, Failure>>());
-        expect(changed.$3, isA<Ok<void, Failure>>());
         await app.openGarage();
         expect(shown(tester), 0);
         expect(find.text('Robot #0'), findsOneWidget);
@@ -1438,4 +1403,38 @@ void main() {
       },
     );
   });
+}
+
+/// « New key » of the Garage of [app]'s network, after key 0 (#81).
+Future<Result<int, P2pFailure>> Function() _newKey(_App app) =>
+    () => app.locator<GarageKeyRepository>().activateNext(_net, after: 0);
+
+/// Key 0 of the words as the key the test stored in the testnet slot ([tradeKey]), key 1 as the one it stored in the mainnet slot ([otherTradeKey]): for the tests of an order of an earlier key (#81), never a derivation.
+final class _TwoKeys implements P2pGarageKeyPort {
+  final GarageKeys _vault;
+
+  const _TwoKeys(this._vault);
+
+  @override
+  Future<Result<GarageKeyMaterial, P2pGarageKeyRefusal>> garageKey(
+    RobosatsNetwork network, {
+    required int index,
+  }) async {
+    final slot = switch (index) {
+      0 => GarageKeySlot.testnet,
+      1 => GarageKeySlot.mainnet,
+      _ => null,
+    };
+    if (slot == null) {
+      return const Err(
+        P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
+      );
+    }
+    return switch (await _vault.read(slot: slot)) {
+      Ok(:final value) => Ok(value),
+      Err() => const Err(
+        P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
+      ),
+    };
+  }
 }

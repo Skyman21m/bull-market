@@ -86,6 +86,20 @@ Future<KeyMaterialReport> checkKeyMaterial(String rootPath) async {
         '$relative: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
       );
     }
+    // The composition root builds the adapter of the derived Garage Key at most once, in the shape [_KeyMaterialVisitor.isAdapterConstruction] allows (#81): without it, P2P has no Garage, which is no leak.
+    if (relative == 'lib/locator.dart' && visitor.adapterConstructions > 1) {
+      violations.add(
+        '$relative: AppLocator.setupP2p#more than one construction of $_adapterClass',
+      );
+    }
+    // The adapter derives the Garage Key once, in the shape [_KeyMaterialVisitor.isDerivationCall] allows (#81): a file that no longer calls it, as one that calls `secret.derive.bip85` instead, fails.
+    if (relative == _adapterPath &&
+        visitor.declaresAdapter &&
+        visitor.derivationCalls != 1) {
+      violations.add(
+        '$relative: $_adapterClass.garageKey#not one call of secret.derive.garageKey of the allowed shape',
+      );
+    }
     for (final target in directiveTargets(result.unit)) {
       final real = File(target).existsSync()
           ? File(target).resolveSymbolicLinksSync()
@@ -218,6 +232,13 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   int handleCalls = 0;
   bool declaresAppLocator = false;
 
+  /// How many calls of `secret.derive.garageKey` of the allowed shape the unit makes, and whether it declares the adapter class (#81, see [checkKeyMaterial]).
+  int derivationCalls = 0;
+  bool declaresAdapter = false;
+
+  /// How many constructions of the adapter of the allowed shape the unit makes (#81, see [checkKeyMaterial]).
+  int adapterConstructions = 0;
+
   /// The P2P failures that a reader's file names, constructs or returns, checked once the unit is read (see [checkFailure]).
   final Set<InterfaceElement> readerFailures = {};
 
@@ -307,6 +328,127 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
         flag?.enclosingElement?.name == 'setupP2p';
   }
 
+  /// Whether [node] is the one call of `secret.derive.garageKey` the app makes (#81).
+  ///
+  /// In the method `garageKey` of the class [_adapterClass] of [_adapterPath], `<secret>.derive.garageKey(network: …, index: …)`, the getter `derive` being `SecretExtension.derive` of the vault, with these two named arguments and no other.
+  bool isDerivationCall(AstNode node) {
+    final call = node.parent;
+    if (path != _adapterPath ||
+        node is! SimpleIdentifier ||
+        call is! MethodInvocation ||
+        call.methodName != node) {
+      return false;
+    }
+    final target = call.realTarget;
+    final derive = switch (target) {
+      PropertyAccess(:final propertyName) => propertyName.element,
+      PrefixedIdentifier(:final identifier) => identifier.element,
+      _ => null,
+    };
+    if (derive is! ExecutableElement ||
+        derive.name != 'derive' ||
+        derive.enclosingElement?.name != 'SecretExtension' ||
+        !(derive.library.uri.toString().startsWith('package:secrets/'))) {
+      return false;
+    }
+    final arguments = call.argumentList.arguments;
+    if (arguments.length != 2 ||
+        !arguments.every((argument) => argument is NamedExpression) ||
+        {
+          for (final argument in arguments.cast<NamedExpression>())
+            argument.name.label.name,
+        }.difference({'network', 'index'}).isNotEmpty) {
+      return false;
+    }
+    final (:owner, :function) = _enclosingDeclaration(node);
+    return owner == _adapterClass && function == 'garageKey';
+  }
+
+  /// Whether the class [element] is the adapter of the derived Garage Key, in its file.
+  bool isAdapterClass(Element? element) =>
+      element is InterfaceElement &&
+      element.name == _adapterClass &&
+      declarationPath(element) == _adapterPath;
+
+  /// Whether [node], the constructor of the adapter, is the one construction of it the composition makes (#81).
+  ///
+  /// In the static `AppLocator.setupP2p` of `lib/locator.dart`, `DerivedGarageKeyAdapter(…)` is the value of `withGarageKeys ? … : null`, whose condition is that method's own flag, and that choice is the `derivedGarageKeys:` argument of `P2pFeature.setup`, called as the method's body or as a statement of it: so never in the WorkManager isolate, and never in a container.
+  bool isAdapterConstruction(ConstructorName node) {
+    final creation = node.parent;
+    if (path != 'lib/locator.dart' || creation is! InstanceCreationExpression) {
+      return false;
+    }
+    final choice = creation.parent;
+    if (choice is! ConditionalExpression ||
+        choice.thenExpression != creation ||
+        choice.elseExpression is! NullLiteral) {
+      return false;
+    }
+    final condition = choice.condition;
+    final argument = choice.parent;
+    final arguments = argument?.parent;
+    final setup = arguments?.parent;
+    if (condition is! SimpleIdentifier ||
+        argument is! NamedExpression ||
+        argument.name.label.name != 'derivedGarageKeys' ||
+        arguments is! ArgumentList ||
+        setup is! MethodInvocation ||
+        !_isP2pSetup(setup.methodName.element) ||
+        !_isDirectStatementOf(setup, 'setupP2p')) {
+      return false;
+    }
+    final flag = condition.element;
+    return isCompositionFlag(flag) &&
+        flag?.enclosingElement?.name == 'setupP2p';
+  }
+
+  /// The adapter of the derived Garage Key is built in the one place [isAdapterConstruction] allows, and nowhere else: a construction elsewhere, a tear-off of its constructor and a dot shorthand fail (#81).
+  void checkAdapterConstruction(ConstructorName node) {
+    final constructor = node.element;
+    if (constructor == null || !isAdapterClass(constructor.enclosingElement)) {
+      return;
+    }
+    if (isAdapterConstruction(node)) {
+      adapterConstructions++;
+      return;
+    }
+    violations.add('$path: $_adapterClass#built outside AppLocator.setupP2p');
+  }
+
+  /// In the file of the adapter, the vault gives what [_adapterVaultMembers] lists and nothing else: never `secret.derive.bip85`, whose `hex` gives 32 bytes of the shape of a Garage Key from another path (#81, review of #289).
+  void checkAdapterVaultUse(Element? element, AstNode node) {
+    if (path != _adapterPath ||
+        element is! ExecutableElement ||
+        element is ConstructorElement ||
+        !(element.library.uri.toString().startsWith('package:secrets/'))) {
+      return;
+    }
+    final owner = element.enclosingElement?.name;
+    if (owner == 'GarageKeySlot' ||
+        _adapterVaultMembers.contains('$owner.${element.name}')) {
+      return;
+    }
+    violations.add(
+      '$path: package:secrets#$owner.${element.name} in the Garage Key adapter',
+    );
+  }
+
+  /// The port of the derived Garage Key, and its member, are named only in the files of [_derivationPortUsers] (#81).
+  void checkDerivationPortUse(Element? element) {
+    final type = element is InterfaceElement
+        ? element
+        : element?.enclosingElement;
+    if (type is! InterfaceElement ||
+        type.name != 'P2pGarageKeyPort' ||
+        type.library.uri.toString() != _derivationPortLibrary ||
+        _derivationPortUsers.contains(path)) {
+      return;
+    }
+    violations.add(
+      '$path: package:p2p#P2pGarageKeyPort outside the files that may hold it',
+    );
+  }
+
   void check(Element? element, AstNode node) {
     if (element == null) {
       if (node is SimpleIdentifier &&
@@ -325,6 +467,12 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
         symbol.endsWith('#Secrets.garageKeys') &&
         isHandleCall(node)) {
       handleCalls++;
+      return;
+    }
+    if (symbol.startsWith('package:secrets/') &&
+        symbol.endsWith('#SecretDerivation.garageKey') &&
+        isDerivationCall(node)) {
+      derivationCalls++;
       return;
     }
     if (_isException(path, node, symbol)) return;
@@ -378,6 +526,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitNamedType(NamedType node) {
     checkVaultUse(node.element);
+    checkDerivationPortUse(node.element);
     noteReaderFailure(node.element);
     super.visitNamedType(node);
   }
@@ -436,6 +585,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     final name = node.namePart.typeName.lexeme;
     final element = node.declaredFragment?.element;
     if (name == 'AppLocator') declaresAppLocator = true;
+    if (name == _adapterClass && path == _adapterPath) declaresAdapter = true;
     if (reader != null && name == reader.owner) {
       if (element == null) {
         violations.add('$path: $name#unresolved class');
@@ -674,6 +824,9 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     if (types.any(_mentionsGarageKeys)) {
       violations.add('$path: package:get_it#GarageKeys in a container');
     }
+    if (types.any(_mentionsDerivation)) {
+      violations.add('$path: package:get_it#P2pGarageKeyPort in a container');
+    }
   }
 
   @override
@@ -757,6 +910,8 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       check(node.element, node);
       checkComposition(node);
       checkVaultUse(node.element);
+      checkAdapterVaultUse(node.element, node);
+      checkDerivationPortUse(node.element);
       checkPrivateUse(node.element, node);
       noteReaderFailure(node.element);
       checkDynamicAccess(node);
@@ -784,6 +939,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitConstructorName(ConstructorName node) {
     check(node.element, node);
+    checkAdapterConstruction(node);
     super.visitConstructorName(node);
   }
 
@@ -802,6 +958,9 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   ) {
     check(node.element, node);
     checkVaultUse(node.element);
+    if (isAdapterClass(node.element?.enclosingElement)) {
+      violations.add('$path: $_adapterClass#built outside AppLocator.setupP2p');
+    }
     super.visitDotShorthandConstructorInvocation(node);
   }
 }
@@ -830,6 +989,49 @@ const _unresolvedSensitiveMembers = {
 };
 
 const _bridgeLibrary = 'package:bull_sdk/src/rust/frb_generated.dart';
+
+/// The one caller of `secret.derive.garageKey` (#81): the method `garageKey` of this class of this file, which the shell hands the P2P feature as its [_derivationPortLibrary] port.
+const _adapterPath =
+    'lib/features/p2p_garage_key/derived_garage_key_adapter.dart';
+const _adapterClass = 'DerivedGarageKeyAdapter';
+
+/// What the adapter may take from the vault besides the values of `GarageKeySlot`: the default wallet's secret, its `derive`, and `garageKey` (#81).
+const _adapterVaultMembers = {
+  'Secrets.fetch',
+  'SecretExtension.derive',
+  'SecretDerivation.garageKey',
+};
+
+/// The port through which the P2P feature receives the derived Garage Key, and the files that may name it (#81): the port itself, the feature's export of it, the facade that receives it, the locator that registers it, the test seam, the repository that reads its keys, and the shell's adapter.
+const _derivationPortLibrary = 'package:p2p/public/p2p_garage_key_port.dart';
+const _derivationPortUsers = {
+  'features/p2p/lib/public/p2p_garage_key_port.dart',
+  'features/p2p/lib/p2p.dart',
+  'features/p2p/lib/public/p2p_facade.dart',
+  'features/p2p/lib/src/p2p_locator.dart',
+  'features/p2p/lib/testing.dart',
+  'features/p2p/lib/src/data/garage_key_repository_impl.dart',
+  _adapterPath,
+};
+
+/// Whether [type] is or contains the port of the derived Garage Key or its adapter (#81).
+bool _mentionsDerivation(DartType? type) => switch (type) {
+  InterfaceType(:final element, :final typeArguments) =>
+    (element.name == 'P2pGarageKeyPort' &&
+            element.library.uri.toString() == _derivationPortLibrary) ||
+        element.name == _adapterClass ||
+        typeArguments.any(_mentionsDerivation),
+  FunctionType(:final returnType, :final formalParameters) =>
+    _mentionsDerivation(returnType) ||
+        formalParameters.any(
+          (parameter) => _mentionsDerivation(parameter.type),
+        ),
+  RecordType(:final positionalFields, :final namedFields) => [
+    for (final field in positionalFields) field.type,
+    for (final field in namedFields) field.type,
+  ].any(_mentionsDerivation),
+  _ => false,
+};
 
 // A relative URI in an inactive conditional alternative is never resolved, so
 // it is matched on its path.
@@ -895,7 +1097,7 @@ String? materialSymbol(Element element) {
           symbol == 'EncryptionService.decrypt',
     // The bytes of a stored RoboSats Garage Key, and its two clear forms: whoever holds one controls every robot derived from it.
     // The handle that reads and writes Garage Keys is asked for by the composition root alone (see [_KeyMaterialVisitor.isHandleCall]).
-    // The Garage Key derived from a secret's words (#81), as the flat operation and its grouped spelling: no production file may call either yet.
+    // The Garage Key derived from a secret's words (#81), as the flat operation and its grouped spelling: only the adapter of [_adapterPath] calls the grouped one, in the shape [_KeyMaterialVisitor.isDerivationCall] allows.
     _ when uri.startsWith('package:secrets/') =>
       symbol == 'GarageKeyMaterial.bytes' ||
           symbol == 'Secrets.garageKeys' ||
@@ -921,17 +1123,36 @@ const _garageKeyReaders = {
     declarations: {'GarageKeyRepositoryImpl'},
     supertypes: {'GarageKeyRepository'},
     surface: {
-      'new': 'GarageKeyRepositoryImpl Function(GarageKeys)',
-      // The key the draw made, built from the bytes the vault drew, so that the draw records the history of that very key (#28, review of #60).
-      'create':
-          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
-      'import':
-          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKey)',
-      'exists': 'Future<Result<bool, P2pFailure>> Function(RobosatsNetwork)',
+      // The vault's handle, for the external key (drawn at random on this device before #81, or pasted), the port of the keys of the words, and the book of their indexes and of the key selected (#81).
+      'new':
+          'GarageKeyRepositoryImpl Function(GarageKeys, P2pGarageKeyPort, GarageKeyBookRepository)',
+      'keyring':
+          'Future<Result<GarageKeyring, P2pFailure>> Function(RobosatsNetwork)',
       'read':
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+      // The decisions of 2026-11-26 on the Garage Key card (#81): the external key read alone, « Back to internal Garage Keys », an internal key refused at an import by its fingerprint, « Your Garage Keys » shown once.
+      'external':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+      'selectInternal':
+          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+      'internalIndexOf':
+          'Future<Result<int?, P2pFailure>> Function(RobosatsNetwork, GarageKeyFingerprint)',
+      'externalNoticeShown': 'Future<Result<void, P2pFailure>> Function()',
+      'derived':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork, int)',
+      'forNewTrade':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+      'ofSlot':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobotSlot)',
+      'activateNext':
+          'Future<Result<int, P2pFailure>> Function(RobosatsNetwork, {required int after})',
+      'select':
+          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKeySelection)',
+      'exists': 'Future<Result<bool, P2pFailure>> Function(RobosatsNetwork)',
       'firstUsableRobot':
           'Future<Result<NetworkRobot, P2pFailure>> Function(RobosatsNetwork)',
+      'import':
+          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKey)',
       'delete': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
     },
   ),
@@ -955,6 +1176,14 @@ const _garageKeyReaders = {
 /// The library of each type that the public surface or the supertypes of a reader may name (issue #47): a type of the same name from another library fails, so that the printed signatures of [_garageKeyReaders] say what they mean.
 const _readerTypes = {
   'bool': 'dart:core',
+  'int': 'dart:core',
+  'GarageKeyring': 'package:p2p/src/domain/garage_keyring.dart',
+  'GarageKeyFingerprint': 'package:p2p/src/domain/garage_key_fingerprint.dart',
+  'GarageKeySelection': 'package:p2p/src/domain/garage_keyring.dart',
+  'GarageKeyBookRepository':
+      'package:p2p/src/domain/repositories/garage_key_book_repository.dart',
+  'P2pGarageKeyPort': 'package:p2p/public/p2p_garage_key_port.dart',
+  'RobotSlot': 'package:p2p/src/domain/robot_binding.dart',
   'Future': 'dart:async',
   'Result': 'package:primitives/src/result.dart',
   'GarageKey': 'package:robosats/src/garage_key.dart',
@@ -1100,13 +1329,20 @@ bool _isVaultDeclaration(Element element) =>
 
 /// The files of the workspace's packages and features that may refer to the vault, `package:secrets`, and the declarations each one may refer to (issue #47).
 ///
-/// Only the P2P feature does: its facade receives the Garage Key handle from the shell, its locator registers it, and its repository uses it.
+/// Only the P2P feature does: its facade receives the Garage Key handle from the shell, its locator registers it, and its repository uses it; the port of the derived Garage Key names the material it hands the repository (#81).
 /// Its test seam, `package:p2p/testing.dart`, registers the Garage over a handle a test made (#54); no production library imports it (`test/features/p2p/p2p_testing_seam_test.dart`).
 /// `features/p2p/test/secrets_imports_test.dart` pins the names these files import; a declaration here may be used without being imported, as the repository uses `GarageKeyMaterial` through the result of a read.
 const _vaultUsers = {
   'features/p2p/lib/public/p2p_facade.dart': {'GarageKeys'},
+  // The port of the Garage Key derived from the words (#81), which hands the repository the material it reads.
+  'features/p2p/lib/public/p2p_garage_key_port.dart': {'GarageKeyMaterial'},
   'features/p2p/lib/src/p2p_locator.dart': {'GarageKeys'},
-  'features/p2p/lib/testing.dart': {'GarageKeys'},
+  // The test seam reads a key the test imported in a slot as key 0 of the words, for the tests of trades (#81).
+  'features/p2p/lib/testing.dart': {
+    'GarageKeyMaterial',
+    'GarageKeySlot',
+    'GarageKeys',
+  },
   'features/p2p/lib/src/data/garage_key_repository_impl.dart': {
     'GarageKeyAlreadyExistsFailure',
     'GarageKeyCorruptFailure',

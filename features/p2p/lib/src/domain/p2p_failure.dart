@@ -62,11 +62,44 @@ final class GarageKeyInvalidFailure extends P2pFailure {
   const GarageKeyInvalidFailure(this.reason);
 }
 
+/// The Garage Key the user gave is one of the internal Garage Keys this device activated on the network, number [index]: it is not imported as the external Garage Key, which would make one key both, and nothing was recorded or stored (review of #292).
+final class GarageKeyIsInternalFailure extends P2pFailure {
+  /// The number of the internal Garage Key it is.
+  final int index;
+
+  const GarageKeyIsInternalFailure(this.index);
+}
+
 /// No robot can be derived from the stored key: every index searched gave a token that a coordinator cannot be contacted with.
 ///
 /// It does not happen with a key drawn at random.
 final class GarageRobotUnavailableFailure extends P2pFailure {
   const GarageRobotUnavailableFailure();
+}
+
+/// No default Bitcoin wallet on the network's environment: the Garage Key comes from its words, so there is none (#81). Never a reason to draw one at random.
+final class GarageKeyNoWalletFailure extends P2pFailure {
+  const GarageKeyNoWalletFailure();
+}
+
+/// The default wallet has a BIP39 passphrase: its words alone would not give the Garage Key back, so none is derived (#81, design note `docs/design/garage-key-from-the-words.md` § 1).
+final class GarageKeyPassphraseFailure extends P2pFailure {
+  const GarageKeyPassphraseFailure();
+}
+
+/// The default wallet's secret is a seed without words, which cannot give the Garage Key (#81).
+final class GarageKeyNoWordsFailure extends P2pFailure {
+  const GarageKeyNoWordsFailure();
+}
+
+/// The key the words give again at an index is not the one this device recorded there (its `GarageKeyFingerprint` differs): other words were restored in the same book, or the default wallet changed (#81). Nothing is derived from it and nothing is signed with it, so the robots of two wallets never mix.
+final class GarageKeyMismatchFailure extends P2pFailure {
+  const GarageKeyMismatchFailure();
+}
+
+/// The highest key the words give, index 0x7fffffff, is already in use: there is no next key (#81).
+final class GarageKeyLastIndexFailure extends P2pFailure {
+  const GarageKeyLastIndexFailure();
 }
 
 /// The feature's database could not be read or written: nothing was sent to a coordinator, and no key was stored.
@@ -126,14 +159,6 @@ final class RobotCoordinatorBusyFailure extends P2pFailure {
 /// It is kept in memory only and ends with the run; reading back a robot already bound to that coordinator is not affected.
 final class RobotCoordinatorTooManyRefusalsFailure extends P2pFailure {
   const RobotCoordinatorTooManyRefusalsFailure();
-}
-
-/// The Garage Key of this network may not start a trade: it is not recorded as drawn on this device for the network, or it is recorded as imported or acknowledged on a network.
-///
-/// Its robots may live on coordinators from elsewhere, which hold their credentials, so none is used for a new trade (design note `docs/design/phase-2-taking-an-order.md` § 3.3); nothing was written or sent.
-/// A robot of such a key may still finish an order it already holds, once the user takes that trade over.
-final class GarageKeyNotForTradesFailure extends P2pFailure {
-  const GarageKeyNotForTradesFailure();
 }
 
 /// The federation list of this version of the app gives this coordinator no onion address on the network of the trade: no robot request can go there, and nothing was written or sent.

@@ -8,7 +8,7 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys).
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, the payouts a buyer gave per contract (since schema 9), and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys); since schema 10 (#81), the Garage Keys of the wallet's words this device activated, by index and fingerprint, the key selected on each network (an internal Garage Key, or the external Garage Key the vault keeps) with the last internal one selected, and the Garage's notices shown once.
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
@@ -26,6 +26,9 @@ part 'p2p_database.g.dart';
     StoredTradeChatNostrPins,
     StoredMakerTerms,
     StoredTradePayouts,
+    DerivedGarageKeys,
+    SelectedGarageKeys,
+    GarageNotices,
   ],
   include: {
     'trades.drift',
@@ -34,10 +37,11 @@ part 'p2p_database.g.dart';
     'trade_chat_pins.drift',
     'maker_terms.drift',
     'trade_payouts.drift',
+    'garage_keys.drift',
   },
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 9;
+  static const int schema = 10;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///
@@ -147,6 +151,11 @@ final class P2pDatabase extends _$P2pDatabase {
       "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL FROM trade_trails AS trail "
       "WHERE role = 'buyer' AND position NOT IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'publicAgain', 'notAvailable') "
       'AND NOT EXISTS (SELECT 1 FROM trade_payouts WHERE trade_payouts.key_fingerprint = trail.key_fingerprint AND trade_payouts.robot_index = trail.robot_index AND trade_payouts.take = trail.take)';
+
+  /// « Your Garage Keys » made due by the step to schema 10 (#81, decided on 2026-11-26): a file of schema 9 is an update, the one case where a Garage Key the vault kept is renamed the external Garage Key; a new file never has it due. Written once, in the step's own new table; a step run again leaves a notice shown as it is.
+  static const String _externalKeyNamedDue =
+      "INSERT INTO garage_notices (notice, shown) VALUES ('externalKeyNamed', 0) "
+      'ON CONFLICT (notice) DO NOTHING';
 
   /// Whether the connection enforces foreign keys, which the step to schema 8 needs off to drop `trades` (and turns off when they are on: `beforeOpen` turns them on again after every step), and the rows that break a foreign key anywhere in the file, which it needs none of before it drops its copies.
   static const String _foreignKeys = 'PRAGMA foreign_keys';
@@ -410,6 +419,19 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradeTrailsTermsTrace);
         await m.createTrigger(schema.tradePaymentsSatsKnown);
         await m.createTrigger(schema.tradePaymentsSatsForward);
+      },
+      from9To10: (m, schema) async {
+        // The Garage Keys of the words (#81, design note `docs/design/garage-key-from-the-words.md` § 2): the keys this device activated and their triggers, the key selected per network, and the Garage's notices shown once with their triggers, each made only when missing, so that a step that stopped after any of them runs again over the file it left; then « Your Garage Keys » made due, the one row the step writes, in its own new table. No row of an older table is copied, changed or deleted: the records of the key the vault keeps, the external Garage Key since #81, stay as they are, under its fingerprint.
+        await m.createTable(schema.derivedGarageKeys);
+        await m.createTable(schema.selectedGarageKeys);
+        await m.createTrigger(schema.derivedGarageKeysNeverDeleted);
+        await m.createTrigger(schema.derivedGarageKeysNeverChanged);
+        await m.createTrigger(schema.derivedGarageKeysInOrder);
+        await m.createTrigger(schema.derivedGarageKeysInsertedOnce);
+        await m.createTable(schema.garageNotices);
+        await m.createTrigger(schema.garageNoticesShownOnce);
+        await m.createTrigger(schema.garageNoticesNeverDeleted);
+        await customStatement(_externalKeyNamedDue);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.

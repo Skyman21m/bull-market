@@ -47,8 +47,12 @@ class GarageKeyView extends StatelessWidget {
           children: [
             Expanded(
               child: ExcludeSemantics(
+                // One line, cut at its end as the official client's field shows it (the mock-up of 2026-11-26, question 3): the copy button gives the whole text.
                 child: Text(
                   garageKey.revealBech32(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                   style: text.bodyMedium?.copyWith(
                     color: colors.text,
                     // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
@@ -100,13 +104,15 @@ class _CopyButtonState extends State<_CopyButton> {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
-    return IconButton(
+    // A filled button, well in sight: copying the key is meant to be easy (the owner's answer of 2026-11-26 on the mock-up).
+    return IconButton.filled(
       tooltip: _copied ? l10n.p2pCommonCopied : l10n.p2pCommonCopy,
       onPressed: _copy,
-      icon: Icon(
-        _copied ? Icons.check : Icons.copy,
-        color: _copied ? colors.success : colors.primary,
+      style: IconButton.styleFrom(
+        backgroundColor: _copied ? colors.success : colors.primary,
+        foregroundColor: colors.onPrimary,
       ),
+      icon: Icon(_copied ? Icons.check : Icons.copy),
     );
   }
 }

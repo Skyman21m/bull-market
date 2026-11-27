@@ -787,7 +787,6 @@ class _P2pPageState extends State<_P2pPage> {
               final view = GarageView(
                 clipboard: locator<GarageKeyClipboard>(),
                 reauthenticate: widget.reauthenticate,
-                onBrowseOffers: () => _show(P2pDestination.offers),
                 robotCoordinator: (key, index) =>
                     locator<RobotCoordinatorCubit>(param1: key, param2: index),
                 coordinatorDetails: (request) =>
