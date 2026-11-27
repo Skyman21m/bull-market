@@ -21,6 +21,7 @@ import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -164,6 +165,13 @@ final class _Run {
   Future<void> tap(Finder finder) async {
     await tester.ensureVisible(finder);
     await tester.pump();
+    // A guarded button just shown (« Pay ») ignores taps for a moment (security review of #291, B1): the tap comes later, as a user's.
+    if (find
+        .ancestor(of: finder, matching: find.byType(MovedTapGuard))
+        .evaluate()
+        .isNotEmpty) {
+      await tester.pump(MovedTapGuard.afterMove);
+    }
     await tester.tap(finder);
     await tester.pump();
   }

@@ -262,6 +262,8 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
               // A tap aimed at what stood here before the comparison's line came or went is ignored for a moment (#249); « Continue » stays enabled and goes on at the next tap.
               MovedTapGuard(
                 key: TakeOrderSection.continueButton,
+                // Shown once the read the user waited for has come, where « Take Order » stood busy: no delay when it appears (security review of #291, B1).
+                armsWhenShown: false,
                 builder: (context, guard) => TradeButton(
                   label: l10n.p2pCommonContinue,
                   busy: state is! TakeReady || _waitingPrice,

@@ -255,6 +255,8 @@ final class _Journey {
     await tap(find.text(l10n.p2pPayWithThisWallet));
     await settle(tester);
     await waitFor(find.text(l10n.p2pCommonGoBack));
+    // « Pay » just shown ignores taps for a moment (security review of #291, B1): a user's tap comes later.
+    await tester.pump(MovedTapGuard.afterMove);
     return quote;
   }
 
