@@ -123,8 +123,9 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
         !scrolled &&
         lastOnScreen != null &&
         (onScreen - lastOnScreen).distance > 0.5;
-    // Shown again: what was drawn over it no longer takes a tap there (#294). Not while a position around scrolls (a finger, a fling, an animation): a scrolling list ignores the taps on its content (`Scrollable`), which is no cover. A jump since the last measure is no reason to skip it: the list takes taps again at once, and this frame's layout already shows the jump, so that a jump in the very frame a dialog starts to close does not hide the uncovering for one more frame (#299).
-    final reachable = scrolling ? null : _reachableNow(positions);
+    // Shown again: what was drawn over it no longer takes a tap there (#294). The tap is tried after every frame, a jump since the last measure included, whose layout this frame already shows, so that a jump in the very frame a dialog starts to close does not hide the uncovering for one more frame (#299). While a position around scrolls, only a tap that reaches the button is kept: a scrolling list may ignore the taps on its content (a finger, a fling, an animation; `Scrollable`), which is no cover, so that a tap that does not reach it then says nothing; but a scroll does not always ignore them (the settling after a jump, as a page view brought back to its page, or a bounce past an edge, take taps), so that a tap that reaches it always means it is shown (security review of #299, C1).
+    final probe = _reachableNow(positions);
+    final reachable = scrolling && probe != true ? null : probe;
     final uncovered = _reachable == false && reachable == true;
     if (reachable != null) _reachable = reachable;
     // Just appeared: the delay starts at its first measure (security review of #291, B1).

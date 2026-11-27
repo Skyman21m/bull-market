@@ -2127,7 +2127,7 @@ void main() {
       final at = '$width × $height ×$scale ${locale.languageCode}';
       final who = fiatSent ? 'a seller at 10 (fiat sent)' : 'a seller at 9';
       testWidgets(
-        '$who, « Open Dispute » on: « Open Dispute » tapped once, then « Agree and open dispute » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps within 0.7 s are ignored, the first after opens the dispute',
+        '$who, « Open Dispute » on: « Open Dispute » tapped once, then « Agree and open dispute » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps at 300 and 500 ms are ignored, the one at 700 ms opens the dispute, once',
         (tester) async {
           final confirmation = await _sellerInChat(
             tester,
@@ -2152,8 +2152,8 @@ void main() {
             '« Agree and open dispute » after « Open Dispute » ($who, $at): opened at $outcomes',
             outcomes.values.where((done) => !done).length,
           );
-          expect(outcomes[300], isFalse);
-          expect(outcomes[500], isFalse);
+          // Ignored before 0.7 s, opened by the first tap after it (security review of #301, R3).
+          expect(outcomes, {300: false, 500: false, 700: true});
           expect(_disputesSent(confirmation), 1);
           await confirmation.close();
         },

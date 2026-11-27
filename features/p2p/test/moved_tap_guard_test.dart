@@ -742,7 +742,7 @@ void main() {
     );
 
     testWidgets(
-      'shown, then the page scrolled by an animation (the list ignores taps while it runs, which is no cover): nothing is tried while it runs, so its end starts no delay; a tap 100 ms after it counts (#299)',
+      'shown, then the page scrolled by an animation (the list ignores taps while it runs, which is no cover): a tap tried while it runs reaches nothing and says nothing, so its end starts no delay; a tap 100 ms after it counts (#299)',
       (tester) async {
         final shown = ValueNotifier<bool>(true);
         addTearDown(shown.dispose);
@@ -767,6 +767,110 @@ void main() {
         expect(position.pixels, 20);
         await tapSoon(tester);
         expect(taps, 1);
+      },
+    );
+
+    /// [body] built with the page's context, a dialog opened over it and its delay spent; then the dialog closed while [jump] runs from a callback after that very frame, before the guard's measure (as another widget's `ensureVisible`); a tap on the button 16, 50 and 100 ms after the next frame, then one after the delay: how many counted after each.
+    Future<List<int>> closedWithAScroll(
+      WidgetTester tester, {
+      required Widget Function(Widget button) body,
+      required void Function() jump,
+    }) async {
+      var jumpNext = false;
+      var running = true;
+      addTearDown(() => running = false);
+      // Registered before the guard is built, and again at each frame before the guard's own callback: it runs first after every frame.
+      void first(Duration _) {
+        if (!running) return;
+        if (jumpNext) {
+          jumpNext = false;
+          jump();
+        }
+        WidgetsBinding.instance.addPostFrameCallback(first);
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback(first);
+      late BuildContext page;
+      await tester.pumpWidget(
+        app(
+          Builder(
+            builder: (context) {
+              page = context;
+              return body(button());
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(MovedTapGuard.afterMove);
+      await openDialog(tester, page);
+      await tester.pump(MovedTapGuard.afterMove);
+      jumpNext = true;
+      Navigator.of(tester.element(find.text('dialog'))).pop();
+      // The first frame of the closing, the scroll started after it, its measure skipped.
+      await tester.pump(const Duration(milliseconds: 16));
+      final counted = <int>[];
+      var elapsed = 0;
+      for (final ms in const [16, 50, 100]) {
+        await tester.pump(Duration(milliseconds: ms - elapsed));
+        elapsed = ms;
+        await tester.tap(find.text('Pay'), warnIfMissed: false);
+        await tester.pump();
+        counted.add(taps);
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('dialog'), findsNothing);
+      await tester.pump(MovedTapGuard.afterMove);
+      await tester.tap(find.text('Pay'));
+      await tester.pump();
+      counted.add(taps);
+      return counted;
+    }
+
+    testWidgets(
+      'covered by a dialog, the page view around the list jumped by a point off its page in the frame the dialog starts to close: the page view settles back, scrolling, and takes taps meanwhile; the tap tried then reaches the button, which is shown again: taps 16, 50 and 100 ms later are ignored, one after the delay counts (security review of #299, C1, S6)',
+      (tester) async {
+        final pages = PageController();
+        addTearDown(pages.dispose);
+        final counted = await closedWithAScroll(
+          tester,
+          body: (button) => PageView(
+            controller: pages,
+            children: [
+              ListView(
+                children: [
+                  const SizedBox(height: 200),
+                  button,
+                  const SizedBox(height: 2000),
+                ],
+              ),
+              const Text('other'),
+            ],
+          ),
+          jump: () => pages.position.jumpTo(pages.position.pixels + 1),
+        );
+        expect(counted, [0, 0, 0, 1]);
+      },
+    );
+
+    testWidgets(
+      'covered by a dialog, a bouncing list jumped 2 points past its start in the frame the dialog starts to close: it bounces back, scrolling, and takes taps meanwhile; the tap tried then reaches the button, which is shown again: taps 16, 50 and 100 ms later are ignored, one after the delay counts (security review of #299, C1, S9)',
+      (tester) async {
+        final counted = await closedWithAScroll(
+          tester,
+          body: (button) => ListView(
+            physics: const BouncingScrollPhysics(),
+            children: [
+              const SizedBox(height: 200),
+              button,
+              const SizedBox(height: 2000),
+            ],
+          ),
+          jump: () => Scrollable.of(
+            tester.element(find.text('Pay')),
+          ).position.jumpTo(-2),
+        );
+        expect(counted, [0, 0, 0, 1]);
       },
     );
   });

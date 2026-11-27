@@ -149,13 +149,13 @@ class ExternalKeyNoticeDialog extends StatelessWidget {
 
 /// « Delete the external Garage Key? » (#81, plate 4 of the mock-up decided on 2026-11-26): it is not backed up by the wallet, then « Delete » and « Cancel ».
 ///
-/// Never refused: with a trade in progress of that key, a line in the warning colour names it and says it could not be continued, and « Delete » stays enabled; when a reading of the trades failed after one that succeeded, the trades known are named first, then the line of the trades not read (review of #292, R-8). The PIN, when the delete asks it, comes after this confirmation, as before #81.
+/// Never refused: with a trade in progress of that key, a line in the warning colour names it and says it could not be continued, and « Delete » stays enabled; when a reading of the trades failed after one that succeeded while the Garage followed the key, the trades known are named first, then the line of the trades not read (review of #292, R-8). The PIN, when the delete asks it, comes after this confirmation, as before #81.
 /// A tap outside closes it without deleting.
 class DeleteGarageKeyDialog extends StatelessWidget {
   /// The trades in progress of the external Garage Key: each is named.
   final List<TradeRecord> inProgress;
 
-  /// Whether the trades could not be read (review of #292, R-3): the dialog then says a trade in progress may use the key, under the trades of [inProgress] still named, those of the last reading that succeeded (review of #292, R-8); « Delete » stays enabled.
+  /// Whether the trades could not be read (review of #292, R-3): the dialog then says a trade in progress may use the key, under the trades of [inProgress] still named, those of the last reading that succeeded while the Garage follows that key (review of #292, R-8); « Delete » stays enabled.
   final bool unread;
 
   const DeleteGarageKeyDialog({
