@@ -81,6 +81,7 @@ void main() {
     Federation federation = Federation.robosats,
     Stream<P2pTorReport> Function()? torReports,
     GarageRecoveryNoteRepository? notesKept,
+    DateTime Function()? clock,
   }) => RecoveryNoteSync(
     relays: relaysPlayed,
     compute: compute,
@@ -89,7 +90,7 @@ void main() {
     keysInUse: records().keysInUse,
     keys: keys,
     federation: federation,
-    clock: () => at,
+    clock: clock ?? () => at,
     torReports: torReports,
     newTradeWait: newTradeWait,
     readDeadline: readDeadline,
@@ -688,6 +689,79 @@ void main() {
     );
   });
 
+  group(
+    'a majority without a note waits for the relays left (security review of #302, R9)',
+    () {
+      /// Relays [among] that answer in full with what they hold after [delay], never when it is `null`.
+      void slow(Iterable<Uri> among, Duration? delay) {
+        for (final relay in among) {
+          relaysPlayed.answers[relay] = (stored, filters) async {
+            if (delay == null) return Completer<NostrRelayRead>().future;
+            await Future<void>.delayed(delay);
+            return NostrRelayRead(
+              events: FakeNoteRelays.matching(stored, filters),
+              complete: true,
+              label: 'answered',
+            );
+          };
+        }
+      }
+
+      test(
+        'four relays answer at once with nothing, a fifth gives note 7 a moment later, the sixth stays silent: the trade leaves above 7',
+        () async {
+          holdNote(internal0, 7, [relays[4]]);
+          slow([relays[4]], const Duration(milliseconds: 300));
+          slow([relays[5]], null);
+          final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+          final waited = Stopwatch()..start();
+          expect(await nextRobot(internal0, notesSync), 8);
+          expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        },
+      );
+
+      test(
+        'four relays answer at once with nothing, two stay silent: the trade leaves at the limit, the key read for good without a floor',
+        () async {
+          slow(relays.skip(4), null);
+          final notesSync = sync(
+            newTradeWait: const Duration(milliseconds: 300),
+          );
+          final waited = Stopwatch()..start();
+          expect(await nextRobot(internal0, notesSync), 0);
+          expect(
+            waited.elapsed,
+            greaterThanOrEqualTo(const Duration(milliseconds: 250)),
+          );
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: null, read: true),
+          );
+        },
+      );
+
+      test(
+        'a key read for good without a note at an earlier run: four relays answer at once with nothing, two stay silent, and the trade leaves at the majority',
+        () async {
+          expect(
+            await notes().recordReading(
+              network,
+              fingerprintOf(internal0),
+              floor: null,
+              answered: true,
+            ),
+            isA<Ok>(),
+          );
+          slow(relays.skip(4), null);
+          final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+          final waited = Stopwatch()..start();
+          expect(await nextRobot(internal0, notesSync), 0);
+          expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        },
+      );
+    },
+  );
+
   group('a reading of the run before every write (review of #302, B2)', () {
     /// [key] recorded read for good at an earlier run, with [floor].
     Future<void> readEarlier(NetworkGarageKey key, int? floor) async => expect(
@@ -763,19 +837,90 @@ void main() {
     );
 
     test(
-      'a key read for good at an earlier run makes no new trade wait while the reading of this run goes on',
+      'the device read 7 at an earlier run and holds robot 8; the relays now hold 12: a trade asked at the opening waits for the majority of this run and leaves on robot 13',
       () async {
-        await readEarlier(internal0, 2);
+        await readEarlier(internal0, 7);
+        await bind(internal0, [8]);
+        holdNote(internal0, 12, relays);
+        final release = Completer<void>();
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) async {
+            await release.future;
+            return NostrRelayRead(
+              events: FakeNoteRelays.matching(stored, filters),
+              complete: true,
+              label: 'answered',
+            );
+          };
+        }
+        final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+        var reserved = false;
+        final robot = nextRobot(internal0, notesSync, coordinator: 1).then((
+          index,
+        ) {
+          reserved = true;
+          return index;
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(reserved, isFalse);
+        release.complete();
+        expect(await robot, 13);
+      },
+    );
+
+    test(
+      'the device read 7 at an earlier run and holds robot 8; the relays stay silent: the trade leaves at the limit, above what the device knows',
+      () async {
+        await readEarlier(internal0, 7);
+        await bind(internal0, [8]);
         for (final relay in relays) {
           relaysPlayed.answers[relay] = (stored, filters) =>
               Completer<NostrRelayRead>().future;
         }
-        final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+        final notesSync = sync(newTradeWait: const Duration(milliseconds: 300));
         final waited = Stopwatch()..start();
-        expect(await nextRobot(internal0, notesSync), 3);
-        expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        expect(await nextRobot(internal0, notesSync, coordinator: 1), 9);
+        expect(
+          waited.elapsed,
+          greaterThanOrEqualTo(const Duration(milliseconds: 250)),
+        );
         // The reading of the run goes on, in the background.
         expect(relaysPlayed.reads, hasLength(relays.length));
+      },
+    );
+
+    test(
+      'a write more than ten minutes after the reading of the run reads again first: another device wrote 12 meanwhile, the note written says 12, never 8',
+      () async {
+        var now = at;
+        holdNote(internal0, 7, relays);
+        await bind(internal0, [8]);
+        final notesSync = sync(clock: () => now);
+        await notesSync.beforeNewTrade(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        now = now.add(const Duration(minutes: 20));
+        holdNote(internal0, 12, relays);
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 8));
+        await _settled(relaysPlayed, relays.length);
+        expect(relaysPlayed.reads, hasLength(2 * relays.length));
+        expect(publishedIndexes(internal0), List.filled(relays.length, 12));
+      },
+    );
+
+    test(
+      'a write less than ten minutes after the reading of the run does not read again',
+      () async {
+        var now = at;
+        holdNote(internal0, 7, relays);
+        await bind(internal0, [8]);
+        final notesSync = sync(clock: () => now);
+        await notesSync.beforeNewTrade(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        now = now.add(const Duration(minutes: 5));
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 8));
+        await _settled(relaysPlayed, relays.length);
+        expect(relaysPlayed.reads, hasLength(relays.length));
+        expect(publishedIndexes(internal0), List.filled(relays.length, 8));
       },
     );
 
