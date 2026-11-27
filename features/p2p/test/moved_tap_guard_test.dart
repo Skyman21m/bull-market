@@ -64,6 +64,50 @@ void main() {
   );
 
   testWidgets(
+    'each new move starts the delay again: moved twice 400 ms apart, a tap 500 ms after the second move is ignored, one 750 ms after it counts (security review of #296, C1)',
+    (tester) async {
+      final top = ValueNotifier<double>(50);
+      addTearDown(top.dispose);
+      await tester.pumpWidget(
+        app(
+          Column(
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: top,
+                builder: (_, height, _) => SizedBox(height: height),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    const SizedBox(height: 100),
+                    button(),
+                    const SizedBox(height: 2000),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(MovedTapGuard.afterMove);
+      top.value = 130;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      top.value = 210;
+      await tester.pump();
+      // 900 ms after the first move, 500 ms after the second.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Pay'));
+      await tester.pump();
+      expect(taps, 0);
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text('Pay'));
+      expect(taps, 1);
+    },
+  );
+
+  testWidgets(
     'two nested lists, the inner one scrolled, then the outer one: no move but scrolls, every tap counts at once',
     (tester) async {
       final outer = ScrollController();
@@ -429,6 +473,225 @@ void main() {
           armsWhenShown: false,
         );
         await tapSoon(tester);
+        expect(taps, 1);
+      },
+    );
+  });
+
+  group('#294: a button shown again from under what covered it', () {
+    /// A page whose button, at the middle of the screen, is drawn while [shown]; with [shell] the page is in a navigator nested in the app's root one (as the app's `ShellRoute` places the P2P pages), and the dialogs open on the root one (`showDialog`'s default), so that the page's route stays the current one of its own navigator while a dialog covers it.
+    Future<BuildContext> covered(
+      WidgetTester tester, {
+      required ValueNotifier<bool> shown,
+      bool shell = false,
+      bool armsWhenShown = true,
+    }) async {
+      late BuildContext page;
+      final body = Builder(
+        builder: (context) {
+          page = context;
+          return ListView(
+            children: [
+              const SizedBox(height: 200),
+              ValueListenableBuilder<bool>(
+                valueListenable: shown,
+                builder: (_, on, _) => on
+                    ? button(armsWhenShown: armsWhenShown)
+                    : const SizedBox(height: 48),
+              ),
+              const SizedBox(height: 2000),
+            ],
+          );
+        },
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: shell
+              ? Navigator(
+                  onGenerateRoute: (_) => MaterialPageRoute<void>(
+                    builder: (_) => Scaffold(body: body),
+                  ),
+                )
+              : Scaffold(body: body),
+        ),
+      );
+      await tester.pump();
+      return page;
+    }
+
+    /// A dialog opened over [page], centred, its barrier dismissible.
+    Future<void> openDialog(WidgetTester tester, BuildContext page) async {
+      unawaited(
+        showDialog<void>(
+          context: page,
+          builder: (_) => const Dialog(
+            child: SizedBox(width: 100, height: 60, child: Text('dialog')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('dialog'), findsOneWidget);
+    }
+
+    /// The dialog closed by a double tap on its barrier at the button's place, the second tap [gap] after the first: whether that second tap counted.
+    Future<bool> closeByDoubleTap(
+      WidgetTester tester, {
+      Duration gap = const Duration(milliseconds: 100),
+    }) async {
+      final point = tester.getCenter(find.text('Pay', skipOffstage: false));
+      final before = taps;
+      await tester.tapAt(point);
+      await tester.pump();
+      await tester.pump(gap);
+      await tester.tapAt(point);
+      await tester.pump();
+      return taps > before;
+    }
+
+    for (final shell in const [false, true]) {
+      final where = shell
+          ? 'the page in a nested navigator, the dialog on the root one (the app\'s composition)'
+          : 'the page and the dialog on one navigator';
+      testWidgets(
+        'built behind a dialog, its delay spent there ($where): the dialog closed by a double tap on its barrier, the second tap on the button 100 ms later is ignored; one after the delay counts',
+        (tester) async {
+          final shown = ValueNotifier<bool>(false);
+          addTearDown(shown.dispose);
+          final page = await covered(tester, shown: shown, shell: shell);
+          await openDialog(tester, page);
+          shown.value = true;
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 1600));
+          expect(await closeByDoubleTap(tester), isFalse);
+          await tester.pump(MovedTapGuard.afterMove);
+          expect(find.text('dialog'), findsNothing);
+          await tester.tap(find.text('Pay'));
+          expect(taps, 1);
+        },
+      );
+
+      testWidgets(
+        'shown, then covered by a dialog that moves nothing ($where): the double tap that closes it is ignored at 100 and 300 ms, a tap 700 ms after the closing counts',
+        (tester) async {
+          final shown = ValueNotifier<bool>(true);
+          addTearDown(shown.dispose);
+          final page = await covered(tester, shown: shown, shell: shell);
+          await tester.pump(MovedTapGuard.afterMove);
+          for (final gap in const [100, 300]) {
+            await openDialog(tester, page);
+            expect(
+              await closeByDoubleTap(tester, gap: Duration(milliseconds: gap)),
+              isFalse,
+              reason: '$gap ms',
+            );
+            await tester.pump(MovedTapGuard.afterMove);
+          }
+          await openDialog(tester, page);
+          // Closed by one tap on the barrier under the dialog, away from the button.
+          await tester.tapAt(
+            tester.getCenter(find.text('dialog')) + const Offset(0, 200),
+          );
+          await tester.pump();
+          await tester.pump(MovedTapGuard.afterMove);
+          await tester.tap(find.text('Pay'));
+          expect(taps, 1);
+        },
+      );
+    }
+
+    testWidgets(
+      'a page pushed over it and left: the page\'s way out moves the button (the transition of the page under it), as on `main`; a tap 300 ms after it ends is ignored, one 700 ms after counts',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        final page = await covered(tester, shown: shown);
+        await tester.pump(MovedTapGuard.afterMove);
+        unawaited(
+          Navigator.of(page).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(body: Text('above')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Pay'), findsNothing);
+        Navigator.of(page).pop();
+        await tester.pump();
+        var frames = 0;
+        while (find.text('above').evaluate().isNotEmpty) {
+          expect(frames++, lessThan(60));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text('Pay'));
+        await tester.pump();
+        expect(taps, 0);
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.text('Pay'));
+        expect(taps, 1);
+      },
+    );
+
+    testWidgets(
+      'scrolled out of view and back, by a finger and by a jump: never taken for covered, every tap counts at once',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        await covered(tester, shown: shown);
+        await tester.pump(MovedTapGuard.afterMove);
+        final position = Scrollable.of(
+          tester.element(find.text('Pay')),
+        ).position;
+        // Out of view, within the list's cache, so that the button is kept (one built again is a button shown, as on `main`).
+        position.jumpTo(300);
+        await tester.pump();
+        expect(find.text('Pay'), findsNothing);
+        position.jumpTo(0);
+        await tester.pump();
+        await tapSoon(tester);
+        expect(taps, 1);
+        await tester.drag(find.byType(ListView), const Offset(0, -300));
+        await tester.pumpAndSettle();
+        await tester.drag(find.byType(ListView), const Offset(0, 300));
+        await tester.pumpAndSettle();
+        await tapSoon(tester);
+        expect(taps, 2);
+      },
+    );
+
+    testWidgets(
+      'a button that starts no delay when shown (« Continue »): shown again from under a dialog closed by a double tap, the second tap counts, as before',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        final page = await covered(tester, shown: shown, armsWhenShown: false);
+        await openDialog(tester, page);
+        expect(await closeByDoubleTap(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'covered by a dialog, the page scrolled behind it (a measure that cannot tell), then the dialog closed with no frame between: the cover is not forgotten, a tap 100 ms after the closing is ignored, one after the delay counts (security review of #296, R3)',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        final page = await covered(tester, shown: shown);
+        await tester.pump(MovedTapGuard.afterMove);
+        await openDialog(tester, page);
+        final position = Scrollable.of(
+          tester.element(find.text('Pay')),
+        ).position;
+        // A scroll: its frame tries no tap at the button, and says nothing of the cover.
+        position.jumpTo(10);
+        await tester.pump();
+        Navigator.of(tester.element(find.text('dialog'))).pop();
+        // The first frame of the closing: the dialog on its way out takes no tap, the button is reached again.
+        await tester.pump();
+        await tapSoon(tester);
+        expect(taps, 0);
+        await tester.pump(MovedTapGuard.afterMove);
+        await tester.tap(find.text('Pay'));
         expect(taps, 1);
       },
     );

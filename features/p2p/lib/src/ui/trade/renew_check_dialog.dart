@@ -32,6 +32,8 @@ class RenewCheckDialog extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(false),
       goLabel: l10n.p2pRenewSameTermsGo,
       backFirst: true,
+      // A second tap on « Renew Order » can land on it as the dialog opens, past the reasons unread (#298).
+      guardsGo: true,
       onGo: () => Navigator.of(context).pop(true),
     );
   }

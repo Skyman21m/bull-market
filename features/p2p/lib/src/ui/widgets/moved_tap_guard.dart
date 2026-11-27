@@ -1,20 +1,22 @@
 import 'dart:async';
+import 'dart:ui' show FlutterView;
 
+import 'package:flutter/gestures.dart' show HitTestResult;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// What [MovedTapGuard] gives its builder: [onTap] wrapped so that a tap is ignored while the guarded widget has just moved; `null` stays `null`.
 typedef GuardedTap = VoidCallback? Function(VoidCallback? onTap);
 
-/// A guard for a button whose tap matters (« Pay », « Continue » before a take, and since #283 the « Confirm » of the buyer's dialog « Confirm … sent », the declaration that the fiat was sent; the seller's « Confirm » of « Confirm … received », which releases the escrow, has none (#293); « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
+/// A guard for a button whose tap matters (« Pay », « Continue » before a take, since #283 the « Confirm » of the buyer's dialog « Confirm … sent », the declaration that the fiat was sent, since #293 the « Confirm » of the seller's dialog « Confirm … received », which releases the escrow, and since #298 the button that goes on of the dialogs a second tap on the button that opened them can reach as they open (« Confirm Cancel » at 6 and 7, which loses the bond, « Confirm cancellation », « Ask for Cancel » or « Accept Cancelation », « Renew anyway »); « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
 ///
-/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) never sets it off, while a move of the layout does. When it appears (the confirmation opened, the dialog opened, the card built anew as when the tab « Contract » is shown again), its first measure starts the delay too ([armsWhenShown]): a tap on a button that appeared less than [afterMove] ago is ignored, since a tap meant for a button just shown, whose amounts are still to read, is no ordinary gesture, while a second tap at the same place, aimed at what stood there (« Pay with this wallet » where « Pay » is brought into view), is (security review of #291, B1). Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
+/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) does not set it off, while a move of the layout does. Android's stretch at the end of a scroll (`StretchingOverscrollIndicator`) is no scroll: it moves the content under the button for real while the scroll offset stays at its end, so that a fling that hits the end of a list sets it off (« Pay » ignores taps for about a second after a fling that hits the page's end, and a seller's dialog taller than the screen, flung to its end, ignores « Confirm » for about 0.6 s; functional review of #296, C1 and R1), which is the safe side: the stretch does move « Go back » and « Confirm », stacked 8 points apart. When it appears (the confirmation opened, the dialog opened, the card built anew as when the tab « Contract » is shown again), its first measure starts the delay too ([armsWhenShown]): a tap on a button that appeared less than [afterMove] ago is ignored, since a tap meant for a button just shown, whose amounts are still to read, is no ordinary gesture, while a second tap at the same place, aimed at what stood there (« Pay with this wallet » where « Pay » is brought into view), is (security review of #291, B1). A button that something drawn over it hid from the finger (a dialog's barrier, a sheet, a page pushed over its screen, on whatever navigator) and that a tap reaches again is shown again, and starts the delay too, whether it was built, moved or left in place meanwhile: the tap that closed what covered it may come twice, the second aimed at what stood there (#294). Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
 ///
 /// Its place on the screen alone is measured too, for the one move the first measure does not see, where the scroll offset changes with the layout by as much: the page scrolled to its end whose content under the button shrinks (« Hide details » under « Pay », a line under the card that goes) or whose viewport grows (the keyboard or a system bar that goes, a rotation) is brought back to its new end by the layout, so that everything above moves down on the screen and nothing moves in the content (#267, #288). A move on the screen sets it off when no [ScrollPosition] around it scrolled since the last measure made: a scroll, whether by a finger, a fling, an animation or a jump (`ensureVisible` when the confirmation opens), tells the position's listeners, and a bring back by the layout (`ScrollPosition.correctPixels`) tells nobody; while a finger holds the page, or a scroll runs, nothing is compared on the screen.
 class MovedTapGuard extends StatefulWidget {
   final Widget Function(BuildContext context, GuardedTap guard) builder;
 
-  /// Whether its first measure starts the delay, a tap on the button just shown being ignored (security review of #291, B1); `false` for « Continue », which is shown only once the robot's read the user waited for has come, where « Take Order » stood busy, so that no second tap can reach it.
+  /// Whether its first measure starts the delay, a tap on the button just shown being ignored (security review of #291, B1), and whether a tap that reaches it again after something drawn over it hid it starts the delay too (#294); `false` for « Continue », which is shown only once the robot's read the user waited for has come, where « Take Order » stood busy and took the taps meanwhile: no double tap reaches it, while a tap repeated after the read can at some sizes (320 × 640, text ×3; second security pass of #291), which only opens « Store your garage key », no money moving at that tap.
   final bool armsWhenShown;
 
   const MovedTapGuard({
@@ -50,6 +52,12 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
   /// The time stamp of the frame of the last measure, to tell a scroll after the layout that came before this frame's measure from one that came after it.
   Duration? _measuredAt;
 
+  /// Whether a tap reached the guarded widget at the last measure that could tell (part of it in view): `false` while something drawn over it takes that tap, `null` before such a measure (#294).
+  bool? _reachable;
+
+  /// The view the guarded widget is drawn in, where a tap is tried.
+  FlutterView? _view;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +69,7 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
     super.didChangeDependencies();
     // Listened to from the first frame: a scroll after that frame's layout, before the first measure, makes that measure stale.
     _listenTo(_positionsNow());
+    _view = View.maybeOf(context);
   }
 
   @override
@@ -113,8 +122,12 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
         !scrolled &&
         lastOnScreen != null &&
         (onScreen - lastOnScreen).distance > 0.5;
+    // Shown again: what was drawn over it no longer takes a tap there (#294). Not while a position around scrolls: a scrolling list ignores the taps on its content (`Scrollable`), which is no cover.
+    final reachable = scrolled ? null : _reachableNow(positions);
+    final uncovered = _reachable == false && reachable == true;
+    if (reachable != null) _reachable = reachable;
     // Just appeared: the delay starts at its first measure (security review of #291, B1).
-    if ((last == null && widget.armsWhenShown) ||
+    if (((last == null || uncovered) && widget.armsWhenShown) ||
         movedInContent ||
         movedOnScreen) {
       _moved?.cancel();
@@ -122,6 +135,32 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
     }
     _place = place;
     _onScreen = onScreen;
+  }
+
+  /// Whether a tap at the middle of the guarded widget's part in view (on the screen and inside every [Scrollable] of [positions] around it) reaches it: `false` when something drawn over it takes that tap (a dialog's barrier, a sheet, a page pushed over its screen, on this navigator or another), `null` when no part of it is in view. A widget scrolled out of view and back is never taken for one covered, so that scrolling it away and back does not set the guard off.
+  bool? _reachableNow(List<ScrollPosition> positions) {
+    final box = context.findRenderObject();
+    final view = _view;
+    if (box is! RenderBox || !box.attached || !box.hasSize || view == null) {
+      return null;
+    }
+    Rect onScreen(RenderBox of) => MatrixUtils.transformRect(
+      of.getTransformTo(null),
+      Offset.zero & of.size,
+    );
+    var shown = onScreen(
+      box,
+    ).intersect(Offset.zero & (view.physicalSize / view.devicePixelRatio));
+    for (final position in positions) {
+      final viewport = position.context.notificationContext?.findRenderObject();
+      if (viewport is RenderBox && viewport.attached && viewport.hasSize) {
+        shown = shown.intersect(onScreen(viewport));
+      }
+    }
+    if (shown.isEmpty) return null;
+    final result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(result, shown.center, view.viewId);
+    return result.path.any((entry) => identical(entry.target, box));
   }
 
   /// The positions of every [Scrollable] around the guarded widget, from the nearest.
