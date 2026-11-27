@@ -181,3 +181,51 @@ List<String> _subpacketShapes(Uint8List area) {
 
 String _hex(List<int> bytes) =>
     bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+
+/// The key of [interopIdentity], generated again and unlocked once per test file: what the coordinator client signs that robot's actions with (GHSA-22q8-9ghc-jg3h).
+final UnlockedRobotPgpKey interopUnlockedKey = expectOk(
+  generateInteropKey().unlock(interopIdentity),
+);
+
+/// The key of [interopPeerIdentity], unlocked once per test file.
+final UnlockedRobotPgpKey interopPeerUnlockedKey = expectOk(
+  generateInteropPeerKey().unlock(interopPeerIdentity),
+);
+
+/// The unlocked key of [identity], [interopIdentity] or [interopPeerIdentity].
+UnlockedRobotPgpKey interopUnlockedKeyOf(RobotIdentity identity) =>
+    switch (identity.hashId) {
+      final id when id == interopIdentity.hashId => interopUnlockedKey,
+      final id when id == interopPeerIdentity.hashId => interopPeerUnlockedKey,
+      _ => fail('no unlocked key for this robot'),
+    };
+
+/// The JSON text of [body], a request body the coordinator client wrote for an action of a robot, before its signature: the signature must be its last field, `,"signature":"…"}` byte for byte, verify with [publicKey] (the key of [interopIdentity] unless given) and sign exactly [signedText].
+String unsignedBody(
+  List<int>? body,
+  String signedText, {
+  PgpPublicKey? publicKey,
+}) {
+  final raw = utf8.decode(body ?? const []);
+  final decoded = jsonDecode(raw);
+  if (decoded is! Map<String, Object?>) fail('not a JSON object: $raw');
+  expect(decoded.keys.last, 'signature');
+  final signature = decoded['signature'];
+  if (signature is! String) fail('no signature');
+  expect(
+    expectOk(
+      (publicKey ?? interopUnlockedKey.key.publicKey).verifyCleartext(
+        signature,
+        now: DateTime.utc(2100),
+      ),
+    ),
+    signedText,
+  );
+  expect(
+    signature,
+    startsWith('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n'),
+  );
+  final suffix = ',"signature":${jsonEncode(signature)}}';
+  expect(raw, endsWith(suffix));
+  return '${raw.substring(0, raw.length - suffix.length)}}';
+}

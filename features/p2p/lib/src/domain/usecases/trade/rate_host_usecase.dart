@@ -11,11 +11,12 @@ import '../../trade/trade_chat_step.dart';
 import '../../trade/trade_host_rating.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'trade_keyring.dart';
 import 'trade_reader.dart';
 
 /// « Rate your host » (#95): the rating of the trade's coordinator, which the official client publishes on Nostr only (`TradeBox/Prompts/Successful.tsx:54-105`, commit ff1998c).
 ///
-/// [fetchToken] asks the coordinator once for the token of the robot's Nostr key (`POST /api/review/`, `CoordinatorClient.fetchReviewToken`), through the robot's places in [RobotRequestLimiter], as the reference asks it once when it shows its stars.
+/// [fetchToken] asks the coordinator once for the token of the robot's Nostr key (`POST /api/review/`, `CoordinatorClient.fetchReviewToken`), through the robot's places in [RobotRequestLimiter], as the reference asks it once when it shows its stars; the request is signed by the robot's key, leased from [TradeKeyring] for it (GHSA-22q8-9ghc-jg3h), and a key that cannot be had sends nothing.
 /// [publish] signs, apart ([RobotKeyComputePort.composeHostRating]), one event of kind 31986 with that token and the stars, and publishes it to the relays [nostrRelaysFor] chooses, through the robot's Tor sessions, all at once; once per call, never again: the reference sends each change of its stars once and waits for nothing.
 /// Both only for a status that offers the rating ([ChatStepAction.rate]: the buyer at 14, from an order read) and of this trade.
 /// What [publish] sends is public: anyone reading the relays learns that this robot's Nostr key rated this coordinator for this order, with these stars.
@@ -30,6 +31,7 @@ final class RateHostUsecase {
 
   /// [Random.secure] in the app: the choice of relays.
   final Random _random;
+  final TradeKeyring _keyring;
 
   const RateHostUsecase(
     this._client,
@@ -39,6 +41,7 @@ final class RateHostUsecase {
     this._relays,
     this._federation,
     this._random,
+    this._keyring,
   );
 
   /// The token with which the robot of [record] rates its coordinator, for [seen], the status shown.
@@ -51,24 +54,36 @@ final class RateHostUsecase {
     final identity = trade.robot.identity;
     final requests = _limiter.open(identity.sessionKey);
     try {
-      final sent = await requests.send(
-        record.network,
-        trade.coordinator,
-        () => _client.fetchReviewToken(
-          identity: identity,
-          coordinator: trade.coordinator,
-          network: record.network,
-          nostrPublicKeyHex: identity.nostrKeyPair().publicKeyHex,
-        ),
-        isBusy: (answer) => switch (answer) {
-          Err(failure: CoordinatorTransportBusy()) => true,
-          _ => false,
-        },
-      );
-      return switch (sent) {
-        Ok(value: Ok(:final value)) => Ok(value),
-        _ => const Err(HostTokenNotGiven()),
-      };
+      final TradeKeyLease lease;
+      switch (await _keyring.lease(trade)) {
+        case Ok(:final value):
+          lease = value;
+        case Err():
+          return const Err(HostTokenNotGiven());
+      }
+      try {
+        final sent = await requests.send(
+          record.network,
+          trade.coordinator,
+          () => _client.fetchReviewToken(
+            identity: identity,
+            key: lease.key,
+            coordinator: trade.coordinator,
+            network: record.network,
+            nostrPublicKeyHex: identity.nostrKeyPair().publicKeyHex,
+          ),
+          isBusy: (answer) => switch (answer) {
+            Err(failure: CoordinatorTransportBusy()) => true,
+            _ => false,
+          },
+        );
+        return switch (sent) {
+          Ok(value: Ok(:final value)) => Ok(value),
+          _ => const Err(HostTokenNotGiven()),
+        };
+      } finally {
+        lease.close();
+      }
     } finally {
       requests.close();
     }

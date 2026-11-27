@@ -59,6 +59,9 @@ abstract final class ActionOutcomeLog {
     OrderRequestRefused(errorCode: final code?)
         when code >= 0 && code <= 99999 =>
       'OrderRequestRefused $code',
+    // The refusal of the action's signature (GHSA-22q8-9ghc-jg3h) with its code, a fixed number of the app's table (1048, 1059, 1060, 1061), or `notSigned` when this app could not sign.
+    ActionSignatureRefused(:final reason) =>
+      'ActionSignatureRefused ${reason.code ?? reason.name}',
     _ => '${cause.runtimeType}',
   };
 }

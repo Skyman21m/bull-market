@@ -443,6 +443,7 @@ final class P2pLocator {
         locator(),
         invoices(),
         locator(),
+        locator(),
         preparedTakes: locator(),
       ),
     );
@@ -461,6 +462,7 @@ final class P2pLocator {
         invoices(),
         locator(),
         Federation.robosats,
+        locator(),
       ),
     );
     // The create form (#181): the chosen coordinator's limits, read anonymously as the book; the Bull wallet's price for comparison, only where the wallet's port was lent; and the form's cubit, the only caller of the make. No route opens the form yet: « Create » is enabled by #182.
@@ -570,12 +572,14 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
+        locator(),
       ),
     );
     // The chat step's actions (#95): « fiat sent », as the cancel, under the order's lock.
     locator.registerFactory<ChatStepActionUsecase>(
       () => ChatStepActionUsecase(
         CoordinatorClient(transport(), clock: clock),
+        locator(),
         locator(),
         locator(),
         locator(),
@@ -597,12 +601,13 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
+        locator(),
       ),
     );
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
     );
-    // One for the feature: the unlocked keys of the trades' robots, kept while a screen holds them or a signature leases them (#90).
+    // One for the feature: the unlocked keys of the trades' robots, kept while a screen holds them or a signature leases them (#90); every request of a robot that changes a state is signed with a lease of it (GHSA-22q8-9ghc-jg3h).
     locator.registerLazySingleton<TradeKeyring>(
       () => TradeKeyring(locator(), locator()),
     );
@@ -662,6 +667,7 @@ final class P2pLocator {
         relays(),
         Federation.robosats,
         Random.secure(),
+        locator(),
       ),
     );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.

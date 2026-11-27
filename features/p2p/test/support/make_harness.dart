@@ -116,6 +116,9 @@ final class MakeHarness {
   late final SubmitPayoutUsecase payout;
   late final ChatStepActionUsecase chat;
 
+  /// The keyring of the trades, whose leases sign every request of a robot that changes a state (GHSA-22q8-9ghc-jg3h).
+  late final TradeKeyring keyring;
+
   /// The key work of this run.
   final HarnessKeys keys = HarnessKeys();
 
@@ -192,17 +195,18 @@ final class MakeHarness {
       limiter,
       Federation.robosats,
     );
+    keyring = TradeKeyring(readRobot, keys);
     payout = SubmitPayoutUsecase(
       client,
       reader,
       limiter,
-      TradeKeyring(readRobot, keys),
+      keyring,
       locks,
       invoices,
       payouts: payouts,
       fromWallet: walletPayouts,
     );
-    chat = ChatStepActionUsecase(client, reader, limiter, locks);
+    chat = ChatStepActionUsecase(client, reader, limiter, locks, keyring);
     makeOn = (federation) => MakeOrderUsecase(
       client,
       robots,
@@ -215,6 +219,7 @@ final class MakeHarness {
       invoices,
       makeLocks,
       federation,
+      keyring,
     );
     make = makeOn(Federation.robosats);
     watch = WatchTradeUsecase(
@@ -234,8 +239,15 @@ final class MakeHarness {
       ),
       watchRegistry,
     );
-    cancel = CancelTradeUsecase(client, reader, limiter, locks);
-    pause = PauseOrderUsecase(client, reader, limiter, locks, pausesInFlight);
+    cancel = CancelTradeUsecase(client, reader, limiter, locks, keyring);
+    pause = PauseOrderUsecase(
+      client,
+      reader,
+      limiter,
+      locks,
+      pausesInFlight,
+      keyring,
+    );
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
   }
 

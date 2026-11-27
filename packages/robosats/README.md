@@ -27,6 +27,17 @@ Pure-Dart RoboSats client primitives for Troc: the robot identity and OpenPGP ke
 - The coordinator of the reference source stores the Nostr public key the first contact carries and checks no link with the token; it replaces it later only when the stored key is its all-zero placeholder. One testnet coordinator was seen to store either of the two formulas. Only `NostrKeyDerivation.currentFrontend` may be sent for a real robot: the secret key of the other formula is the token hash itself, which the coordinator receives on every request.
 - Every authenticated request names its robot (`CoordinatorRequest.robot`, a `RobotSessionKey` that holds no credential and prints nothing), so the adapter can isolate it.
 - The same token hash is the whole credential of a robot on every coordinator: a coordinator that receives it can act as the robot on another one in everything that needs the bearer alone, confirming that fiat was received included, which settles the robot's escrow there. This package contacts one coordinator per call and cannot prevent a caller from contacting several: the rule "one robot index, one coordinator" is to be enforced by the caller, in code, before any order (`AGENTS.md`, section Troc). Evidence and what was verified on live testnet coordinators: `docs/spikes/robot-coordinator.md`.
+- Since the fix of GHSA-22q8-9ghc-jg3h (RoboSats pull request 2955, head `0943c9748ac35f13319628aac5054f6dd50512ca`, not merged upstream on 2026-11-27, already run by the coordinators), the token hash is a read credential only: every request of a robot that changes a state carries, in a last `signature` field of its body, a cleartext signature by the robot's key (`Hash: SHA512`, as the payout's) of the text `lib/src/coordinator/action_signature.dart` gives, byte for byte as the reference's `frontend/src/utils/actionSignature.ts`:
+
+  | Request | Signed text | Window |
+  | --- | --- | --- |
+  | `POST /api/order/` (every action) | `{action}:{order_id}:{shortAlias}` | none |
+  | `POST /api/make/` | `make:{shortAlias}:{unix_ts}` | ± 300 s |
+  | `POST /api/stealth/` | `stealth:{shortAlias}:{unix_ts}` | ± 300 s |
+  | `PUT /api/robot/` | `robot:{shortAlias}:{unix_ts}` | ± 300 s |
+  | `POST /api/review/` | `review:{pubkey}` | none |
+
+  `makeOrder`, `takeOrder`, `cancelOrder`, `pauseOrder`, `confirmFiat`, `releaseEscrow`, `undoConfirmFiat`, `openDispute`, `ratePlatform`, `submitPayoutInvoice`, `submitPayoutAddress` and `fetchReviewToken` take the robot's `UnlockedRobotPgpKey`, refuse to send with another robot's, and sign at the client's clock, the alias being the embedded federation list's (`stealth` and `PUT /api/robot/` are not sent by this client; `postChat` is not signed upstream). Errors 1059 (no signature), 1060 (time more than 300 s from the coordinator's clock), 1061 (a timed text signed for another coordinator) and 1048 (a signature that does not verify, a payout's own refusal for `update_invoice` and `update_address`) are an `ActionSignatureRefused`, a refusal before anything was done (`OrderActionRefused`). A coordinator still at commit babf62e ignores the field. Tests: `test/coordinator/action_signature_test.dart`.
 
 ## Coordinator client: an order, the take and the cancel
 

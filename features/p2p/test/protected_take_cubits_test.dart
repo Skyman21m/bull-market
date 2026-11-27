@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/presentation/unlisted_order_cubit.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
@@ -8,6 +6,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show CoordinatorHttpMethod;
 import 'package:test/test.dart';
 
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 
 /// The cubits of a password-protected order (#245): the read of its page, and its take, over the real use case and a played coordinator.
@@ -251,10 +250,7 @@ void main() {
       final take = app.coordinator.requests.lastWhere(
         (request) => request.method == CoordinatorHttpMethod.post,
       );
-      expect(
-        utf8.decode(take.body ?? const []),
-        '{"action":"take","amount":0}',
-      );
+      expect(unsignedBodyOf(take.body), '{"action":"take","amount":0}');
       await cubit.close();
     });
   });

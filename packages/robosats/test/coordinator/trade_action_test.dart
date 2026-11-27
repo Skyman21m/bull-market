@@ -40,29 +40,45 @@ void main() {
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> confirm([
     CoordinatorOrder? lastRead,
-  ]) => client.confirmFiat(identity: _us, lastRead: lastRead ?? _readAt(9));
+  ]) => client.confirmFiat(
+    identity: _us,
+    key: interopUnlockedKey,
+    lastRead: lastRead ?? _readAt(9),
+  );
 
   /// The seller's last read at 10, « fiat sent » recorded.
   CoordinatorOrder sellerAt(int status) => _read(_answer(status, buyer: false));
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> received([
     CoordinatorOrder? lastRead,
-  ]) => client.releaseEscrow(identity: _us, lastRead: lastRead ?? sellerAt(10));
+  ]) => client.releaseEscrow(
+    identity: _us,
+    key: interopUnlockedKey,
+    lastRead: lastRead ?? sellerAt(10),
+  );
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> undo([
     CoordinatorOrder? lastRead,
-  ]) =>
-      client.undoConfirmFiat(identity: _us, lastRead: lastRead ?? _readAt(10));
+  ]) => client.undoConfirmFiat(
+    identity: _us,
+    key: interopUnlockedKey,
+    lastRead: lastRead ?? _readAt(10),
+  );
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> dispute([
     CoordinatorOrder? lastRead,
-  ]) => client.openDispute(identity: _us, lastRead: lastRead ?? _readAt(9));
+  ]) => client.openDispute(
+    identity: _us,
+    key: interopUnlockedKey,
+    lastRead: lastRead ?? _readAt(9),
+  );
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> rate([
     CoordinatorOrder? lastRead,
     int stars = 5,
   ]) => client.ratePlatform(
     identity: _us,
+    key: interopUnlockedKey,
     lastRead: lastRead ?? _readAt(14),
     rating: PlatformRating.of(stars)!,
   );
@@ -92,7 +108,9 @@ void main() {
       'Content-Type': 'application/json',
       'Authorization': 'Token ${_us.tokenSha256Base91}',
     });
-    expect(request.body, utf8.encode(body));
+    // The action's signature, last, over `{action}:{order_id}:{shortAlias}` (GHSA-22q8-9ghc-jg3h).
+    final action = (jsonDecode(body) as Map<String, Object?>)['action'];
+    expect(unsignedBody(request.body, '$action:$testOrderId:temple'), body);
     expect(request.robot, _us.sessionKey);
     expect(request.maxResponseBytes, CoordinatorReadBounds.orderBytes);
   }
@@ -443,8 +461,8 @@ void main() {
     test(
       'the codes of the reads and the other actions: the outcome is unknown',
       () async {
-        // A code that is not one of these actions' refusals may come from the read that follows the action (`api/views.py:695`): 1043 if the order was cancelled meanwhile, 1044, 1042; or it is one the reference never answers to them.
-        for (final code in [1020, 1021, 1042, 1043, 1044, 1048, 1049, 3001]) {
+        // A code that is not one of these actions' refusals may come from the read that follows the action (`api/views.py:695`): 1043 if the order was cancelled meanwhile, 1044, 1042; or it is one the reference never answers to them. 1048 is no longer one: since RoboSats pull request 2955 it refuses the action's signature, before anything (`action_signature_test.dart`).
+        for (final code in [1020, 1021, 1042, 1043, 1044, 1049, 3001]) {
           for (final MapEntry(key: name, value: action) in actions.entries) {
             serveJson(_error(code), statusCode: 400);
             final failure = expectErr(await action());

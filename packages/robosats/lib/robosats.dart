@@ -17,6 +17,13 @@
 library;
 
 export 'src/bitcoin_address.dart' show BitcoinAddress, BitcoinAddressKind;
+export 'src/coordinator/action_signature.dart'
+    show
+        actionSignatureWindow,
+        orderActionContent,
+        reviewActionContent,
+        timedActionContent,
+        unixSeconds;
 export 'src/coordinator/coordinator.dart'
     show Coordinator, CoordinatorBadges, CoordinatorContact, CoordinatorOrigins;
 export 'src/coordinator/coordinator_client.dart' show CoordinatorClient;

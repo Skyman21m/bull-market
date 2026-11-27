@@ -1571,6 +1571,18 @@ abstract class P2pLocalizations {
   /// **'{coordinator} refused this robot. It may run another version of RoboSats.'**
   String p2pRobotRefused(String coordinator);
 
+  /// Not in the RoboSats texts: the project's own, after the meaning of error 1060 of RoboSats pull request 2955 (GHSA-22q8-9ghc-jg3h). A coordinator refused a signed request (the make) because the time it carries is more than 300 seconds from its clock. Shown where the refusals of the make, the take and the actions of a trade already go, never the coordinator's text.
+  ///
+  /// In en, this message translates to:
+  /// **'The time of this device is too far from {coordinator}\'s. Turn on automatic time and try again.'**
+  String p2pSignatureClockSkew(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own, after the meaning of errors 1059 (no signature: an outdated client) and 1061 (signed for another coordinator) of RoboSats pull request 2955 (GHSA-22q8-9ghc-jg3h). Shown where the refusals of the make, the take and the actions of a trade already go, never the coordinator's text.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} asks for a newer version of Bull Market.'**
+  String p2pSignatureNewerVersion(String coordinator);
+
   /// An answer whose hash id or nickname is not the robot's, or whose key pair the robot's token does not prove. Not in the RoboSats texts (design note of #29, § 2.3). No button.
   ///
   /// In en, this message translates to:

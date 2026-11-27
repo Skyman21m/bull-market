@@ -51,6 +51,26 @@ void main() {
       );
     });
 
+    test(
+      'a refused signature, with its code, so that a real attempt tells which refusal it met (GHSA-22q8-9ghc-jg3h)',
+      () {
+        for (final (reason, said) in [
+          (ActionSignatureRefusal.invalid, '1048'),
+          (ActionSignatureRefusal.missing, '1059'),
+          (ActionSignatureRefusal.clockSkew, '1060'),
+          (ActionSignatureRefusal.otherCoordinator, '1061'),
+          (ActionSignatureRefusal.notSigned, 'notSigned'),
+        ]) {
+          expect(
+            ActionOutcomeLog.causeOf(
+              OrderActionRefused(ActionSignatureRefused(reason)),
+            ),
+            'refused, ActionSignatureRefused $said',
+          );
+        }
+      },
+    );
+
     test('an unexpected status, by hundred only', () {
       expect(
         ActionOutcomeLog.causeOf(const CoordinatorUnexpectedStatus(503)),

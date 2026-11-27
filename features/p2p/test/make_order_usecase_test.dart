@@ -20,6 +20,7 @@ import 'package:test/test.dart';
 import 'support/make_harness.dart';
 import 'support/robot_coordinators.dart' show pairOf;
 import 'support/trade_harness.dart' show AppKilled;
+import 'support/signed_bodies.dart';
 
 /// The make use case (#179, design note `docs/design/phase-3-making-an-order.md` § 3.4): the order made once, written before it leaves, confirmed only by a read that shows the robot as its maker, and never lost when its answer is.
 void main() {
@@ -91,7 +92,7 @@ void main() {
         );
         final restored = valueOf(MakerTerms.restore(terms!));
         // The reference client's body (`Order.make`, `frontend/src/models/Order.model.ts:196-215`), its 17 keys in its order, built from the terms stored.
-        final sent = jsonDecode(utf8.decode(make.body ?? const []));
+        final sent = jsonDecode(unsignedBodyOf(make.body));
         expect(sent, {
           'type': restored.request.type.wire,
           'currency': restored.request.currency.id,
@@ -1054,6 +1055,8 @@ void main() {
         () async {
           final harness = await MakeHarness.start();
           harness.skewCoordinator(skew);
+          // A coordinator running the fix of GHSA-22q8-9ghc-jg3h refuses a make signed 15 minutes off its clock (1060, below): this one plays a coordinator not updated yet, whose dates alone are off.
+          harness.coordinator.checksSignatures = false;
           final start = started(await harness.makeOrder());
           expect(start.record.orderId, 42);
           expect(start.status, isA<WaitingForMakerBond>());
@@ -1062,6 +1065,7 @@ void main() {
           final again = await MakeHarness.start();
           again
             ..skewCoordinator(skew)
+            ..coordinator.checksSignatures = false
             ..coordinator.failNext(
               ScriptedMakerRequest.make,
               ScriptedFault.answerLost,
@@ -1074,6 +1078,49 @@ void main() {
         },
       );
     }
+
+    for (final skew in [
+      const Duration(seconds: -301),
+      const Duration(minutes: 15),
+    ]) {
+      test(
+        'a coordinator running the fix whose clock is ${skew.inSeconds} s from this device\'s refuses the make with 1060: nothing is made, the pending make closed',
+        () async {
+          final harness = await MakeHarness.start();
+          harness.skewCoordinator(skew);
+          final made = valueOf(await harness.makeOrder());
+          expect(
+            made,
+            isA<MakeNotMade>().having(
+              (m) => m.refusal,
+              'refusal',
+              isA<ActionSignatureRefused>().having(
+                (f) => f.reason,
+                'reason',
+                ActionSignatureRefusal.clockSkew,
+              ),
+            ),
+          );
+          expect(harness.coordinator.orders, isEmpty);
+          expect(await harness.pendingMakes(), isEmpty);
+          expect(harness.records.confirms, 0);
+        },
+      );
+    }
+
+    test(
+      'within 300 s of this device\'s clock, a make signed by a coordinator running the fix is made',
+      () async {
+        for (final skew in [
+          const Duration(seconds: -299),
+          const Duration(seconds: 299),
+        ]) {
+          final harness = await MakeHarness.start();
+          harness.skewCoordinator(skew);
+          expect(started(await harness.makeOrder()).record.orderId, 42);
+        }
+      },
+    );
 
     test(
       'once its order is confirmed, a make is never confirmed with a second order: resolved again it sends nothing, and the database refuses a second order id',
@@ -1152,7 +1199,7 @@ void main() {
         final make = harness.coordinator.requests.singleWhere(
           (r) => r.url.path == '/api/make/',
         );
-        final body = utf8.decode(make.body ?? const []);
+        final body = unsignedBodyOf(make.body);
         final sent = jsonDecode(body) as Map<String, Object?>;
         expect(sent['password'], OrderPasswordHash.of('a test password')?.hex);
         expect(sent['latitude'], 48.8816);
