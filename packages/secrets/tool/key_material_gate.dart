@@ -1133,7 +1133,8 @@ const _garageKeyReaders = {
       // The decisions of 2026-11-26 on the Garage Key card (#81): the external key read alone, « Back to internal Garage Keys », an internal key refused at an import by its fingerprint, « Your Garage Keys » shown once.
       'external':
           'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
-      'selectInternal': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+      'selectInternal':
+          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
       'internalIndexOf':
           'Future<Result<int?, P2pFailure>> Function(RobosatsNetwork, GarageKeyFingerprint)',
       'externalNoticeShown': 'Future<Result<void, P2pFailure>> Function()',
