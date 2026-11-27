@@ -64,6 +64,50 @@ void main() {
   );
 
   testWidgets(
+    'each new move starts the delay again: moved twice 400 ms apart, a tap 500 ms after the second move is ignored, one 750 ms after it counts (security review of #296, C1)',
+    (tester) async {
+      final top = ValueNotifier<double>(50);
+      addTearDown(top.dispose);
+      await tester.pumpWidget(
+        app(
+          Column(
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: top,
+                builder: (_, height, _) => SizedBox(height: height),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    const SizedBox(height: 100),
+                    button(),
+                    const SizedBox(height: 2000),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(MovedTapGuard.afterMove);
+      top.value = 130;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      top.value = 210;
+      await tester.pump();
+      // 900 ms after the first move, 500 ms after the second.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Pay'));
+      await tester.pump();
+      expect(taps, 0);
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text('Pay'));
+      expect(taps, 1);
+    },
+  );
+
+  testWidgets(
     'two nested lists, the inner one scrolled, then the outer one: no move but scrolls, every tap counts at once',
     (tester) async {
       final outer = ScrollController();
@@ -624,6 +668,31 @@ void main() {
         final page = await covered(tester, shown: shown, armsWhenShown: false);
         await openDialog(tester, page);
         expect(await closeByDoubleTap(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'covered by a dialog, the page scrolled behind it (a measure that cannot tell), then the dialog closed with no frame between: the cover is not forgotten, a tap 100 ms after the closing is ignored, one after the delay counts (security review of #296, R3)',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        final page = await covered(tester, shown: shown);
+        await tester.pump(MovedTapGuard.afterMove);
+        await openDialog(tester, page);
+        final position = Scrollable.of(
+          tester.element(find.text('Pay')),
+        ).position;
+        // A scroll: its frame tries no tap at the button, and says nothing of the cover.
+        position.jumpTo(10);
+        await tester.pump();
+        Navigator.of(tester.element(find.text('dialog'))).pop();
+        // The first frame of the closing: the dialog on its way out takes no tap, the button is reached again.
+        await tester.pump();
+        await tapSoon(tester);
+        expect(taps, 0);
+        await tester.pump(MovedTapGuard.afterMove);
+        await tester.tap(find.text('Pay'));
+        expect(taps, 1);
       },
     );
   });

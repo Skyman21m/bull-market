@@ -27,6 +27,7 @@ import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_first_read_wait.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart' show Bolt11TestDecoder, Bolt11TestInvoice;
 import 'package:qr_flutter/qr_flutter.dart';
@@ -265,6 +266,8 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(find.text('Cancel the order?'), findsOneWidget);
+        // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Confirm cancellation'));
         await tester.pump();
         await tester.pump();

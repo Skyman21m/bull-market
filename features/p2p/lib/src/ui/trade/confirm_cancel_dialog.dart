@@ -45,6 +45,8 @@ class ConfirmCancelDialog extends StatelessWidget {
       goLabel: l10n.p2pTradeConfirmCancel,
       backFirst: true,
       note: note,
+      // The tap that loses the bond: a second tap on « Cancel » can land on it as the dialog opens, with a large text (#298).
+      guardsGo: true,
       onGo: () => Navigator.of(
         context,
       ).pop(BondLossAcknowledged.fromConfirmationDialog(record, seen)),

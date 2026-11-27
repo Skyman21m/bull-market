@@ -772,6 +772,128 @@ Future<void> _openReceived(
   expect(find.byType(Dialog), findsOneWidget);
 }
 
+/// The open dialog's button labelled [label].
+Finder _goIn(String label) => find.descendant(
+  of: find.byType(Dialog),
+  matching: find.byWidgetPredicate(
+    (widget) => widget is TradeButton && widget.label == label,
+  ),
+);
+
+/// How many cancels (a cancel alone, or an ask or acceptance of a collaborative cancel) the order made here has received.
+int _cancelsSent(_Confirmation confirmation) {
+  final maker = confirmation.maker;
+  if (maker == null) fail('no order made here');
+  return maker.requests.where((request) {
+    if (request.method != CoordinatorHttpMethod.post) return false;
+    final body = jsonDecode(utf8.decode(request.body ?? const []));
+    return body is Map<String, Object?> && body['action'] == 'cancel';
+  }).length;
+}
+
+/// The status the coordinator stores for the order made here.
+int _statusAt(_Confirmation confirmation) {
+  final maker = confirmation.maker;
+  final id = confirmation.orderId;
+  if (maker == null || id == null) fail('no order made here');
+  return maker.order(id).status;
+}
+
+/// Every list of the screen scrolled to its end, so that [finder], at the page's end, is built.
+Future<void> _builtAtTheEnd(WidgetTester tester, Finder finder) async {
+  for (var i = 0; i < 6 && finder.evaluate().isEmpty; i++) {
+    for (final element in find.byType(Scrollable).evaluate().toList()) {
+      if (element case StatefulElement(:final ScrollableState state)) {
+        state.position.jumpTo(state.position.maxScrollExtent);
+      }
+    }
+    await tester.pump();
+  }
+  expect(finder, findsOneWidget);
+}
+
+/// [opener] tapped twice at the middle of its part in view, the second tap [gap] after the first, as a finger that taps twice: whether the second tap landed on [go], the button that goes on of the dialog the first tap opened.
+Future<bool> _doubleTap(
+  WidgetTester tester,
+  Finder opener,
+  Finder go, {
+  required Duration gap,
+}) async {
+  final viewport = tester.getRect(
+    find.ancestor(of: opener, matching: find.byType(Scrollable)).first,
+  );
+  final point = tester.getRect(opener).intersect(viewport).center;
+  await tester.tapAt(point);
+  await tester.pump();
+  await tester.pump(gap);
+  final path = {
+    for (final entry in tester.hitTestOnBinding(point).path) entry.target,
+  };
+  final onGo = go.evaluate().any(
+    (element) => path.contains(element.renderObject),
+  );
+  await tester.tapAt(point);
+  await tester.pump();
+  await _answered(tester);
+  return onGo;
+}
+
+/// The order made here as a seller, taken, its escrow locked and the buyer's invoice given: 9, the chat open, « … » (« Order options ») shown.
+Future<_Confirmation> _sellerAt9(WidgetTester tester) async {
+  final confirmation = await _maker(tester, collateral: true);
+  final maker = confirmation.maker;
+  final id = confirmation.orderId;
+  if (maker == null || id == null) fail('no order made here');
+  maker
+    ..lockEscrow(id)
+    ..buyerGivesInvoice(id);
+  for (var i = 0; i < 120 && _options.evaluate().isEmpty; i++) {
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+  expect(_options, findsOneWidget);
+  await tester.pump(MovedTapGuard.afterMove);
+  return confirmation;
+}
+
+/// « … » of the chat step, which opens « Order options ».
+final _options = find.byIcon(Icons.more_horiz);
+
+/// « Order options » opened, its dialog shown: its « Collaborative Cancel ».
+Future<Finder> _openOptions(WidgetTester tester, P2pLocalizations l10n) async {
+  await tester.ensureVisible(_options);
+  await tester.pump();
+  await tester.tap(_options);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  final collaborative = _goIn(l10n.p2pEndCollabCancel);
+  expect(collaborative, findsOneWidget);
+  return collaborative;
+}
+
+/// Taps [go] where it is [at] these times after the dialog's first frame, until [acted]: what each tap did.
+Future<Map<int, bool>> _goneOnAt(
+  WidgetTester tester,
+  Finder go,
+  bool Function() acted, {
+  List<int> at = const [300, 500, 700, 900],
+}) async {
+  final outcomes = <int, bool>{};
+  var elapsed = 0;
+  for (final ms in at) {
+    if (ms > elapsed) {
+      await tester.pump(Duration(milliseconds: ms - elapsed));
+      elapsed = ms;
+    }
+    await tester.tapAt(tester.getCenter(go));
+    await tester.pump();
+    await _answered(tester);
+    elapsed += 100;
+    outcomes[ms] = acted();
+    if (outcomes[ms] ?? false) break;
+  }
+  return outcomes;
+}
+
 void main() {
   group('#288: a second tap at the place of « Hide details »', () {
     testWidgets(
@@ -1415,7 +1537,7 @@ void main() {
       for (final read in const [false, true]) {
         final at = '$width × $height ×$scale ${locale.languageCode}';
         testWidgets(
-          '« Cancel the order? » opened over the confirmation, the page at its end${read ? ', a read of the coordinator while it is open' : ''}, closed by its « Back », then « Pay » tapped on purpose 300, 500, 700 and 900 ms after that tap ($at): the taps within 0.7 s are ignored, the first after pays',
+          '« Cancel the order? » opened over the confirmation, the page at its end${read ? ', a read of the coordinator while it is open' : ''}, closed by its « Back », then « Pay » tapped on purpose 300, 500, 684 and 716 ms after that tap ($at): the taps within 0.7 s are ignored, the first after pays',
           (tester) async {
             final confirmation = await _maker(tester, locale: locale);
             await _size(tester, width: width, height: height, scale: scale);
@@ -1457,7 +1579,8 @@ void main() {
             await tester.pump();
             final outcomes = <int, bool>{};
             var elapsed = 0;
-            for (final ms in const [300, 500, 700, 900]) {
+            // One frame before the delay's end and one after, so that no tap falls on its very end (functional review of #296, R5).
+            for (final ms in const [300, 500, 684, 716]) {
               await tester.pump(Duration(milliseconds: ms - elapsed));
               elapsed = ms;
               await tester.tapAt(tester.getCenter(confirmation.pay));
@@ -1471,7 +1594,8 @@ void main() {
             );
             expect(outcomes[300], isFalse);
             expect(outcomes[500], isFalse);
-            expect(outcomes[700], isTrue);
+            expect(outcomes[684], isFalse);
+            expect(outcomes[716], isTrue);
             await confirmation.close();
           },
         );
@@ -1701,4 +1825,230 @@ void main() {
       },
     );
   });
+  group(
+    '#298: a second tap on the button that opens a dialog whose « go » costs or cannot be undone',
+    () {
+      void count(String gesture, int ignored) =>
+          debugPrint('GESTURE $gesture: $ignored ignored');
+
+      for (final (width, height, scale) in const [
+        (390.0, 800.0, 3.0),
+        (360.0, 800.0, 3.0),
+      ]) {
+        for (final gap in const [100, 250]) {
+          testWidgets(
+            '$width × $height, the text ×$scale: a seller who made the order, at the escrow (6), the page at its end, « Cancel » tapped twice $gap ms apart: the second tap lands on « Confirm Cancel » and cancels nothing, the bond kept; a tap on it after the delay cancels (security review of #296, R1)',
+            (tester) async {
+              final confirmation = await _maker(tester, collateral: true);
+              await _size(tester, width: width, height: height, scale: scale);
+              final l10n = confirmation.l10n;
+              final cancel = _cancelOf(l10n);
+              await _builtAtTheEnd(tester, cancel);
+              final position = Scrollable.of(tester.element(cancel)).position;
+              position.jumpTo(position.maxScrollExtent);
+              await tester.pump();
+              await tester.pump(MovedTapGuard.afterMove);
+              final go = _goIn(l10n.p2pTradeConfirmCancel);
+              expect(
+                await _doubleTap(
+                  tester,
+                  cancel,
+                  go,
+                  gap: Duration(milliseconds: gap),
+                ),
+                isTrue,
+              );
+              expect(_cancelsSent(confirmation), 0);
+              expect(_statusAt(confirmation), 6);
+              expect(go, findsOneWidget);
+              await tester.pump(MovedTapGuard.afterMove);
+              // Into view when the dialog is taller than the screen: a scroll, which sets no guard off.
+              await tester.ensureVisible(go);
+              await tester.pump();
+              await tester.tapAt(tester.getCenter(go));
+              await tester.pump();
+              await _answered(tester);
+              expect(_cancelsSent(confirmation), 1);
+              expect(_statusAt(confirmation), 4);
+              await confirmation.close();
+            },
+          );
+        }
+      }
+
+      for (final gap in const [100, 250]) {
+        testWidgets(
+          '390 × 800, the text ×1: a maker at its bond (0), « Cancel » at the top of the page\'s view tapped twice $gap ms apart: the second tap lands on « Confirm cancellation » and cancels nothing; a tap on it after the delay cancels',
+          (tester) async {
+            final confirmation = await _maker(tester);
+            await _size(tester, width: 390, height: 800);
+            final l10n = confirmation.l10n;
+            final cancel = _cancelOf(l10n);
+            await _builtAtTheEnd(tester, cancel);
+            unawaited(
+              Scrollable.ensureVisible(tester.element(cancel), alignment: 0),
+            );
+            await tester.pump();
+            await tester.pump(MovedTapGuard.afterMove);
+            final go = _goIn(l10n.p2pTradeConfirmCancellation);
+            expect(
+              await _doubleTap(
+                tester,
+                cancel,
+                go,
+                gap: Duration(milliseconds: gap),
+              ),
+              isTrue,
+            );
+            expect(_cancelsSent(confirmation), 0);
+            expect(_statusAt(confirmation), 0);
+            expect(go, findsOneWidget);
+            await tester.pump(MovedTapGuard.afterMove);
+            // Into view when the dialog is taller than the screen: a scroll, which sets no guard off.
+            await tester.ensureVisible(go);
+            await tester.pump();
+            await tester.tapAt(tester.getCenter(go));
+            await tester.pump();
+            await _answered(tester);
+            expect(_cancelsSent(confirmation), 1);
+            expect(_statusAt(confirmation), 4);
+            await confirmation.close();
+          },
+        );
+
+        testWidgets(
+          '390 × 800, the text ×1: a seller at the chat (9), « Order options » opened, « Collaborative Cancel » tapped twice $gap ms apart: the second tap lands on « Ask for Cancel » and asks nothing; a tap on it after the delay asks',
+          (tester) async {
+            final confirmation = await _sellerAt9(tester);
+            await _size(tester, width: 390, height: 800);
+            final l10n = confirmation.l10n;
+            final collaborative = await _openOptions(tester, l10n);
+            final go = _goIn(l10n.p2pEndCollabAsk);
+            expect(
+              await _doubleTap(
+                tester,
+                collaborative,
+                go,
+                gap: Duration(milliseconds: gap),
+              ),
+              isTrue,
+            );
+            expect(_cancelsSent(confirmation), 0);
+            expect(go, findsOneWidget);
+            await tester.pump(MovedTapGuard.afterMove);
+            // Into view when the dialog is taller than the screen: a scroll, which sets no guard off.
+            await tester.ensureVisible(go);
+            await tester.pump();
+            await tester.tapAt(tester.getCenter(go));
+            await tester.pump();
+            await _answered(tester);
+            expect(_cancelsSent(confirmation), 1);
+            await confirmation.close();
+          },
+        );
+      }
+
+      for (final (width, height, scale, locale) in const [
+        (390.0, 800.0, 1.0, Locale('en')),
+        (360.0, 800.0, 3.0, Locale('fr')),
+      ]) {
+        final at = '$width × $height ×$scale ${locale.languageCode}';
+        testWidgets(
+          'the seller at the escrow (6): « Cancel » tapped once, then « Confirm Cancel » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps within 0.7 s are ignored, the first after cancels',
+          (tester) async {
+            final confirmation = await _maker(
+              tester,
+              collateral: true,
+              locale: locale,
+            );
+            await _size(tester, width: width, height: height, scale: scale);
+            final l10n = confirmation.l10n;
+            final cancel = _cancelOf(l10n);
+            await _builtAtTheEnd(tester, cancel);
+            await tester.ensureVisible(cancel);
+            await tester.pump();
+            await tester.pump(MovedTapGuard.afterMove);
+            await tester.tap(cancel);
+            await tester.pump();
+            final go = _goIn(l10n.p2pTradeConfirmCancel);
+            expect(go, findsOneWidget);
+            await tester.ensureVisible(go);
+            final outcomes = await _goneOnAt(
+              tester,
+              go,
+              () => _cancelsSent(confirmation) > 0,
+            );
+            count(
+              '« Confirm Cancel » after « Cancel » ($at): cancelled at $outcomes',
+              outcomes.values.where((done) => !done).length,
+            );
+            expect(outcomes[300], isFalse);
+            expect(outcomes[500], isFalse);
+            expect(_cancelsSent(confirmation), 1);
+            expect(_statusAt(confirmation), 4);
+            await confirmation.close();
+          },
+        );
+      }
+
+      testWidgets(
+        'a maker at its bond (0): « Cancel » tapped once, then « Confirm cancellation » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame (390 × 800 ×1 en): the taps within 0.7 s are ignored, the first after cancels',
+        (tester) async {
+          final confirmation = await _maker(tester);
+          await _size(tester, width: 390, height: 800);
+          final l10n = confirmation.l10n;
+          final cancel = _cancelOf(l10n);
+          await _builtAtTheEnd(tester, cancel);
+          await tester.ensureVisible(cancel);
+          await tester.pump();
+          await tester.pump(MovedTapGuard.afterMove);
+          await tester.tap(cancel);
+          await tester.pump();
+          final go = _goIn(l10n.p2pTradeConfirmCancellation);
+          expect(go, findsOneWidget);
+          final outcomes = await _goneOnAt(
+            tester,
+            go,
+            () => _cancelsSent(confirmation) > 0,
+          );
+          count(
+            '« Confirm cancellation » at 0 (390 × 800 ×1 en): cancelled at $outcomes',
+            outcomes.values.where((done) => !done).length,
+          );
+          expect(outcomes[300], isFalse);
+          expect(outcomes[500], isFalse);
+          expect(_cancelsSent(confirmation), 1);
+          expect(_statusAt(confirmation), 4);
+          await confirmation.close();
+        },
+      );
+
+      testWidgets(
+        'a seller at the chat (9): « Collaborative Cancel » tapped once, then « Ask for Cancel » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame (390 × 800 ×1 en): the taps within 0.7 s are ignored, the first after asks',
+        (tester) async {
+          final confirmation = await _sellerAt9(tester);
+          await _size(tester, width: 390, height: 800);
+          final l10n = confirmation.l10n;
+          final collaborative = await _openOptions(tester, l10n);
+          await tester.tap(collaborative);
+          await tester.pump();
+          final go = _goIn(l10n.p2pEndCollabAsk);
+          expect(go, findsOneWidget);
+          final outcomes = await _goneOnAt(
+            tester,
+            go,
+            () => _cancelsSent(confirmation) > 0,
+          );
+          count(
+            '« Ask for Cancel » after « Collaborative Cancel » (390 × 800 ×1 en): asked at $outcomes',
+            outcomes.values.where((done) => !done).length,
+          );
+          expect(outcomes[300], isFalse);
+          expect(outcomes[500], isFalse);
+          expect(_cancelsSent(confirmation), 1);
+          await confirmation.close();
+        },
+      );
+    },
+  );
 }

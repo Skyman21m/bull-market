@@ -39,7 +39,7 @@ class TradeDialogBody extends StatelessWidget {
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
 
-  /// Whether a tap on the button that goes on is ignored for a moment just after it was shown or the layout moved it ([MovedTapGuard]): for a dialog whose [lines] or [alerts] follow a state while it is open, so that a line that comes or goes can bring that button under a tap aimed at the one that goes back (« Confirm … sent », #283), and for the seller's « Confirm … received », which releases the escrow (#293).
+  /// Whether a tap on the button that goes on is ignored for a moment just after it was shown or the layout moved it ([MovedTapGuard]): for a dialog whose [lines] or [alerts] follow a state while it is open, so that a line that comes or goes can bring that button under a tap aimed at the one that goes back (« Confirm … sent », #283), for the seller's « Confirm … received », which releases the escrow (#293), and for the dialogs whose button that goes on a second tap on the button that opened them can reach as they open, with a large text or on a small screen: « Confirm Cancel » at 6 and 7, which loses the bond, « Confirm cancellation », « Ask for Cancel » or « Accept Cancelation », and « Renew anyway » (#298).
   final bool guardsGo;
 
   /// What a screen reader reads of the button that goes on, when it differs from its label (« Wait 42 seconds »), and whether its changes are announced (« Confirm » once a wait ends).
