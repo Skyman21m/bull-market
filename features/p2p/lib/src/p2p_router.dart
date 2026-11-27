@@ -752,7 +752,7 @@ class _P2pPageState extends State<_P2pPage> {
   Widget build(BuildContext context) {
     final locator = widget.locator;
     final current = widget.network(context);
-    // The recovery note of every Garage Key in use on this network written again on the relays (#81), once per network and run of the app, in the background, where the relays were lent: nothing waits for it, nothing is shown.
+    // Once per network and run of the app, in the background, where the relays were lent (#81): the first reading of the recovery note of the key new trades take on this network, and the note of every Garage Key in use here written again on the relays; nothing waits for it, nothing is shown.
     if (locator.isRegistered<RecoveryNoteSync>()) {
       locator<RecoveryNoteSync>().opened(current);
     }

@@ -48,7 +48,7 @@ const maxRelayFrames = 64;
 
 /// Time one read of a relay on a session of its own may take in total ([TorCoordinatorTransport.readOnOwnSession], #81): the Tor session, the websocket and the relay's whole answer.
 ///
-/// [torConnectDeadline], the time one connection through Tor is given: on cold installs a first onion contact took up to 34 seconds (`torConnectBudget`), and a relay answers a request for a few events within a second or two once connected. A read is not tried again on a new session: the caller reads again at a later opening of the app.
+/// [torConnectDeadline], the time one connection through Tor is given (66 seconds: `torConnectBudget`, 60 seconds, plus 10 %): on cold installs a first onion contact took up to 34 seconds, as measured in the comment of `torConnectBudget`, and a relay answers a request for a few events within a second or two once connected. A read is not tried again on a new session: the caller reads again at a later opening of the app.
 final relayReadDeadline = torConnectDeadline;
 
 /// The most events one read keeps, every event of the read's subscriptions counted: what one call of `GarageRecoveryNote.latestNote` looks at, which is what one coordinator's relay of the reference answers at most for the two requests of a note (500 each). Past it the read stops, incomplete.

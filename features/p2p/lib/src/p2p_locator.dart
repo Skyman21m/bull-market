@@ -219,7 +219,7 @@ final class P2pLocator {
     locator.registerLazySingleton<RobotBindingRepository>(
       () => RobotBindingRepositoryImpl(locator(), clock: clock),
     );
-    // What this device read of the recovery notes of the Garage Keys (schema 11, #81), and, where the shell lent the relays, the note kept on them: read at the first visit of a key, awaited before the first new trade of a key not read yet, written after each confirmed trade and at each opening of the P2P tab. One for the feature: its readings and writes of a run are its memory.
+    // What this device read of the recovery notes of the Garage Keys (schema 11, #81), and, where the shell lent the relays, the note kept on them: read at the first showing of the P2P tab for the key new trades take and at the first visit of a key, read for good on the whole answer of a strict majority of the relays, awaited before the first new trade of a key not read yet, written after each confirmed trade and at each opening of the P2P tab. One for the feature: its readings and writes of a run are its memory.
     locator.registerLazySingleton<GarageRecoveryNoteRepository>(
       () => GarageRecoveryNoteRepositoryImpl(locator(), clock: clock),
     );
@@ -331,7 +331,7 @@ final class P2pLocator {
         readOnce: locator.isRegistered<WatchTradeUsecase>()
             ? locator<WatchTradeUsecase>().readOnce
             : null,
-        // The recovery note of a key read at its first visit (#81), where the relays were lent.
+        // The recovery note of a key read when the Garage shows it (#81), where the relays were lent.
         visit: locator.isRegistered<RecoveryNoteSync>()
             ? locator<RecoveryNoteSync>().visit
             : null,

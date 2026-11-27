@@ -143,13 +143,13 @@ When a Garage Key is entered, the official client reads on its relays a small en
 
 ### What a caller must do
 
-The pull request that connects this to the relays must:
+A caller of the relays must do what each point says; `RecoveryNoteSync` of `features/p2p` (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it ») does it as the end of each point says.
 
-- read off the UI isolate (`latestNoteFor` with the two identities), under one deadline for the whole reading (the official client gives up after 5 seconds), and call `latestNote` once per relay, then `latestOf` on the relays' readings, never one call on a list that mixes relays;
-- send the two filters without `limit`, and never use a wrap's date for anything;
-- never go below the robot index this device already knows for the key: the number read may be older, so smaller, than the last one (withheld note, drowned note, a clock running ahead on another device); for a pasted key with no history on this device, take it as « at least », never « exactly »;
-- decide what to do with a note dated in the future (it wins for ever, as in the official client): at least never go below what the device knows, and perhaps set apart a rumor dated beyond a few minutes from now, a deviation to put to the owner;
-- decide what to do with an enormous index, up to 2,147,483,647, before moving there: at the last index there is no next robot;
-- write the note only when moving forward, as the official client does (`Garage.model.ts:287-294`), and never with the legacy identity;
-- treat the recovery key pair given to an isolate as a secret: it is enough to write notes that count;
-- log neither `GarageRecoveryFilter.publicKeyHex`, nor the identity, nor the events' text.
+- read off the UI isolate (`latestNoteFor` with the two identities), under one deadline for the whole reading, and call `latestNote` once per relay, then `latestOf` on the relays' readings, never one call on a list that mixes relays. The app reads every coordinator relay of the network at once, each on a Tor session of its own, its events in an isolate killed past its time (96 s for the whole reading), then `latestOf`. The official client gives up after 5 seconds over sockets already open; a new trade of the app waits for the reading at most 40 seconds, the relays being reached through new Tor sessions, and the key counts as read only when a strict majority of the relays gave their whole answer in time (review of #302);
+- send the two filters without `limit`, and never use a wrap's date for anything. Done as written;
+- never go below the robot index this device already knows for the key: the number read may be older, so smaller, than the last one (withheld note, drowned note, a clock running ahead on another device); for a pasted key with no history on this device, take it as « at least », never « exactly ». The app keeps the index read as a floor that only goes up, and takes for a new trade the first free index strictly above it and above every index in use;
+- decide what to do with a note dated in the future (it wins for ever, as in the official client): at least never go below what the device knows. The app does not set it apart, as the official client, and never goes below what it knows;
+- decide what to do with an enormous index, up to 2,147,483,647, before moving there: at the last index there is no next robot. The app takes it as any floor: at the last index the key has no robot for a new trade;
+- decide when to write the note, and never write it with the legacy identity. The official client writes it when it moves to a new robot (`Garage.model.ts:287-294`) and after a make (`:547-569`); the app writes it, with the recovery identity only, after each make and take the coordinator confirmed and again at the first showing of the P2P tab in each run, with the highest index it knows for the key (robots in use and floor read), and only once the key was read from a majority of the relays, so that it never writes over a higher note it has not seen;
+- treat the recovery key pair given to an isolate as a secret: it is enough to write notes that count. The app gives the isolate the identities only, never the Garage Key;
+- log neither `GarageRecoveryFilter.publicKeyHex`, nor the identity, nor the events' text. The app logs fixed words only.
