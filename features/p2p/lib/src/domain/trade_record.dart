@@ -255,6 +255,7 @@ final class NewTradeStanding {
   @override
   String toString() => switch (noteFloor) {
     null => 'NewTradeStanding(${indexesInUse.length} in use)',
-    final floor => 'NewTradeStanding(${indexesInUse.length} in use, floor: $floor)',
+    final floor =>
+      'NewTradeStanding(${indexesInUse.length} in use, floor: $floor)',
   };
 }
