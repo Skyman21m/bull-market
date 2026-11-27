@@ -33,6 +33,9 @@ extension CoordinatorFailureL10n on CoordinatorFailure {
             ActionSignatureRefusal.otherCoordinator,
       ) =>
         l10n.p2pSignatureNewerVersion(coordinator),
+      // This app could not sign, and sent nothing: the payout's words for the same case, never a refusal of the coordinator.
+      ActionSignatureRefused(reason: ActionSignatureRefusal.notSigned) =>
+        l10n.p2pPayoutNotSentSign,
       RobotKeysRefused() ||
       RobotCredentialsRejected() ||
       // Only the calls on an order give it, which no robot request of the panel makes.

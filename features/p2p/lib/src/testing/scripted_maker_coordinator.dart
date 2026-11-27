@@ -410,7 +410,7 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     }
   }
 
-  /// Whether the coordinator checks the signature of every request of a robot that changes a state, as one running the fix of GHSA-22q8-9ghc-jg3h does (RoboSats pull request 2955, head `0943c97`): before anything else, a body with no signature is refused with 1059, one whose signature does not verify with the key the robot gave at its first contact or signs another text with 1048, a make signed for another coordinator with 1061 and one whose time is more than 300 seconds from [clock] with 1060 ([scriptedSignatureRefusal]).
+  /// Whether the coordinator checks the signature of every request of a robot that changes a state, as one running the fix of GHSA-22q8-9ghc-jg3h does (RoboSats pull request 2955, head `0943c97`): before anything else (after the participant check, 1047, for an action other than `take` and `cancel`, as the reference), a body with no signature is refused with 1059, one whose signature does not verify with the key the robot gave at its first contact or signs another text with 1048, a make signed for another coordinator with 1061 and one whose time is more than 300 seconds from [clock] with 1060 ([scriptedSignatureRefusal]).
   ///
   /// `false` plays a coordinator not updated yet, at commit babf62e, which reads only the fields its serializers declare and ignores the signature.
   bool checksSignatures = true;
@@ -439,6 +439,15 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       case '/api/make/':
         expected = ScriptedTimedText('make', coordinator.shortAlias);
       case '/api/order/' when action is String && orderId != null:
+        // `take` and `cancel` are checked first; every other action after the participant check (1047, `api/views.py` at `0943c97`), which a robot that is no participant is left to.
+        if (action != 'take' && action != 'cancel') {
+          final key = _robotOf(request).sessionKey;
+          final made = orders[orderId];
+          if (made == null ||
+              (made.maker.sessionKey != key && made.taker?.sessionKey != key)) {
+            return null;
+          }
+        }
         // Built here as `api/views.py` builds it, never with the package's own builders, so that a text the package changes is refused.
         expected = ScriptedExactText(
           '$action:$orderId:${coordinator.shortAlias}',

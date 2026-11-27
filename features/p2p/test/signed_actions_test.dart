@@ -50,25 +50,29 @@ void main() {
       return texts;
     }
 
-    for (final (locale, clock, newer) in [
+    for (final (locale, clock, newer, notSigned) in [
       (
         const Locale('en'),
         "The time of this device is too far from Temple of Sats's. Turn on automatic time and try again.",
         'Temple of Sats asks for a newer version of Bull Market.',
+        'The key of your robot could not sign this. Nothing was sent.',
       ),
       (
         const Locale('fr'),
         "L'heure de ce téléphone est trop éloignée de celle de Temple of Sats. Activez l'heure automatique et réessayez.",
         'Temple of Sats demande une version plus récente de Bull Market.',
+        'La clé de votre robot n’a pas pu signer ceci. Rien n’a été envoyé.',
       ),
     ]) {
       testWidgets(
-        '${locale.languageCode}: 1060 says the clock, 1059 and 1061 a newer version, wherever the refusals of an action go',
+        '${locale.languageCode}: 1060 says the clock, 1059 and 1061 a newer version, a signature not made here that nothing was sent, wherever the refusals of an action go',
         (tester) async {
           for (final (reason, said) in [
             (ActionSignatureRefusal.clockSkew, clock),
             (ActionSignatureRefusal.missing, newer),
             (ActionSignatureRefusal.otherCoordinator, newer),
+            // Not made here, nothing sent: the payout's words for the same case, never « refused this robot ».
+            (ActionSignatureRefusal.notSigned, notSigned),
           ]) {
             final texts = await textsOf(
               tester,
@@ -79,11 +83,8 @@ void main() {
               expect(text, contains(said), reason: '$reason');
             }
           }
-          // 1048 and a signature this app could not make keep the generic words of each place.
-          for (final reason in [
-            ActionSignatureRefusal.invalid,
-            ActionSignatureRefusal.notSigned,
-          ]) {
+          // 1048 keeps the generic words of each place.
+          for (final reason in [ActionSignatureRefusal.invalid]) {
             final texts = await textsOf(
               tester,
               ActionSignatureRefused(reason),
@@ -92,6 +93,7 @@ void main() {
             for (final text in texts) {
               expect(text, isNot(contains(clock)), reason: '$reason');
               expect(text, isNot(contains(newer)), reason: '$reason');
+              expect(text, isNot(contains(notSigned)), reason: '$reason');
             }
           }
         },
@@ -127,9 +129,10 @@ void main() {
       expect(contact, isA<Ok<CoordinatorRobotAnswer, CoordinatorFailure>>());
     }
 
-    /// What the coordinator answers [robot]'s take with [fields], sent as is.
-    Future<(int, Object?)> take(
+    /// What the coordinator answers [robot]'s [action] with [fields], sent as is.
+    Future<(int, Object?)> post(
       RobotIdentity robot,
+      String action,
       Map<String, Object?> fields,
     ) async {
       final answer = await coordinator.send(
@@ -142,7 +145,7 @@ void main() {
               ),
           headers: {'Authorization': robot.authorizationHeader()},
           maxResponseBytes: CoordinatorReadBounds.orderBytes,
-          body: utf8.encode(jsonEncode({'action': 'take', ...fields})),
+          body: utf8.encode(jsonEncode({'action': action, ...fields})),
           robot: robot.sessionKey,
         ),
       );
@@ -154,6 +157,12 @@ void main() {
         Err(:final failure) => fail('$failure'),
       };
     }
+
+    /// What the coordinator answers [robot]'s take with [fields], sent as is.
+    Future<(int, Object?)> take(
+      RobotIdentity robot,
+      Map<String, Object?> fields,
+    ) => post(robot, 'take', fields);
 
     String signed(RobotIdentity robot, String text) =>
         switch (unlockedPairOf(robot).signCleartext(text, now: now)) {
@@ -198,6 +207,18 @@ void main() {
         });
         expect(status, 200);
         expect(coordinator.holdsPreTake(taker), isTrue);
+      },
+    );
+
+    test(
+      'an action other than take and cancel by a robot that is no participant: 1047 first, as the reference',
+      () async {
+        await put(other);
+        for (final action in ['confirm', 'undo_confirm', 'dispute']) {
+          final (status, body) = await post(other, action, const {});
+          expect(status, 403, reason: action);
+          expect((body as Map<String, Object?>)['error_code'], 1047);
+        }
       },
     );
 
