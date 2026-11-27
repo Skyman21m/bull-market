@@ -17,9 +17,10 @@ import 'package:test/test.dart';
 import 'support/fakes.dart' show coordinator;
 import 'support/history_records.dart';
 import 'support/trade_harness.dart';
+import 'support/garage_words.dart';
 
 /// The vault of the tests: [tradeKey] on the harness's network.
-final class _Vault implements GarageKeyRepository {
+final class _Vault with KeysFromRead implements GarageKeyRepository {
   final NetworkGarageKey key;
 
   _Vault(this.key);
@@ -29,11 +30,6 @@ final class _Vault implements GarageKeyRepository {
     RobosatsNetwork network,
   ) async =>
       network == key.network ? Ok(key) : const Err(GarageKeyMissingFailure());
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -49,10 +45,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError();
 }
 
 /// The line « A fresh robot for this order » of the order page (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.2): the robot of a take is always a fresh one, reserved as before; the line says it only when that robot is not the one the Garage showed before the reservation, a verdict kept with the robot for every preparation of the order. Over the real use cases, records and robots of the harness, the coordinator played by `ScriptedCoordinator`.

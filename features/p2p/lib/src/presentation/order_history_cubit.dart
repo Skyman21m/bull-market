@@ -5,7 +5,6 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
-import '../domain/garage_key_fingerprint.dart';
 import '../domain/order_history.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/usecases/trade/list_order_history_usecase.dart';
@@ -14,7 +13,6 @@ import '../domain/usecases/trade/list_order_history_usecase.dart';
 typedef OrderHistoryLister =
     Stream<Result<List<FinishedOrder>, P2pFailure>> Function(
       RobosatsNetwork network,
-      GarageKeyFingerprint key,
     );
 
 /// What the records gave of the history (#253).
@@ -80,18 +78,16 @@ final class OrderHistoryState {
   };
 }
 
-/// The history of finished orders of one Garage Key on one network, while the Garage shows its profile (#253, design note `docs/design/phase-3-order-history.md`): read from the device only, nothing asked of a coordinator, nothing written.
+/// The history of finished orders of every Garage Key of one network (#81: each line says its key), while the Garage shows its profile (#253, design note `docs/design/phase-3-order-history.md`): read from the device only, nothing asked of a coordinator, nothing written.
 ///
 /// It reads from [start], so that the Garage knows whether the history holds an order the « Last order #N » lines do not show, and draws nothing of it until [open]; [fold] folds it again, as the Garage does when it is covered by a page or the app is hidden.
 class OrderHistoryCubit extends Cubit<OrderHistoryState> {
   final RobosatsNetwork network;
 
-  /// The key whose orders are listed, or why it could not be told: then the history says the records cannot be read.
-  final Result<GarageKeyFingerprint, P2pFailure> _key;
   final OrderHistoryLister _list;
   StreamSubscription<Result<List<FinishedOrder>, P2pFailure>>? _subscription;
 
-  OrderHistoryCubit(this.network, this._key, this._list)
+  OrderHistoryCubit(this.network, this._list)
     : super(
         const OrderHistoryState._(
           OrderHistoryLoading(),
@@ -103,19 +99,14 @@ class OrderHistoryCubit extends Cubit<OrderHistoryState> {
   /// Starts reading: a new list after each write of the records or the trails, the lines shown kept as they are.
   void start() {
     if (isClosed || _subscription != null) return;
-    switch (_key) {
-      case Ok(value: final key):
-        // An `Error` the list passes on is a bug (rule 11): not caught here.
-        _subscription = _list(network, key).listen((result) {
-          if (isClosed) return;
-          _emitRead(switch (result) {
-            Ok(:final value) => OrderHistoryListed(value),
-            Err() => const OrderHistoryUnreadable(),
-          });
-        });
-      case Err():
-        _emitRead(const OrderHistoryUnreadable());
-    }
+    // An `Error` the list passes on is a bug (rule 11): not caught here.
+    _subscription = _list(network).listen((result) {
+      if (isClosed) return;
+      _emitRead(switch (result) {
+        Ok(:final value) => OrderHistoryListed(value),
+        Err() => const OrderHistoryUnreadable(),
+      });
+    });
   }
 
   void _emitRead(OrderHistoryRead read) =>

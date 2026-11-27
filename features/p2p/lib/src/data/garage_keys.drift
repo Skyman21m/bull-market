@@ -1,0 +1,40 @@
+-- The rules of the Garage Keys of the words that the database keeps itself (schema 10, #81): see `DerivedGarageKeys` in `p2p_tables.dart`.
+import 'p2p_tables.dart';
+
+-- An activated key is never deleted: its trades finish with it, and its index is how they find it again.
+CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_deleted BEFORE DELETE ON derived_garage_keys
+BEGIN
+  SELECT RAISE(ABORT, 'an activated Garage Key is kept');
+END;
+
+-- An activated key never changes: another fingerprint at its index is another wallet's key, never a new one.
+CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_changed BEFORE UPDATE ON derived_garage_keys
+BEGIN
+  SELECT RAISE(ABORT, 'an activated Garage Key never changes');
+END;
+
+-- Keys are activated one by one from 0: never an index whose previous one is not activated on its network.
+CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys
+WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1)
+BEGIN
+  SELECT RAISE(ABORT, 'a Garage Key out of order');
+END;
+
+-- A key is written once per index: a second insert, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
+CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys
+WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;
+
+-- A notice shown is never due again, and a notice is never deleted: « Your Garage Keys » is shown once.
+CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices
+WHEN NOT (OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice)
+BEGIN
+  SELECT RAISE(ABORT, 'a Garage notice only turns shown');
+END;
+
+CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices
+BEGIN
+  SELECT RAISE(ABORT, 'a Garage notice is kept');
+END;

@@ -3,7 +3,7 @@ import 'package:primitives/primitives.dart';
 import '../network_garage_key.dart';
 import '../repositories/robot_binding_repository.dart';
 
-/// Whether deleting the Garage Key of a slot, by « Delete All », « Generate new » or the way out of a key that cannot be read, asks the wallet's PIN after « Delete Garage Key? ».
+/// Whether deleting the external Garage Key of a slot (#81), by the remove button of its card or the way out of a key that cannot be read, asks the wallet's PIN after « Delete Garage Key? ».
 ///
 /// RoboSats asks only the confirmation.
 /// Troc asks the PIN as well once a robot of the key may live on a coordinator, since deleting the key then loses robots that a coordinator knows, and whatever they hold there, unless the user kept a copy.

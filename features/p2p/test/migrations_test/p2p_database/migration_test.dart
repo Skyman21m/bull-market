@@ -636,7 +636,7 @@ void main() {
         isA<Ok<NewTradeStanding, P2pFailure>>().having(
           (ok) => ok.value,
           'standing',
-          NewTradeStanding(keyDrawnHereOnly: true, indexesInUse: [0, 2]),
+          NewTradeStanding(indexesInUse: [0, 2]),
         ),
       );
       // A binding of schema 2 is never reserved for a new trade, so it never takes a pending take: it was made by the Garage, and its robot may have met its coordinator for anything (review of #102).
@@ -684,7 +684,7 @@ void main() {
         ),
         isA<Ok<TradeRecord, P2pFailure>>(),
       );
-      // Keys from elsewhere, on either network, give no robot for a new trade.
+      // Keys from elsewhere, on either network, give a robot for a new trade too since 2026-11-26 (#81): a free index is reserved, as `generated`.
       for (final key in [pasted, both]) {
         expect(
           await trades.reserveForNewTrade(
@@ -692,8 +692,8 @@ void main() {
             templeTestnet,
           ),
           isA<Ok<TradeReservation?, P2pFailure>>().having(
-            (ok) => ok.value == null,
-            'no reservation',
+            (ok) => ok.value != null,
+            'reservation',
             isTrue,
           ),
         );

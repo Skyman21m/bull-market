@@ -829,14 +829,21 @@ void main() {
     });
 
     test(
-      'only the draw and the import write a key, and record its history',
+      'only « New key » activates a key of the words, only the import writes the vault, and nothing records a key as drawn here but the activation',
       () {
-        expect(referring((r) => r == 'GarageKeyRepository.create'), {
-          'lib/src/domain/usecases/generate_garage_key_usecase.dart',
+        // Since #81 nothing draws a key: the keys of the words are activated by the repository, at the first opening (key 0) and on « New key », and recorded as drawn here by the book's own activation, never through the bindings' repository.
+        expect(referring((r) => r == 'GarageKeyRepository.activateNext'), {
+          'lib/src/domain/usecases/new_garage_key_usecase.dart',
+        });
+        expect(referring((r) => r == 'NewGarageKeyUsecase.execute'), {
+          'lib/src/presentation/garage_cubit.dart',
+        });
+        expect(referring((r) => r == 'GarageKeyBookRepository.activate'), {
+          'lib/src/data/garage_key_repository_impl.dart',
         });
         expect(
           referring((r) => r == 'RobotBindingRepository.recordGeneratedKey'),
-          {'lib/src/domain/usecases/generate_garage_key_usecase.dart'},
+          isEmpty,
         );
         expect(referring((r) => r == 'GarageKeyRepository.import'), {
           'lib/src/domain/usecases/import_garage_key_usecase.dart',
@@ -845,12 +852,13 @@ void main() {
           referring((r) => r == 'RobotBindingRepository.recordImportedKey'),
           {'lib/src/domain/usecases/import_garage_key_usecase.dart'},
         );
-        // And only the repository asks the vault to write one.
-        for (final member in ['GarageKeys.create', 'GarageKeys.import']) {
+        // And only the repository asks the vault to write or delete one (the external key, #81); nothing asks it to draw one.
+        for (final member in ['GarageKeys.import', 'GarageKeys.delete']) {
           expect(referring((r) => r == member), {
             'lib/src/data/garage_key_repository_impl.dart',
           }, reason: member);
         }
+        expect(referring((r) => r == 'GarageKeys.create'), isEmpty);
       },
     );
 
@@ -1056,6 +1064,8 @@ class RobotCoordinatorCubit {
             facts.imports.any((uri) => uri.endsWith('p2p_database.dart')),
       ),
       {
+        // Schema 10 (#81): the keys of the words activated, and the key selected.
+        'lib/src/data/garage_key_book_repository_impl.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
@@ -1077,6 +1087,8 @@ class RobotCoordinatorCubit {
         'lib/src/data/p2p_tables.dart',
         // The migration steps `make drift-migrations` writes from the snapshots.
         'lib/src/data/p2p_database.steps.dart',
+        // Schema 10 (#81): the keys of the words activated, and the key selected.
+        'lib/src/data/garage_key_book_repository_impl.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
@@ -1356,57 +1368,66 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradeTrailsTermsTrace)',
       'm.createTrigger(schema.tradePaymentsSatsKnown)',
       'm.createTrigger(schema.tradePaymentsSatsForward)',
+      // Schema 10 (#81): the keys of the words and the key selected, the Garage's notices, and their triggers; nothing else, no row changed.
+      'm.createTable(schema.derivedGarageKeys)',
+      'm.createTable(schema.selectedGarageKeys)',
+      'm.createTrigger(schema.derivedGarageKeysNeverDeleted)',
+      'm.createTrigger(schema.derivedGarageKeysNeverChanged)',
+      'm.createTrigger(schema.derivedGarageKeysInOrder)',
+      'm.createTrigger(schema.derivedGarageKeysInsertedOnce)',
+      'm.createTable(schema.garageNotices)',
+      'm.createTrigger(schema.garageNoticesShownOnce)',
+      'm.createTrigger(schema.garageNoticesNeverDeleted)',
     ]);
     // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and their triggers and the trigger it replaces on `trade_terms` only, and turns the foreign keys off when a connection has them on; and the foreign keys of the trades, on, at each opening.
-    expect(
-      database.calls.where((call) => call.startsWith('customStatement(')),
-      [
-        'customStatement(_dropPaymentsCopy)',
-        'customStatement(_copyPayments)',
-        'customStatement(_dropPayments)',
-        'customStatement(_restorePayments)',
-        'customStatement(_dropPaymentsCopy)',
-        'customStatement(_foreignKeysOff)',
-        'customStatement(_dropTradesCopy)',
-        'customStatement(_copyTrades)',
-        'customStatement(_dropTrades)',
-        'customStatement(_restoreTrades)',
-        'customStatement(_dropTrailsCopy)',
-        'customStatement(_copyTrails)',
-        'customStatement(_dropTrails)',
-        'customStatement(_restoreTrails)',
-        'customStatement(_dropPaymentsOfSchema7)',
-        'customStatement(_copyPaymentsOfSchema7)',
-        'customStatement(_dropPayments)',
-        'customStatement(_restorePaymentsOfSchema7)',
-        'customStatement(_dropTradesOneOpenPerOrder)',
-        'customStatement(_dropTradesOneOpenPerOrderUpdate)',
-        'customStatement(_dropTradesNeverDeleted)',
-        'customStatement(_dropTradesSetOnce)',
-        'customStatement(_dropTradesMadePending)',
-        'customStatement(_dropTradesInsertedOnce)',
-        'customStatement(_dropTermsOfTheirTrade)',
-        'customStatement(_dropTradeTrailsNeverDeleted)',
-        'customStatement(_dropTradeTrailsInsertedOnce)',
-        'customStatement(_dropTradeTrailsOfTheirTrade)',
-        'customStatement(_dropTradeTrailsClosed)',
-        'customStatement(_dropTradeTrailsForward)',
-        'customStatement(_dropTradePaymentsNeverDeleted)',
-        'customStatement(_dropTradePaymentsInsertedOnce)',
-        'customStatement(_dropTradePaymentsOfTheirTrade)',
-        'customStatement(_dropTradePaymentsForward)',
-        'customStatement(_dropTradePaymentsHashOnce)',
-        'customStatement(_dropTradesCopy)',
-        'customStatement(_dropTrailsCopy)',
-        'customStatement(_dropPaymentsOfSchema7)',
-        'customStatement(_dropTradePayoutsNeverDeleted)',
-        'customStatement(_dropTradePayoutsForward)',
-        'customStatement(_dropTradePayoutsOfTheirTrade)',
-        'customStatement(_dropTradePayoutsInsertedOnce)',
-        'customStatement(_markPayoutsUnrecorded)',
-        'customStatement(_foreignKeysOn)',
-      ],
-    );
+    expect(database.calls.where((call) => call.startsWith('customStatement(')), [
+      'customStatement(_dropPaymentsCopy)',
+      'customStatement(_copyPayments)',
+      'customStatement(_dropPayments)',
+      'customStatement(_restorePayments)',
+      'customStatement(_dropPaymentsCopy)',
+      'customStatement(_foreignKeysOff)',
+      'customStatement(_dropTradesCopy)',
+      'customStatement(_copyTrades)',
+      'customStatement(_dropTrades)',
+      'customStatement(_restoreTrades)',
+      'customStatement(_dropTrailsCopy)',
+      'customStatement(_copyTrails)',
+      'customStatement(_dropTrails)',
+      'customStatement(_restoreTrails)',
+      'customStatement(_dropPaymentsOfSchema7)',
+      'customStatement(_copyPaymentsOfSchema7)',
+      'customStatement(_dropPayments)',
+      'customStatement(_restorePaymentsOfSchema7)',
+      'customStatement(_dropTradesOneOpenPerOrder)',
+      'customStatement(_dropTradesOneOpenPerOrderUpdate)',
+      'customStatement(_dropTradesNeverDeleted)',
+      'customStatement(_dropTradesSetOnce)',
+      'customStatement(_dropTradesMadePending)',
+      'customStatement(_dropTradesInsertedOnce)',
+      'customStatement(_dropTermsOfTheirTrade)',
+      'customStatement(_dropTradeTrailsNeverDeleted)',
+      'customStatement(_dropTradeTrailsInsertedOnce)',
+      'customStatement(_dropTradeTrailsOfTheirTrade)',
+      'customStatement(_dropTradeTrailsClosed)',
+      'customStatement(_dropTradeTrailsForward)',
+      'customStatement(_dropTradePaymentsNeverDeleted)',
+      'customStatement(_dropTradePaymentsInsertedOnce)',
+      'customStatement(_dropTradePaymentsOfTheirTrade)',
+      'customStatement(_dropTradePaymentsForward)',
+      'customStatement(_dropTradePaymentsHashOnce)',
+      'customStatement(_dropTradesCopy)',
+      'customStatement(_dropTrailsCopy)',
+      'customStatement(_dropPaymentsOfSchema7)',
+      'customStatement(_dropTradePayoutsNeverDeleted)',
+      'customStatement(_dropTradePayoutsForward)',
+      'customStatement(_dropTradePayoutsOfTheirTrade)',
+      'customStatement(_dropTradePayoutsInsertedOnce)',
+      'customStatement(_markPayoutsUnrecorded)',
+      // The step to schema 10 (#81): « Your Garage Keys » made due, in its own new table.
+      'customStatement(_externalKeyNamedDue)',
+      'customStatement(_foreignKeysOn)',
+    ]);
     // The step to schema 8, call by call, in its order (#176): the foreign keys found off before anything, or turned off and read again, each rebuilt table copied aside only while it is schema 7's, made again only while missing, filled again from its copy only while the copy exists, `trades` first; then the maker's terms, the triggers (each replaced one dropped first), the foreign keys of the file checked, and only then the copies dropped.
     final migration =
         database.callsByMethod['migration'] ?? fail('no migration');
@@ -1506,6 +1527,17 @@ class RobotCoordinatorCubit {
       'createTrigger(schema.tradeTrailsTermsTrace)',
       'createTrigger(schema.tradePaymentsSatsKnown)',
       'createTrigger(schema.tradePaymentsSatsForward)',
+      // Schema 10 (#81): three tables and their triggers, then « Your Garage Keys » made due, the one row the step writes, in its own new table.
+      'createTable(schema.derivedGarageKeys)',
+      'createTable(schema.selectedGarageKeys)',
+      'createTrigger(schema.derivedGarageKeysNeverDeleted)',
+      'createTrigger(schema.derivedGarageKeysNeverChanged)',
+      'createTrigger(schema.derivedGarageKeysInOrder)',
+      'createTrigger(schema.derivedGarageKeysInsertedOnce)',
+      'createTable(schema.garageNotices)',
+      'createTrigger(schema.garageNoticesShownOnce)',
+      'createTrigger(schema.garageNoticesNeverDeleted)',
+      'customStatement(_externalKeyNamedDue)',
       'customStatement(_foreignKeysOn)',
     ]);
     // What the two checks read (an invocation is listed before the one it is made on).
@@ -1611,6 +1643,9 @@ class RobotCoordinatorCubit {
           "SELECT key_fingerprint, robot_index, take, 'unrecorded', NULL, NULL FROM trade_trails AS trail "
           "WHERE role = 'buyer' AND position NOT IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'publicAgain', 'notAvailable') "
           'AND NOT EXISTS (SELECT 1 FROM trade_payouts WHERE trade_payouts.key_fingerprint = trail.key_fingerprint AND trade_payouts.robot_index = trail.robot_index AND trade_payouts.take = trail.take)',
+      '_externalKeyNamedDue':
+          "INSERT INTO garage_notices (notice, shown) VALUES ('externalKeyNamed', 0) "
+          'ON CONFLICT (notice) DO NOTHING',
       '_foreignKeys': 'PRAGMA foreign_keys',
       '_foreignKeysOff': 'PRAGMA foreign_keys = OFF',
       '_foreignKeyCheck': 'PRAGMA foreign_key_check',
@@ -1698,6 +1733,11 @@ class RobotCoordinatorCubit {
     expect(
       _drifted(File('lib/src/data/trade_payouts.drift').readAsStringSync()),
       '${_payoutTriggers.join(';')};',
+    );
+    // And on the keys of the words, as written in `garage_keys.drift` (schema 10, #81).
+    expect(
+      _drifted(File('lib/src/data/garage_keys.drift').readAsStringSync()),
+      '${_garageKeyTriggers.join(';')};',
     );
     // No other file holds SQL that writes either table of the pins, but the triggers as drift copies them.
     expect(
@@ -2135,17 +2175,14 @@ class RobotCoordinatorCubit {
           reason: method,
         );
       }
-      // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the reservation's network to that coordinator, under a key still recorded as drawn here only; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
+      // The statements, as written: the reservation binds only a free index with no trade, of any key (decided on 2026-11-26, #81), as `generated`; a pending take is `takenHere` and needs a binding `generated` on the reservation's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
       expect(
         trades.constants['_reserveSql'],
         'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
         'coordinator_alias, coordinator_onion, coordinator_node_keys, '
         'coordinator_nostr_key, bound_at, provenance) '
-        'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
-        'WHERE network = ? AND key_fingerprint = ? AND origin = ? '
-        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-        'WHERE key_fingerprint = ? AND origin <> ?) '
-        'AND NOT EXISTS (SELECT 1 FROM trades '
+        'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? '
+        'WHERE NOT EXISTS (SELECT 1 FROM trades '
         'WHERE key_fingerprint = ? AND robot_index = ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING robot_index',
@@ -2161,8 +2198,6 @@ class RobotCoordinatorCubit {
         'AND network = ? AND provenance = ? AND coordinator_alias = ? '
         'AND coordinator_onion = ? AND coordinator_node_keys = ? '
         'AND coordinator_nostr_key = ? '
-        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-        'WHERE key_fingerprint = ? AND origin <> ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING *',
       );
@@ -2178,8 +2213,6 @@ class RobotCoordinatorCubit {
         'AND network = ? AND provenance = ? AND coordinator_alias = ? '
         'AND coordinator_onion = ? AND coordinator_node_keys = ? '
         'AND coordinator_nostr_key = ? '
-        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-        'WHERE key_fingerprint = ? AND origin <> ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING *',
       );
@@ -2586,8 +2619,11 @@ const _watched = {
       'releaseOrder',
     },
   ),
-  'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
-  'GarageKeys': ('package:secrets/', {'create', 'import'}),
+  'GarageKeyRepository': ('package:p2p/', {'import', 'activateNext'}),
+  'GarageKeys': ('package:secrets/', {'create', 'import', 'delete'}),
+  // The keys of the words (#81): who activates one.
+  'GarageKeyBookRepository': ('package:p2p/', {'activate'}),
+  'NewGarageKeyUsecase': ('package:p2p/', {'execute'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
   'CloseRobotSessionsUsecase': ('package:p2p/', {'execute'}),
   'CoordinatorSessionsPort': ('package:p2p/', {'closeRobotSessions'}),
@@ -3098,6 +3134,20 @@ final _payoutTriggers = [
   for (final trigger in _payoutTriggersAsWritten) _squeezed(trigger),
 ];
 
+/// The triggers of the keys of the words (schema 10, #81), as `garage_keys.drift` writes them.
+const _garageKeyTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_deleted BEFORE DELETE ON derived_garage_keys BEGIN SELECT RAISE(ABORT, 'an activated Garage Key is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_changed BEFORE UPDATE ON derived_garage_keys BEGIN SELECT RAISE(ABORT, 'an activated Garage Key never changes'); END",
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1) BEGIN SELECT RAISE(ABORT, 'a Garage Key out of order'); END",
+  "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices WHEN NOT (OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice) BEGIN SELECT RAISE(ABORT, 'a Garage notice only turns shown'); END",
+  "CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices BEGIN SELECT RAISE(ABORT, 'a Garage notice is kept'); END",
+];
+
+final _garageKeyTriggers = [
+  for (final trigger in _garageKeyTriggersAsWritten) _squeezed(trigger),
+];
+
 /// The triggers schema 8 replaced (#176), as the `.drift` files wrote them up to schema 7: the migration steps keep them in the schemas of their versions, as drift copies them.
 const _replacedTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
@@ -3111,6 +3161,7 @@ const _replacedTriggersAsWritten = [
 
 /// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
 final _driftTriggers = {
+  ..._garageKeyTriggers,
   ..._tradeTriggers,
   ..._trailTriggers,
   ..._paymentTriggers,

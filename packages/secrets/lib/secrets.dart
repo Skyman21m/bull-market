@@ -1,6 +1,6 @@
 /// Stored mnemonics and raw seeds behind a custody boundary.
 ///
-/// [Secrets] manages creation, import, lookup, listing, deletion, RecoverBull restoration and scoped database keys. It returns [Secret] handles containing only metadata; [SecretEntry] also represents unreadable entries when listing. It also keeps the RoboSats Garage Keys of the P2P feature, which are random and never part of a wallet backup, and derives a Garage Key from a secret's words, which is never stored.
+/// [Secrets] manages creation, import, lookup, listing, deletion, RecoverBull restoration and scoped database keys. It returns [Secret] handles containing only metadata; [SecretEntry] also represents unreadable entries when listing. It also keeps RoboSats Garage Keys of the P2P feature, drawn at random or pasted, which are never part of a wallet backup, and derives a Garage Key from a secret's words, which is never stored and which the P2P feature uses since #81.
 ///
 /// Operations use the grouped API: `secret.derive`, `secret.sign`, `secret.backup`, `secret.verify`, `secret.silentPayments` and `secret.widgets`. Implementations are internal; no public operation returns the stored words or seed. BIP85 children, the swap master key and the derived Garage Key are the documented derived-material outputs. ⚠️ `secret.silentPayments.account` hands the stored words to bwk, which holds them while the account lives; the app never sees them.
 ///

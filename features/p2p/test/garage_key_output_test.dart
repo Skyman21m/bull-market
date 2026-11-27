@@ -4,13 +4,18 @@ import 'dart:typed_data';
 import 'package:analyzer/dart/analysis/utilities.dart' show parseString;
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/data/garage_key_book_repository_impl.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
+import 'package:p2p/src/data/p2p_database.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
+import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
+import 'support/garage_words.dart';
 import 'support/key_output.dart';
 
 /// Where a Garage Key could leave the app as text: a print, the project logger, `stdout` or `dart:developer`.
@@ -101,9 +106,15 @@ void main() {
           'package:primitives/primitives.dart',
           'package:robosats/robosats.dart',
           'package:secrets/secrets.dart',
+          // The port of the keys of the words, the fingerprint of the external key, the keyring, the book of their indexes and the slot of a robot (#81).
+          '../../public/p2p_garage_key_port.dart',
+          '../domain/garage_key_fingerprint.dart',
+          '../domain/garage_keyring.dart',
           '../domain/network_garage_key.dart',
           '../domain/p2p_failure.dart',
+          '../domain/repositories/garage_key_book_repository.dart',
           '../domain/repositories/garage_key_repository.dart',
+          '../domain/robot_binding.dart',
         ]),
       );
     });
@@ -142,11 +153,16 @@ void f(String key) {
   });
 
   test(
-    'nothing printed or logged while keys are created, imported, read, used and deleted holds a key',
+    'nothing printed or logged while the keys of the words are derived, activated, read and used, or a key imported, holds a key',
     () async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       FakeSecureStoragePlatform().install();
+      final database = P2pDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(database.close);
       final repository = GarageKeyRepositoryImpl(
         Secrets(scratchDirectory: () async => '.').garageKeys(),
+        TestWordsPort(),
+        GarageKeyBookRepositoryImpl(database, clock: DateTime.now),
       );
       // Fixed test bytes, 0x01 to 0x20: not a key anyone uses.
       final fixedKey = switch (GarageKey.fromBytes(
@@ -160,33 +176,22 @@ void f(String key) {
         Err(:final failure) => fail('expected a value, got $failure'),
       };
 
-      final created = <GarageKey>[];
+      final seen = <GarageKey>[];
       final output = await captureKeyOutput(() async {
-        ok(await repository.create(RobosatsNetwork.testnet));
-        ok(await repository.import(RobosatsNetwork.mainnet, fixedKey));
         for (final network in RobosatsNetwork.values) {
+          ok(await repository.keyring(network));
+          seen.add(ok(await repository.read(network)).key);
+          ok(await repository.activateNext(network, after: 0));
+          seen.add(ok(await repository.forNewTrade(network)).key);
+          ok(await repository.derived(network, 0));
           ok(await repository.exists(network));
           ok(await repository.firstUsableRobot(network));
         }
-        // The created key, read through the vault itself: the test looks for it, never shows it.
-        created.add(switch (await Secrets(
-          scratchDirectory: () async => '.',
-        ).garageKeys().read(slot: GarageKeySlot.testnet)) {
-          Ok(:final value) => switch (GarageKey.fromBytes(
-            Uint8List.fromList(value.bytes),
-          )) {
-            Ok(:final value) => value,
-            Err() => fail('not a key'),
-          },
-          Err() => fail('the created key cannot be read back'),
-        });
-        for (final network in RobosatsNetwork.values) {
-          ok(await repository.delete(network));
-        }
+        ok(await repository.import(RobosatsNetwork.mainnet, fixedKey));
       });
 
-      expect(created, hasLength(1));
-      expectNoKeyIn(output, [...created, fixedKey]);
+      expect(seen, hasLength(4));
+      expectNoKeyIn(output, [...seen, fixedKey]);
     },
     timeout: const Timeout(Duration(seconds: 90)),
   );

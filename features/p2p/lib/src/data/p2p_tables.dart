@@ -59,7 +59,7 @@ class RobotBindings extends Table {
   /// When the binding was written, in milliseconds since the epoch.
   IntColumn get boundAt => integer()();
 
-  /// The origin of the key on [network] when the robot was bound, copied from `garage_key_histories` by the statement that binds: `generated` or `acknowledged` (since schema 2).
+  /// The origin of the key on [network] when the robot was bound, copied from `garage_key_histories` by the statement that binds: `generated` or `acknowledged` (since schema 2); a reservation for a new trade writes `generated` whatever the key's history (since #81, decided on 2026-11-26).
   ///
   /// Its constraints are the column's own, so that schema 2 adds it to the table without rebuilding it; its default is for the bindings of schema 1, all made under a key drawn here.
   TextColumn get provenance => text().customConstraint(
@@ -609,5 +609,81 @@ class StoredTradeChatNostrPins extends Table {
     "CHECK (length(own_key) = 64 AND own_key NOT GLOB '*[^0-9a-f]*')",
     "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(peer_key) = 'text' AND typeof(own_key) = 'text')",
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
+  ];
+}
+
+/// The Garage Keys of the wallet's words this device activated, per network (schema 10, #81; design note `docs/design/garage-key-from-the-words.md` § 2): the index of each and the `GarageKeyFingerprint` of the key the words gave there when it was activated, never the key, which the words give again.
+///
+/// Indexes go up one by one from 0 (`derived_garage_keys_in_order`), and a row is never changed nor deleted: « New internal Garage Key » activates the index after the highest, and the trades of every key finish with it, whichever key is selected (`selected_garage_keys`). A fingerprint is unique on its network, so two indexes never claim the same key.
+@DataClassName('DerivedGarageKeyRow')
+class DerivedGarageKeys extends Table {
+  /// `mainnet` or `testnet`: the network step of the BIP85 path.
+  TextColumn get network => text()();
+
+  /// The index of the key, from 0: the last step of the BIP85 path.
+  IntColumn get keyIndex => integer()();
+
+  /// The `GarageKeyFingerprint` of the key, 64 lowercase hexadecimal characters.
+  TextColumn get keyFingerprint => text()();
+
+  /// When this device activated the key, in milliseconds since the epoch.
+  IntColumn get activatedAt => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {network, keyIndex};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (typeof(network) = 'text' AND typeof(key_index) = 'integer' AND typeof(key_fingerprint) = 'text' AND typeof(activated_at) = 'integer')",
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    'CHECK (key_index BETWEEN 0 AND 2147483647)',
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (activated_at BETWEEN 0 AND 8640000000000000)',
+    'UNIQUE (network, key_fingerprint)',
+  ];
+}
+
+/// The Garage Key the Garage Key card shows on each network, the key of every new trade there (schema 10, #81; decided on 2026-11-26): one row per network, kept across restarts, either an internal Garage Key (a key of the words) by its index or, with no index, the external Garage Key, the one the vault keeps in the slot of the network (drawn at random before #81, or imported); and the last internal Garage Key the card showed, where « Back to internal Garage Keys » returns.
+@DataClassName('SelectedGarageKeyRow')
+class SelectedGarageKeys extends Table {
+  /// `mainnet` or `testnet`.
+  TextColumn get network => text()();
+
+  /// The index of the internal Garage Key selected, one of `derived_garage_keys` on that network; `NULL` for the external Garage Key.
+  IntColumn get keyIndex => integer().nullable()();
+
+  /// The index of the last internal Garage Key selected on that network, kept while the external Garage Key is: where « Back to internal Garage Keys » returns. `NULL` when none was selected yet (the highest is then taken).
+  IntColumn get lastInternalIndex => integer().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {network};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (typeof(network) = 'text' AND (key_index IS NULL OR typeof(key_index) = 'integer') AND (last_internal_index IS NULL OR typeof(last_internal_index) = 'integer'))",
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    'CHECK (key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)',
+    'CHECK (last_internal_index IS NULL OR last_internal_index BETWEEN 0 AND 2147483647)',
+    'CHECK (key_index IS NULL OR last_internal_index = key_index)',
+  ];
+}
+
+/// The notices of the Garage shown once on this device (schema 10, #81; decided on 2026-11-26): `externalKeyNamed`, « Your Garage Keys », made due by the step to schema 10 (an update, never a new file), shown at the first opening of a Garage whose vault kept a key from before #81 (that key is named « External Garage Key » from then on), and turned shown without a word at a first opening without one; never again. A row only turns shown.
+@DataClassName('GarageNoticeRow')
+class GarageNotices extends Table {
+  /// The notice: `externalKeyNamed` only.
+  TextColumn get notice => text()();
+
+  /// `0` while the notice is due, `1` once it was shown.
+  IntColumn get shown => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {notice};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (typeof(notice) = 'text' AND typeof(shown) = 'integer')",
+    "CHECK (notice IN ('externalKeyNamed'))",
+    'CHECK (shown IN (0, 1))',
   ];
 }

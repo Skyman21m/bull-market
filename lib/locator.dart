@@ -3,6 +3,7 @@ import 'package:bb_mobile/core/status/status_locator.dart';
 import 'package:bb_mobile/core/storage/sqlite_database.dart';
 import 'package:bb_mobile/core/sync/sync_locator.dart';
 import 'package:bb_mobile/core/sync/sync_coordinator.dart';
+import 'package:bb_mobile/core/wallet/data/repositories/wallet_repository.dart';
 import 'package:bb_mobile/payjoin_setup.dart';
 import 'package:bb_mobile/features/address_view/address_view_locator.dart';
 import 'package:bb_mobile/features/all_seed_view/all_seed_view_locator.dart';
@@ -34,6 +35,7 @@ import 'package:bb_mobile/features/import_watch_only_wallet/import_watch_only_lo
 import 'package:bb_mobile/features/ledger/ledger_locator.dart';
 import 'package:bb_mobile/features/onboarding/onboarding_locator.dart';
 import 'package:bb_mobile/features/p2p_bolt11/bolt11_decoder_impl.dart';
+import 'package:bb_mobile/features/p2p_garage_key/derived_garage_key_adapter.dart';
 import 'package:bb_mobile/features/p2p_wallet/p2p_wallet_locator.dart';
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
 import 'package:bb_mobile/features/pay/pay_locator.dart';
@@ -222,6 +224,7 @@ class AppLocator {
   /// The handle creates and imports Garage Keys under the vault's write lock, which is per isolate, and the database must be opened and migrated by the foreground app alone: only the foreground composition may pass them, and the WorkManager isolate, which runs [setup] too, passes false.
   /// The documents directory is kept out of cloud backups on both platforms, as the wallet's databases are there.
   /// Asking for the handle reads and writes nothing, and the directory is asked for only at the first query of the database.
+  /// The Garage Key derived from the default wallet's words (#81, `DerivedGarageKeyAdapter`, the only caller of `secret.derive.garageKey`) goes to P2P under the same flag: built here, handed to the feature alone, never to the container; the wallet's repository it reads is resolved at its first derivation.
   /// The wallet's port (#100), the balance and quotes of the Instant Payments wallet, goes to P2P under the same flag, as the foreground's alone: the facade is resolved at the port's first use, once every feature is registered, and nothing calls the port yet.
   /// The BOLT11 decoder of `lib/features/p2p_bolt11/` (#86), pure code with no secret and no I/O, goes to P2P in both compositions: only the trade use cases read it, and they are registered with the database alone.
   @visibleForTesting
@@ -229,6 +232,12 @@ class AppLocator {
       const P2pFeature().setup(
         locator,
         garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+        derivedGarageKeys: withGarageKeys
+            ? DerivedGarageKeyAdapter(
+                locator<Secrets>(),
+                () => locator<WalletRepository>(),
+              )
+            : null,
         databaseDirectory: withGarageKeys
             ? getApplicationDocumentsDirectory
             : null,

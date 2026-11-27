@@ -26,7 +26,7 @@ import 'package:p2p/src/presentation/chat_cubit.dart';
 import 'package:p2p/src/presentation/host_rating_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
-import 'package:p2p/src/ui/garage/garage_wizard.dart' show simplexGroupUrl;
+import 'package:p2p/src/ui/garage/robosats_links.dart' show simplexGroupUrl;
 import 'package:p2p/src/ui/coordinator_details_dialog.dart'
     show CoordinatorContacts;
 import 'package:p2p/src/ui/trade/chat_actions.dart';

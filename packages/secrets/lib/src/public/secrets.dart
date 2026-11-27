@@ -187,7 +187,7 @@ final class Secrets {
 
   /// The RoboSats Garage Keys kept for the P2P feature, one per network. Pass this handle to that feature alone, never the entire [Secrets] service.
   ///
-  /// A stored Garage Key is 32 random bytes, never derived from a wallet seed, never stored with one, and never part of a wallet backup: the user keeps a copy of it separately. Its bytes control every RoboSats robot derived from it. A Garage Key derived from a secret's words (`secret.derive.garageKey`) is another key, never stored by this handle.
+  /// A stored Garage Key is 32 random bytes, never derived from a wallet seed, never stored with one, and never part of a wallet backup: the user keeps a copy of it separately. Its bytes control every RoboSats robot derived from it. A Garage Key derived from a secret's words (`secret.derive.garageKey`) is another key, never stored by this handle; since #81 the keys of the words are the P2P feature's Garage Keys, and this handle keeps its external key, one per slot: a key drawn at random before #81, kept with its robots and its trades, or a key pasted from elsewhere.
   GarageKeys garageKeys() => GarageKeys._(_garageKeyRepository);
 
   Secret _handle(SecretInfo info) => Secret(

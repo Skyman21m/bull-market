@@ -3,10 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
-import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -14,6 +12,7 @@ import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/fakes.dart';
+import 'support/garage_words.dart';
 
 /// A coordinator that keeps the pair of the first contact of each robot, as the reference coordinator does, and answers every later request with it.
 ///
@@ -77,6 +76,7 @@ void main() {
       torStates: () => Stream.value(P2pTorState.ready),
       clock: () => testNow,
       garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+      derivedGarageKeys: TestWordsPort(),
     );
   });
 
@@ -91,15 +91,7 @@ void main() {
       final lake = Federation.robosats
           .on(network)
           .firstWhere((candidate) => candidate.shortAlias == 'lake');
-      // « Generate Garage Key », then robot number 0, as the Garage gets them.
-      expect(
-        await locator<GenerateGarageKeyUsecase>().execute(network),
-        isA<Ok<GarageKeyHistory, P2pFailure>>().having(
-          (ok) => ok.value,
-          'history',
-          GarageKeyHistory.drawnHere,
-        ),
-      );
+      // Key 0 of the words, activated at its first reading, then robot number 0, as the Garage gets them (#81).
       final robot = switch (await locator<DeriveFirstRobotUsecase>().execute(
         network,
       )) {

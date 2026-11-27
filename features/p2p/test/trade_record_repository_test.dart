@@ -190,50 +190,55 @@ void main() {
     );
 
     test(
-      'never binds a robot of a key from elsewhere, on its network or the other one',
+      'binds a robot of a key from elsewhere too, as any reservation, on its network or the other one (decided on 2026-11-26, #81)',
       () async {
-        final robot = RobotSlot(testnet, fingerprintA, 0);
+        Matcher boundAs(BindingProvenance provenance) =>
+            isA<Ok<RobotStanding, P2pFailure>>().having(
+              (ok) => ok.value.binding?.provenance,
+              'provenance',
+              provenance,
+            );
         // Not recorded at all.
+        final robot = RobotSlot(testnet, fingerprintA, 0);
         expect(
           await trades.reserveForNewTrade(robot, temple),
-          reservedIs(false),
+          reservedIs(true),
         );
-        // Imported, then acknowledged, on its network.
+        expect(
+          await bindings.standingOf(robot),
+          boundAs(BindingProvenance.drawnHere),
+        );
+        // Imported on its network.
         expect(
           await bindings.recordImportedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
+        final next = RobotSlot(testnet, fingerprintA, 1);
+        expect(await trades.reserveForNewTrade(next, temple), reservedIs(true));
         expect(
-          await trades.reserveForNewTrade(robot, temple),
-          reservedIs(false),
+          await bindings.standingOf(next),
+          boundAs(BindingProvenance.drawnHere),
         );
-        expect(
-          await bindings.recordAcknowledgedKey(testnet, fingerprintA),
-          isA<Ok>(),
-        );
-        expect(
-          await trades.reserveForNewTrade(robot, temple),
-          reservedIs(false),
-        );
-        // Drawn here on its network, but pasted into the other slot, then acknowledged there: the same tokens may have travelled.
-        final other = RobotSlot(testnet, fingerprintB, 0);
+        // Drawn here on its network, but imported into the other slot: reserved all the same, the check at the coordinator standing in for the history.
         expect(
           await bindings.recordGeneratedKey(testnet, fingerprintB),
           isA<Ok>(),
         );
-        for (final record in [
-          () => bindings.recordImportedKey(mainnet, fingerprintB),
-          () => bindings.recordAcknowledgedKey(mainnet, fingerprintB),
-        ]) {
-          expect(await record(), isA<Ok>());
-          expect(
-            await trades.reserveForNewTrade(other, temple),
-            reservedIs(false),
-          );
-        }
-        expect(await bindingRows(), isEmpty);
-        // The Garage's own binding of an acknowledged key still works: only new trades refuse it.
-        expect(await bindings.bind(robot, temple), isA<Ok>());
+        expect(
+          await bindings.recordImportedKey(mainnet, fingerprintB),
+          isA<Ok>(),
+        );
+        final other = RobotSlot(testnet, fingerprintB, 0);
+        expect(
+          await trades.reserveForNewTrade(other, temple),
+          reservedIs(true),
+        );
+        expect(
+          await bindings.standingOf(other),
+          boundAs(BindingProvenance.drawnHere),
+        );
+        // A robot reserved is never reserved again, whatever its key.
+        expect(await trades.reserveForNewTrade(robot, lake), reservedIs(false));
       },
     );
 
@@ -295,62 +300,21 @@ void main() {
     };
 
     test(
-      'a key is for new trades only when drawn here and nothing else anywhere',
+      'where a key comes from does not count: its standing is its indexes in use (decided on 2026-11-26, #81)',
       () async {
+        final empty = await standing(testnet, fingerprintA);
         expect(
-          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
-          isFalse,
-        );
-        expect(
-          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          await bindings.recordImportedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
-        expect(
-          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
-          isTrue,
-        );
-        // Not on the other network, where it was not drawn.
-        expect(
-          (await standing(mainnet, fingerprintA)).keyDrawnHereOnly,
-          isFalse,
-        );
-        expect(
-          await bindings.recordGeneratedKey(mainnet, fingerprintA),
-          isA<Ok>(),
-        );
-        expect(
-          (await standing(mainnet, fingerprintA)).keyDrawnHereOnly,
-          isTrue,
-        );
-        expect(
-          await bindings.recordImportedKey(mainnet, fingerprintA),
-          isA<Ok>(),
-        );
-        expect(
-          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
-          isFalse,
-        );
-        expect(
-          (await standing(mainnet, fingerprintA)).keyDrawnHereOnly,
-          isFalse,
-        );
+        expect(await standing(testnet, fingerprintA), empty);
         expect(
           await bindings.recordAcknowledgedKey(mainnet, fingerprintA),
           isA<Ok>(),
         );
-        expect(
-          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
-          isFalse,
-        );
-        // Another key's record does not count.
-        expect(
-          await bindings.recordGeneratedKey(testnet, fingerprintB),
-          isA<Ok>(),
-        );
-        expect(
-          (await standing(testnet, fingerprintB)).keyDrawnHereOnly,
-          isTrue,
-        );
+        expect(await standing(testnet, fingerprintA), empty);
+        expect(await standing(mainnet, fingerprintA), empty);
+        expect(empty.indexesInUse, isEmpty);
       },
     );
 
@@ -1208,7 +1172,7 @@ void main() {
     );
 
     test(
-      'a key drawn here on the other network only gives no reservation (M01)',
+      'a key drawn here on the other network only gives a reservation too, since 2026-11-26 (M01, #81)',
       () async {
         expect(
           await bindings.recordGeneratedKey(mainnet, fingerprintA),
@@ -1220,14 +1184,16 @@ void main() {
             RobotSlot(testnet, fingerprintA, 0),
             temple,
           ),
-          reservedIs(false),
+          reservedIs(true),
         );
-        expect(await bindingRows(), isEmpty);
+        expect((await bindingRows()).map((row) => row.provenance), [
+          'generated',
+        ]);
       },
     );
 
     test(
-      'a key pasted in again between the reservation and the pending take refuses the pending take (R13)',
+      'a key imported again between the reservation and the pending take no longer refuses the pending take, since 2026-11-26 (R13, #81)',
       () async {
         final reservation = await reserved(0);
         expect(
@@ -1241,9 +1207,9 @@ void main() {
             orderId: 3,
             role: TradeRole.buyer,
           ),
-          refusedWith<GarageKeyNotForTradesFailure>(),
+          isA<Ok<TradeRecord, P2pFailure>>(),
         );
-        expect(await tradeRows(), isEmpty);
+        expect(await tradeRows(), hasLength(1));
       },
     );
   });
@@ -1533,8 +1499,8 @@ void main() {
       expect('$record', isNot(contains(fingerprintA.hex)));
       expect('$record', isNot(contains(temple.onion)));
       expect(
-        '${NewTradeStanding(keyDrawnHereOnly: true, indexesInUse: [1, 2])}',
-        'NewTradeStanding(true, 2 in use)',
+        '${NewTradeStanding(indexesInUse: [1, 2])}',
+        'NewTradeStanding(2 in use)',
       );
     },
   );

@@ -29,6 +29,7 @@ import 'package:test/test.dart';
 import 'support/fakes.dart';
 import 'support/history_records.dart';
 import 'support/robot_bindings.dart';
+import 'support/garage_words.dart';
 
 GarageKey _keyOf(int first) => switch (GarageKey.fromBytes(
   Uint8List.fromList(List<int>.generate(32, (i) => first + i)),
@@ -44,7 +45,7 @@ GarageKeyFingerprint _fingerprintOf(GarageKey key) =>
     };
 
 /// The vault as the robot layer and the Garage read it: one key per network.
-final class _Vault implements GarageKeyRepository {
+final class _Vault with KeysFromRead implements GarageKeyRepository {
   final Map<RobosatsNetwork, Result<NetworkGarageKey, P2pFailure>> slots;
 
   _Vault(this.slots);
@@ -53,11 +54,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
   ) async => slots[network] ?? const Err(GarageKeyMissingFailure());
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -73,10 +69,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError();
 }
 
 /// The robot the Garage shows by the device's records (#251, design note `docs/design/phase-3-fresh-robot.md` § 3, § 4.1): « served » from how a finished trade's trail stopped, the fresh robot the next trade would reserve, the pure rule of the opening, and where the user left the Garage by hand.
@@ -149,9 +141,7 @@ void main() {
     List<ActiveTrade> active = const [],
     List<ClosedTrade> closed = const [],
     int? fresh = 9,
-    bool drawnHere = true,
   }) => GarageRecords(
-    keyDrawnHereOnly: drawnHere,
     inProgress: active,
     closed: closed,
     fresh: fresh == null ? null : slot(fresh),
@@ -361,17 +351,15 @@ void main() {
     );
 
     test(
-      'a key pasted or acknowledged never moves: only orders made here, and the line\'s robot whatever its end',
+      'a key imported or acknowledged follows the same rule since 2026-11-26 (#81): a trade taken here counts as one made here',
       () {
         final records = recordsOf(
-          drawnHere: false,
           fresh: null,
           active: [inProgress(5, TradePosition.chatting)],
           closed: [finished(3, TradePosition.succeeded)],
         );
-        expect(GarageOpening.of(key, records), slot(3));
+        expect(GarageOpening.of(key, records), slot(5));
         final made = recordsOf(
-          drawnHere: false,
           fresh: null,
           active: [
             inProgress(5, TradePosition.public, origin: TradeOrigin.madeHere),
@@ -639,16 +627,13 @@ void main() {
       },
     );
 
-    test('a key from elsewhere has none', () async {
+    test('a key from elsewhere has one too, since 2026-11-26 (#81)', () async {
       expect(
-        NextTradeRobot.of(
-          key,
-          NewTradeStanding(keyDrawnHereOnly: false, indexesInUse: const []),
-        ),
-        isA<Err<NetworkRobot, P2pFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<GarageKeyNotForTradesFailure>(),
+        NextTradeRobot.of(key, NewTradeStanding(indexesInUse: const [0])),
+        isA<Ok<NetworkRobot, P2pFailure>>().having(
+          (ok) => ok.value.accountIndex,
+          'index',
+          greaterThan(0),
         ),
       );
     });
@@ -720,7 +705,6 @@ void main() {
           Ok(:final value) => value,
           Err(:final failure) => fail('$failure'),
         };
-        expect(last.keyDrawnHereOnly, isTrue);
         expect(last.fresh, slot(1));
         expect(GarageOpening.of(key, last), slot(1));
         final navigation = GarageNavigation();

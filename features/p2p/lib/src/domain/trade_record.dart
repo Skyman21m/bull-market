@@ -218,32 +218,26 @@ final class TradeReservation {
   String toString() => 'TradeReservation($robot, $coordinator)';
 }
 
-/// What a new trade may use of one Garage Key on one network, read in one statement: whether the key's history lets its robots start a trade, and the indexes already used.
+/// What a new trade may use of one Garage Key on one network, read in one statement: the indexes already used.
+///
+/// Where the key comes from no longer decides whether its robots may start a trade (decided on 2026-11-26, #81): a key drawn here, a key of the wallet's words and a key imported trade alike; what stands in for a robot already used elsewhere is the refusal of a robot the coordinator of the trade already knows (`RobotOnCoordinatorFace.alreadyExisted`).
 @immutable
 final class NewTradeStanding {
-  /// Whether the key is recorded as drawn on this device for the network, and recorded as nothing else on any network: neither imported nor acknowledged, so that none of its robots can live on a coordinator from elsewhere.
-  final bool keyDrawnHereOnly;
-
   /// The robot indexes of the key that are bound to a coordinator, on either network, or have a trade record: a new trade never uses one of them.
   final Set<int> indexesInUse;
 
-  NewTradeStanding({
-    required this.keyDrawnHereOnly,
-    required Iterable<int> indexesInUse,
-  }) : indexesInUse = Set.unmodifiable(indexesInUse);
+  NewTradeStanding({required Iterable<int> indexesInUse})
+    : indexesInUse = Set.unmodifiable(indexesInUse);
 
   @override
   bool operator ==(Object other) =>
       other is NewTradeStanding &&
-      other.keyDrawnHereOnly == keyDrawnHereOnly &&
       other.indexesInUse.length == indexesInUse.length &&
       other.indexesInUse.containsAll(indexesInUse);
 
   @override
-  int get hashCode =>
-      Object.hash(keyDrawnHereOnly, Object.hashAllUnordered(indexesInUse));
+  int get hashCode => Object.hashAllUnordered(indexesInUse);
 
   @override
-  String toString() =>
-      'NewTradeStanding($keyDrawnHereOnly, ${indexesInUse.length} in use)';
+  String toString() => 'NewTradeStanding(${indexesInUse.length} in use)';
 }

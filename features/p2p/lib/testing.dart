@@ -14,8 +14,10 @@ import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show GarageKeys;
+import 'package:secrets/secrets.dart'
+    show GarageKeyMaterial, GarageKeySlot, GarageKeys;
 
+import 'public/p2p_garage_key_port.dart';
 import 'public/p2p_wallet_port.dart';
 import 'src/data/p2p_database.dart';
 import 'src/data/tor_coordinator_transport.dart';
@@ -101,6 +103,7 @@ export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 /// The book waits before it asks a coordinator again on the timers of the test's zone (those of `WidgetTester` in a widget test), each wait exactly as long as its rule says, without the random spread of the app.
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
+/// The keys of the words (#81) come from [derivedGarageKeys], a port the test wrote (the Garage's tests derive real test words); without it, key 0 of the words is the key the test imported in the vault's slot of the network, and every other index is refused: for the tests of trades, whose coordinators play the robots of a key they know. Never a port of the app's: no wallet is read.
 /// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
 /// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
 /// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
@@ -117,6 +120,7 @@ void setUpP2pForTesting(
   required DateTime Function() clock,
   P2pShuffle shuffle = P2pShuffle.unshuffled,
   GarageKeys? garageKeys,
+  P2pGarageKeyPort? derivedGarageKeys,
   bool databaseUnavailable = false,
   QueryExecutor Function()? databaseOpener,
   Bolt11Decoder? bolt11Decoder,
@@ -153,10 +157,14 @@ void setUpP2pForTesting(
     tiles: () => tiles,
     shuffle: shuffle,
   );
+  if (garageKeys == null && derivedGarageKeys != null) {
+    throw ArgumentError('The words of the Garage need its vault too');
+  }
   if (garageKeys != null) {
     P2pLocator.registerGarageKeys(
       locator,
       garageKeys,
+      derivedGarageKeys ?? _SlotKeyAsWords(garageKeys),
       database: () => P2pDatabase.forTesting(
         // Query streams closed at once when their last listener goes, so that a screen the test disposes, such as the tab and its list of the active trades (#88), leaves no timer of drift behind.
         DatabaseConnection(
@@ -197,6 +205,36 @@ Widget createOrderPageForTesting(
   locator,
   P2pCreateRouteArgs(network, currency: currency, initialType: initialType),
 );
+
+/// Key 0 of the words as the key a test imported in the vault's slot of the network, every other index refused: the default of [setUpP2pForTesting] for the tests of trades, never a derivation.
+final class _SlotKeyAsWords implements P2pGarageKeyPort {
+  final GarageKeys _vault;
+
+  const _SlotKeyAsWords(this._vault);
+
+  @override
+  Future<Result<GarageKeyMaterial, P2pGarageKeyRefusal>> garageKey(
+    RobosatsNetwork network, {
+    required int index,
+  }) async {
+    if (index != 0) {
+      return const Err(
+        P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
+      );
+    }
+    return switch (await _vault.read(
+      slot: switch (network) {
+        RobosatsNetwork.mainnet => GarageKeySlot.mainnet,
+        RobosatsNetwork.testnet => GarageKeySlot.testnet,
+      },
+    )) {
+      Ok(:final value) => Ok(value),
+      Err() => const Err(
+        P2pGarageKeyRefusal(P2pGarageKeyRefusalReason.unreadable),
+      ),
+    };
+  }
+}
 
 /// The draw in the middle of the range, which spreads no wait.
 double _middle() => 0.5;

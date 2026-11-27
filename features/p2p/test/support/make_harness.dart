@@ -47,6 +47,7 @@ import 'package:p2p/testing.dart' show ScriptedMakerCoordinator;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
+import 'garage_words.dart';
 
 import 'trade_harness.dart'
     show
@@ -133,9 +134,16 @@ final class MakeHarness {
   final TradeMakeLocks makeLocks = TradeMakeLocks();
   final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
   final _MakeVault _vault;
+  final GarageKeyRepository Function(P2pDatabase database)? _garageOver;
 
-  MakeHarness._(this.network, this.database, this.coordinator, this._clock)
-    : _vault = _MakeVault(NetworkGarageKey(network, tradeKey)) {
+  MakeHarness._(
+    this.network,
+    this.database,
+    this.coordinator,
+    this._clock, {
+    GarageKeyRepository Function(P2pDatabase database)? garageOver,
+  }) : _garageOver = garageOver,
+       _vault = _MakeVault(NetworkGarageKey(network, tradeKey)) {
     DateTime clock() => _clock.now;
     bindings = RobotBindingRepositoryImpl(database, clock: clock);
     records = MakeRecords(
@@ -144,7 +152,7 @@ final class MakeHarness {
     );
     payouts = TradePayoutRepositoryImpl(database);
     trails = MakeTrails(TradeTrailRepositoryImpl(database), () => kill);
-    robots = InterimTradeRobots(_vault, records);
+    robots = InterimTradeRobots(garageOver?.call(database) ?? _vault, records);
     limiter = RobotRequestLimiter(
       elapsed: () => _clock.now.difference(DateTime.utc(2026)),
       delay: (_) async {},
@@ -220,18 +228,27 @@ final class MakeHarness {
   }
 
   /// A first run: a new database, the key recorded as drawn here, and [coordinator] answering the make.
+  /// [key] is the key whose robots the coordinator knows, [tradeKey] unless given; with [garageOver], the robot layer takes its keys from the real Garage Keys it makes over the run's database (#81, review of #292, C-wiring).
   static Future<MakeHarness> start({
     RobosatsNetwork network = RobosatsNetwork.testnet,
+    GarageKey? key,
+    GarageKeyRepository Function(P2pDatabase database)? garageOver,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final clock = _Clock(DateTime.utc(2026, 11, 14, 9));
     final database = P2pDatabase.forTesting(NativeDatabase.memory());
     final coordinator = ScriptedMakerCoordinator(
       network: network,
-      robots: TradeHarness.robotsOf(network),
+      robots: TradeHarness.robotsOf(network, key),
       clock: () => clock.now.add(clock.coordinatorSkew),
     );
-    final harness = MakeHarness._(network, database, coordinator, clock);
+    final harness = MakeHarness._(
+      network,
+      database,
+      coordinator,
+      clock,
+      garageOver: garageOver,
+    );
     final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
@@ -244,8 +261,13 @@ final class MakeHarness {
   }
 
   /// The app started again over the same database and coordinator, at the same time: nothing kept in memory.
-  MakeHarness restart() =>
-      MakeHarness._(network, database, coordinator, _clock);
+  MakeHarness restart() => MakeHarness._(
+    network,
+    database,
+    coordinator,
+    _clock,
+    garageOver: _garageOver,
+  );
 
   DateTime get now => _clock.now;
 
@@ -396,7 +418,7 @@ final class _Clock {
   _Clock(this.now);
 }
 
-final class _MakeVault implements GarageKeyRepository {
+final class _MakeVault with KeysFromRead implements GarageKeyRepository {
   /// The key the vault holds: `null` once deleted.
   NetworkGarageKey? key;
 
@@ -409,11 +431,6 @@ final class _MakeVault implements GarageKeyRepository {
     final held? when held.network == network => Ok(held),
     _ => const Err(GarageKeyMissingFailure()),
   };
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -429,10 +446,6 @@ final class _MakeVault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError();
 }
 
 /// The trade records, stopping the app where the test says, or failing a write of a make.

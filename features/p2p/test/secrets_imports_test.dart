@@ -11,10 +11,13 @@ const _allowed = {
   'lib/public/p2p_facade.dart': {'GarageKeys'},
   'lib/src/p2p_locator.dart': {'GarageKeys'},
   // The test seam, which registers the Garage over a handle a test made: no library of the app imports it (`test/features/p2p/p2p_testing_seam_test.dart`).
-  'lib/testing.dart': {'GarageKeys'},
+  'lib/testing.dart': {'GarageKeyMaterial', 'GarageKeySlot', 'GarageKeys'},
+  // The port of the keys of the words (#81), which hands the repository the material it reads.
+  'lib/public/p2p_garage_key_port.dart': {'GarageKeyMaterial'},
   'lib/src/data/garage_key_repository_impl.dart': {
     'GarageKeyAlreadyExistsFailure',
     'GarageKeyCorruptFailure',
+    'GarageKeyMaterial',
     'GarageKeySlot',
     'GarageKeys',
     'KeystoreLockedFailure',

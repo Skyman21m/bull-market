@@ -12,15 +12,13 @@ import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_key_compute_port.dart';
 import 'package:p2p/src/domain/robot_request_limiter.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
-import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
-import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/new_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
-import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
@@ -36,6 +34,7 @@ import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/trade_screens.dart';
+import 'support/garage_words.dart';
 
 /// What `P2pFeature.setup` registers with and without the vault's Garage Key handle and the directory of the feature's database, and the use-cases it registers, run over the real vault on its in-memory keystore and a real database in a temporary directory.
 void main() {
@@ -67,6 +66,7 @@ void main() {
   void setUpWithGarage() => const P2pFeature().setup(
     locator,
     garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+    derivedGarageKeys: TestWordsPort(),
     databaseDirectory: databaseDirectory,
   );
 
@@ -75,10 +75,9 @@ void main() {
     hasGarageKeysForTesting(locator),
     locator.isRegistered<GarageKeyRepository>(),
     locator.isRegistered<HasGarageKeyUsecase>(),
-    locator.isRegistered<GenerateGarageKeyUsecase>(),
     locator.isRegistered<ImportGarageKeyUsecase>(),
     locator.isRegistered<DeriveFirstRobotUsecase>(),
-    locator.isRegistered<DeleteGarageKeyUsecase>(),
+    locator.isRegistered<NewGarageKeyUsecase>(),
     hasP2pDatabaseForTesting(locator),
     locator.isRegistered<P2pDatabase>(),
     locator.isRegistered<RobotBindingRepository>(),
@@ -114,11 +113,30 @@ void main() {
     },
   );
 
-  test('the handle without the directory, or the reverse, is a bug', () {
+  test('the handle, the words and the directory go together, or it is a bug', () {
     expect(
       () => const P2pFeature().setup(
         locator,
         garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+        derivedGarageKeys: TestWordsPort(),
+        databaseDirectory: null,
+      ),
+      throwsArgumentError,
+    );
+    // Without the words (#81), the Garage would have no key: a bug, never a key drawn instead.
+    expect(
+      () => const P2pFeature().setup(
+        locator,
+        garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+        databaseDirectory: databaseDirectory,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => const P2pFeature().setup(
+        locator,
+        garageKeys: null,
+        derivedGarageKeys: TestWordsPort(),
         databaseDirectory: null,
       ),
       throwsArgumentError,
@@ -171,10 +189,9 @@ void main() {
       expect(garageKeyRegistrations(), everyElement(isTrue));
       locator
         ..get<HasGarageKeyUsecase>()
-        ..get<GenerateGarageKeyUsecase>()
         ..get<ImportGarageKeyUsecase>()
         ..get<DeriveFirstRobotUsecase>()
-        ..get<DeleteGarageKeyUsecase>()
+        ..get<NewGarageKeyUsecase>()
         ..get<FetchRobotUsecase>()
         ..get<ReadRobotStandingUsecase>()
         ..get<AcknowledgeGarageKeyHistoryUsecase>()
@@ -199,28 +216,16 @@ void main() {
   );
 
   test(
-    'the registered use-cases generate, find, use and delete a key',
+    'the registered use-cases find a key of the words, use it, and activate the next one',
     () async {
       setUpWithGarage();
       const network = RobosatsNetwork.testnet;
 
       expect(
         await locator<HasGarageKeyUsecase>().execute(network),
-        isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isFalse),
-      );
-      expect(
-        await locator<GenerateGarageKeyUsecase>().execute(network),
-        isA<Ok<GarageKeyHistory, P2pFailure>>().having(
-          (ok) => ok.value,
-          'history',
-          GarageKeyHistory.drawnHere,
-        ),
-      );
-      expect(
-        await locator<HasGarageKeyUsecase>().execute(network),
         isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isTrue),
       );
-      // Drawn here, so its robot 0 can be bound, in `p2p.sqlite` of the directory given.
+      // Key 0, activated at the first reading and recorded as drawn here, so its robot 0 can be bound, in `p2p.sqlite` of the directory given.
       final robot = switch (await locator<DeriveFirstRobotUsecase>().execute(
         network,
       )) {
@@ -240,34 +245,21 @@ void main() {
       expect(directoryAsked, 1);
       expect(File('${directory.path}/p2p.sqlite').existsSync(), isTrue);
       expect(
-        await locator<GenerateGarageKeyUsecase>().execute(network),
-        isA<Err<void, P2pFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<GarageKeyAlreadyStoredFailure>(),
-        ),
+        await locator<NewGarageKeyUsecase>().execute(network, after: 0),
+        isOk(1),
       );
-      expect(storage.entries, hasLength(1));
+      // Nothing of a key in the vault: the words give the keys back.
       expect(
-        await locator<DeleteGarageKeyUsecase>().execute(network),
-        isA<Ok<void, P2pFailure>>(),
-      );
-      expect(storage.entries, isEmpty);
-      expect(
-        await locator<HasGarageKeyUsecase>().execute(network),
-        isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isFalse),
-      );
-      // The binding outlives the key: if the key comes back, its robot 0 is still bound to temple.
-      expect(
-        await locator<RobotBindingRepository>().bind(robot.slot, temple),
-        isA<Ok<void, P2pFailure>>(),
+        storage.entries.keys.where((entry) => entry.contains('garage')),
+        isEmpty,
       );
     },
     timeout: const Timeout(Duration(seconds: 90)),
   );
 
+  // Restored from `main` (review of #292): the rule still holds for an external Garage Key imported on the other network.
   test(
-    'a key drawn on testnet and pasted into mainnet: its robots have one credential, so one binding, on both networks',
+    'a key of testnet imported into mainnet: its robots have one credential, so one binding, on both networks',
     () async {
       setUpWithGarage();
       const testnet = RobosatsNetwork.testnet;
@@ -283,11 +275,10 @@ void main() {
           ) ??
           fail('$alias is not on $network');
 
-      value(await locator<GenerateGarageKeyUsecase>().execute(testnet));
-      final testnetKey = value(
-        await locator<ReadGarageKeyUsecase>().execute(testnet),
-      );
-      // The text of a key the in-memory keystore drew for this test, kept in memory only.
+      final keys = locator<GarageKeyRepository>();
+      // Internal key 0 of testnet, recorded as drawn here there; its text, of the public test words, imported into the mainnet slot.
+      final testnetKey = value(await keys.read(testnet));
+      expect(value(await keys.keyring(mainnet)).highest, 0);
       expect(
         await locator<ImportGarageKeyUsecase>().execute(
           mainnet,
@@ -295,9 +286,8 @@ void main() {
         ),
         isA<Ok<void, P2pFailure>>(),
       );
-      final mainnetKey = value(
-        await locator<ReadGarageKeyUsecase>().execute(mainnet),
-      );
+      final mainnetKey = value(await keys.read(mainnet));
+      expect(mainnetKey.index, isNull);
       expect(value(mainnetKey.fingerprint), value(testnetKey.fingerprint));
 
       final bindings = locator<RobotBindingRepository>();
@@ -320,7 +310,7 @@ void main() {
           isA<RobotBoundToAnotherCoordinatorFailure>(),
         ),
       );
-      // On mainnet the key was pasted: a robot without a binding there may live anywhere.
+      // On mainnet the key was imported: a robot without a binding there may live anywhere, so « Select Host » asks first.
       expect(
         await bindings.bind(
           value(mainnetKey.firstUsableRobot(1)).slot,
@@ -331,14 +321,6 @@ void main() {
           'failure',
           isA<RobotHistoryUnknownFailure>(),
         ),
-      );
-      // On testnet it was drawn here: robot 1 is still new there.
-      expect(
-        await bindings.bind(
-          value(testnetKey.firstUsableRobot(1)).slot,
-          identityOf('temple', testnet),
-        ),
-        isA<Ok<void, P2pFailure>>(),
       );
     },
     timeout: const Timeout(Duration(seconds: 90)),

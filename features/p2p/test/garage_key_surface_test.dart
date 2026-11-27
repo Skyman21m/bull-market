@@ -14,18 +14,36 @@ void main() {
   CompilationUnit unitOf(String path) =>
       parseString(content: File(path).readAsStringSync()).unit;
 
-  // The methods of the interface, each with its full signature: nothing, whether a key is stored, the key a draw made, the key of a network for the screens of the Garage, or a robot derived from it, each with its network.
+  // The methods of the interface, each with its full signature (#81): which keys the Garage offers, a key (the one the Garage opens on, one of the words by index, the one of a new trade, the one of a robot's slot), « New key », the key selected, whether a key can be shown, a robot derived from it, each with its network, and the import and the delete of the external key.
   const allowed = {
-    'create':
-        'Future<Result<NetworkGarageKey, P2pFailure>> create(RobosatsNetwork network)',
-    'import':
-        'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
-    'exists':
-        'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network)',
+    'keyring':
+        'Future<Result<GarageKeyring, P2pFailure>> keyring(RobosatsNetwork network)',
     'read':
         'Future<Result<NetworkGarageKey, P2pFailure>> read(RobosatsNetwork network)',
+    'external':
+        'Future<Result<NetworkGarageKey, P2pFailure>> external(RobosatsNetwork network)',
+    'selectInternal':
+        'Future<Result<void, P2pFailure>> selectInternal(RobosatsNetwork network)',
+    'internalIndexOf':
+        'Future<Result<int?, P2pFailure>> internalIndexOf(RobosatsNetwork network, GarageKeyFingerprint fingerprint)',
+    'externalNoticeShown':
+        'Future<Result<void, P2pFailure>> externalNoticeShown()',
+    'derived':
+        'Future<Result<NetworkGarageKey, P2pFailure>> derived(RobosatsNetwork network, int index)',
+    'forNewTrade':
+        'Future<Result<NetworkGarageKey, P2pFailure>> forNewTrade(RobosatsNetwork network)',
+    'ofSlot':
+        'Future<Result<NetworkGarageKey, P2pFailure>> ofSlot(RobotSlot slot)',
+    'activateNext':
+        'Future<Result<int, P2pFailure>> activateNext(RobosatsNetwork network, {required int after})',
+    'select':
+        'Future<Result<void, P2pFailure>> select(RobosatsNetwork network, GarageKeySelection selection)',
+    'exists':
+        'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network)',
     'firstUsableRobot':
         'Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network)',
+    'import':
+        'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
     'delete':
         'Future<Result<void, P2pFailure>> delete(RobosatsNetwork network)',
   };
@@ -69,40 +87,58 @@ void main() {
     },
   );
 
-  test('the repository holds the vault handle and nothing else', () {
-    final repository =
-        unitOf(
-              'lib/src/data/garage_key_repository_impl.dart',
-            ).declarations.single
-            as ClassDeclaration;
+  test(
+    'the repository holds the vault handle, the port of the words and the book of their indexes, and nothing else',
+    () {
+      final repository =
+          unitOf(
+                'lib/src/data/garage_key_repository_impl.dart',
+              ).declarations.single
+              as ClassDeclaration;
 
-    expect(_fieldsOf(repository), ['final GarageKeys _garageKeys']);
-    final constructors = _membersOf(
-      repository,
-    ).whereType<ConstructorDeclaration>().toList();
-    expect(constructors, hasLength(1));
-    final constructor = constructors.single;
-    expect(constructor.name, isNull);
-    expect(constructor.parameters.toSource(), '(this._garageKeys)');
-    expect(constructor.initializers, isEmpty);
-    expect(constructor.redirectedConstructor, isNull);
-  });
+      expect(_fieldsOf(repository), [
+        'final GarageKeys _garageKeys',
+        'final P2pGarageKeyPort _words',
+        'final GarageKeyBookRepository _book',
+      ]);
+      final constructors = _membersOf(
+        repository,
+      ).whereType<ConstructorDeclaration>().toList();
+      expect(constructors, hasLength(1));
+      final constructor = constructors.single;
+      expect(constructor.name, isNull);
+      expect(
+        constructor.parameters.toSource(),
+        '(this._garageKeys, this._words, this._book)',
+      );
+      expect(constructor.initializers, isEmpty);
+      expect(constructor.redirectedConstructor, isNull);
+    },
+  );
 
-  test('the failures carry no field but the reason of an invalid key', () {
-    final unit = unitOf('lib/src/domain/p2p_failure.dart');
+  test(
+    'the failures carry no field but the reason of an invalid key, and the number of an internal key imported',
+    () {
+      final unit = unitOf('lib/src/domain/p2p_failure.dart');
 
-    expect(_parts(unit), isEmpty);
-    final fields = {
-      for (final declaration in unit.declarations.whereType<ClassDeclaration>())
-        declaration.namePart.typeName.lexeme: _fieldsOf(declaration),
-    };
-    expect(fields, containsPair('GarageKeyMissingFailure', isEmpty));
-    expect(fields.values.expand((f) => f), ['final GarageKeyFailure reason']);
-    expect(fields['GarageKeyInvalidFailure'], [
-      'final GarageKeyFailure reason',
-    ]);
-    expect(unit.declarations, everyElement(isA<ClassDeclaration>()));
-  });
+      expect(_parts(unit), isEmpty);
+      final fields = {
+        for (final declaration
+            in unit.declarations.whereType<ClassDeclaration>())
+          declaration.namePart.typeName.lexeme: _fieldsOf(declaration),
+      };
+      expect(fields, containsPair('GarageKeyMissingFailure', isEmpty));
+      expect(fields.values.expand((f) => f), [
+        'final GarageKeyFailure reason',
+        'final int index',
+      ]);
+      expect(fields['GarageKeyIsInternalFailure'], ['final int index']);
+      expect(fields['GarageKeyInvalidFailure'], [
+        'final GarageKeyFailure reason',
+      ]);
+      expect(unit.declarations, everyElement(isA<ClassDeclaration>()));
+    },
+  );
 
   test('the check refuses each public way out of the repository', () {
     // A public method and a public static field are the two ways out a review found the custody gate blind to.
@@ -133,7 +169,7 @@ final class GarageKeyRepositoryImpl {
   Uint8List? _copy;
   const GarageKeyRepositoryImpl(this._garageKeys, [this._copy]);
   @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network, {bool all = true}) async => const Ok(null);
+  Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key, {bool all = true}) async => const Ok(null);
 }
 ''',
     ).unit;
@@ -145,11 +181,11 @@ final class GarageKeyRepositoryImpl {
       _membersOf(
         repository,
       ).whereType<ConstructorDeclaration>().single.parameters.toSource(),
-      isNot('(this._garageKeys)'),
+      isNot('(this._garageKeys, this._words, this._book)'),
     );
     expect(
       _signature(_membersOf(repository).whereType<MethodDeclaration>().single),
-      isNot(allowed['delete']),
+      isNot(allowed['import']),
     );
   });
 }

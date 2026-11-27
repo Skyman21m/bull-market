@@ -16,24 +16,20 @@ import '../../presentation/order_history_cubit.dart';
 import '../../presentation/p2p_failure_l10n.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
-import 'delete_garage_key_dialog.dart';
+import '../widgets/trade_button.dart';
+import 'garage_key_dialogs.dart';
 import 'garage_profile.dart';
 import 'garage_reauthentication.dart';
-import 'garage_welcome.dart';
-import 'garage_wizard.dart';
-import 'recovery_dialog.dart';
 
-/// The Garage of the P2P tab, for the network of its [GarageCubit]: the welcome screen and the wizard when no Garage Key is stored, the profile when one is, and what to do when the vault cannot tell.
+/// The Garage of the P2P tab, for the network of its [GarageCubit] (#81): the profile of the key shown, a key of the default wallet's words or the external key; and what to do when no key can be shown.
 ///
-/// Every screen of the Garage shows a Garage Key, or a field where one is pasted, or leads to one: the whole Garage is protected from screenshots, screen recording and the preview of recent apps, as the wallet protects its seeds (`PrivacyScreen`), and nothing of it is drawn until the protection said it is on.
+/// Every screen of the Garage shows a Garage Key or leads to one: the whole Garage is protected from screenshots, screen recording and the preview of recent apps, as the wallet protects its seeds (`PrivacyScreen`), and nothing of it is drawn until the protection said it is on.
 /// Where the platform refuses it, the Garage shows that the key stays hidden, with « Retry », and nothing else; the dialogs and the re-authentication opened from it stay under the same protection, which lasts until the Garage is left.
 /// The user may turn the protection off in the settings of the wallet, which then applies here too.
+/// There is no wizard and no welcome screen any more: at the first opening, key 0 is there, or the external Garage Key the vault kept, with « Your Garage Keys » once.
 class GarageView extends StatefulWidget {
   final GarageKeyClipboard clipboard;
   final P2pReauthentication? reauthenticate;
-
-  /// Shows the offers of the tab: « Search for Orders » and « Search ».
-  final VoidCallback onBrowseOffers;
 
   /// Makes the cubit of the panel of the robot at an index of a Garage Key, on the profile.
   final RobotCoordinatorCubit Function(NetworkGarageKey key, int index)
@@ -53,7 +49,6 @@ class GarageView extends StatefulWidget {
     super.key,
     required this.clipboard,
     required this.reauthenticate,
-    required this.onBrowseOffers,
     required this.robotCoordinator,
     required this.coordinatorDetails,
     this.onOpenTrade,
@@ -67,29 +62,11 @@ class GarageView extends StatefulWidget {
 class _GarageViewState extends State<GarageView> with PrivacyScreen {
   late Future<bool> _protection = enableScreenPrivacy();
 
-  /// The step of the wizard shown, or `null` outside the wizard: local to this visit of the Garage.
-  int? _step;
-
-  /// The cubit of the Garage, once the gate has built the Garage: before that, nothing has read the vault, and nothing can be shown.
-  GarageCubit? _cubit;
-
-  /// Tells the cubit whenever the app is hidden or paused, for the whole visit, whatever the Garage shows, the wait of a draw included: a key drawn without the app staying in the foreground is shown only behind the PIN.
-  late final AppLifecycleListener _lifecycle;
-
-  @override
-  void initState() {
-    super.initState();
-    _lifecycle = AppLifecycleListener(onHide: _conceal, onPause: _conceal);
-  }
-
   @override
   void dispose() {
-    _lifecycle.dispose();
     unawaited(disableScreenPrivacy());
     super.dispose();
   }
-
-  void _conceal() => _cubit?.conceal();
 
   @override
   Widget build(BuildContext context) {
@@ -101,65 +78,42 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
       onRetry: () => setState(() {
         _protection = enableScreenPrivacy();
       }),
-      builder: (context) {
-        // Reading the cubit here creates it, so only once the protection is on.
-        _cubit = context.read<GarageCubit>();
-        return BlocBuilder<GarageCubit, GarageState>(
-          builder: (context, state) => _content(context, state),
-        );
-      },
+      // Reading the cubit in the builder creates it, so only once the protection is on.
+      builder: (context) => BlocConsumer<GarageCubit, GarageState>(
+        // « Your Garage Keys », once on this device, over the Garage on the external Garage Key (decided on 2026-11-26, #81): recorded as shown before it opens, so that no later state opens it again.
+        listenWhen: (_, next) =>
+            next is GarageWithKey && next.externalNoticeDue,
+        listener: (context, _) {
+          unawaited(context.read<GarageCubit>().externalNoticeShown());
+          unawaited(ExternalKeyNoticeDialog.show(context));
+        },
+        builder: (context, state) => switch (state) {
+          GarageUnknown() => _GarageUnavailable(
+            state: state,
+            reauthenticate: widget.reauthenticate,
+          ),
+          GarageWithKey() => GarageProfile(
+            state: state,
+            clipboard: widget.clipboard,
+            reauthenticate: widget.reauthenticate,
+            robotCoordinator: widget.robotCoordinator,
+            coordinatorDetails: widget.coordinatorDetails,
+            onOpenTrade: widget.onOpenTrade,
+            orderHistory: widget.orderHistory,
+          ),
+          GarageWorking() => Center(
+            child: CircularProgressIndicator(color: context.bull.primary),
+          ),
+        },
+      ),
     );
   }
-
-  Widget _content(BuildContext context, GarageState state) {
-    final cubit = context.read<GarageCubit>();
-    final step = _step;
-    return switch (state) {
-      GarageUnknown() => _GarageUnavailable(
-        state: state,
-        reauthenticate: widget.reauthenticate,
-      ),
-      // A key drawn and not acknowledged yet, in this visit or an earlier one: the wizard's backup step, the key behind the PIN unless it was just drawn.
-      GarageWithKey(awaitsBackup: true) => _wizard(state, step ?? 1),
-      // A key read from the vault rather than made in this visit goes to the profile, whatever the wizard showed.
-      GarageWithKey(isNew: true) when step != null => _wizard(state, step),
-      GarageWithKey() => GarageProfile(
-        state: state,
-        clipboard: widget.clipboard,
-        reauthenticate: widget.reauthenticate,
-        robotCoordinator: widget.robotCoordinator,
-        coordinatorDetails: widget.coordinatorDetails,
-        onOpenTrade: widget.onOpenTrade,
-        orderHistory: widget.orderHistory,
-      ),
-      GarageWithoutKey() ||
-      GarageWorking() when step != null => _wizard(state, step),
-      GarageWithoutKey(:final failure) => GarageWelcome(
-        onStart: () => setState(() => _step = 1),
-        onRecovery: () => RecoveryDialog.show(context, cubit),
-        onSearchOrders: widget.onBrowseOffers,
-        failure: failure,
-      ),
-      GarageWorking() => Center(
-        child: CircularProgressIndicator(color: context.bull.primary),
-      ),
-    };
-  }
-
-  Widget _wizard(GarageState state, int step) => GarageWizard(
-    step: step,
-    state: state,
-    clipboard: widget.clipboard,
-    reauthenticate: widget.reauthenticate,
-    onStep: (step) => setState(() => _step = step),
-    onSearch: widget.onBrowseOffers,
-    onSeeProfile: () => setState(() => _step = null),
-  );
 }
 
-/// The vault could not say whether a key is stored: why, then « Retry », and, unless the keystore is only locked, the way out of a key that cannot be read, with the warning of « Delete Garage Key? », then the PIN, which such a delete always asks.
+/// No key can be shown: why, then « Retry ». Nothing is drawn from here, and no internal Garage Key is deleted: the words back them up.
 ///
-/// Without [reauthenticate], that delete is disabled.
+/// When the key that cannot be shown is the external Garage Key, selected: its name, « Back to internal Garage Keys », and, unless the keystore is only locked, the way out of that key, as before #81: « Delete the external Garage Key? », then the PIN, which such a delete always asks; without [reauthenticate], that delete is disabled.
+/// When it is an internal Garage Key while the vault keeps an external one (functional review of #292, C-passphrase): « Retry » tries the internal side again, and « Switch to the external Garage Key » leads to the external one, which stays usable.
 class _GarageUnavailable extends StatelessWidget {
   final GarageUnknown state;
   final P2pReauthentication? reauthenticate;
@@ -172,26 +126,39 @@ class _GarageUnavailable extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final cubit = context.read<GarageCubit>();
-    final locked = state.failure is GarageKeyLockedFailure;
+    final failure = state.failure;
+    final external = state.externalSelected;
+    final locked = failure is GarageKeyLockedFailure;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(BullSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (state.actionFailure case final failure?) ...[
+          if (state.actionFailure case final action?) ...[
             Text(
-              failure.toTranslated(context),
+              action.toTranslated(context),
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: colors.error),
             ),
             const Gap(BullSpacing.sm),
           ],
+          if (external) ...[
+            Text(
+              l10n.p2pGarageExternalKey,
+              textAlign: TextAlign.center,
+              style: text.titleSmall?.copyWith(color: colors.text),
+            ),
+            const Gap(BullSpacing.sm),
+          ],
           Text(
-            state.failure.toTranslated(context),
+            // A database that cannot be read says so: the keys activated on this device are recorded there (#81).
+            failure is P2pStorageFailure
+                ? l10n.p2pRobotRecordsUnreadable
+                : failure.toTranslated(context),
             textAlign: TextAlign.center,
             style: text.bodyLarge?.copyWith(color: colors.text),
           ),
-          if (!locked) ...[
+          if (external && !locked) ...[
             const Gap(BullSpacing.sm),
             Text(
               l10n.p2pGarageKeyUnreadableHelp,
@@ -200,35 +167,54 @@ class _GarageUnavailable extends StatelessWidget {
             ),
           ],
           const Gap(BullSpacing.lg),
-          BullButton.big(
+          TradeButton(
             label: l10n.p2pCommonRetry,
-            iconData: Icons.refresh,
-            iconFirst: true,
-            onPressed: cubit.load,
-            bgColor: colors.primary,
-            textColor: colors.onPrimary,
+            icon: Icons.refresh,
+            // On the internal side, « Retry » selects an internal Garage Key again; elsewhere it reads the key selected again.
+            onPressed: state.canSwitchToExternal
+                ? cubit.returnToInternal
+                : cubit.load,
           ),
-          if (!locked) ...[
+          if (state.canSwitchToExternal) ...[
             const Gap(BullSpacing.sm),
-            BullButton.big(
-              label: l10n.p2pDeleteKeyConfirm,
-              iconData: Icons.delete_sweep,
-              iconFirst: true,
-              disabled: state.deletionNeedsPin && reauthenticate == null,
-              onPressed: () async {
-                if (!await DeleteGarageKeyDialog.show(context) ||
-                    !context.mounted) {
-                  return;
-                }
-                await cubit.delete(
-                  reauthenticate: reauthenticationFrom(context, reauthenticate),
-                );
-              },
+            TradeButton(
+              label: l10n.p2pGarageSwitchToExternal,
+              icon: Icons.swap_horiz,
+              onPressed: cubit.switchToExternal,
               outlined: true,
-              bgColor: colors.transparent,
-              textColor: colors.error,
-              borderColor: colors.error,
             ),
+          ],
+          if (external) ...[
+            const Gap(BullSpacing.sm),
+            TradeButton(
+              label: l10n.p2pGarageBackToInternal,
+              icon: Icons.swap_horiz,
+              onPressed: cubit.returnToInternal,
+              outlined: true,
+            ),
+            if (!locked) ...[
+              const Gap(BullSpacing.sm),
+              TradeButton(
+                label: l10n.p2pGarageDeleteExternal,
+                icon: Icons.delete_outline,
+                color: colors.error,
+                onPressed: reauthenticate == null
+                    ? null
+                    : () async {
+                        if (!await DeleteGarageKeyDialog.show(context) ||
+                            !context.mounted) {
+                          return;
+                        }
+                        await cubit.delete(
+                          reauthenticate: reauthenticationFrom(
+                            context,
+                            reauthenticate,
+                          ),
+                        );
+                      },
+                outlined: true,
+              ),
+            ],
           ],
         ],
       ),

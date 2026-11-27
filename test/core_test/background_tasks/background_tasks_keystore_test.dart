@@ -99,7 +99,7 @@ void main() {
     );
 
     test(
-      'setupP2p gives P2P the handle, the directory of its database and the wallet\'s port under that one flag',
+      'setupP2p gives P2P the handle, the derived Garage Keys, the directory of its database and the wallet\'s port under that one flag',
       () {
         expect(
           _calls(
@@ -110,6 +110,8 @@ void main() {
             [
               'locator',
               'garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null',
+              // The adapter of the Garage Key derived from the words (#81), the only caller of `secret.derive.garageKey`, under the same flag.
+              'derivedGarageKeys: withGarageKeys ? DerivedGarageKeyAdapter( locator<Secrets>(), () => locator<WalletRepository>(), ) : null',
               'databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null',
               'wallet: withGarageKeys ? () => locator<P2pWalletFacade>() : null',
               // The BOLT11 decoder (#86, #87): pure code, read by the trade use cases only, which exist with the database alone.
@@ -129,8 +131,8 @@ void main() {
       expect(_occurrences(code, RegExp(r'\bwithGarageKeys\b')), {
         'lib/init.dart': 1,
         'lib/core/background_tasks/handler.dart': 1,
-        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its three uses.
-        'lib/locator.dart': 7,
+        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its four uses (the vault's handle, the adapter of the keys of the words, #81, the directory and the wallet's port).
+        'lib/locator.dart': 8,
       });
     });
 

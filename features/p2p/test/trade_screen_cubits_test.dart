@@ -356,17 +356,18 @@ void main() {
     );
 
     test(
-      'the preparation gone at the confirmation (its key replaced): prepared again, waiting for the user',
+      'the preparation gone at the confirmation (its key deleted): prepared again, waiting for the user',
       () async {
         final harness = await TradeHarness.start();
         final cubit = _takeCubit(harness, await harness.shownOrder());
         await cubit.take();
         final prepares = _requestsOf(harness, ScriptedRequest.book);
-        harness.replaceKey();
+        // A key deleted, rather than replaced: since 2026-11-26 (#81) a key replaced by another trades too, so only a key gone still refuses the new preparation.
+        harness.deleteKey();
 
         await cubit.confirm();
 
-        // Prepared again: the key now in the vault was not drawn here, so that preparation is refused and says why.
+        // Prepared again: no key in the vault any more, so that preparation is refused and says why.
         expect(
           _requestsOf(harness, ScriptedRequest.book),
           greaterThan(prepares),

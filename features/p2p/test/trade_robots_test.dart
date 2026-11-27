@@ -22,9 +22,10 @@ import 'support/fakes.dart';
 import 'support/key_output.dart';
 import 'support/robot_bindings.dart';
 import 'support/two_connections.dart';
+import 'support/garage_words.dart';
 
 /// The vault as the robot layer reads it: the key of each network, or the failure given for it.
-final class _Vault implements GarageKeyRepository {
+final class _Vault with KeysFromRead implements GarageKeyRepository {
   final Map<RobosatsNetwork, Result<NetworkGarageKey, P2pFailure>> slots;
 
   _Vault(this.slots);
@@ -33,11 +34,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
   ) async => slots[network] ?? const Err(GarageKeyMissingFailure());
-
-  @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(
-    RobosatsNetwork network,
-  ) => throw UnimplementedError('the robot layer never draws a key');
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -53,10 +49,6 @@ final class _Vault implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError('the robot layer derives from the key itself');
-
-  @override
-  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
-      throw UnimplementedError('the robot layer never deletes a key');
 }
 
 /// The robot of a new trade and of a recorded one, over the real records in a database, and the vault faked.
@@ -280,82 +272,103 @@ void main() {
     );
   });
 
-  group('a key from elsewhere never gives a robot for a new trade', () {
-    for (final (label, records) in <(String, List<String>)>[
-      ('no record of its draw', []),
-      ('imported', ['imported testnet']),
-      ('acknowledged', ['imported testnet', 'acknowledged testnet']),
-      (
-        'drawn here, then pasted into the other slot',
-        ['generated testnet', 'imported mainnet'],
-      ),
-      (
-        'drawn here, and acknowledged in the other slot',
-        ['generated testnet', 'acknowledged mainnet'],
-      ),
-      (
-        'drawn here, then imported again',
-        ['generated testnet', 'imported testnet'],
-      ),
-    ]) {
-      test(label, () async {
-        for (final record in records) {
-          final [origin, networkName] = record.split(' ');
-          final network = RobosatsNetwork.values.byName(networkName);
-          final written = switch (origin) {
-            'generated' => await bindings.recordGeneratedKey(
-              network,
-              fingerprintA,
-            ),
-            'imported' => await bindings.recordImportedKey(
-              network,
-              fingerprintA,
-            ),
-            _ => await bindings.recordAcknowledgedKey(network, fingerprintA),
-          };
-          expect(written, isA<Ok>());
-        }
-
-        expect(
-          await robots.robotForNewTrade(testnet, temple),
-          refusedWith<GarageKeyNotForTradesFailure>(),
-        );
-        expect(await bindingRows(), isEmpty);
-      });
-    }
-
-    test('nor a robot of a pasted key that the Garage bound', () async {
-      expect(
-        await bindings.recordImportedKey(testnet, fingerprintA),
-        isA<Ok>(),
-      );
-      expect(
-        await bindings.recordAcknowledgedKey(testnet, fingerprintA),
-        isA<Ok>(),
-      );
-      expect(
-        await bindings.bind(RobotSlot(testnet, fingerprintA, 0), templeTestnet),
-        isA<Ok>(),
-      );
-
-      expect(
-        await robots.robotForNewTrade(testnet, temple),
-        refusedWith<GarageKeyNotForTradesFailure>(),
-      );
-      // Nor does the repository reserve it, whatever the coordinator.
-      expect(
-        await trades.reserveForNewTrade(
-          RobotSlot(testnet, fingerprintA, 1),
-          templeTestnet,
+  group(
+    'a key from elsewhere gives a robot for a new trade too (decided on 2026-11-26, #81)',
+    () {
+      for (final (label, records) in <(String, List<String>)>[
+        ('no record of its draw', []),
+        ('imported', ['imported testnet']),
+        ('acknowledged', ['imported testnet', 'acknowledged testnet']),
+        (
+          'drawn here, then pasted into the other slot',
+          ['generated testnet', 'imported mainnet'],
         ),
-        isA<Ok<TradeReservation?, P2pFailure>>().having(
-          (ok) => ok.value,
-          'reservation',
-          isNull,
+        (
+          'drawn here, and acknowledged in the other slot',
+          ['generated testnet', 'acknowledged mainnet'],
         ),
+        (
+          'drawn here, then imported again',
+          ['generated testnet', 'imported testnet'],
+        ),
+      ]) {
+        test(label, () async {
+          for (final record in records) {
+            final [origin, networkName] = record.split(' ');
+            final network = RobosatsNetwork.values.byName(networkName);
+            final written = switch (origin) {
+              'generated' => await bindings.recordGeneratedKey(
+                network,
+                fingerprintA,
+              ),
+              'imported' => await bindings.recordImportedKey(
+                network,
+                fingerprintA,
+              ),
+              _ => await bindings.recordAcknowledgedKey(network, fingerprintA),
+            };
+            expect(written, isA<Ok>());
+          }
+
+          final reserved = await robots.robotForNewTrade(testnet, temple);
+          expect(
+            reserved,
+            isA<Ok<ReservedRobot, P2pFailure>>().having(
+              (ok) => ok.value.robot.accountIndex,
+              'index',
+              0,
+            ),
+          );
+          // A binding made for a new trade, whatever the key's history: the only kind a pending take or make accepts.
+          expect((await bindingRows()).map((row) => row.provenance), [
+            'generated',
+          ]);
+        });
+      }
+
+      test(
+        'but never a robot of an imported key that the Garage bound: the next free one',
+        () async {
+          expect(
+            await bindings.recordImportedKey(testnet, fingerprintA),
+            isA<Ok>(),
+          );
+          expect(
+            await bindings.recordAcknowledgedKey(testnet, fingerprintA),
+            isA<Ok>(),
+          );
+          expect(
+            await bindings.bind(
+              RobotSlot(testnet, fingerprintA, 0),
+              templeTestnet,
+            ),
+            isA<Ok>(),
+          );
+
+          expect(
+            await robots.robotForNewTrade(testnet, temple),
+            isA<Ok<ReservedRobot, P2pFailure>>().having(
+              (ok) => ok.value.robot.accountIndex,
+              'index',
+              isNot(0),
+            ),
+          );
+          // Nor does the repository reserve the robot the Garage bound, whatever the coordinator.
+          expect(
+            await trades.reserveForNewTrade(
+              RobotSlot(testnet, fingerprintA, 0),
+              templeTestnet,
+            ),
+            isA<Ok<TradeReservation?, P2pFailure>>().having(
+              (ok) => ok.value,
+              'reservation',
+              isNull,
+            ),
+          );
+        },
       );
-    });
-  });
+    },
+  );
 
   group('killed between the binding and the pending take', () {
     late Directory directory;

@@ -11,7 +11,7 @@ const int bip32Hardened = 0x80000000;
 ///
 /// Each element of [path] is a 32-bit child index, hardened when [bip32Hardened] is set.
 /// This is private-parent to private-child derivation only, which is all RoboSats needs (`HDKey.fromMasterSeed(seed).derive(path).privateKey` in `frontend/src/utils/garageKey.ts:84-95`, commit ff1998c).
-/// It is implemented here rather than with the wallet BIP32 library because that library is reserved to `packages/secrets` by the custody gate, and a Garage Key is not wallet seed material.
+/// It is implemented here rather than with the wallet BIP32 library because that library is reserved to `packages/secrets` by the custody gate, and a Garage Key is not wallet seed material: in this app it is the BIP85 child of the wallet's words (#81), one-way from them, never a key that spends.
 /// A derived key outside the valid range, which happens with probability below 2^-127, throws a [StateError], as `@scure/bip32` throws in RoboSats.
 Uint8List deriveBip32PrivateKey(List<int> seed, List<int> path) {
   final master = Hmac(sha512, utf8.encode('Bitcoin seed')).convert(seed).bytes;

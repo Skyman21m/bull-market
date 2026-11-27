@@ -12,7 +12,7 @@ import 'package:secrets/src/data/data.dart'
 import 'fake_secure_storage_platform.dart';
 import 'result_helpers.dart';
 
-/// The Garage Keys of the P2P feature: random, one per network, never replaced, never mixed with a seed.
+/// The stored Garage Keys of the P2P feature (since #81, its external Garage Key: the key drawn at random before it, kept with its robots and its trades, or a key imported): random, one per network, never replaced, never mixed with a seed. The key derived from the words is tested in `garage_key_derivation_test.dart`.
 ///
 /// Through the public handle, on the real package over the in-memory keystore. Creating into an empty slot settles the absence with the full read budget under the lock, so each such test waits ~4.5 s of real time.
 void main() {
