@@ -908,6 +908,93 @@ void main() {
     );
 
     test(
+      'a new trade twenty minutes after the reading of the run reads again first: another device wrote 12 meanwhile, the trade leaves on robot 13',
+      () async {
+        var now = at;
+        holdNote(internal0, 7, relays);
+        final notesSync = sync(clock: () => now);
+        await notesSync.beforeNewTrade(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        now = now.add(const Duration(minutes: 20));
+        holdNote(internal0, 12, relays);
+        expect(await nextRobot(internal0, notesSync), 13);
+        expect(relaysPlayed.reads, hasLength(2 * relays.length));
+      },
+    );
+
+    test(
+      'a new trade twenty minutes after the reading of the run, the relays silent at the second reading: it leaves at the limit, above what the device knows',
+      () async {
+        var now = at;
+        holdNote(internal0, 7, relays);
+        final notesSync = sync(
+          clock: () => now,
+          newTradeWait: const Duration(milliseconds: 300),
+        );
+        await notesSync.beforeNewTrade(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        now = now.add(const Duration(minutes: 20));
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) =>
+              Completer<NostrRelayRead>().future;
+        }
+        final waited = Stopwatch()..start();
+        expect(await nextRobot(internal0, notesSync), 8);
+        expect(
+          waited.elapsed,
+          greaterThanOrEqualTo(const Duration(milliseconds: 250)),
+        );
+      },
+    );
+
+    test(
+      'a new trade less than ten minutes after the reading of the run neither reads again nor waits',
+      () async {
+        var now = at;
+        holdNote(internal0, 7, relays);
+        final notesSync = sync(
+          clock: () => now,
+          newTradeWait: const Duration(seconds: 3),
+        );
+        await notesSync.beforeNewTrade(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        now = now.add(const Duration(minutes: 5));
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) =>
+              Completer<NostrRelayRead>().future;
+        }
+        final waited = Stopwatch()..start();
+        expect(await nextRobot(internal0, notesSync), 8);
+        expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        expect(relaysPlayed.reads, hasLength(relays.length));
+      },
+    );
+
+    test(
+      'a late trade and a late write of the same key wait for one second reading',
+      () async {
+        var now = at;
+        holdNote(internal0, 7, relays);
+        await bind(internal0, [8]);
+        final notesSync = sync(clock: () => now);
+        await notesSync.beforeNewTrade(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        now = now.add(const Duration(minutes: 20));
+        holdNote(internal0, 12, relays);
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 8));
+        final robot = await nextRobot(internal0, notesSync, coordinator: 1);
+        await _settled(relaysPlayed, relays.length);
+        expect(robot, 13);
+        expect(relaysPlayed.reads, hasLength(2 * relays.length));
+        expect(publishedIndexes(internal0), hasLength(relays.length));
+        expect(
+          publishedIndexes(internal0),
+          everyElement(greaterThanOrEqualTo(12)),
+        );
+      },
+    );
+
+    test(
       'a write less than ten minutes after the reading of the run does not read again',
       () async {
         var now = at;

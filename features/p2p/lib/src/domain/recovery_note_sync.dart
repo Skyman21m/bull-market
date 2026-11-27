@@ -36,7 +36,7 @@ final noteReadDeadline = torConnectDeadline + const Duration(seconds: 30);
 /// It is waited again by each new trade of the key as long as the reading of this run has not let trades go (a reading still waiting for Tor, say): waiting again is the safe side.
 const newTradeNoteWait = Duration(seconds: 40);
 
-/// How old the last reading of a key with a majority in this run may be when a note of the key is written (security review of #302, R8): older, the key is read again first, and nothing is written without a majority at that reading. A run of the app may last days (Android keeps the process), and another device may have written a higher note since; the coordinators' relays copy the notes among themselves every minute (`docker/strfry/sync.sh` of the reference), so ten minutes is well past that copy, while a trade confirmed in the minutes after the opening of the tab, the common case, writes without a second reading (six more Tor sessions).
+/// How old the last reading of a key in this run may be when a note of the key is written or a new trade of it starts (security review of #302, R8 and third pass): older, the key is read again first; nothing is written without a majority at that reading, and the trade waits for it as for any reading, at most [newTradeNoteWait]. A run of the app may last days (Android keeps the process), and another device may have written a higher note since; the coordinators' relays copy the notes among themselves every minute (`docker/strfry/sync.sh` of the reference), so ten minutes is well past that copy, while a trade confirmed in the minutes after the opening of the tab, the common case, writes without a second reading (six more Tor sessions).
 const noteReadFreshness = Duration(minutes: 10);
 
 /// The longest a reading of a note waits for the embedded Tor to be ready before it gives up until the next run: the start of Tor took 62 seconds on 10/11/2026, and the Snowflake fallback takes longer.
@@ -47,7 +47,7 @@ const noteTorWait = Duration(minutes: 5);
 /// - **Read once per key and per run of the app**, never in a loop: at the first showing of the P2P tab of a network, for the key new trades take there ([opened], with [GarageKeyRepository.forNewTrade]) and for every key with a robot in use there (their writes wait for it); when the Garage shows a key, internal or external, imported or not ([visit]); before the reservation of a new trade's robot ([beforeNewTrade]). On every coordinator relay of the key's network, for its recovery identity and its legacy one, each relay read apart ([OwnSessionNostrRelayTransport.readOnOwnSession]) and its events read apart in an isolate ([GarageNoteComputePort.readNotes]); a relay whose reading fails counts as not answered, the others keep theirs.
 /// - **The floor**, recorded relay by relay as soon as one gave a note (review of #302): the index of the latest note of each relay raises the floor of the key's new trades, which only goes up ([GarageRecoveryNoteRepository.recordReading]), whatever number of relays answered; it never lowers anything, it can only help, and one slow relay never holds back what the others gave.
 /// - **A majority**: a reading reaches it once a strict majority of the network's relays ([nostrRelaysOfNetwork]: 4 of 6, 2 of 2, 1 of 1) gave their whole answer and their events were read in time, a note found or not (review of #302). The key is then recorded read for good on this installation, which serves one thing only: a later run whose majority gives no note does not wait for the relays left.
-/// - **The wait of a new trade** ([beforeNewTrade]), for every key: until the reading of this run reached a majority, and, for a key never read for good, a note or the end of the reading when the majority gave none; at most [newTradeNoteWait].
+/// - **The wait of a new trade** ([beforeNewTrade]), for every key: until the reading of this run (read again first when it ended more than [noteReadFreshness] ago) reached a majority, and, for a key never read for good, a note or the end of the reading when the majority gave none; at most [newTradeNoteWait].
 /// - **Written** only after a reading of this run that reached a majority (review of #302): after each make and take the coordinator confirmed ([tradeConfirmed]) and at the first showing of the P2P tab of each network in a run ([opened]), for every key with a robot in use there, each write waits for the end of the reading of this run, reads the key again first when that reading is older than [noteReadFreshness], and carries the highest of what the device knows ([NewTradeStanding.highestKnown]: its robots in use and the floor) and of what this reading gave. A run whose reading did not reach a majority writes nothing for the key, even for a key read for good in an earlier run: a note written since by another device, higher, is never covered by an older knowledge. On every coordinator relay of the key's network, each publication on a Tor session of its own. The writes of one key run one after the other, the next after the one before it, whatever that one gave.
 /// - What this does not guarantee: two devices that read at the same moment, then write each, or a device that writes within [noteReadFreshness] of another's write; four relays of six that agree to serve an old note while the two others are unreachable; three relays of six down, or one of the two of testnet, stop every write.
 /// - Nothing here retries in a tight loop, delays a trade more than [newTradeNoteWait], or makes one fail: a relay that cannot be reached costs the user nothing, and every outcome stays out of the screens.
@@ -98,11 +98,12 @@ final class RecoveryNoteSync {
   }) : _readDeadline = readDeadline ?? noteReadDeadline;
 
   /// The Garage shows [key]: its note is read in the background, unless this run already reads it.
-  void visit(NetworkGarageKey key) => _readingOf(key);
+  void visit(NetworkGarageKey key) => _readingOf(key, fresh: false);
 
-  /// Before the robot of a new trade of [key] is reserved: the reading of its note in this run starts, if it has not, and is waited for at most [newTradeNoteWait], whether the key was read for good at an earlier run or not (security review of #302), until a strict majority of the relays answered with a note seen, or, for a key never read for good whose majority gave none, until a note comes or every relay ended (security review of #302, R9); then the trade goes on with the floor recorded. It never fails.
+  /// Before the robot of a new trade of [key] is reserved: the reading of its note in this run starts, if it has not or if the last one ended more than [noteReadFreshness] ago, and is waited for at most [newTradeNoteWait], whether the key was read for good at an earlier run or not (security review of #302), until a strict majority of the relays answered with a note seen, or, for a key never read for good whose majority gave none, until a note comes or every relay ended (security review of #302, R9); then the trade goes on with the floor recorded. It never fails.
   Future<void> beforeNewTrade(NetworkGarageKey key) async {
-    final reading = _readingOf(key);
+    // A reading of this run that ended more than [noteReadFreshness] ago is done again first (security review of #302): a run may last days, and another device may have written a higher note since.
+    final reading = _readingOf(key, fresh: true);
     if (reading == null) return;
     await reading.tradesGo.future.timeout(_newTradeWait, onTimeout: () {});
   }
@@ -123,21 +124,29 @@ final class RecoveryNoteSync {
   /// The reading of the key new trades take on [network] started, when there is one.
   Future<void> _readForNewTrade(RobosatsNetwork network) async {
     if (await _keys.forNewTrade(network) case Ok(:final value)) {
-      _readingOf(value);
+      _readingOf(value, fresh: false);
     }
   }
 
   /// The reading of [key] in this run, started at the first call; `null` for a key without a fingerprint.
-  _Reading? _readingOf(NetworkGarageKey key) {
+  ///
+  /// With [fresh], a reading that ended more than [noteReadFreshness] ago, by the clock of the notes, is replaced by a new one started now: one at a time per key, the trades and writes that come meanwhile waiting for the same, never in a loop (a reading just ended is fresh, whatever it gave).
+  _Reading? _readingOf(NetworkGarageKey key, {required bool fresh}) {
     final fingerprint = switch (key.fingerprint) {
       Ok(:final value) => value,
       Err() => null,
     };
     if (fingerprint == null) return null;
-    return _reads[(key.network, fingerprint)] ??= _startReading(
-      key,
-      fingerprint,
-    );
+    final id = (key.network, fingerprint);
+    final current = _reads[id];
+    final endedAt = current?.endedAt;
+    if (current != null &&
+        !(fresh &&
+            endedAt != null &&
+            _clock().difference(endedAt) > noteReadFreshness)) {
+      return current;
+    }
+    return _reads[id] = _startReading(key, fingerprint);
   }
 
   /// A new reading of [key], started now.
@@ -301,19 +310,16 @@ final class RecoveryNoteSync {
     NetworkGarageKey key,
     GarageKeyFingerprint fingerprint,
   ) async {
-    final reading = _readingOf(key);
+    // A reading older than its freshness is done again first, once for this write (security review of #302, R8): a run may last days.
+    var reading = _readingOf(key, fresh: true);
     if (reading == null) return;
     // Never without a reading of this run that reached a majority (review of #302): a note written since by another device may be higher than all the device knew.
     var run = await reading.ended.future;
-    // A reading older than its freshness is done again first, once for this write (security review of #302, R8): a run may last days.
+    // A write that waited for a reading which ended long ago (after a write before it, say) reads again too, or waits for the reading another trade or write started.
     if (run.majority && _clock().difference(run.at) > noteReadFreshness) {
-      final id = (key.network, fingerprint);
-      final current = _reads[id];
-      // Another write may have started the new reading already: this one waits for it.
-      final again = current != null && !identical(current, reading)
-          ? current
-          : _reads[id] = _startReading(key, fingerprint);
-      run = await again.ended.future;
+      reading = _readingOf(key, fresh: true);
+      if (reading == null) return;
+      run = await reading.ended.future;
     }
     if (!run.majority) return;
     final int highest;
@@ -373,6 +379,9 @@ final class _Reading {
   final Completer<({bool majority, int? highest, DateTime at})> ended =
       Completer();
 
+  /// When the reading ended, by the clock of the notes; `null` while it runs.
+  DateTime? endedAt;
+
   void letTradesGo() {
     if (!tradesGo.isCompleted) tradesGo.complete();
   }
@@ -384,6 +393,7 @@ final class _Reading {
   }) {
     letTradesGo();
     if (!ended.isCompleted) {
+      endedAt = at;
       ended.complete((majority: majority, highest: highest, at: at));
     }
   }
