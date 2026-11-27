@@ -330,20 +330,22 @@ void main() {
       testWidgets(
         'a take refused with $code: the take not made, the pending take closed, the screen\'s words of $code, nothing sent again',
         (tester) async {
-          final (taken, takes, active) = await tester.runAsync(() async {
-            final app = await TradeHarness.start();
-            app.coordinator.refuseNextTake(code);
-            final taken = await app.takeShown();
-            // Time passes: no read nor resolution sends the take again.
-            await app.elapse(const Duration(minutes: 5));
-            return (
-              taken,
-              app.coordinator.received
-                  .where((kind) => kind == ScriptedRequest.take)
-                  .length,
-              await app.activeRecords(),
-            );
-          }) ?? fail('not run');
+          final (taken, takes, active) =
+              await tester.runAsync(() async {
+                final app = await TradeHarness.start();
+                app.coordinator.refuseNextTake(code);
+                final taken = await app.takeShown();
+                // Time passes: no read nor resolution sends the take again.
+                await app.elapse(const Duration(minutes: 5));
+                return (
+                  taken,
+                  app.coordinator.received
+                      .where((kind) => kind == ScriptedRequest.take)
+                      .length,
+                  await app.activeRecords(),
+                );
+              }) ??
+              fail('not run');
           final notMade = switch (taken) {
             Ok(value: final TakeNotMade notMade) => notMade,
             final other => fail('$other'),

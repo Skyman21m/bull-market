@@ -2255,7 +2255,11 @@ void main() {
             }
             if (width >= 360) {
               for (final (index, rect) in rects.indexed) {
-                expect(rect.width, moreOrLessEquals(56, epsilon: 0.01), reason: at);
+                expect(
+                  rect.width,
+                  moreOrLessEquals(56, epsilon: 0.01),
+                  reason: at,
+                );
                 if (index > 0) {
                   expect(
                     rect.left,

@@ -720,7 +720,9 @@ void main() {
         await tester.pump(MovedTapGuard.afterMove);
         await openDialog(tester, page);
         await tester.pump(MovedTapGuard.afterMove);
-        final position = Scrollable.of(tester.element(find.text('Pay'))).position;
+        final position = Scrollable.of(
+          tester.element(find.text('Pay')),
+        ).position;
         final before = position.pixels;
         jumping = position;
         Navigator.of(tester.element(find.text('dialog'))).pop();
@@ -746,7 +748,9 @@ void main() {
         addTearDown(shown.dispose);
         await covered(tester, shown: shown);
         await tester.pump(MovedTapGuard.afterMove);
-        final position = Scrollable.of(tester.element(find.text('Pay'))).position;
+        final position = Scrollable.of(
+          tester.element(find.text('Pay')),
+        ).position;
         unawaited(
           position.animateTo(
             20,

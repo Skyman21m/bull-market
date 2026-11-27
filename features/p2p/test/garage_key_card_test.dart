@@ -257,14 +257,10 @@ void main() {
 
   /// A trade in progress of [key]'s robot 0, order [orderId], taken here.
   TradeRecord tradeOf(GarageKey key, int orderId) => TradeRecord(
-    robot: RobotSlot(
-      testnet,
-      switch (GarageKeyFingerprint.of(key)) {
-        Ok(:final value) => value,
-        Err(:final failure) => throw StateError('$failure'),
-      },
-      0,
-    ),
+    robot: RobotSlot(testnet, switch (GarageKeyFingerprint.of(key)) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    }, 0),
     coordinatorAlias: 'temple',
     coordinatorOnion: 'http://temple.onion',
     orderId: orderId,
