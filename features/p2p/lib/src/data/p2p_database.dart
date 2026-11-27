@@ -436,9 +436,10 @@ final class P2pDatabase extends _$P2pDatabase {
         await customStatement(_externalKeyNamedDue);
       },
       from10To11: (m, schema) async {
-        // What this device read of the RoboSats recovery notes (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): one new table and its two triggers, each made only when missing, so that a step that stopped after any of them runs again over the file it left. The step writes no row: no row of an older table is copied, changed or deleted, and every key is read on the relays at its next visit, its robots used before the update being in the bindings and the records already.
+        // What this device read of the RoboSats recovery notes (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): one new table and its three triggers, each made only when missing, so that a step that stopped after any of them runs again over the file it left. The step writes no row: no row of an older table is copied, changed or deleted, and every key is read on the relays at its next visit, its robots used before the update being in the bindings and the records already.
         await m.createTable(schema.garageRecoveryNotes);
         await m.createTrigger(schema.garageRecoveryNotesNeverDeleted);
+        await m.createTrigger(schema.garageRecoveryNotesInsertedOnce);
         await m.createTrigger(schema.garageRecoveryNotesForward);
       },
     ),

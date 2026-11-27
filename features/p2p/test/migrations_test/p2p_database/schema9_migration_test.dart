@@ -636,6 +636,7 @@ const _stepKinds = [
   // Then the step to schema 11 (#81): one table of what this device read of the recovery notes, and its triggers, no row written.
   'create garage_recovery_notes',
   'trigger garage_recovery_notes_never_deleted',
+  'trigger garage_recovery_notes_inserted_once',
   'trigger garage_recovery_notes_forward',
 ];
 

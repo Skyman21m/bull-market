@@ -1385,6 +1385,7 @@ class RobotCoordinatorCubit {
       // Schema 11 (#81): what this device read of the recovery notes, one table and its triggers.
       'm.createTable(schema.garageRecoveryNotes)',
       'm.createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'm.createTrigger(schema.garageRecoveryNotesInsertedOnce)',
       'm.createTrigger(schema.garageRecoveryNotesForward)',
     ]);
     // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and their triggers and the trigger it replaces on `trade_terms` only, and turns the foreign keys off when a connection has them on; and the foreign keys of the trades, on, at each opening.
@@ -1549,6 +1550,7 @@ class RobotCoordinatorCubit {
       // Schema 11 (#81): one table and its triggers, no row written.
       'createTable(schema.garageRecoveryNotes)',
       'createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'createTrigger(schema.garageRecoveryNotesInsertedOnce)',
       'createTrigger(schema.garageRecoveryNotesForward)',
       'customStatement(_foreignKeysOn)',
     ]);
@@ -3160,9 +3162,10 @@ final _garageKeyTriggers = [
   for (final trigger in _garageKeyTriggersAsWritten) _squeezed(trigger),
 ];
 
-/// The triggers of what this device read of the recovery notes (schema 11, #81), as `garage_recovery_notes.drift` writes them: a reading never deleted, the floor only going up, a reading recorded kept.
+/// The triggers of what this device read of the recovery notes (schema 11, #81), as `garage_recovery_notes.drift` writes them: a reading never deleted, a row written once (review of #302), the floor only going up, a reading recorded kept.
 const _noteTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_never_deleted BEFORE DELETE ON garage_recovery_notes BEGIN SELECT RAISE(ABORT, 'a recovery note read is kept'); END",
+  'CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_inserted_once BEFORE INSERT ON garage_recovery_notes WHEN EXISTS (SELECT 1 FROM garage_recovery_notes WHERE network = NEW.network AND key_fingerprint = NEW.key_fingerprint) BEGIN SELECT RAISE(IGNORE); END',
   "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes WHEN NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR (OLD.account_floor IS NOT NULL AND (NEW.account_floor IS NULL OR NEW.account_floor < OLD.account_floor)) OR (OLD.read_at IS NOT NULL AND NEW.read_at IS NOT OLD.read_at) BEGIN SELECT RAISE(ABORT, 'a recovery note read only goes forward'); END",
 ];
 

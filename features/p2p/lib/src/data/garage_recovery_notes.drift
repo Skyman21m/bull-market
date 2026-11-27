@@ -7,6 +7,13 @@ BEGIN
   SELECT RAISE(ABORT, 'a recovery note read is kept');
 END;
 
+-- A row is written once per network and key, then only updated: a second insert, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off, and would clear the floor and the reading), writes nothing (review of #302).
+CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_inserted_once BEFORE INSERT ON garage_recovery_notes
+WHEN EXISTS (SELECT 1 FROM garage_recovery_notes WHERE network = NEW.network AND key_fingerprint = NEW.key_fingerprint)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;
+
 -- The floor only goes up, a reading recorded stays, and a row stays the row of its network and key.
 CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes
 WHEN NEW.network IS NOT OLD.network

@@ -5,9 +5,9 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import '../garage_key_fingerprint.dart';
 import '../p2p_failure.dart';
 
-/// What `p2p.sqlite` keeps of the RoboSats recovery note of each Garage Key on each network's relays (schema 11, #81, design note `docs/design/garage-key-from-the-words.md` § 3): the robot index the note said, the floor of the key's new trades, and whether a reading had a whole answer from a relay. Never a key, a recovery identity or a note: the key's fingerprint and numbers only.
+/// What `p2p.sqlite` keeps of the RoboSats recovery note of each Garage Key on each network's relays (schema 11, #81, design note `docs/design/garage-key-from-the-words.md` § 3): the robot index the note said, the floor of the key's new trades, and whether a reading counted as read for good (the whole answer of a strict majority of the network's relays, review of #302). Never a key, a recovery identity or a note: the key's fingerprint and numbers only.
 ///
-/// Every write is one statement that commits on its own; the floor only goes up and a reading once recorded stays, as the database's triggers enforce.
+/// The floor only goes up, a reading once recorded stays, a row stays the row of its key, and a row is never deleted nor written twice, as the database's triggers enforce (`garage_recovery_notes.drift`), whatever statement writes.
 abstract interface class GarageRecoveryNoteRepository {
   /// What this device read of the note of [key] on the relays of [network].
   @useResult
@@ -16,7 +16,7 @@ abstract interface class GarageRecoveryNoteRepository {
     GarageKeyFingerprint key,
   );
 
-  /// Records a reading of the note of [key] on the relays of [network]: the floor raised to [floor] when it is above the one recorded (a lower one changes nothing), and the reading recorded as answered when [answered] (a reading recorded stays).
+  /// Records a reading of the note of [key] on the relays of [network]: the floor raised to [floor] when it is above the one recorded (a lower one changes nothing), and the key recorded as read for good when [answered], which the caller sets only on the whole answer of a strict majority of the network's relays (a reading recorded stays). A floor recorded without [answered] leaves the key unread, to be read again at the next run; a later reading with [answered] then records it read, the floor kept or raised.
   @useResult
   Future<Result<void, P2pFailure>> recordReading(
     RobosatsNetwork network,
@@ -35,7 +35,7 @@ final class GarageNoteStanding {
   /// The robot index the note said, at its highest over the readings; `null` while none was read.
   final int? floor;
 
-  /// Whether a reading had a whole answer from at least one relay: the note is then not read again on this installation.
+  /// Whether a reading counted as read for good, on the whole answer of a strict majority of the network's relays: the note is then not read again on this installation.
   final bool read;
 
   const GarageNoteStanding({required this.floor, required this.read});

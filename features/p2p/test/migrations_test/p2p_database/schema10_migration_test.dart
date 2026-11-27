@@ -96,6 +96,7 @@ void main() {
             'DROP TRIGGER garage_notices_shown_once',
             'DROP TRIGGER garage_notices_never_deleted',
             'DROP TRIGGER garage_recovery_notes_never_deleted',
+            'DROP TRIGGER garage_recovery_notes_inserted_once',
             'DROP TRIGGER garage_recovery_notes_forward',
             'DROP TABLE garage_recovery_notes',
             'DROP TABLE derived_garage_keys',

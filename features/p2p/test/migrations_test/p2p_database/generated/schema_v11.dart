@@ -6815,6 +6815,10 @@ class DatabaseAtV11 extends GeneratedDatabase {
     'CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_never_deleted BEFORE DELETE ON garage_recovery_notes BEGIN SELECT RAISE (ABORT, \'a recovery note read is kept\');END',
     'garage_recovery_notes_never_deleted',
   );
+  late final Trigger garageRecoveryNotesInsertedOnce = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_inserted_once BEFORE INSERT ON garage_recovery_notes WHEN EXISTS (SELECT 1 FROM garage_recovery_notes WHERE network = NEW.network AND key_fingerprint = NEW.key_fingerprint) BEGIN SELECT RAISE (IGNORE);END',
+    'garage_recovery_notes_inserted_once',
+  );
   late final Trigger garageRecoveryNotesForward = Trigger(
     'CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes WHEN NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR(OLD.account_floor IS NOT NULL AND(NEW.account_floor IS NULL OR NEW.account_floor < OLD.account_floor))OR(OLD.read_at IS NOT NULL AND NEW.read_at IS NOT OLD.read_at)BEGIN SELECT RAISE (ABORT, \'a recovery note read only goes forward\');END',
     'garage_recovery_notes_forward',
@@ -7023,6 +7027,7 @@ class DatabaseAtV11 extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     garageRecoveryNotes,
     garageRecoveryNotesNeverDeleted,
+    garageRecoveryNotesInsertedOnce,
     garageRecoveryNotesForward,
     garageKeyHistories,
     robotBindings,
@@ -7090,6 +7095,13 @@ class DatabaseAtV11 extends GeneratedDatabase {
       on: TableUpdateQuery.onTableName(
         'garage_recovery_notes',
         limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'garage_recovery_notes',
+        limitUpdateKind: UpdateKind.insert,
       ),
       result: [],
     ),

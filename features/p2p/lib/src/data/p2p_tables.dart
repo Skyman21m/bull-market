@@ -688,9 +688,9 @@ class GarageNotices extends Table {
   ];
 }
 
-/// What this device read of the RoboSats recovery note of each Garage Key on the coordinators' relays of a network (schema 11, #81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): the robot index the note said, the floor of the key's new trades, and whether a reading had an answer, so that the note is read once per installation and the floor holds across restarts.
+/// What this device read of the RoboSats recovery note of each Garage Key on the coordinators' relays of a network (schema 11, #81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): the robot index the note said, the floor of the key's new trades, and whether a reading counted as read for good, so that the note is not read again once a majority of the relays answered and the floor holds across restarts.
 ///
-/// One row per network and key, by the key's fingerprint, never the key nor its recovery identity: the floor only goes up (`garage_recovery_notes_forward`), a reading once recorded stays (`read_at` is set once), and a row is never deleted. A floor may be recorded without a reading that had an answer: notes from a relay whose answer was cut short count, and the key is read again at the next opening of the app.
+/// One row per network and key, by the key's fingerprint, never the key nor its recovery identity: the floor only goes up (`garage_recovery_notes_forward`), a reading once recorded stays (`read_at` is set once), a row is written once (`garage_recovery_notes_inserted_once`, which keeps `INSERT OR REPLACE` from clearing it) and never deleted. A floor may be recorded without a reading read for good: notes from a relay whose answer was cut short, or found while fewer than a strict majority of the relays answered in full, count, and the key is read again at the next run of the app.
 @DataClassName('GarageRecoveryNoteRow')
 class StoredGarageRecoveryNotes extends Table {
   @override
@@ -705,7 +705,7 @@ class StoredGarageRecoveryNotes extends Table {
   /// The robot index the latest note read said, at its highest over the readings; new trades of the key take a robot above it. `NULL` while no note was read.
   IntColumn get accountFloor => integer().nullable()();
 
-  /// When a reading of the key had a whole answer from at least one relay, in milliseconds since the epoch; `NULL` while none had.
+  /// When a reading of the key counted as read for good (the whole answer of a strict majority of the network's relays), in milliseconds since the epoch; `NULL` while none did.
   IntColumn get readAt => integer().nullable()();
 
   @override

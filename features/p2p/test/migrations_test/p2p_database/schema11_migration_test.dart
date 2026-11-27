@@ -10,7 +10,7 @@ import 'generated/schema_v10.dart' as v10;
 import 'generated/schema_v8.dart' as v8;
 import 'schema8_rows.dart';
 
-/// The step from schema 10 to schema 11 of `p2p.sqlite` (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): one new table, what this device read of the recovery notes, and its two triggers; no row of schema 10 copied, changed or deleted, and no row written.
+/// The step from schema 10 to schema 11 of `p2p.sqlite` (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): one new table, what this device read of the recovery notes, and its three triggers; no row of schema 10 copied, changed or deleted, and no row written.
 ///
 /// The file of schema 10 holds a row in each of its thirteen tables: the file of `schema8_rows.dart`, stepped by the app's own steps, with a key of the words activated and selected, then made a file of schema 10 as an APK of schema 10 leaves it. Every row is compared before and after, value and storage class.
 void main() {
@@ -96,6 +96,7 @@ void main() {
         setup: (raw) {
           for (final statement in [
             'DROP TRIGGER garage_recovery_notes_never_deleted',
+            'DROP TRIGGER garage_recovery_notes_inserted_once',
             'DROP TRIGGER garage_recovery_notes_forward',
             'DROP TABLE garage_recovery_notes',
             'PRAGMA user_version = 10',
@@ -166,7 +167,7 @@ void main() {
   });
 
   test(
-    'the floor only goes up, a reading recorded stays, and a row is never deleted',
+    'the floor only goes up, a reading recorded stays, a row is written once, even by INSERT OR REPLACE, and never deleted',
     () async {
       final database = P2pDatabase.forTesting(NativeDatabase.memory());
       final key = 'cd' * 32;
@@ -194,6 +195,17 @@ void main() {
         database.customStatement('DELETE FROM garage_recovery_notes'),
         throwsA(isA<Exception>()),
       );
+      // A second insert of the row writes nothing, `INSERT OR REPLACE` included, whose delete fires no trigger (review of #302): the floor and the reading stay.
+      for (final insert in [
+        'INSERT OR REPLACE INTO',
+        'REPLACE INTO',
+        'INSERT OR IGNORE INTO',
+        'INSERT INTO',
+      ]) {
+        await database.customStatement(
+          "$insert garage_recovery_notes VALUES ('mainnet', '$key', NULL, NULL)",
+        );
+      }
       for (final row in [
         "('mainnet', '${'0' * 63}', NULL, NULL)",
         "('mainnet', '${'A' * 64}', NULL, NULL)",

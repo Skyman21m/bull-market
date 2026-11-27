@@ -10,17 +10,22 @@ import 'p2p_database.dart';
 /// What this device read of the RoboSats recovery notes, in the feature's database (schema 11, #81).
 ///
 /// Every statement commits on its own, synced to disk, before its future completes; a [P2pStorageFailure] for any [Exception] the database throws, or for a row this code never writes.
+/// The triggers of `garage_recovery_notes.drift` refuse, whatever the code, any delete, a second insert of a key's row (`INSERT OR REPLACE` included), a floor lowered or cleared, a reading cleared or changed, and a row moved to another network or key.
 final class GarageRecoveryNoteRepositoryImpl
     implements GarageRecoveryNoteRepository {
-  /// A reading written in one statement: the row made when missing, else its floor raised when the new one is above (never lowered, never cleared) and its reading kept once recorded (SQLite reads every column of the update in the row as it was).
-  static const String _recordReadingSql =
+  /// The row of a key made when missing, with the reading's floor and time; when it exists, the trigger `garage_recovery_notes_inserted_once` makes it write nothing, and [_raiseSql] records the reading.
+  static const String _insertSql =
       'INSERT INTO garage_recovery_notes (network, key_fingerprint, account_floor, read_at) '
-      'VALUES (?, ?, ?, ?) '
-      'ON CONFLICT (network, key_fingerprint) DO UPDATE SET '
-      'account_floor = CASE WHEN account_floor IS NULL THEN excluded.account_floor '
-      'WHEN excluded.account_floor IS NULL THEN account_floor '
-      'ELSE max(account_floor, excluded.account_floor) END, '
-      'read_at = coalesce(read_at, excluded.read_at)';
+      'VALUES (?, ?, ?, ?)';
+
+  /// A reading over the row of its key: the floor raised when the new one is above (never lowered, never cleared) and the reading kept once recorded (SQLite reads every column of the update in the row as it was). Run after [_insertSql], it gives a row that statement has just made the values it already holds; an app stopped between the two leaves the row the insert made, which already holds the reading.
+  static const String _raiseSql =
+      'UPDATE garage_recovery_notes SET '
+      'account_floor = CASE WHEN account_floor IS NULL THEN ?1 '
+      'WHEN ?1 IS NULL THEN account_floor '
+      'ELSE max(account_floor, ?1) END, '
+      'read_at = coalesce(read_at, ?2) '
+      'WHERE network = ?3 AND key_fingerprint = ?4';
 
   static const String _standingSql =
       'SELECT account_floor, read_at FROM garage_recovery_notes '
@@ -80,14 +85,25 @@ final class GarageRecoveryNoteRepositoryImpl
     if (floor != null && !_isIndex(floor)) {
       return const Err(P2pStorageFailure());
     }
+    final readAt = answered ? _clock().millisecondsSinceEpoch : null;
     try {
-      await _database.customUpdate(
-        _recordReadingSql,
+      await _database.customInsert(
+        _insertSql,
         variables: [
           Variable.withString(_networkValue(network)),
           Variable.withString(key.hex),
           Variable<int>(floor),
-          Variable<int>(answered ? _clock().millisecondsSinceEpoch : null),
+          Variable<int>(readAt),
+        ],
+        updates: {_database.storedGarageRecoveryNotes},
+      );
+      await _database.customUpdate(
+        _raiseSql,
+        variables: [
+          Variable<int>(floor),
+          Variable<int>(readAt),
+          Variable.withString(_networkValue(network)),
+          Variable.withString(key.hex),
         ],
         updates: {_database.storedGarageRecoveryNotes},
         updateKind: UpdateKind.update,
