@@ -142,7 +142,14 @@ final class TradeReader {
     required this._clock,
     required this._requestOrder,
     this._payouts,
+    this._confirmed,
   });
+
+  /// `RecoveryNoteSync.tradeConfirmed` (#81): told of each make and take the coordinator confirmed, the one moment the recovery note of the trade's key is written after a trade, never before (design note `docs/design/garage-key-from-the-words.md` § 3, « This design »); `null` where nothing writes the notes.
+  final void Function(TradeRecord record)? _confirmed;
+
+  /// The coordinator confirmed [record], a make or a take of this device: the recovery note of its key is told (#81). The take is told by [advance] here, the make by `MakeOrderUsecase` once its confirmation is written.
+  void tradeConfirmed(TradeRecord record) => _confirmed?.call(record);
 
   DateTime now() => _clock().toUtc();
 
@@ -723,6 +730,7 @@ final class TradeReader {
       switch (await _records.confirmTake(record)) {
         case Ok(:final value):
           record = value;
+          tradeConfirmed(value);
         case Err(:final failure):
           problem ??= failure;
       }

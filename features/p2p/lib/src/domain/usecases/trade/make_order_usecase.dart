@@ -755,6 +755,7 @@ final class MakeOrderUsecase {
     switch (await _records.confirmMake(make, orderId: order.id)) {
       case Ok(:final value):
         record = value;
+        _reader.tradeConfirmed(value);
       case Err():
         return MakePending(make, MakePendingReason.notConfirmed);
     }

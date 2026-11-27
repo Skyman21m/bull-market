@@ -236,7 +236,7 @@ void main() {
   });
 
   test(
-    'calls beyond the places wait for one; one whose deadline passes first gives busy',
+    'a call beyond the places waits for one, within its own deadline',
     () async {
       final fake = await relay(_Behaviour.noEose);
       final calls = transport(
@@ -245,11 +245,16 @@ void main() {
       );
       final first = calls.readOnOwnSession(fake.url, filters);
       await Future<void>.delayed(const Duration(milliseconds: 50));
+      final second = calls.readOnOwnSession(fake.url, filters);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // The second waits for the place the first holds: no second session yet.
       expect(calls.ownSessionsForTesting.inUse, 1);
-      final second = await calls.readOnOwnSession(fake.url, filters);
-      expect(second.label, anyOf('busy', 'timedOut'));
-      expect((await first).complete, isFalse);
+      expect(calls.ownSessionsForTesting.waiting, 1);
       expect(opened, hasLength(1));
+      expect((await first).complete, isFalse);
+      expect((await second).complete, isFalse);
+      await _until(() => closed.length == opened.length);
+      expect(calls.ownSessionsForTesting, (inUse: 0, waiting: 0, open: 0));
     },
   );
 }

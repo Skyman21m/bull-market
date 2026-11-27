@@ -25,7 +25,6 @@ import 'data/trade_payout_repository_impl.dart';
 import 'data/trade_record_repository_impl.dart';
 import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
-import 'domain/confirmed_trade_notes.dart';
 import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/garage_note_compute_port.dart';
@@ -373,16 +372,9 @@ final class P2pLocator {
     required NostrRelayTransport Function() relays,
     required DateTime Function() clock,
   }) {
-    // Each make and take the coordinator confirmed writes the recovery note of its key (#81), where the relays were lent; the note sync is read at that moment only, since it reads these records itself.
-    locator.registerLazySingleton<TradeRecordRepository>(() {
-      final records = TradeRecordRepositoryImpl(locator(), clock: clock);
-      return locator.isRegistered<RecoveryNoteSync>()
-          ? ConfirmedTradeNotes(
-              records,
-              (record) => locator<RecoveryNoteSync>().tradeConfirmed(record),
-            )
-          : records;
-    });
+    locator.registerLazySingleton<TradeRecordRepository>(
+      () => TradeRecordRepositoryImpl(locator(), clock: clock),
+    );
     locator.registerLazySingleton<TradeTrailRepository>(
       () => TradeTrailRepositoryImpl(locator()),
     );
@@ -429,6 +421,10 @@ final class P2pLocator {
         clock: clock,
         requestOrder: locator(),
         payouts: locator(),
+        // Each make and take the coordinator confirmed writes the recovery note of its key (#81), where the relays were lent.
+        confirmed: locator.isRegistered<RecoveryNoteSync>()
+            ? locator<RecoveryNoteSync>().tradeConfirmed
+            : null,
       ),
     );
     // One for the feature: the takes and the payouts of an order run one at a time, whichever use case object runs them.

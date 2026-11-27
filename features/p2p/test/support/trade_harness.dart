@@ -13,7 +13,6 @@ import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/data/trade_payout_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
-import 'package:p2p/src/domain/confirmed_trade_notes.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
@@ -573,7 +572,7 @@ final class TradeHarness {
       clock: clock,
     );
     records = _KillingRecords(
-      notes == null ? stored : ConfirmedTradeNotes(stored, notes.confirmed),
+      stored,
       () => kill,
     );
     payouts = TradePayoutRepositoryImpl(database);
@@ -605,6 +604,7 @@ final class TradeHarness {
       clock: clock,
       requestOrder: TradeReadOrder(),
       payouts: payouts,
+      confirmed: notes?.confirmed,
     );
     final fetch = FetchRobotUsecase(client, bindings, keys);
     final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);

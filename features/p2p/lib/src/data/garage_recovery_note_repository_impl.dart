@@ -81,19 +81,17 @@ final class GarageRecoveryNoteRepositoryImpl
       return const Err(P2pStorageFailure());
     }
     try {
-      await _database.customStatement(_recordReadingSql, [
-        _networkValue(network),
-        key.hex,
-        floor,
-        if (answered) _clock().millisecondsSinceEpoch else null,
-      ]);
-      // A raw statement tells drift nothing: the watches of the floor are told here.
-      _database.notifyUpdates({
-        TableUpdate.onTable(
-          _database.storedGarageRecoveryNotes,
-          kind: UpdateKind.update,
-        ),
-      });
+      await _database.customUpdate(
+        _recordReadingSql,
+        variables: [
+          Variable.withString(_networkValue(network)),
+          Variable.withString(key.hex),
+          Variable<int>(floor),
+          Variable<int>(answered ? _clock().millisecondsSinceEpoch : null),
+        ],
+        updates: {_database.storedGarageRecoveryNotes},
+        updateKind: UpdateKind.update,
+      );
     } on Exception {
       return const Err(P2pStorageFailure());
     }

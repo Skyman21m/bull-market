@@ -1382,6 +1382,10 @@ class RobotCoordinatorCubit {
       'm.createTable(schema.garageNotices)',
       'm.createTrigger(schema.garageNoticesShownOnce)',
       'm.createTrigger(schema.garageNoticesNeverDeleted)',
+      // Schema 11 (#81): what this device read of the recovery notes, one table and its triggers.
+      'm.createTable(schema.garageRecoveryNotes)',
+      'm.createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'm.createTrigger(schema.garageRecoveryNotesForward)',
     ]);
     // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and their triggers and the trigger it replaces on `trade_terms` only, and turns the foreign keys off when a connection has them on; and the foreign keys of the trades, on, at each opening.
     expect(database.calls.where((call) => call.startsWith('customStatement(')), [
@@ -1430,6 +1434,10 @@ class RobotCoordinatorCubit {
       'customStatement(_markPayoutsUnrecorded)',
       // The step to schema 10 (#81): « Your Garage Keys » made due, in its own new table.
       'customStatement(_externalKeyNamedDue)',
+      // Schema 11 (#81): one table and its triggers, no row written.
+      'createTable(schema.garageRecoveryNotes)',
+      'createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'createTrigger(schema.garageRecoveryNotesForward)',
       'customStatement(_foreignKeysOn)',
     ]);
     // The step to schema 8, call by call, in its order (#176): the foreign keys found off before anything, or turned off and read again, each rebuilt table copied aside only while it is schema 7's, made again only while missing, filled again from its copy only while the copy exists, `trades` first; then the maker's terms, the triggers (each replaced one dropped first), the foreign keys of the file checked, and only then the copies dropped.
