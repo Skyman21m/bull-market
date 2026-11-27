@@ -10,7 +10,10 @@ import 'package:p2p/src/data/garage_key_book_repository_impl.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
@@ -50,6 +53,7 @@ void main() {
     GarageKey key, {
     int? index,
     bool inProgressUnread = false,
+    List<TradeRecord> inProgress = const [],
   }) => GarageWithKey(
     testnet,
     key: NetworkGarageKey(testnet, key, index: index),
@@ -57,6 +61,7 @@ void main() {
     highest: 1,
     hasExternal: true,
     inProgressUnread: inProgressUnread,
+    inProgress: inProgress,
     deletionNeedsPin: false,
   );
 
@@ -244,6 +249,99 @@ void main() {
         await tester.tap(find.text(delete));
         await settle(tester);
         expect(find.text(line), findsNothing);
+        await tester.tap(find.text(cancel));
+        await settle(tester);
+      },
+    );
+  }
+
+  /// A trade in progress of [key]'s robot 0, order [orderId], taken here.
+  TradeRecord tradeOf(GarageKey key, int orderId) => TradeRecord(
+    robot: RobotSlot(
+      testnet,
+      switch (GarageKeyFingerprint.of(key)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      },
+      0,
+    ),
+    coordinatorAlias: 'temple',
+    coordinatorOnion: 'http://temple.onion',
+    orderId: orderId,
+    role: TradeRole.buyer,
+    origin: TradeOrigin.takenHere,
+    takenAt: DateTime.utc(2026, 11, 27, 9),
+    confirmedAt: DateTime.utc(2026, 11, 27, 9),
+    closedAt: null,
+  );
+
+  for (final (locale, delete, trades, unread, cancel) in [
+    (
+      const Locale('en'),
+      'Delete the external Garage Key',
+      'Trades #42, #43 use this Garage Key: without it, you will not be able to continue them.',
+      'Bull Market could not read your trades: a trade in progress may use this Garage Key.',
+      'Cancel',
+    ),
+    (
+      const Locale('fr'),
+      'Supprimer la clé de garage externe',
+      'Les échanges #42, #43 utilisent cette clé de garage\u00a0: sans elle, vous ne pourrez plus les continuer.',
+      'Bull Market n’a pas pu lire vos échanges\u00a0: un échange en cours utilise peut-être cette clé de garage.',
+      'Annuler',
+    ),
+  ]) {
+    testWidgets(
+      'a reading of the trades that failed after one that succeeded: « Delete the external Garage Key? » names the trades known first, then says the trades could not be read, both in the warning colour; the trades read again, only the trades known are named (${locale.languageCode}, review of #292, R-8)',
+      (tester) async {
+        usePhoneScreen(tester);
+        final known = [tradeOf(keyA, 42), tradeOf(keyA, 43)];
+        final shown = ValueNotifier(
+          stateOf(keyA, inProgress: known, inProgressUnread: true),
+        );
+        addTearDown(shown.dispose);
+        await tester.pumpWidget(
+          harness(
+            BlocProvider.value(
+              value: cubit(),
+              child: SingleChildScrollView(
+                child: ValueListenableBuilder(
+                  valueListenable: shown,
+                  builder: (context, state, _) => GarageKeyCard(
+                    state: state,
+                    clipboard: GarageKeyClipboard(),
+                    reauthenticate: reauthenticate,
+                  ),
+                ),
+              ),
+            ),
+            locale: locale,
+          ),
+        );
+        await settle(tester);
+        await tester.tap(find.text(delete));
+        await settle(tester);
+        expect(find.text(trades), findsOneWidget);
+        expect(find.text(unread), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.text(trades)).dy,
+          lessThan(tester.getTopLeft(find.text(unread)).dy),
+        );
+        for (final line in [trades, unread]) {
+          expect(
+            tester.widget<Text>(find.text(line)).style?.color,
+            testBullTheme.warning,
+          );
+        }
+        await tester.tap(find.text(cancel));
+        await settle(tester);
+        // The trades read again: only the trades known are named.
+        shown.value = stateOf(keyA, inProgress: known);
+        await tester.pump();
+        await tester.tap(find.text(delete));
+        await settle(tester);
+        expect(find.text(trades), findsOneWidget);
+        expect(find.text(unread), findsNothing);
         await tester.tap(find.text(cancel));
         await settle(tester);
       },
