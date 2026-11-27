@@ -30,7 +30,9 @@ final noteReadDeadline = torConnectDeadline + const Duration(seconds: 30);
 
 /// The longest the reservation of a new trade's robot waits for the first reading of its key's note still running (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »), as the official client reads the note of a key entered for at most 5 seconds before it goes on (`RoboPool/index.ts:640`, commit babf62e), over sockets already open.
 ///
-/// Here the relays are reached through Tor, each on a new session: on cold installs a first onion contact took up to 34 seconds (`torConnectBudget` of `bull_tor`), and the answer of a relay for a few notes and their reading take a few seconds more. Forty seconds keeps that worst observed contact; the reading started earlier in most cases (the Garage's opening, the opening of the app), so a user waits less, or not at all. Past it the trade goes on with what the device knows.
+/// Here the relays are reached through Tor, each on a new session: on cold installs a first onion contact took up to 34 seconds, as measured in the comment of `torConnectBudget` of `bull_tor` (whose value is 60 seconds), and the answer of a relay for a few notes and their reading take a few seconds more. Forty seconds keeps that worst observed contact; in most cases the reading started earlier, at the first showing of the P2P tab of the key's network or when the Garage showed the key, so a user waits less, or not at all. Past it the trade goes on with what the device knows.
+///
+/// It is waited again by each new trade of the key as long as the reading of this run has not ended (a reading still waiting for Tor, say): waiting again is the safe side. Once the reading of this run ended, read or not, a new trade does not wait.
 const newTradeNoteWait = Duration(seconds: 40);
 
 /// The longest a reading or a writing of a note waits for the embedded Tor to be ready before it gives up until the next occasion: the start of Tor took 62 seconds on 10/11/2026, and the Snowflake fallback takes longer.
@@ -38,8 +40,9 @@ const noteTorWait = Duration(minutes: 5);
 
 /// Keeps the RoboSats recovery note of the Garage Keys on the coordinators' relays (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »), as the official client keeps it (`GarageKey.model.ts:89-119`, `Garage.model.ts:547-569`, commit babf62e): the note of a key says the index of its last robot used.
 ///
-/// - **Read** at the first visit of a key on this installation ([visit]: the Garage shows a key, internal or external, imported or not) and before the first new trade of a key not read yet ([beforeNewTrade]): on every coordinator relay of the key's network, for its recovery identity and its legacy one, each relay read apart ([OwnSessionNostrRelayTransport.readOnOwnSession]) and its events read apart in an isolate ([GarageNoteComputePort.readNotes]), then the latest note among the relays' readings ([GarageRecoveryNote.latestOf]). Its index raises the floor of the key's new trades, which only goes up ([GarageRecoveryNoteRepository.recordReading]); the key counts as read once one relay gave its whole answer, and is not read again on this installation. A reading where no relay answered leaves the key unread, and is tried again at the next opening of the app, never in a loop: one reading per key per run of the app.
-/// - **Written**, with the highest robot index this device knows was used for the key ([NewTradeStanding.highestKnown]: its robots in use and the floor read), after each make and take the coordinator confirmed ([tradeConfirmed]) and again at the first showing of the P2P tab of each network in a run of the app ([opened]), for every key with a robot in use there; on every coordinator relay of the key's network, each publication on a Tor session of its own. Only once the key was read: a device that could not read the note does not write over a note it has not seen.
+/// - **Read**, once per key and per run of the app while the key is not read: at the first showing of the P2P tab of a network, for the key new trades take there ([opened], with [GarageKeyRepository.forNewTrade]); when the Garage shows a key, internal or external, imported or not ([visit]); and before the reservation of a new trade's robot ([beforeNewTrade]). On every coordinator relay of the key's network, for its recovery identity and its legacy one, each relay read apart ([OwnSessionNostrRelayTransport.readOnOwnSession]) and its events read apart in an isolate ([GarageNoteComputePort.readNotes]), then the latest note among the relays' readings ([GarageRecoveryNote.latestOf]). Its index raises the floor of the key's new trades, which only goes up ([GarageRecoveryNoteRepository.recordReading]), whatever number of relays answered: a floor never lowers anything, it can only help.
+/// - **Read for good** only when a strict majority of the network's relays ([nostrRelaysOfNetwork]: 4 of 6, 2 of 3, 1 of 1) gave their whole answer and their events were read in time, a note found or not (review of #302): the key is then not read again on this installation. Short of that, a relay that answers at once with nothing, or with an old note, while the others are unreachable or late, could have deprived the key of its floor for good, and the next write would have put a newer, lower note in front of the right one. Without a majority the key stays unread: the floor found is recorded, nothing is written for the key, and it is read again at the next run of the app, never in a loop.
+/// - **Written**, with the highest robot index this device knows was used for the key ([NewTradeStanding.highestKnown]: its robots in use and the floor read), after each make and take the coordinator confirmed ([tradeConfirmed]) and again at the first showing of the P2P tab of each network in a run of the app ([opened]), for every key with a robot in use there; on every coordinator relay of the key's network, each publication on a Tor session of its own. Only once the key was read for good: a device that could not read the note from a majority of the relays does not write over a note it may not have seen. The writes of one key run one after the other, the next after the one before it, whatever that one gave.
 /// - Nothing here retries in a tight loop, delays a trade more than [newTradeNoteWait], or makes one fail: a relay that cannot be reached costs the user nothing, and every outcome stays out of the screens.
 /// - Nothing of the key, of its recovery identity, of a note or of a relay goes to a log; at most a fixed word.
 final class RecoveryNoteSync {
@@ -63,10 +66,10 @@ final class RecoveryNoteSync {
   final Duration _newTradeWait;
   final Duration _torWait;
 
-  /// The first reading of each key of each network in this run of the app: whether one relay gave its whole answer and it was recorded.
+  /// The first reading of each key of each network in this run of the app: whether the key counts as read for good (a strict majority of the relays answered in full) and it was recorded.
   final Map<(RobosatsNetwork, GarageKeyFingerprint), Future<bool>> _reads = {};
 
-  /// The last write of each key of each network, which the next one waits for.
+  /// The last write of each key of each network, which the next one waits for, whatever it gave.
   final Map<(RobosatsNetwork, GarageKeyFingerprint), Future<void>> _writes = {};
 
   /// The networks whose P2P tab was shown in this run of the app.
@@ -87,10 +90,10 @@ final class RecoveryNoteSync {
     this._torWait = noteTorWait,
   }) : _readDeadline = readDeadline ?? noteReadDeadline;
 
-  /// The Garage shows [key]: its note is read in the background unless it was read on this installation or this run already tried.
+  /// The Garage shows [key]: its note is read in the background unless it was read for good on this installation or this run already tried.
   void visit(NetworkGarageKey key) => unawaited(_firstReading(key));
 
-  /// Before the robot of a new trade of [key] is reserved: the first reading of its note, started now if this run has not tried it yet, is awaited at most [newTradeNoteWait]; then the trade goes on with what the device knows, whatever the reading gave. It never fails.
+  /// Before the robot of a new trade of [key] is reserved: the first reading of its note in this run, started now if this run has not tried it yet, is awaited at most [newTradeNoteWait], by each new trade as long as it has not ended; then the trade goes on with what the device knows, whatever the reading gave. It never fails.
   Future<void> beforeNewTrade(NetworkGarageKey key) =>
       _firstReading(key).timeout(_newTradeWait, onTimeout: () => false);
 
@@ -98,13 +101,23 @@ final class RecoveryNoteSync {
   void tradeConfirmed(TradeRecord record) =>
       unawaited(_guardedWrite(_writeForRobot(record.robot)));
 
-  /// The P2P tab of [network] is shown: at the first time in this run of the app, the note of every key with a robot in use on [network] is written again in the background, after its first reading.
+  /// The P2P tab of [network] is shown: at the first time in this run of the app, in the background, the first reading of the key new trades take on [network] starts ([GarageKeyRepository.forNewTrade]), with robots in use or not, so that after a reinstall it runs well before the first trade (functional review of #302); and the note of every key with a robot in use on [network] is written again, after its first reading.
+  ///
+  /// A key that cannot be had (no default wallet, a passphrase, a wallet locked, words that no longer give the key recorded) is neither read nor written, and nothing is shown.
   void opened(RobosatsNetwork network) {
     if (!_opened.add(network)) return;
+    unawaited(_guardedRead(_readForNewTrade(network)));
     unawaited(_guardedWrite(_writeAll(network)));
   }
 
-  /// The first reading of [key] in this run: `true` when the key counts as read.
+  /// The first reading of the key new trades take on [network]: `false` when there is none.
+  Future<bool> _readForNewTrade(RobosatsNetwork network) async =>
+      switch (await _keys.forNewTrade(network)) {
+        Ok(:final value) => await _firstReading(value),
+        Err() => false,
+      };
+
+  /// The first reading of [key] in this run: `true` when the key counts as read for good.
   Future<bool> _firstReading(NetworkGarageKey key) {
     final fingerprint = switch (key.fingerprint) {
       Ok(:final value) => value,
@@ -142,24 +155,27 @@ final class RecoveryNoteSync {
     final readings = await Future.wait([
       for (final relay in relays) _readRelay(relay, filters, identities, clock),
     ]);
-    final answered = readings.any((reading) => reading.answered);
+    // Read for good only on the whole answer of a strict majority of the network's relays (review of #302): one relay, empty or holding an old note, never settles the key while the others are unreachable or late.
+    final answers = readings.where((reading) => reading.answered).length;
+    final read = answers * 2 > relays.length;
     final latest = GarageRecoveryNote.latestOf([
       for (final reading in readings) reading.note,
     ]);
-    if (!answered && latest == null) {
-      log.info('P2P recovery note: no relay answered');
+    if (!read && latest == null) {
+      log.info('P2P recovery note: not read');
       return false;
     }
+    // The floor found is recorded with or without a majority: it only goes up.
     final recorded = await _notes.recordReading(
       key.network,
       fingerprint,
       floor: latest?.accountIndex,
-      answered: answered,
+      answered: read,
     );
-    return answered && recorded is Ok;
+    return read && recorded is Ok;
   }
 
-  /// One relay's reading: the note its events hold, and whether it gave its whole answer and its events were read in time.
+  /// One relay's reading: the note its events hold, and whether it gave its whole answer and its events were read within the reading's deadline.
   Future<({GarageRecoveryReading? note, bool answered})> _readRelay(
     Uri relay,
     List<NostrRelayFilter> filters,
@@ -167,9 +183,9 @@ final class RecoveryNoteSync {
     Stopwatch clock,
   ) async {
     final read = await _relays.readOnOwnSession(relay, filters);
-    if (read.events.isEmpty) return (note: null, answered: read.complete);
     final left = _readDeadline - clock.elapsed;
     if (left <= Duration.zero) return (note: null, answered: false);
+    if (read.events.isEmpty) return (note: null, answered: read.complete);
     return switch (await _compute.readNotes(
       identities,
       read.events,
@@ -204,7 +220,7 @@ final class RecoveryNoteSync {
     }
   }
 
-  /// The note of [key] written on every relay of its network, after the write before it of the same key.
+  /// The note of [key] written on every relay of its network, after the write before it of the same key, whatever that one gave: its failure was reported to its own caller, and never stops the writes after it (review of #302).
   Future<void> _write(NetworkGarageKey key) {
     final fingerprint = switch (key.fingerprint) {
       Ok(:final value) => value,
@@ -213,7 +229,9 @@ final class RecoveryNoteSync {
     if (fingerprint == null) return Future.value();
     final id = (key.network, fingerprint);
     final previous = _writes[id] ?? Future<void>.value();
-    final next = previous.then((_) => _writeNow(key, fingerprint));
+    final next = previous
+        .then<void>((_) {}, onError: (Object _) {})
+        .then((_) => _writeNow(key, fingerprint));
     _writes[id] = next;
     return next;
   }
@@ -222,7 +240,7 @@ final class RecoveryNoteSync {
     NetworkGarageKey key,
     GarageKeyFingerprint fingerprint,
   ) async {
-    // Never over a note this device has not read: it could hide a higher index.
+    // Never over a note this device has not read from a majority of the relays: it could hide a higher index.
     if (!await _firstReading(key)) return;
     final int highest;
     switch (await _standing(key.network, fingerprint)) {
@@ -248,15 +266,14 @@ final class RecoveryNoteSync {
     }
   }
 
-  /// Whether the embedded Tor is ready, waiting for it at most [noteTorWait]; `true` where nothing reports it.
+  /// Whether the embedded Tor is ready, waiting for it at most [noteTorWait]; `true` where nothing reports it, `false` when its reports end without « ready » (review of #302).
   Future<bool> _torReady() async {
     final reports = _torReports;
     if (reports == null) return true;
     try {
-      await reports()
-          .firstWhere((report) => report.state == P2pTorState.ready)
+      return await reports()
+          .any((report) => report.state == P2pTorState.ready)
           .timeout(_torWait);
-      return true;
     } on Exception {
       return false;
     }

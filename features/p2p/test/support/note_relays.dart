@@ -55,6 +55,12 @@ final class FakeNoteRelays implements OwnSessionNostrRelayTransport {
   /// Every publication, in order: the relay and its event.
   final List<(Uri, String)> published = [];
 
+  /// Every publication asked, in order, before [holdPublications] lets it through: the relay and its event.
+  final List<(Uri, String)> asked = [];
+
+  /// While set, each publication waits for it before it is stored and answered.
+  Future<void>? holdPublications;
+
   /// The events of [relay].
   List<String> on(Uri relay) => stored.putIfAbsent(relay, () => []);
 
@@ -81,6 +87,8 @@ final class FakeNoteRelays implements OwnSessionNostrRelayTransport {
   ) async {
     if (down.contains(relay)) return const NostrRelayUnreachable();
     final event = eventOf(message);
+    asked.add((relay, event));
+    if (holdPublications case final hold?) await hold;
     published.add((relay, event));
     on(relay).add(event);
     return const NostrRelayAccepted();
@@ -109,6 +117,12 @@ final class InlineNoteCompute implements GarageNoteComputePort {
   /// The number of events of each reading, in order: one per relay that answered events.
   final List<int> readings = [];
 
+  /// The number of notes composed, or asked to be.
+  int composed = 0;
+
+  /// Thrown in place of the next composition, then cleared: a bug of the work.
+  Error? composeError;
+
   @override
   Future<
     Result<
@@ -120,14 +134,21 @@ final class InlineNoteCompute implements GarageNoteComputePort {
     NostrKeyPair identity, {
     required int accountIndex,
     required DateTime now,
-  }) async => Ok(
-    GarageRecoveryNote.composeFor(
-      identity,
-      accountIndex: accountIndex,
-      now: now,
-      random: Random(3),
-    ),
-  );
+  }) async {
+    composed++;
+    if (composeError case final error?) {
+      composeError = null;
+      throw error;
+    }
+    return Ok(
+      GarageRecoveryNote.composeFor(
+        identity,
+        accountIndex: accountIndex,
+        now: now,
+        random: Random(3),
+      ),
+    );
+  }
 
   @override
   Future<Result<GarageRecoveryReading?, RobotKeyComputeFailure>> readNotes(

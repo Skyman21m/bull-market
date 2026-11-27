@@ -11,6 +11,7 @@ import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/p2p_tor_state.dart';
 import 'package:p2p/src/domain/recovery_note_sync.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/garage_recovery_note_repository.dart';
@@ -24,7 +25,7 @@ import 'package:test/test.dart';
 import 'support/garage_words.dart';
 import 'support/note_relays.dart';
 
-/// The RoboSats recovery note kept on the coordinators' relays (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): read at the first visit of a key, each relay apart, its floor kept across restarts and applied to new trades, written after each confirmed trade and at each opening, against relays played in memory. Keys: the public test phrase « abandon ×11 about » only.
+/// The RoboSats recovery note kept on the coordinators' relays (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « As PR 3 built it »): read at the first showing of the tab and at the first visit of a key, each relay apart, read for good only on the whole answer of a strict majority of the relays (review of #302), its floor kept across restarts and applied to new trades, written after each confirmed trade and at each opening, against relays played in memory. Keys: the public test phrase « abandon ×11 about » only.
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   const network = RobosatsNetwork.mainnet;
@@ -77,6 +78,8 @@ void main() {
   RecoveryNoteSync sync({
     Duration newTradeWait = const Duration(seconds: 5),
     Duration readDeadline = const Duration(seconds: 5),
+    Federation federation = Federation.robosats,
+    Stream<P2pTorReport> Function()? torReports,
   }) => RecoveryNoteSync(
     relays: relaysPlayed,
     compute: compute,
@@ -84,8 +87,9 @@ void main() {
     standing: records().newTradeStandingOf,
     keysInUse: records().keysInUse,
     keys: keys,
-    federation: Federation.robosats,
+    federation: federation,
     clock: () => at,
+    torReports: torReports,
     newTradeWait: newTradeWait,
     readDeadline: readDeadline,
   );
@@ -158,6 +162,31 @@ void main() {
       if (GarageRecoveryNote.latestNote(key.key, [event]) case final reading?)
         reading.accountIndex,
   ];
+
+  /// The indexes the notes asked to be published for [key] say, held or not.
+  List<int> askedIndexes(NetworkGarageKey key) => [
+    for (final (_, event) in relaysPlayed.asked)
+      if (GarageRecoveryNote.latestNote(key.key, [event]) case final reading?)
+        reading.accountIndex,
+  ];
+
+  /// Robot [index] of [key] reserved for a trade, its key already recorded.
+  Future<void> reserve(NetworkGarageKey key, int index) async => expect(
+    await records().reserveForNewTrade(
+      RobotSlot(network, fingerprintOf(key), index),
+      CoordinatorIdentity.of(Federation.robosats.coordinators[1], network)!,
+    ),
+    isA<Ok<TradeReservation?, P2pFailure>>(),
+  );
+
+  /// The note [index] of [key] held by every relay of [among].
+  void holdNote(NetworkGarageKey key, int index, Iterable<Uri> among) {
+    for (final relay in among) {
+      relaysPlayed
+          .on(relay)
+          .add(noteOf(key.key.recoveryNostrKeyPair, index, at));
+    }
+  }
 
   group('reading', () {
     test(
@@ -320,7 +349,7 @@ void main() {
     );
 
     test(
-      'one relay of three with the note is enough; the others answer with nothing',
+      'one relay with the note is enough when the others answer in full with nothing',
       () async {
         relaysPlayed
             .on(relays[4])
@@ -393,6 +422,194 @@ void main() {
       expect(await nextRobot(internal1, notesSync), 0);
       expect(await nextRobot(internal0, notesSync, coordinator: 1), 31);
     });
+  });
+
+  group(
+    'read for good only on the whole answer of a strict majority of the relays (review of #302)',
+    () {
+      test(
+        'six relays, one answers at once with nothing and five unreachable hold note 7: not read, no floor, nothing written after the trade nor at the opening; the next run, every relay answering, reads 7',
+        () async {
+          expect(relays, hasLength(6));
+          holdNote(internal0, 7, relays.skip(1));
+          relaysPlayed.down.addAll(relays.skip(1));
+          await bind(internal0, [0]);
+          final first = sync();
+          expect(await nextRobot(internal0, first, coordinator: 1), 1);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: null, read: false),
+          );
+          first.tradeConfirmed(_record(fingerprintOf(internal0), 1));
+          first.opened(network);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          expect(relaysPlayed.published, isEmpty);
+          // The next run of the app, every relay answering: read for good, above 7.
+          relaysPlayed.down.clear();
+          final again = sync();
+          expect(await nextRobot(internal0, again, coordinator: 2), 8);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: 7, read: true),
+          );
+        },
+      );
+
+      test(
+        'one relay of six holds note 3, the others unreachable: the floor 3 recorded, the key unread, nothing written; the next run reads it again and keeps the floor',
+        () async {
+          holdNote(internal0, 3, [relays[2]]);
+          relaysPlayed.down.addAll([
+            for (final relay in relays)
+              if (relay != relays[2]) relay,
+          ]);
+          await bind(internal0, [0]);
+          final first = sync();
+          expect(await nextRobot(internal0, first, coordinator: 1), 4);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: 3, read: false),
+          );
+          first.tradeConfirmed(_record(fingerprintOf(internal0), 4));
+          first.opened(network);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          expect(relaysPlayed.published, isEmpty);
+          // The next run reads every relay again; the relays now answer with nothing: the floor stays, the key read for good.
+          relaysPlayed
+            ..down.clear()
+            ..stored.clear()
+            ..reads.clear();
+          await sync().beforeNewTrade(internal0);
+          expect(relaysPlayed.reads, hasLength(relays.length));
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: 3, read: true),
+          );
+        },
+      );
+
+      for (final (answering, read) in const [(3, false), (4, true)]) {
+        test(
+          '$answering relays of six answer in full with nothing, the others unreachable: ${read ? 'read' : 'not read'}',
+          () async {
+            relaysPlayed.down.addAll(relays.skip(answering));
+            await sync().beforeNewTrade(internal0);
+            expect(
+              await standingOf(internal0),
+              GarageNoteStanding(floor: null, read: read),
+            );
+          },
+        );
+      }
+
+      test(
+        'one relay answers at once with nothing, the five others in full but after the reading\'s deadline: not read',
+        () async {
+          holdNote(internal0, 7, relays.skip(1));
+          for (final relay in relays.skip(1)) {
+            relaysPlayed.answers[relay] = (stored, filters) async {
+              await Future<void>.delayed(const Duration(milliseconds: 400));
+              return NostrRelayRead(
+                events: FakeNoteRelays.matching(stored, filters),
+                complete: true,
+                label: 'answered',
+              );
+            };
+          }
+          await sync(
+            readDeadline: const Duration(milliseconds: 200),
+          ).beforeNewTrade(internal0);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: null, read: false),
+          );
+        },
+      );
+
+      test(
+        'one relay answers at once with nothing, the five others cut short holding note 7: the floor 7 recorded, not read',
+        () async {
+          holdNote(internal0, 7, relays.skip(1));
+          for (final relay in relays.skip(1)) {
+            relaysPlayed.answers[relay] = (stored, filters) async =>
+                NostrRelayRead(
+                  events: FakeNoteRelays.matching(stored, filters),
+                  complete: false,
+                  label: 'timedOut',
+                );
+          }
+          await sync().beforeNewTrade(internal0);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: 7, read: false),
+          );
+        },
+      );
+
+      test(
+        'a network of one relay: its whole answer reads the key, its silence does not',
+        () async {
+          final one = Federation([
+            Federation.robosats.coordinators.firstWhere(
+              (coordinator) => nostrRelaysOfNetwork(
+                Federation([coordinator]),
+                network,
+              ).isNotEmpty,
+            ),
+          ]);
+          final single = nostrRelaysOfNetwork(one, network).single;
+          relaysPlayed.down.add(single);
+          await sync(federation: one).beforeNewTrade(internal0);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: null, read: false),
+          );
+          relaysPlayed.down.clear();
+          await sync(federation: one).beforeNewTrade(internal0);
+          expect(
+            await standingOf(internal0),
+            const GarageNoteStanding(floor: null, read: true),
+          );
+        },
+      );
+    },
+  );
+
+  group('the first showing of the tab (functional review of #302)', () {
+    test(
+      'reads the key new trades take, with no robot in use, and writes nothing for it',
+      () async {
+        holdNote(internal1, 6, relays);
+        keys.selected = internal1;
+        sync().opened(network);
+        final waited = Stopwatch()..start();
+        while ((await standingOf(internal1)).floor == null &&
+            waited.elapsed < const Duration(seconds: 2)) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(
+          await standingOf(internal1),
+          const GarageNoteStanding(floor: 6, read: true),
+        );
+        expect(relaysPlayed.reads, hasLength(relays.length));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(relaysPlayed.published, isEmpty);
+      },
+    );
+
+    test(
+      'without a key for new trades (no default wallet, a passphrase, a wallet locked, other words): nothing read, nothing written, no error',
+      () async {
+        final errors = <Object>[];
+        await runZonedGuarded(() async {
+          sync().opened(network);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }, (error, _) => errors.add(error));
+        expect(errors, isEmpty);
+        expect(relaysPlayed.reads, isEmpty);
+        expect(relaysPlayed.published, isEmpty);
+      },
+    );
   });
 
   group('the floor of a new trade', () {
@@ -521,6 +738,75 @@ void main() {
         notesSync.opened(network);
         await Future<void>.delayed(const Duration(milliseconds: 50));
         expect(relaysPlayed.published, hasLength(2 * relays.length));
+      },
+    );
+
+    test(
+      'two writes of one key asked one after the other: the second starts once the first ended, and says the larger index',
+      () async {
+        await bind(internal0, [3]);
+        final notesSync = sync();
+        await notesSync.beforeNewTrade(internal0);
+        final hold = Completer<void>();
+        relaysPlayed.holdPublications = hold.future;
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 3));
+        final waited = Stopwatch()..start();
+        while (relaysPlayed.asked.length < relays.length &&
+            waited.elapsed < const Duration(seconds: 2)) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        await reserve(internal0, 5);
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 5));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        // The first write held: nothing of the second asked yet.
+        expect(askedIndexes(internal0), List.filled(relays.length, 3));
+        relaysPlayed.holdPublications = null;
+        hold.complete();
+        await _settled(relaysPlayed, 2 * relays.length);
+        expect(publishedIndexes(internal0), [
+          ...List.filled(relays.length, 3),
+          ...List.filled(relays.length, 5),
+        ]);
+      },
+    );
+
+    test(
+      'a bug in one write of a key does not stop the writes after it: it is reported to the zone, and the next write goes out',
+      () async {
+        await bind(internal0, [3]);
+        final notesSync = sync();
+        compute.composeError = StateError('a bug of the work');
+        final errors = <Object>[];
+        await runZonedGuarded(() async {
+          notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 3));
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 3));
+          await _settled(relaysPlayed, relays.length);
+        }, (error, _) => errors.add(error));
+        expect(compute.composed, 2);
+        expect(publishedIndexes(internal0), List.filled(relays.length, 3));
+        expect(errors, [isA<StateError>()]);
+      },
+    );
+
+    test(
+      'Tor reports that end without « ready »: nothing read, the key unread, no error',
+      () async {
+        final errors = <Object>[];
+        await runZonedGuarded(() async {
+          for (final reports in <Stream<P2pTorReport> Function()>[
+            () => const Stream.empty(),
+            () => Stream.value(P2pTorReport(P2pTorState.connecting)),
+          ]) {
+            await sync(torReports: reports).beforeNewTrade(internal0);
+          }
+        }, (error, _) => errors.add(error));
+        expect(errors, isEmpty);
+        expect(relaysPlayed.reads, isEmpty);
+        expect(
+          await standingOf(internal0),
+          const GarageNoteStanding(floor: null, read: false),
+        );
       },
     );
 
