@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:p2p/src/data/isolate_garage_note_compute.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
@@ -66,16 +67,32 @@ void main() {
   });
 
   test('work past its limit is stopped, its isolate killed', () async {
+    // The work beats every 10 ms on a port of the test while it runs: once its isolate is killed, the beats stop (review of #302, R4).
+    final beats = ReceivePort();
+    addTearDown(beats.close);
+    var beaten = 0;
+    beats.listen((_) => beaten++);
+    final beat = beats.sendPort;
     final waited = Stopwatch()..start();
     final result = await IsolateGarageNoteCompute.runStopped(() {
+      final clock = Stopwatch()..start();
       var x = 0;
       while (true) {
         x++;
+        if (clock.elapsedMilliseconds >= 10) {
+          beat.send(x);
+          clock.reset();
+        }
         if (x < 0) return x;
       }
     }, const Duration(milliseconds: 200));
     expect(result, isA<Err<int, RobotKeyComputeFailure>>());
     expect(waited.elapsed, lessThan(const Duration(seconds: 5)));
+    expect(beaten, greaterThan(0), reason: 'the work ran');
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final afterKill = beaten;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    expect(beaten, afterKill, reason: 'the isolate no longer runs');
   });
 
   test('an error of the work reaches the caller', () async {
