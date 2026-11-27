@@ -17,10 +17,11 @@ import 'package:robosats/robosats.dart'
 import 'garage_key_fingerprint.dart';
 import 'garage_note_compute_port.dart';
 import 'network_garage_key.dart';
+import 'p2p_failure.dart';
 import 'p2p_tor_state.dart';
 import 'repositories/garage_key_repository.dart';
 import 'repositories/garage_recovery_note_repository.dart';
-import 'repositories/trade_record_repository.dart';
+import 'usecases/trade/follow_trades_usecase.dart' show NewTradeStandingOf;
 import 'robot_binding.dart';
 import 'trade_record.dart';
 
@@ -45,7 +46,14 @@ final class RecoveryNoteSync {
   final OwnSessionNostrRelayTransport _relays;
   final GarageNoteComputePort _compute;
   final GarageRecoveryNoteRepository _notes;
-  final TradeRecordRepository _records;
+  /// `TradeRecordRepository.newTradeStandingOf`: the robots in use of a key and its floor.
+  final NewTradeStandingOf _standing;
+
+  /// `TradeRecordRepository.keysInUse`: the keys with a robot bound or recorded on a network.
+  final Future<Result<Set<GarageKeyFingerprint>, P2pFailure>> Function(
+    RobosatsNetwork network,
+  )
+  _keysInUse;
   final GarageKeyRepository _keys;
   final Federation _federation;
   final DateTime Function() _clock;
@@ -67,7 +75,8 @@ final class RecoveryNoteSync {
     required this._relays,
     required this._compute,
     required this._notes,
-    required this._records,
+    required this._standing,
+    required this._keysInUse,
     required this._keys,
     required this._federation,
     required this._clock,
@@ -172,7 +181,7 @@ final class RecoveryNoteSync {
 
   Future<void> _writeAll(RobosatsNetwork network) async {
     final Set<GarageKeyFingerprint> keys;
-    switch (await _records.keysInUse(network)) {
+    switch (await _keysInUse(network)) {
       case Ok(:final value):
         keys = value;
       case Err():
@@ -215,7 +224,7 @@ final class RecoveryNoteSync {
     // Never over a note this device has not read: it could hide a higher index.
     if (!await _firstReading(key)) return;
     final int highest;
-    switch (await _records.newTradeStandingOf(key.network, fingerprint)) {
+    switch (await _standing(key.network, fingerprint)) {
       case Ok(value: NewTradeStanding(highestKnown: final known?)):
         highest = known;
       case Ok() || Err():

@@ -571,10 +571,7 @@ final class TradeHarness {
       database,
       clock: clock,
     );
-    records = _KillingRecords(
-      stored,
-      () => kill,
-    );
+    records = _KillingRecords(stored, () => kill);
     payouts = TradePayoutRepositoryImpl(database);
     trails = TestTrails(TradeTrailRepositoryImpl(database), () => kill);
     robots = InterimTradeRobots(

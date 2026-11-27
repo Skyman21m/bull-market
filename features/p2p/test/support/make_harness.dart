@@ -156,10 +156,7 @@ final class MakeHarness {
       database,
       clock: clock,
     );
-    records = MakeRecords(
-      stored,
-      () => kill,
-    );
+    records = MakeRecords(stored, () => kill);
     payouts = TradePayoutRepositoryImpl(database);
     trails = MakeTrails(TradeTrailRepositoryImpl(database), () => kill);
     robots = InterimTradeRobots(

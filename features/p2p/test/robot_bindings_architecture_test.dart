@@ -1434,10 +1434,6 @@ class RobotCoordinatorCubit {
       'customStatement(_markPayoutsUnrecorded)',
       // The step to schema 10 (#81): « Your Garage Keys » made due, in its own new table.
       'customStatement(_externalKeyNamedDue)',
-      // Schema 11 (#81): one table and its triggers, no row written.
-      'createTable(schema.garageRecoveryNotes)',
-      'createTrigger(schema.garageRecoveryNotesNeverDeleted)',
-      'createTrigger(schema.garageRecoveryNotesForward)',
       'customStatement(_foreignKeysOn)',
     ]);
     // The step to schema 8, call by call, in its order (#176): the foreign keys found off before anything, or turned off and read again, each rebuilt table copied aside only while it is schema 7's, made again only while missing, filled again from its copy only while the copy exists, `trades` first; then the maker's terms, the triggers (each replaced one dropped first), the foreign keys of the file checked, and only then the copies dropped.
@@ -1550,6 +1546,10 @@ class RobotCoordinatorCubit {
       'createTrigger(schema.garageNoticesShownOnce)',
       'createTrigger(schema.garageNoticesNeverDeleted)',
       'customStatement(_externalKeyNamedDue)',
+      // Schema 11 (#81): one table and its triggers, no row written.
+      'createTable(schema.garageRecoveryNotes)',
+      'createTrigger(schema.garageRecoveryNotesNeverDeleted)',
+      'createTrigger(schema.garageRecoveryNotesForward)',
       'customStatement(_foreignKeysOn)',
     ]);
     // What the two checks read (an invocation is listed before the one it is made on).
