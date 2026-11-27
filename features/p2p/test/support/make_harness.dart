@@ -9,6 +9,7 @@ import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/data/trade_payout_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
+import 'package:p2p/src/domain/confirmed_trade_notes.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
@@ -54,6 +55,7 @@ import 'trade_harness.dart'
         AppKilled,
         HarnessKeys,
         HarnessTimer,
+        NoteHooks,
         TradeHarness,
         WatchRun,
         otherTradeKey,
@@ -136,23 +138,36 @@ final class MakeHarness {
   final _MakeVault _vault;
   final GarageKeyRepository Function(P2pDatabase database)? _garageOver;
 
+  /// The recovery notes of this run (#81), when the test gave them: told of each confirmation, and awaited before each reservation, as the locator wires them.
+  final NoteHooks? _notes;
+
   MakeHarness._(
     this.network,
     this.database,
     this.coordinator,
     this._clock, {
     GarageKeyRepository Function(P2pDatabase database)? garageOver,
+    NoteHooks? notes,
   }) : _garageOver = garageOver,
+       _notes = notes,
        _vault = _MakeVault(NetworkGarageKey(network, tradeKey)) {
     DateTime clock() => _clock.now;
     bindings = RobotBindingRepositoryImpl(database, clock: clock);
+    final TradeRecordRepository stored = TradeRecordRepositoryImpl(
+      database,
+      clock: clock,
+    );
     records = MakeRecords(
-      TradeRecordRepositoryImpl(database, clock: clock),
+      notes == null ? stored : ConfirmedTradeNotes(stored, notes.confirmed),
       () => kill,
     );
     payouts = TradePayoutRepositoryImpl(database);
     trails = MakeTrails(TradeTrailRepositoryImpl(database), () => kill);
-    robots = InterimTradeRobots(garageOver?.call(database) ?? _vault, records);
+    robots = InterimTradeRobots(
+      garageOver?.call(database) ?? _vault,
+      records,
+      beforeNewTrade: notes?.beforeNewTrade,
+    );
     limiter = RobotRequestLimiter(
       elapsed: () => _clock.now.difference(DateTime.utc(2026)),
       delay: (_) async {},
@@ -233,6 +248,7 @@ final class MakeHarness {
     RobosatsNetwork network = RobosatsNetwork.testnet,
     GarageKey? key,
     GarageKeyRepository Function(P2pDatabase database)? garageOver,
+    NoteHooks? notes,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final clock = _Clock(DateTime.utc(2026, 11, 14, 9));
@@ -248,6 +264,7 @@ final class MakeHarness {
       coordinator,
       clock,
       garageOver: garageOver,
+      notes: notes,
     );
     final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
       Ok(:final value) => value,
@@ -267,6 +284,7 @@ final class MakeHarness {
     coordinator,
     _clock,
     garageOver: _garageOver,
+    notes: _notes,
   );
 
   DateTime get now => _clock.now;

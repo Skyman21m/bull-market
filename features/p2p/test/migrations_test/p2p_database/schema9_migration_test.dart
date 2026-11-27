@@ -633,6 +633,10 @@ const _stepKinds = [
   'trigger garage_notices_shown_once',
   'trigger garage_notices_never_deleted',
   'mark garage_notices',
+  // Then the step to schema 11 (#81): one table of what this device read of the recovery notes, and its triggers, no row written.
+  'create garage_recovery_notes',
+  'trigger garage_recovery_notes_never_deleted',
+  'trigger garage_recovery_notes_forward',
 ];
 
 Future<int> _versionOf(GeneratedDatabase database) async =>
