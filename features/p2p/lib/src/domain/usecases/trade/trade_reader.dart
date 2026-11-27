@@ -487,14 +487,15 @@ final class TradeReader {
       at: at,
       request: request,
     );
-    // A pending take, read after its request: the support log says what the read concluded, when it concludes.
+    // A pending take, read after its request: the support log says what the read concluded, when it concludes, once per take (every read says it again while the confirmation cannot be stored).
     if (trade.record.confirmedAt == null &&
         trade.record.origin == TradeOrigin.takenHere &&
         taker) {
-      ActionOutcomeLog.resolved(
+      ActionOutcomeLog.resolvedOnce(
         'take',
         'taker',
         step.trade.seen.status.position.name,
+        once: trade.record.robot,
       );
     }
     // From the trail now on disk (stored or kept), never from one only in memory.

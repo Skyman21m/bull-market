@@ -3616,6 +3616,65 @@ void main() {
       },
     );
 
+    test(
+      'what a GET throws: one line per type thrown, a POST\'s every time',
+      () async {
+        var opened = 0;
+        final tor = transport(
+          openSession: () async =>
+              throw opened++ < 3 ? StateError('bug') : ArgumentError(),
+        );
+        for (var read = 0; read < 3; read++) {
+          await expectLater(
+            tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/'))),
+            throwsA(isA<StateError>()),
+          );
+        }
+        for (var read = 0; read < 2; read++) {
+          await expectLater(
+            tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/'))),
+            throwsA(isA<ArgumentError>()),
+          );
+        }
+        for (var post = 0; post < 2; post++) {
+          await expectLater(
+            tor.send(robotPost(Uri.parse('http://127.0.0.1:1/api/make/'))),
+            throwsA(isA<ArgumentError>()),
+          );
+        }
+        final threw = [
+          for (final line in lines)
+            if (line.contains('P2P coordinator')) line,
+        ];
+        expect(threw.where((line) => line.contains('threw')), hasLength(4));
+        expect(
+          threw.where(
+            (line) => line.contains('P2P coordinator get threw (StateError)'),
+          ),
+          hasLength(1),
+        );
+        expect(
+          threw.where(
+            (line) =>
+                line.contains('P2P coordinator get threw (ArgumentError)'),
+          ),
+          hasLength(1),
+        );
+        expect(
+          threw.where(
+            (line) =>
+                line.contains('P2P coordinator post threw (ArgumentError)'),
+          ),
+          hasLength(2),
+        );
+        for (final line in threw) {
+          expect(line, isNot(contains('127.0.0.1')));
+          expect(line, isNot(contains('/api/')));
+          expect(line, isNot(contains('bug')));
+        }
+      },
+    );
+
     test('a GET is not logged', () async {
       final server = await serve({'/api/robot/': _json('{}')});
       final request = _get(server.url('/api/robot/'));

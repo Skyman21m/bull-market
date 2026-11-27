@@ -46,11 +46,16 @@ Future<String> captureKeyOutput(Future<void> Function() body) async {
 }
 
 /// The support log's lines on how a request that acts, a make or a take ended (`ActionOutcomeLog`, `TorCoordinatorTransport`), and nothing else on the line but its time and level: fixed words, type names and figures only, which a capture of keys leaves out; a line that would carry anything more stays in the output.
+///
+/// Between the brackets, at most six items, each a word of at most 40 letters or `_` (after `P2p`, for the feature's types), a number of at most 5 digits or a status by hundred (`5xx`), separated by `, ` or a space: a hexadecimal run, a fragment of a `robo1…` text or of base64 with a digit, or a list of bytes, does not pass (`key_output_capture_test.dart`).
 final RegExp _outcomeMessage = RegExp(
-  r'P2P (?:(?:make|take)(?: resolved)?: [A-Za-z]+(?: [A-Za-z]+)? \([A-Za-z0-9_ ,]*\)'
-  r'|coordinator (?:get|post|put|delete) [a-z ]+(?:\([A-Za-z0-9_ ,]*\))?'
-  r'|coordinator sessions closed \((?:all|one robot)\))',
+  'P2P (?:(?:make|take)(?: resolved)?: [A-Za-z]{1,40}(?: [A-Za-z]{1,40})? \\($_items\\)'
+  '|coordinator (?:get|post|put|delete) [a-z]{1,12}(?: [a-z]{1,12}){0,5}(?: \\($_items\\))?'
+  '|coordinator sessions closed \\((?:all|one robot)\\))',
 );
+// A word may start with `P2p`, as the feature's own types do (`P2pStorageFailure`).
+const _item = r'(?:(?:P2p)?[A-Za-z_]{1,40}|[0-9]{1,5}|[1-9]xx)';
+const _items = '$_item(?:,? $_item){0,5}';
 final RegExp _ansi = RegExp(r'\x1b\[[0-9;]*m');
 final RegExp _timeAndLevel = RegExp(r'^[0-9T:.\-]+\s+FINE$');
 

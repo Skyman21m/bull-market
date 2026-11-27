@@ -72,8 +72,25 @@ final class TakeOrderUsecase {
       network,
       shown.coordinator,
       shown.id,
-      () => _take(shown, network: network, amount: amount, password: password),
+      () async => _saidIfNotSent(
+        await _take(
+          shown,
+          network: network,
+          amount: amount,
+          password: password,
+        ),
+      ),
     );
+  }
+
+  /// [taken], after the support log has said, for a take refused before its request left, the type of its refusal (its type only).
+  static Result<TakeOutcome, TakeRefusal> _saidIfNotSent(
+    Result<TakeOutcome, TakeRefusal> taken,
+  ) {
+    if (taken case Err(:final failure)) {
+      ActionOutcomeLog.notSent('take', failure);
+    }
+    return taken;
   }
 
   /// Prepares a take of [shown], the order the user is about to take on [network], for [amount] when it has a range (#119): every step and check of [execute] before the take's request, then a read of the order by the robot that will take it, nothing written in the trade records and no take sent.
@@ -193,7 +210,8 @@ final class TakeOrderUsecase {
       terms.network,
       terms.coordinator,
       terms.orderId,
-      () => _confirm(prepared, password, onStep ?? _noStep),
+      () async =>
+          _saidIfNotSent(await _confirm(prepared, password, onStep ?? _noStep)),
     );
   }
 

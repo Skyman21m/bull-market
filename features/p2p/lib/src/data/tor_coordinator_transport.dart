@@ -168,6 +168,9 @@ final class TorCoordinatorTransport
   /// The Tor sessions given up after the close timeout since this transport was built.
   int _sessionsGivenUp = 0;
 
+  /// The types a `GET` threw that the support log already holds a line for, since this transport (one for the app) was built: a fault that made every read throw would otherwise write a line per read.
+  final Set<Type> _getThrowsSaid = {};
+
   /// The headers this adapter decides, whatever the request says.
   static const _ownHeaders = {
     HttpHeaders.userAgentHeader,
@@ -218,8 +221,8 @@ final class TorCoordinatorTransport
     final timer = Timer(_deadline, () {
       deadline.expire();
       if (!completer.isCompleted) {
-        _logAction(request, 'timed out at the deadline');
         completer.complete(const Err(CoordinatorTimedOut()));
+        _logAction(request, 'timed out at the deadline');
       }
     });
     _exchange(request, deadline).then(
@@ -229,10 +232,6 @@ final class TorCoordinatorTransport
       },
       onError: (Object error, StackTrace trace) {
         timer.cancel();
-        // Every method: the type only, never the message, which could quote a URL or a header.
-        log.fine(
-          'P2P coordinator ${request.method.name} threw (${error.runtimeType})',
-        );
         if (completer.isCompleted) {
           // The caller already has its answer: a late bug still surfaces in the zone.
           Zone.current.handleUncaughtError(error, trace);
@@ -241,6 +240,7 @@ final class TorCoordinatorTransport
         } else {
           completer.completeError(error, trace);
         }
+        _logThrown(request, error);
       },
     );
     return completer.future;
@@ -248,7 +248,7 @@ final class TorCoordinatorTransport
 
   @override
   Future<void> closeSessions() async {
-    log.fine('P2P coordinator sessions closed (all)');
+    _log(() => 'P2P coordinator sessions closed (all)');
     _epoch++;
     // A session still opening is no longer waited for, and is closed as soon as it is open.
     for (final slot in _slots.values) {
@@ -262,7 +262,7 @@ final class TorCoordinatorTransport
   @override
   Future<void> closeRobotSessions(RobotSessionKey robot) async {
     // Never which robot: a log line never ties a robot to anything.
-    log.fine('P2P coordinator sessions closed (one robot)');
+    _log(() => 'P2P coordinator sessions closed (one robot)');
     // The requests of this robot that are running fail at their next step, whatever session they are on.
     _robotRequests[robot]?.generation++;
     for (final key in List.of(_slots.keys)) {
@@ -655,7 +655,30 @@ final class TorCoordinatorTransport
   /// A line of the support log on the fate of [request], a request that acts (any method but `GET`, whose reads are too many to log): `P2P coordinator <method> <what>`, [what] being fixed words, Dart type names and names of enum values only, never the request's address, path, headers or body, nor an exception's message.
   static void _logAction(CoordinatorRequest request, String what) {
     if (request.method == CoordinatorHttpMethod.get) return;
-    log.fine('P2P coordinator ${request.method.name} $what');
+    _log(() => 'P2P coordinator ${request.method.name} $what');
+  }
+
+  /// `P2P coordinator <method> threw (<type>)`, for what [send] caught of [request]'s exchange, an `Exception` it converts or an `Error` it passes on: the type only, never the message, which could quote a URL or a header.
+  ///
+  /// Every time for a request that acts; for a `GET`, once per type in the life of this transport ([_getThrowsSaid]).
+  void _logThrown(CoordinatorRequest request, Object error) {
+    final type = error.runtimeType;
+    if (request.method == CoordinatorHttpMethod.get &&
+        !_getThrowsSaid.add(type)) {
+      return;
+    }
+    _log(() => 'P2P coordinator ${request.method.name} threw ($type)');
+  }
+
+  /// Writes [line] to the support log, and nothing else: whatever the log or the line throws is dropped.
+  ///
+  /// An `Error` is caught here on purpose: an exception to rule 11 of `AGENTS.md` bounded to the support log's lines, in this helper and in `ActionOutcomeLog`'s only (besides the request hook's, decided in the review of #158), since a line of diagnostics must never stop a request from ending, nor change how it ends.
+  static void _log(String Function() line) {
+    try {
+      log.fine(line());
+    } on Object catch (_) {
+      // Dropped: see above.
+    }
   }
 
   static final RegExp _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");

@@ -79,11 +79,19 @@ final class MakeOrderUsecase {
     required Coordinator coordinator,
     required RobosatsNetwork network,
     required MakePriceSeen seen,
-  }) => _locks.run(
-    network,
-    () =>
-        _make(request, coordinator: coordinator, network: network, seen: seen),
-  );
+  }) => _locks.run(network, () async {
+    final made = await _make(
+      request,
+      coordinator: coordinator,
+      network: network,
+      seen: seen,
+    );
+    // A make refused before its request left: the support log says by which refusal, its type only.
+    if (made case Err(:final failure)) {
+      ActionOutcomeLog.notSent('make', failure);
+    }
+    return made;
+  });
 
   /// Resolves the pending make [make]: whether it made an order, read from the coordinator by its robot (see the class).
   ///
@@ -613,7 +621,9 @@ final class MakeOrderUsecase {
   }
 
   Future<MakeOutcome> _resolve(PendingMake make) async {
-    if (!make.isActive) return MakeNoLongerPending(make);
+    if (!make.isActive) {
+      return _said(MakeNoLongerPending(make), 'notActive');
+    }
     // The make as the records hold it now: one confirmed or closed since it was listed is not resolved again, and its robot not read.
     switch (await _records.watchPendingMakes(make.network).first) {
       case Ok(:final value) when value.any((m) => m.robot == make.robot):
