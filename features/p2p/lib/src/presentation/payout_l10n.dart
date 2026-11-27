@@ -6,6 +6,7 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/trade/trade_payout.dart';
 import '../domain/trade/trade_payout_outcome.dart';
+import 'p2p_failure_l10n.dart';
 import 'p2p_formats.dart';
 import 'payout_cubit.dart';
 
@@ -213,6 +214,14 @@ extension PayoutNoticeL10n on PayoutNotice {
         CheckedPayoutAddress() => l10n.p2pPayoutRefusedAddressNotNow,
       },
       OrderNotParticipant() => l10n.p2pPayoutRefusedNotParticipant,
+      // The signature of the request refused for a reason of its own (1059, 1060, 1061): its words; nothing was recorded.
+      ActionSignatureRefused(
+            reason: ActionSignatureRefusal.clockSkew ||
+                ActionSignatureRefusal.missing ||
+                ActionSignatureRefusal.otherCoordinator,
+          ) &&
+          final CoordinatorFailure refused =>
+        refused.toRobotText(context, coordinator: coordinator),
       // The request never reached the coordinator: nothing was recorded.
       P2pFailure() => l10n.p2pPayoutNotReached(coordinator),
       _ => l10n.p2pPayoutRefusedOther(coordinator),

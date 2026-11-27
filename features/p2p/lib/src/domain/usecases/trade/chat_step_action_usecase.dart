@@ -10,6 +10,7 @@ import '../../trade/trade_chat_step.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'trade_keyring.dart';
 import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
@@ -20,7 +21,7 @@ import 'trade_take_locks.dart';
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
 /// 2. one action of the order runs at a time in the process ([TradeTakeLocks], which the take, the cancel, the payout and the bond's payment share);
 /// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]): the action is sent only if that read is marked stored and still offers it, so that the status shown is the status stored ([ChatStepReadFailed], [ChatStepStatusMoved] otherwise, nothing sent); a read that shows the action recorded already ([ChatStepAction.doneAt], an earlier request that landed late) is [ChatStepDone], nothing sent;
-/// 4. the action is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: an answer lost or unreadable is an outcome unknown, resolved by the read that follows, never by a second send;
+/// 4. the action is signed by the robot's key, leased from [TradeKeyring] for the request ([TradeKeyring.signWith], GHSA-22q8-9ghc-jg3h: a key that cannot be had sends nothing, told as an action not done), and sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: an answer lost or unreadable is an outcome unknown, resolved by the read that follows, never by a second send;
 /// 5. its answer is kept, then the order read again and kept: [ChatStepDone], [ChatStepNotDone] or [ChatStepOutcomeUnknown], each with the status as stored.
 /// « Fiat sent » recorded is a read that shows 10 (`Chatting.fiatSent`); not recorded is a read that still shows 9: that is how the screen tells one from the other after an outcome unknown, and only a new tap of the user may send again.
 /// Nothing here pays or moves the wallet's funds; nothing is printed or logged.
@@ -29,12 +30,14 @@ final class ChatStepActionUsecase {
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
   final TradeTakeLocks _locks;
+  final TradeKeyring _keyring;
 
   const ChatStepActionUsecase(
     this._client,
     this._reader,
     this._limiter,
     this._locks,
+    this._keyring,
   );
 
   /// The buyer's « fiat sent » for the trade of [record] at [seen], the status the screen showed when the user confirmed the reference's dialog.
@@ -50,8 +53,8 @@ final class ChatStepActionUsecase {
     record,
     seen,
     onProgress: onProgress,
-    send: (identity, lastRead) =>
-        _client.confirmFiat(identity: identity, lastRead: lastRead),
+    send: (identity, key, lastRead) =>
+        _client.confirmFiat(identity: identity, key: key, lastRead: lastRead),
   );
 
   /// The seller's « Confirm {{amount}} {{currencyCode}} received » for the trade of [record] at [seen] (10, « fiat sent » recorded), the status the screen showed when the user confirmed the reference's dialog (#96): the coordinator settles the escrow and pays the buyer, which cannot be taken back.
@@ -66,8 +69,8 @@ final class ChatStepActionUsecase {
     record,
     seen,
     onProgress: onProgress,
-    send: (identity, lastRead) =>
-        _client.releaseEscrow(identity: identity, lastRead: lastRead),
+    send: (identity, key, lastRead) =>
+        _client.releaseEscrow(identity: identity, key: key, lastRead: lastRead),
   );
 
   /// The buyer's « Payment failed? » for the trade of [record] at [seen] (10), the status the screen showed when the user confirmed the reference's dialog: « fiat sent » taken back, 10 → 9; the same steps and outcomes as [confirmFiatSent].
@@ -80,8 +83,11 @@ final class ChatStepActionUsecase {
     record,
     seen,
     onProgress: onProgress,
-    send: (identity, lastRead) =>
-        _client.undoConfirmFiat(identity: identity, lastRead: lastRead),
+    send: (identity, key, lastRead) => _client.undoConfirmFiat(
+      identity: identity,
+      key: key,
+      lastRead: lastRead,
+    ),
   );
 
   /// « Open Dispute » for the trade of [record] at [seen] (9 or 10), the status the screen showed when the user agreed to the reference's dialog: refused before its time ([ChatStepTooEarly], [ChatStepAction.disputeOpensAt], by this device's clock; the coordinator's 1054 stays the judge), then the same steps and outcomes as [confirmFiatSent].
@@ -94,8 +100,8 @@ final class ChatStepActionUsecase {
     record,
     seen,
     onProgress: onProgress,
-    send: (identity, lastRead) =>
-        _client.openDispute(identity: identity, lastRead: lastRead),
+    send: (identity, key, lastRead) =>
+        _client.openDispute(identity: identity, key: key, lastRead: lastRead),
   );
 
   /// « Rate your trade experience » for the trade of [record] at [seen] (14, or 13 and 15 for the seller, from an order read), the status the screen showed when the user tapped the [rating]'s star.
@@ -159,15 +165,19 @@ final class ChatStepActionUsecase {
             return Err(ChatStepStatusMoved(seen, record: trade.record));
           }
           tell?.call(ChatStepProgress.sending);
-          final sent = await requests.send(
-            record.network,
-            trade.coordinator,
-            () => _client.ratePlatform(
-              identity: trade.robot.identity,
-              lastRead: lastRead,
-              rating: rating,
+          final sent = await TradeKeyring.signWith(
+            _keyring.lease(trade),
+            (key) => requests.send(
+              record.network,
+              trade.coordinator,
+              () => _client.ratePlatform(
+                identity: trade.robot.identity,
+                key: key,
+                lastRead: lastRead,
+                rating: rating,
+              ),
+              isBusy: _answeredBusy,
             ),
-            isBusy: _answeredBusy,
           );
           return Ok(switch (sent) {
             Ok(value: Ok()) => ChatStepDone(trade.record, seen),
@@ -195,6 +205,7 @@ final class ChatStepActionUsecase {
     TradeSeen seen, {
     required Future<Result<TradeActionOutcome, OrderActionFailure>> Function(
       RobotIdentity identity,
+      UnlockedRobotPgpKey key,
       CoordinatorOrder lastRead,
     )
     send,
@@ -249,6 +260,7 @@ final class ChatStepActionUsecase {
     ChatStepAction action,
     Future<Result<TradeActionOutcome, OrderActionFailure>> Function(
       RobotIdentity identity,
+      UnlockedRobotPgpKey key,
       CoordinatorOrder lastRead,
     )
     send,
@@ -350,11 +362,17 @@ final class ChatStepActionUsecase {
     // Sent once: never again by this use case, whatever the outcome.
     tell?.call(ChatStepProgress.sending);
     final actionTimes = _reader.request();
-    final sent = await requests.send(
-      record.network,
-      trade.coordinator,
-      () => _reader.timed(actionTimes, () => send(robot.identity, lastRead)),
-      isBusy: _answeredBusy,
+    final sent = await TradeKeyring.signWith(
+      _keyring.lease(trade),
+      (key) => requests.send(
+        record.network,
+        trade.coordinator,
+        () => _reader.timed(
+          actionTimes,
+          () => send(robot.identity, key, lastRead),
+        ),
+        isBusy: _answeredBusy,
+      ),
     );
 
     // The answer first, then a read after it.

@@ -7,6 +7,7 @@ import 'package:robosats/robosats.dart';
 import '../domain/trade/bolt11.dart';
 import 'bolt11_test_invoice.dart';
 import 'scripted_coordinator.dart' show ScriptedFault;
+import 'scripted_signatures.dart';
 
 /// The kinds of request [ScriptedMakerCoordinator] answers, to aim a [ScriptedFault] at.
 enum ScriptedMakerRequest {
@@ -409,7 +410,58 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     }
   }
 
+  /// Whether the coordinator checks the signature of every request of a robot that changes a state, as one running the fix of GHSA-22q8-9ghc-jg3h does (RoboSats pull request 2955, head `0943c97`): before anything else, a body with no signature is refused with 1059, one whose signature does not verify with the key the robot gave at its first contact or signs another text with 1048, a make signed for another coordinator with 1061 and one whose time is more than 300 seconds from [clock] with 1060 ([scriptedSignatureRefusal]).
+  ///
+  /// `false` plays a coordinator not updated yet, at commit babf62e, which reads only the fields its serializers declare and ignores the signature.
+  bool checksSignatures = true;
+
   CoordinatorResponse _answer(
+    ScriptedMakerRequest kind,
+    CoordinatorRequest request,
+  ) => switch (_signatureRefused(request)) {
+    final refused? => refused,
+    null => _answerSigned(kind, request),
+  };
+
+  /// The refusal of the signature of [request] when [checksSignatures] and it is a `POST` of a robot, `null` otherwise: see [checksSignatures].
+  CoordinatorResponse? _signatureRefused(CoordinatorRequest request) {
+    if (!checksSignatures || request.method != CoordinatorHttpMethod.post) {
+      return null;
+    }
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final action = fields['action'];
+    final orderId = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final ScriptedSignedText expected;
+    switch (request.url.path) {
+      case '/api/make/':
+        expected = ScriptedTimedText('make', coordinator.shortAlias);
+      case '/api/order/' when action is String && orderId != null:
+        expected = ScriptedExactText(
+          orderActionContent(action, orderId, coordinator.shortAlias),
+        );
+      default:
+        return null;
+    }
+    final publicKey = _kept[_robotOf(request).sessionKey]?['public_key'];
+    // A robot the coordinator does not know is refused by its authentication first (7001).
+    if (publicKey is! String) return null;
+    final code = scriptedSignatureRefusal(
+      fields,
+      publicKey: publicKey,
+      expected: expected,
+      now: clock(),
+    );
+    if (code == null) return null;
+    return _json(400, {
+      'error_code': code,
+      'bad_request': scriptedSignatureMessage(code),
+    });
+  }
+
+  CoordinatorResponse _answerSigned(
     ScriptedMakerRequest kind,
     CoordinatorRequest request,
   ) => switch (kind) {

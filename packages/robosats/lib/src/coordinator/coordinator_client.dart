@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:primitives/primitives.dart';
+import 'package:robosats/src/coordinator/action_signature.dart';
 import 'package:robosats/src/coordinator/chat.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
 import 'package:robosats/src/coordinator/coordinator_info.dart';
@@ -25,6 +26,9 @@ import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
 
 /// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's make of an order and its pause, its take and cancel of an order, its payout as buyer, and the actions of the trade's chat step: « fiat sent » and its undo, a dispute, the rating of the coordinator; and the token to rate the coordinator on Nostr.
+///
+/// Every request that changes a state carries, after the fix of GHSA-22q8-9ghc-jg3h (RoboSats pull request 2955, head `0943c97`), a cleartext signature by the robot's key of the text `action_signature.dart` gives, in a last `signature` field of its body, as the reference's `{ ...body, signature }`: so each of those methods takes the robot's unlocked key, refuses to send with another robot's ([ActionSignatureRefusal.notSigned]), and signs at the time of this client's clock; the coordinator alias signed is the one of the federation list this client embeds, never one a coordinator sends. The chat's post is not signed, as in the reference.
+/// A coordinator that does not run the fix yet ignores the field: Django REST framework reads only the fields its serializers declare (`api/serializers.py`, commit babf62e).
 ///
 /// Every method returns a failure instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception]: a [CoordinatorFailure], or an [OrderActionFailure] for an action on an order.
 /// For a read, only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
@@ -260,12 +264,14 @@ final class CoordinatorClient {
   /// A refusal is the coordinator's word too: one that lies after making the order leaves it at 0, with no bond invoice made, until it expires; if the make use case (#179) later finds that order by reading the robot, it shows a bond only after it has compared the order read with the terms it asked.
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  /// Signed with [key], the unlocked key of [identity], over `make:{shortAlias}:{unix_ts}` at this client's clock: a coordinator whose clock is more than 300 seconds away refuses it with 1060 ([ActionSignatureRefused]).
   ///
   /// A request that cannot be sent ([MakeOrderRequest.isSendable]: one a device kept of an order with a password, without the password's hash) is refused before anything is sent, with [OrderRequestRefused] without a code: the body would send a protected order without its password.
   Future<Result<MadeOrder, OrderActionFailure>> makeOrder(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required MakeOrderRequest request,
   }) async {
     if (!request.isSendable) {
@@ -275,8 +281,11 @@ final class CoordinatorClient {
       coordinator,
       network,
       identity: identity,
+      key: key,
       path: '/api/make/',
       body: request.body,
+      signedText: (now) =>
+          timedActionContent('make', coordinator.shortAlias, now),
     );
     return switch (response) {
       Err(:final failure) => Err(_afterMake(failure)),
@@ -331,6 +340,7 @@ final class CoordinatorClient {
         OrderLocationRefused() ||
         OrderBookFull() ||
         OrderRequestRefused(errorCode: null || 1038 || 1039) ||
+        ActionSignatureRefused() ||
         RobotCredentialsRejected() ||
         RobotUnknown() ||
         CoordinatorNotOnNetwork() ||
@@ -353,6 +363,7 @@ final class CoordinatorClient {
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required int orderId,
     FiatAmount? amount,
     OrderPasswordHash? password,
@@ -364,9 +375,10 @@ final class CoordinatorClient {
       coordinator,
       network,
       identity: identity,
+      key: key,
       orderId: orderId,
-      body: {
-        'action': 'take',
+      action: 'take',
+      fields: {
         if (password != null) 'password': password.hex,
         'amount': amount == null ? 0 : jsonNumber(amount.value),
       },
@@ -396,6 +408,7 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included: the next [fetchOrder] tells what happened.
   Future<Result<CancelOrderOutcome, OrderActionFailure>> cancelOrder({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
   }) async {
     if (!lastRead.wasReadBy(identity)) {
@@ -408,11 +421,10 @@ final class CoordinatorClient {
       coordinator,
       network,
       identity: identity,
+      key: key,
       orderId: orderId,
-      body: {
-        'action': 'cancel',
-        'cancel_status': storedStatusOf(lastRead).wire,
-      },
+      action: 'cancel',
+      fields: {'cancel_status': storedStatusOf(lastRead).wire},
     );
     return switch (_orderAnswer(response)) {
       Err(:final failure) => Err(_afterAction(failure)),
@@ -441,6 +453,7 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> pauseOrder({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
   }) async {
     if (!lastRead.wasReadBy(identity)) {
@@ -461,8 +474,9 @@ final class CoordinatorClient {
       lastRead.coordinator,
       lastRead.network,
       identity: identity,
+      key: key,
       orderId: lastRead.id,
-      body: const {'action': 'pause'},
+      action: 'pause',
     );
     return switch (response) {
       Err(:final failure) => Err(_afterPause(failure)),
@@ -511,6 +525,7 @@ final class CoordinatorClient {
         TradeActionNotNow() ||
         OrderNotParticipant() ||
         OrderRequestRefused(errorCode: null) ||
+        ActionSignatureRefused() ||
         RobotCredentialsRejected() ||
         RobotUnknown() ||
         OrderReadElsewhere() ||
@@ -530,9 +545,11 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiat({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
     identity: identity,
+    key: key,
     lastRead: lastRead,
     refusedFromLastRead: switch (lastRead) {
       CoordinatorOrder(isBuyer: != true) => const TradeActionNotBuyer(
@@ -542,7 +559,7 @@ final class CoordinatorClient {
         const TradeActionNotNow(fromLastRead: true),
       _ => null,
     },
-    body: const {'action': 'confirm'},
+    action: 'confirm',
     follows: fiatSentFollows,
   );
 
@@ -556,9 +573,11 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> releaseEscrow({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
     identity: identity,
+    key: key,
     lastRead: lastRead,
     refusedFromLastRead: switch (lastRead) {
       CoordinatorOrder(isSeller: != true) => const TradeActionNotSeller(
@@ -570,7 +589,7 @@ final class CoordinatorClient {
       ) => const TradeActionNotNow(fromLastRead: true),
       _ => null,
     },
-    body: const {'action': 'confirm'},
+    action: 'confirm',
     follows: fiatReceivedFollows,
   );
 
@@ -583,9 +602,11 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> undoConfirmFiat({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
     identity: identity,
+    key: key,
     lastRead: lastRead,
     refusedFromLastRead: switch (lastRead) {
       CoordinatorOrder(isBuyer: != true) => const TradeActionNotBuyer(
@@ -595,7 +616,7 @@ final class CoordinatorClient {
         const TradeActionNotNow(fromLastRead: true),
       _ => null,
     },
-    body: const {'action': 'undo_confirm'},
+    action: 'undo_confirm',
     follows: fiatSentUndoneFollows,
   );
 
@@ -613,9 +634,11 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> openDispute({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
     identity: identity,
+    key: key,
     lastRead: lastRead,
     refusedFromLastRead: switch (lastRead) {
       CoordinatorOrder(isParticipant: false) => const OrderNotParticipant(),
@@ -628,7 +651,7 @@ final class CoordinatorClient {
         const DisputeTooEarly(fromLastRead: true),
       _ => null,
     },
-    body: const {'action': 'dispute'},
+    action: 'dispute',
     follows: disputeFollows,
   );
 
@@ -641,45 +664,50 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> ratePlatform({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
     required PlatformRating rating,
   }) => _tradeAction(
     identity: identity,
+    key: key,
     lastRead: lastRead,
     refusedFromLastRead: lastRead.isParticipant
         ? null
         : const OrderNotParticipant(),
-    body: {'action': 'rate_platform', 'rating': rating.stars},
+    action: 'rate_platform',
+    fields: {'rating': rating.stars},
   );
 
   /// `POST /api/review/`, the token with which the robot [identity] rates [coordinator] on Nostr once its last order there is finished (« Rate your host », `Robot.loadReviewToken`, `frontend/src/models/Robot.model.ts:220-245`, commit ff1998c): the body `{"pubkey": <the robot's Nostr key>}` with the robot's short header, as the reference sends it.
   ///
   /// The coordinator answers `200` with the token only when the robot's last order is at 14, 17 or 18 and the key is the one it holds for the robot, which it records when it holds none (`ReviewView`, `api/views.py:1236-1269`); otherwise a `400` (1052), read as [CoordinatorUnexpectedStatus], its text never kept.
   /// A `200` whose `token` is not 128 lowercase hexadecimal characters ([HostReviewToken.parse]) is [CoordinatorResponseMalformed]: the reference's `""` when its signature failed, or anything a coordinator could slip into a public event.
+  /// The body carries, last, the signature by [key] of `review:{pubkey}` (RoboSats pull request 2955); a refusal of that signature (1059, 1060, 1061, 1048) is an [ActionSignatureRefused], and the token is not given.
   /// Sent once, never again by this client; the transport never retries a request that is not a `GET`. Whatever the transport throws, an `Error` included, is [CoordinatorTransportFailed].
   Future<Result<HostReviewToken, CoordinatorFailure>> fetchReviewToken({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required Coordinator coordinator,
     required RobosatsNetwork network,
     required String nostrPublicKeyHex,
   }) async {
-    final onion = coordinator.origins(network).onion;
-    if (onion == null) return const Err(CoordinatorNotOnNetwork());
-    final response = await _send(
-      CoordinatorRequest(
-        method: CoordinatorHttpMethod.post,
-        url: Uri.parse(onion).replace(path: '/api/review/'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': identity.authorizationHeader(),
-        },
-        body: utf8.encode(jsonEncode({'pubkey': nostrPublicKeyHex})),
-        maxResponseBytes: CoordinatorReadBounds.reviewBytes,
-        robot: identity.sessionKey,
-      ),
-      catchErrors: true,
+    final response = await _postAsRobot(
+      coordinator,
+      network,
+      identity: identity,
+      key: key,
+      path: '/api/review/',
+      body: {'pubkey': nostrPublicKeyHex},
+      signedText: (_) => reviewActionContent(nostrPublicKeyHex),
+      maxResponseBytes: CoordinatorReadBounds.reviewBytes,
     );
+    if (response case Ok(
+      value: final answer,
+    ) when answer.statusCode >= 400 && answer.statusCode <= 499) {
+      if (_orderRefusal(answer) case final ActionSignatureRefused refused) {
+        return Err(refused);
+      }
+    }
     return switch (_decodeOk(response)) {
       Err(:final failure) => Err(failure),
       Ok(value: {'token': final Object? token}) =>
@@ -694,9 +722,11 @@ final class CoordinatorClient {
   /// The checks every action of the trade makes before it is sent, [refusedFromLastRead] included, then the request and the reading of its answer.
   Future<Result<TradeActionOutcome, OrderActionFailure>> _tradeAction({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
     required CoordinatorFailure? refusedFromLastRead,
-    required Map<String, Object> body,
+    required String action,
+    Map<String, Object> fields = const {},
     Set<CoordinatorOrderStatus>? follows,
   }) async {
     if (!lastRead.wasReadBy(identity)) {
@@ -709,8 +739,10 @@ final class CoordinatorClient {
       lastRead.coordinator,
       lastRead.network,
       identity: identity,
+      key: key,
       orderId: lastRead.id,
-      body: body,
+      action: action,
+      fields: fields,
     );
     return switch (response) {
       Err(:final failure) => Err(_afterTradeAction(failure)),
@@ -765,6 +797,7 @@ final class CoordinatorClient {
         TradeActionRefused() ||
         OrderNotParticipant() ||
         OrderRequestRefused(errorCode: null) ||
+        ActionSignatureRefused() ||
         RobotCredentialsRejected() ||
         RobotUnknown() ||
         OrderReadElsewhere() ||
@@ -791,6 +824,7 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<PayoutOutcome, OrderActionFailure>> submitPayoutInvoice({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
     required SignedPayoutInvoice invoice,
     required RoutingBudgetPpm routingBudget,
@@ -803,14 +837,15 @@ final class CoordinatorClient {
             lastRead.payoutInvoiceExpired == true);
     return _submitPayout(
       identity: identity,
+      key: key,
       lastRead: lastRead,
       payout: invoice,
       mayGive: mayGiveInvoice,
       wrongNetwork: const PayoutInvoiceRefused(
         PayoutInvoiceRefusal.wrongNetwork,
       ),
-      body: {
-        'action': 'update_invoice',
+      action: 'update_invoice',
+      fields: {
         'invoice': invoice.signedMessage,
         'routing_budget_ppm': routingBudget.ppm,
       },
@@ -830,6 +865,7 @@ final class CoordinatorClient {
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<PayoutOutcome, OrderActionFailure>> submitPayoutAddress({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
     required SignedPayoutAddress address,
     required MiningFeeRate miningFeeRate,
@@ -840,6 +876,7 @@ final class CoordinatorClient {
         status == CoordinatorOrderStatus.waitingForInvoice;
     return _submitPayout(
       identity: identity,
+      key: key,
       lastRead: lastRead,
       payout: address,
       mayGive: mayGiveAddress,
@@ -847,8 +884,8 @@ final class CoordinatorClient {
       wrongNetwork: const PayoutAddressRefused(
         PayoutAddressRefusal.wrongNetwork,
       ),
-      body: {
-        'action': 'update_address',
+      action: 'update_address',
+      fields: {
         'address': address.signedMessage,
         'mining_fee_rate': miningFeeRate.wire,
       },
@@ -858,11 +895,13 @@ final class CoordinatorClient {
   /// The checks every payout makes before it is sent, then the request and the reading of its answer.
   Future<Result<PayoutOutcome, OrderActionFailure>> _submitPayout({
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required CoordinatorOrder lastRead,
     required SignedPayout payout,
     required bool mayGive,
     required PayoutRefused wrongNetwork,
-    required Map<String, Object> body,
+    required String action,
+    required Map<String, Object> fields,
     bool swap = false,
   }) async {
     final CoordinatorFailure? before;
@@ -886,8 +925,10 @@ final class CoordinatorClient {
       lastRead.coordinator,
       lastRead.network,
       identity: identity,
+      key: key,
       orderId: lastRead.id,
-      body: body,
+      action: action,
+      fields: fields,
     );
     return switch (response) {
       Err(:final failure) => Err(_afterPayout(failure)),
@@ -918,6 +959,7 @@ final class CoordinatorClient {
         PayoutRefused() ||
         OrderNotParticipant() ||
         OrderRequestRefused(errorCode: null) ||
+        ActionSignatureRefused() ||
         RobotCredentialsRejected() ||
         RobotUnknown() ||
         OrderReadElsewhere() ||
@@ -1054,6 +1096,7 @@ final class CoordinatorClient {
         OrderStatusChanged() ||
         OrderWrongPassword() ||
         OrderRequestRefused(errorCode: null) ||
+        ActionSignatureRefused() ||
         RobotCredentialsRejected() ||
         RobotUnknown() ||
         OrderReadElsewhere() ||
@@ -1062,36 +1105,61 @@ final class CoordinatorClient {
         _ => OrderActionOutcomeUnknown(failure),
       };
 
-  /// One `POST /api/order/?order_id=` with a JSON [body], for the robot [identity] only: an action on an order is never sent without the robot's credential and session.
+  /// One `POST /api/order/?order_id=` with the JSON body `{"action": [action], …[fields], "signature": …}`, for the robot [identity] only: an action on an order is never sent without the robot's credential and session, nor without its signature of `{action}:{order_id}:{shortAlias}` ([orderActionContent]), which the reference signs for every action of this endpoint.
   Future<Result<CoordinatorResponse, CoordinatorFailure>> _postOrderAction(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required int orderId,
-    required Map<String, Object> body,
+    required String action,
+    Map<String, Object> fields = const {},
   }) => _postAsRobot(
     coordinator,
     network,
     identity: identity,
+    key: key,
     path: '/api/order/',
     query: {'order_id': '$orderId'},
-    body: body,
+    body: {'action': action, ...fields},
+    signedText: (_) =>
+        orderActionContent(action, orderId, coordinator.shortAlias),
   );
 
-  /// One `POST` of a JSON [body] to [path] of [coordinator], for the robot [identity] only, with its short header and its session: an action of a robot is never sent without them.
+  /// One `POST` of a JSON [body] to [path] of [coordinator], for the robot [identity] only, with its short header and its session, and with the signature by [key] of the text [signedText] gives for this client's clock, added as the last field `signature`: an action of a robot is never sent without them.
   ///
+  /// The signature is made just before the request is handed to the transport, at the time of this client's clock, the very time a timed text carries; the signed text is never logged nor kept.
+  /// Nothing is sent, and the failure is [ActionSignatureRefused] with [ActionSignatureRefusal.notSigned], when [key] is not the key of [identity] or the signature cannot be made.
   /// Sent once: this client never sends it again, and the transport never retries a request that is not a `GET`.
   /// Whatever the transport throws, an `Error` included, becomes [CoordinatorTransportFailed], since the request may have left: a deviation from rule 11 of `AGENTS.md` for this one call, so that a caller always learns that the outcome is unknown.
   Future<Result<CoordinatorResponse, CoordinatorFailure>> _postAsRobot(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
+    required UnlockedRobotPgpKey key,
     required String path,
     Map<String, String>? query,
     required Map<String, Object?> body,
+    required String Function(DateTime now) signedText,
+    int maxResponseBytes = CoordinatorReadBounds.orderBytes,
   }) async {
     final onion = coordinator.origins(network).onion;
     if (onion == null) return const Err(CoordinatorNotOnNetwork());
+    if (!key.isKeyOf(identity)) {
+      return const Err(
+        ActionSignatureRefused(ActionSignatureRefusal.notSigned),
+      );
+    }
+    final now = _clock();
+    final String signature;
+    switch (key.signCleartext(signedText(now), now: now)) {
+      case Ok(:final value):
+        signature = value;
+      case Err():
+        return const Err(
+          ActionSignatureRefused(ActionSignatureRefusal.notSigned),
+        );
+    }
     return _send(
       CoordinatorRequest(
         method: CoordinatorHttpMethod.post,
@@ -1101,8 +1169,8 @@ final class CoordinatorClient {
           'Content-Type': 'application/json',
           'Authorization': identity.authorizationHeader(),
         },
-        body: utf8.encode(jsonEncode(body)),
-        maxResponseBytes: CoordinatorReadBounds.orderBytes,
+        body: utf8.encode(jsonEncode({...body, 'signature': signature})),
+        maxResponseBytes: maxResponseBytes,
         robot: identity.sessionKey,
       ),
       catchErrors: true,
@@ -1167,6 +1235,13 @@ final class CoordinatorClient {
       1044 => const OrderNotAvailable(),
       1045 => const OrderWrongPassword(),
       1046 => const OrderNotPublic(),
+      // The signature of the action (RoboSats pull request 2955, head `0943c97`): checked before anything changes; 1048 is a payout's own refusal in [_payoutRefusal], read before this.
+      1048 => const ActionSignatureRefused(ActionSignatureRefusal.invalid),
+      1059 => const ActionSignatureRefused(ActionSignatureRefusal.missing),
+      1060 => const ActionSignatureRefused(ActionSignatureRefusal.clockSkew),
+      1061 => const ActionSignatureRefused(
+        ActionSignatureRefusal.otherCoordinator,
+      ),
       7001 => const RobotUnknown(),
       7000 || 7003 => const RobotCredentialsRejected(),
       _ => OrderRequestRefused(code),

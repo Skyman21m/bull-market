@@ -17,6 +17,7 @@ import '../../trade_record.dart';
 import '../../trade_robots.dart';
 import '../put_robot_on_coordinator_usecase.dart';
 import 'action_outcome_log.dart';
+import 'trade_keyring.dart';
 import 'trade_reader.dart';
 import 'prepared_takes.dart';
 import 'trade_take_locks.dart';
@@ -28,7 +29,7 @@ import 'trade_take_locks.dart';
 /// 1. the order is read again just before the take, from the coordinator's book (`GET /api/book/` of its currency and type) with its `/api/info/` (the taker fee), both anonymous: never from a book left open; the terms are built from that read ([TradeTerms.take]), and a take that cannot be checked (a taker fee above the ceiling, an order gone or changed, its sats moved by more than [TradeTolerances.price] from what the user saw, an amount outside the range) stops here, nothing sent with a robot;
 /// 2. a fresh robot is reserved for the trade, bound to the order's coordinator ([TradeRobots.robotForNewTrade]), then put on it ([PutRobotOnCoordinatorUsecase]: read back, then its first contact); a robot that already existed there, or held an order, is not used; and a robot whose Garage Key was deleted or replaced meanwhile is not used either ([TradeRobots.robotOfSlot]), a trade of it could never be read again;
 /// 3. the pending take, its terms and the first trail of a pending take are written, in that order ([TradeRecordRepository.recordPendingTake], [TradeTrailRepository.recordTerms], [TradeTrailRepository.storeTrail]): the take is refused when any of them fails;
-/// 4. the take is sent once, through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again;
+/// 4. the take is sent once, signed by the robot's key leased from [TradeKeyring] for the request ([TradeKeyring.leaseRobot], GHSA-22q8-9ghc-jg3h: a key that cannot be had sends nothing and closes the pending take), through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again;
 /// 5. its answer: [OrderTakeStarted] starts the trade from [TradeStatus.afterTake], its trail stored and its record confirmed (when that trail cannot be stored, the status returned is the stored pending trail's, which holds no invoice: an invoice is shown or paid only from a status whose trail is stored); [OrderAlreadyTakenByThisRobot] resumes it from its recorded trail; [OrderNotTaken], or a refusal that comes before the action, closes the pending take; an outcome unknown leaves it pending, for the next read of the trade to resolve (`WatchTradeUsecase`).
 ///
 /// Nothing here pays: the bond is paid by the user, from the trade screen.
@@ -42,6 +43,7 @@ final class TakeOrderUsecase {
   final RobotRequestLimiter _limiter;
   final Bolt11Reader _invoices;
   final TradeTakeLocks _locks;
+  final TradeKeyring _keyring;
   final PreparedTakes _prepared;
 
   /// [preparedTakes] holds the takes prepared and not sent: the composition gives its one instance, so that a take prepared through one use case object is confirmed through another.
@@ -54,7 +56,8 @@ final class TakeOrderUsecase {
     this._reader,
     this._limiter,
     this._invoices,
-    this._locks, {
+    this._locks,
+    this._keyring, {
     PreparedTakes? preparedTakes,
   }) : _prepared = preparedTakes ?? PreparedTakes();
 
@@ -768,21 +771,25 @@ final class TakeOrderUsecase {
     try {
       taken = await _reader.duringAction(
         pending,
-        () => requests.send(
-          network,
-          coordinator,
-          () => _reader.timed(
-            takeTimes,
-            () => _client.takeOrder(
-              coordinator,
-              network,
-              identity: robot.identity,
-              orderId: terms.orderId,
-              amount: chosen,
-              password: password?.hash,
+        () => TradeKeyring.signWith(
+          _keyring.leaseRobot(robot),
+          (key) => requests.send(
+            network,
+            coordinator,
+            () => _reader.timed(
+              takeTimes,
+              () => _client.takeOrder(
+                coordinator,
+                network,
+                identity: robot.identity,
+                key: key,
+                orderId: terms.orderId,
+                amount: chosen,
+                password: password?.hash,
+              ),
             ),
+            isBusy: _answeredBusy,
           ),
-          isBusy: _answeredBusy,
         ),
       );
     } finally {

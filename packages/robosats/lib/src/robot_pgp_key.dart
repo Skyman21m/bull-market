@@ -381,7 +381,10 @@ final class UnlockedRobotPgpKey {
 
   UnlockedRobotPgpKey._(this.key, this._identity, this._secretKeys);
 
-  /// Clear-signs [text], a Lightning invoice or an on-chain address, for the `update_invoice` and `update_address` actions and for `POST /api/reward/`.
+  /// Whether this key was unlocked with the token of [identity]: `CoordinatorClient` signs an action of a robot only with that robot's key, since the coordinator checks the signature against the key it holds for the robot that sends it.
+  bool isKeyOf(RobotIdentity identity) => _identity.hashId == identity.hashId;
+
+  /// Clear-signs [text], a Lightning invoice or an on-chain address, for the `update_invoice` and `update_address` actions and for `POST /api/reward/`, or the text of an action (`action_signature.dart`), which `CoordinatorClient` signs for every request that changes a state.
   ///
   /// It reproduces `signCleartextMessage` of `frontend/src/pgp/index.ts:102-119`: a text signature over SHA-512 by the primary key, dated [now].
   /// The result starts with exactly `-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n`, the string a coordinator splits on (`api/utils.py:642-644`).

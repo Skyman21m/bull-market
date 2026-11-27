@@ -896,6 +896,16 @@ class P2pLocalizationsZh extends P2pLocalizations {
   }
 
   @override
+  String p2pSignatureClockSkew(String coordinator) {
+    return 'The time of this device is too far from $coordinator\'s. Turn on automatic time and try again.';
+  }
+
+  @override
+  String p2pSignatureNewerVersion(String coordinator) {
+    return '$coordinator asks for a newer version of Bull Market.';
+  }
+
+  @override
   String p2pRobotMismatch(String coordinator) {
     return '$coordinator answered with another robot, or with keys this robot did not make. Do not use this robot there.';
   }

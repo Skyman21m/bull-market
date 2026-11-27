@@ -25,6 +25,14 @@ extension CoordinatorFailureL10n on CoordinatorFailure {
       RobotUnknown() => l10n.p2pRobotNotCreated(coordinator),
       RobotKeysRefused(reason: RobotKeysRefusal.keyTooRecent) =>
         l10n.p2pRobotKeyTooRecent(coordinator),
+      // The signature of an action refused for a reason of its own (RoboSats pull request 2955): the device's clock (1060), or a client that does not sign as the coordinator expects (1059, 1061); the other refusals of a signature have the generic words.
+      ActionSignatureRefused(reason: ActionSignatureRefusal.clockSkew) =>
+        l10n.p2pSignatureClockSkew(coordinator),
+      ActionSignatureRefused(
+        reason: ActionSignatureRefusal.missing ||
+            ActionSignatureRefusal.otherCoordinator,
+      ) =>
+        l10n.p2pSignatureNewerVersion(coordinator),
       RobotKeysRefused() ||
       RobotCredentialsRejected() ||
       // Only the calls on an order give it, which no robot request of the panel makes.

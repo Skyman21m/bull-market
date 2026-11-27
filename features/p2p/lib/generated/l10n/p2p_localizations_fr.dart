@@ -907,6 +907,16 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pSignatureClockSkew(String coordinator) {
+    return 'L\'heure de ce téléphone est trop éloignée de celle de $coordinator. Activez l\'heure automatique et réessayez.';
+  }
+
+  @override
+  String p2pSignatureNewerVersion(String coordinator) {
+    return '$coordinator demande une version plus récente de Bull Market.';
+  }
+
+  @override
   String p2pRobotMismatch(String coordinator) {
     return '$coordinator a répondu avec un autre robot, ou avec des clés que ce robot n’a pas créées. N’utilisez pas ce robot chez ce coordinateur.';
   }

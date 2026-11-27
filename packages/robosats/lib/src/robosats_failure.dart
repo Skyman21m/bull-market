@@ -438,6 +438,33 @@ final class OrderRequestRefused extends CoordinatorOrderFailure {
   const OrderRequestRefused(this.errorCode);
 }
 
+/// Why the signature of an action was refused, by the coordinator (errors 1059, 1060, 1061 and 1048 of RoboSats pull request 2955, head `0943c97`, `api/utils.py`, `validate_action_signature` and `validate_signed_action_timestamp`) or by this package before anything was sent.
+enum ActionSignatureRefusal {
+  /// The coordinator received no signature (error 1059): it asks for a client that signs its actions.
+  missing,
+
+  /// The time in the signed text is more than 300 seconds from the coordinator's clock (error 1060): the device's clock is off, or the coordinator's.
+  clockSkew,
+
+  /// The signed text names another coordinator (error 1061, for `make` only among the requests of this client): this client signed for another alias than the one the coordinator reads in its federation list.
+  otherCoordinator,
+
+  /// The signature does not verify with the robot's key, or does not sign the text the coordinator expects (error 1048 on an action other than a payout, where the reference never sent it before pull request 2955).
+  invalid,
+
+  /// This package could not sign, and sent nothing: the key given is another robot's, or the signature could not be made (a clock outside the dates an OpenPGP signature can hold).
+  notSigned,
+}
+
+/// The coordinator refused the signature of an action for [reason], or this package could not sign it ([ActionSignatureRefusal.notSigned]): the coordinator checks the signature before it changes anything (pull request 2955, `api/views.py`), so nothing was done.
+///
+/// Only the code is read, never the coordinator's text.
+final class ActionSignatureRefused extends CoordinatorOrderFailure {
+  final ActionSignatureRefusal reason;
+
+  const ActionSignatureRefused(this.reason);
+}
+
 /// The robot is neither the maker nor the taker of the order (error 1047, HTTP 403, `api/views.py:617-619`), which the coordinator checks before any action but a take or a cancel: a pre-taker is not yet the taker.
 final class OrderNotParticipant extends CoordinatorOrderFailure {
   const OrderNotParticipant();
@@ -688,6 +715,7 @@ sealed class OrderActionFailure extends RobosatsFailure {
 /// Nothing was done: the coordinator refused before the action, or the request was never sent.
 ///
 /// That is [RobotHasActiveOrder] (1000 to 1003), [OrderAmountOutOfRange] (1011), [OrderTakePenalty] (1012), [OrderStatusChanged] (1020), [OrderNotFound] for an order number out of range, which is never sent (a 1042 received after a `POST` comes from the read that follows the action, `api/views.py:542`, and is an [OrderActionOutcomeUnknown]), [OrderWrongPassword] (1045), [OrderRequestRefused] without a code (the empty `400` of the form check), [RobotCredentialsRejected] (7000, 7003, `401`, `403`), [RobotUnknown] (7001), [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy], which a transport gives only before it sends a request that is not a `GET`.
+/// For every action, also [ActionSignatureRefused] (1059, 1060, 1061, 1048, or no signature made here).
 /// For a payout, also every [PayoutRefused] and [OrderNotParticipant] (1047).
 /// For a make, also [OrderBookFull] (1037), [OrderSizeRefused] (1004 to 1009), [OrderLocationRefused] (1010), and [OrderRequestRefused] with 1038 or 1039; for a pause, also [TradeActionNotMaker] (1032), [TradeActionNotNow] (1033) and [OrderNotParticipant] (1047): see `CoordinatorClient.makeOrder` and `pauseOrder`.
 final class OrderActionRefused extends OrderActionFailure {

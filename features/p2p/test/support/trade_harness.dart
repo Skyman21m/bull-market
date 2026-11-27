@@ -583,6 +583,15 @@ final class TradeHarness {
     );
     final fetch = FetchRobotUsecase(client, bindings, keys);
     final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
+    keyring = TradeKeyring(
+      ReadRobotOnCoordinatorUsecase(
+        fetch,
+        bindings,
+        limiter,
+        Federation.robosats,
+      ),
+      keys,
+    );
     take = TakeOrderUsecase(
       client,
       robots,
@@ -593,15 +602,7 @@ final class TradeHarness {
       limiter,
       invoices,
       locks,
-    );
-    keyring = TradeKeyring(
-      ReadRobotOnCoordinatorUsecase(
-        fetch,
-        bindings,
-        limiter,
-        Federation.robosats,
-      ),
-      keys,
+      keyring,
     );
     holdKey = HoldTradeKeyUsecase(keyring);
     payout = SubmitPayoutUsecase(
@@ -650,8 +651,8 @@ final class TradeHarness {
       ),
       watchRegistry,
     );
-    cancel = CancelTradeUsecase(client, reader, limiter, locks);
-    chat = ChatStepActionUsecase(client, reader, limiter, locks);
+    cancel = CancelTradeUsecase(client, reader, limiter, locks, keyring);
+    chat = ChatStepActionUsecase(client, reader, limiter, locks, keyring);
     rateHost = RateHostUsecase(
       client,
       reader,
@@ -660,6 +661,7 @@ final class TradeHarness {
       relays,
       Federation.robosats,
       Random(7),
+      keyring,
     );
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
   }

@@ -236,6 +236,8 @@
   "p2pRobotNotCreated": "{coordinator} ne connaît pas encore ce robot.",
   "p2pRobotKeyTooRecent": "{coordinator} a refusé la clé du robot, jugée trop récente. Vérifiez la date et l’heure de votre téléphone, puis réessayez.",
   "p2pRobotRefused": "{coordinator} a refusé ce robot. Il utilise peut-être une autre version de RoboSats.",
+  "p2pSignatureClockSkew": "L'heure de ce téléphone est trop éloignée de celle de {coordinator}. Activez l'heure automatique et réessayez.",
+  "p2pSignatureNewerVersion": "{coordinator} demande une version plus récente de Bull Market.",
   "p2pRobotMismatch": "{coordinator} a répondu avec un autre robot, ou avec des clés que ce robot n’a pas créées. N’utilisez pas ce robot chez ce coordinateur.",
   "p2pRobotBadAnswer": "{coordinator} a envoyé une réponse que Bull Market ne peut pas lire.",
   "p2pRobotCoordinatorChanged": "{coordinator} a changé d’adresse ou de clés depuis que ce robot lui a été envoyé. Rien n’a été envoyé. Tant qu’une mise à jour de l’application n’a pas vérifié ce changement, utilisez un autre robot.",
