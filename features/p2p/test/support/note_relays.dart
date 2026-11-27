@@ -123,6 +123,9 @@ final class InlineNoteCompute implements GarageNoteComputePort {
   /// Thrown in place of the next composition, then cleared: a bug of the work.
   Error? composeError;
 
+  /// An event whose reading throws a `StateError`, as a bug of the work would.
+  static const failing = 'an event the work fails on';
+
   @override
   Future<
     Result<
@@ -157,6 +160,7 @@ final class InlineNoteCompute implements GarageNoteComputePort {
     required Duration limit,
   }) async {
     readings.add(events.length);
+    if (events.contains(failing)) throw StateError('a bug of the work');
     return Ok(GarageRecoveryNote.latestNoteFor(identities, events));
   }
 }

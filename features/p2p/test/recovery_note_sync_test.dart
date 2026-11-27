@@ -80,10 +80,11 @@ void main() {
     Duration readDeadline = const Duration(seconds: 5),
     Federation federation = Federation.robosats,
     Stream<P2pTorReport> Function()? torReports,
+    GarageRecoveryNoteRepository? notesKept,
   }) => RecoveryNoteSync(
     relays: relaysPlayed,
     compute: compute,
-    notes: notes(),
+    notes: notesKept ?? notes(),
     standing: records().newTradeStandingOf,
     keysInUse: records().keysInUse,
     keys: keys,
@@ -210,12 +211,16 @@ void main() {
           await standingOf(internal0),
           const GarageNoteStanding(floor: 7, read: true),
         );
-        // A new run of the app: the floor holds, and nothing is read again.
-        relaysPlayed.reads.clear();
-        final again = sync();
+        // A new run of the app, every relay unreachable: the floor holds, the key read for good makes no trade wait, and the run reads it again once, in the background.
+        relaysPlayed
+          ..reads.clear()
+          ..down.addAll(relays);
+        final again = sync(newTradeWait: const Duration(seconds: 3));
         again.visit(internal0);
+        final waited = Stopwatch()..start();
         expect(await nextRobot(internal0, again), 8);
-        expect(relaysPlayed.reads, isEmpty);
+        expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        expect(relaysPlayed.reads, hasLength(relays.length));
       },
     );
 
@@ -612,19 +617,226 @@ void main() {
     );
   });
 
+  group('the floor recorded relay by relay (review of #302, B1)', () {
+    /// Relays [among] that answer only once [release] completes, never when it is `null`.
+    void lag(Iterable<Uri> among, [Completer<void>? release]) {
+      for (final relay in among) {
+        relaysPlayed.answers[relay] = (stored, filters) async {
+          if (release == null) return Completer<NostrRelayRead>().future;
+          await release.future;
+          return NostrRelayRead(
+            events: FakeNoteRelays.matching(stored, filters),
+            complete: true,
+            label: 'answered',
+          );
+        };
+      }
+    }
+
+    test(
+      'five relays give note 7 at once and the sixth never answers: a trade asked a moment later leaves on robot 8, without waiting for the limit',
+      () async {
+        holdNote(internal0, 7, relays.take(5));
+        lag([relays[5]]);
+        final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+        notesSync.visit(internal0);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final waited = Stopwatch()..start();
+        expect(await nextRobot(internal0, notesSync), 8);
+        expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        expect(
+          await standingOf(internal0),
+          const GarageNoteStanding(floor: 7, read: true),
+        );
+      },
+    );
+
+    test(
+      'a trade asked before any answer waits, then leaves above the floor as soon as a strict majority answered, the sixth relay still silent',
+      () async {
+        final release = Completer<void>();
+        holdNote(internal0, 7, relays.take(5));
+        lag(relays.take(5), release);
+        lag([relays[5]]);
+        final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+        var reserved = false;
+        final waited = Stopwatch()..start();
+        final robot = nextRobot(internal0, notesSync).then((index) {
+          reserved = true;
+          return index;
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(reserved, isFalse);
+        release.complete();
+        expect(await robot, 8);
+        expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+      },
+    );
+
+    test(
+      'one relay of six answered with note 7 and the others lag: at the limit the trade leaves above 7, the floor recorded, the key not read',
+      () async {
+        holdNote(internal0, 7, [relays[0]]);
+        lag(relays.skip(1));
+        final notesSync = sync(newTradeWait: const Duration(milliseconds: 300));
+        expect(await nextRobot(internal0, notesSync), 8);
+        expect(
+          await standingOf(internal0),
+          const GarageNoteStanding(floor: 7, read: false),
+        );
+      },
+    );
+  });
+
+  group('a reading of the run before every write (review of #302, B2)', () {
+    /// [key] recorded read for good at an earlier run, with [floor].
+    Future<void> readEarlier(NetworkGarageKey key, int? floor) async => expect(
+      await notes().recordReading(
+        network,
+        fingerprintOf(key),
+        floor: floor,
+        answered: true,
+      ),
+      isA<Ok>(),
+    );
+
+    test(
+      'the device read 7 and holds robot 8; another device then goes to 12; the device started again reads 12, its floor rises to 12, and the note it writes says 12, never 8',
+      () async {
+        holdNote(internal0, 7, relays);
+        await bind(internal0, [8]);
+        await sync().beforeNewTrade(internal0);
+        expect(
+          await standingOf(internal0),
+          const GarageNoteStanding(floor: 7, read: true),
+        );
+        // Another device, or the official client, goes to robot 12 and writes it, later.
+        holdNote(internal0, 12, relays);
+        final again = sync();
+        again.opened(network);
+        await _settled(relaysPlayed, relays.length);
+        expect(publishedIndexes(internal0), List.filled(relays.length, 12));
+        expect((await standingOf(internal0)).floor, 12);
+      },
+    );
+
+    test(
+      'a run whose reading reaches no majority writes nothing, even for a key read for good at an earlier run',
+      () async {
+        await bind(internal0, [0]);
+        await readEarlier(internal0, 2);
+        relaysPlayed.down.addAll(relays.skip(3));
+        final notesSync = sync();
+        notesSync.opened(network);
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 0));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(relaysPlayed.reads, hasLength(relays.length));
+        expect(relaysPlayed.published, isEmpty);
+      },
+    );
+
+    test(
+      'a trade confirmed just after the start waits for the reading of the run before it writes, and writes the highest of the device and the reading',
+      () async {
+        await bind(internal0, [3]);
+        await readEarlier(internal0, 2);
+        holdNote(internal0, 9, relays);
+        final release = Completer<void>();
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) async {
+            await release.future;
+            return NostrRelayRead(
+              events: FakeNoteRelays.matching(stored, filters),
+              complete: true,
+              label: 'answered',
+            );
+          };
+        }
+        final notesSync = sync();
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 3));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(relaysPlayed.asked, isEmpty);
+        release.complete();
+        await _settled(relaysPlayed, relays.length);
+        expect(publishedIndexes(internal0), List.filled(relays.length, 9));
+      },
+    );
+
+    test(
+      'a key read for good at an earlier run makes no new trade wait while the reading of this run goes on',
+      () async {
+        await readEarlier(internal0, 2);
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) =>
+              Completer<NostrRelayRead>().future;
+        }
+        final notesSync = sync(newTradeWait: const Duration(seconds: 3));
+        final waited = Stopwatch()..start();
+        expect(await nextRobot(internal0, notesSync), 3);
+        expect(waited.elapsed, lessThan(const Duration(seconds: 2)));
+        // The reading of the run goes on, in the background.
+        expect(relaysPlayed.reads, hasLength(relays.length));
+      },
+    );
+
+    test(
+      'the note written carries what the reading of the run gave, even where the floor could not be recorded',
+      () async {
+        await bind(internal0, [3]);
+        holdNote(internal0, 9, relays);
+        final notesSync = sync(notesKept: _NoFloor(notes()));
+        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 3));
+        await _settled(relaysPlayed, relays.length);
+        expect(publishedIndexes(internal0), List.filled(relays.length, 9));
+      },
+    );
+  });
+
+  group('one relay\'s failure stays its own (review of #302, C1)', () {
+    test(
+      'a bug in the reading of one relay\'s events: reported, that relay counts as not answered, the five others keep their note 7 and their answer, and the note is written',
+      () async {
+        holdNote(internal0, 7, relays.take(5));
+        relaysPlayed.answers[relays[5]] = (stored, filters) async =>
+            NostrRelayRead(
+              events: const [InlineNoteCompute.failing],
+              complete: true,
+              label: 'answered',
+            );
+        await bind(internal0, [0]);
+        final errors = <Object>[];
+        await runZonedGuarded(() async {
+          final notesSync = sync();
+          await notesSync.beforeNewTrade(internal0);
+          notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 0));
+          await _settled(relaysPlayed, relays.length);
+        }, (error, _) => errors.add(error));
+        expect(errors, [isA<StateError>()]);
+        expect(
+          await standingOf(internal0),
+          const GarageNoteStanding(floor: 7, read: true),
+        );
+        expect(publishedIndexes(internal0), List.filled(relays.length, 7));
+      },
+    );
+  });
+
   group('the floor of a new trade', () {
     test(
       'a new trade asked while the first reading runs waits for it, within its limit, then takes a robot above the note',
       () async {
         final release = Completer<void>();
-        relaysPlayed.answers[relays[0]] = (stored, filters) async {
-          await release.future;
-          return NostrRelayRead(
-            events: [noteOf(internal0.key.recoveryNostrKeyPair, 14, at)],
-            complete: true,
-            label: 'answered',
-          );
-        };
+        holdNote(internal0, 14, [relays[0]]);
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) async {
+            await release.future;
+            return NostrRelayRead(
+              events: FakeNoteRelays.matching(stored, filters),
+              complete: true,
+              label: 'answered',
+            );
+          };
+        }
         final notesSync = sync();
         notesSync.visit(internal0);
         var reserved = false;
@@ -642,8 +854,10 @@ void main() {
     test(
       'a first reading that does not end within the limit lets the trade go on without the floor, and the key stays unread',
       () async {
-        relaysPlayed.answers[relays[0]] = (stored, filters) =>
-            Completer<NostrRelayRead>().future;
+        for (final relay in relays) {
+          relaysPlayed.answers[relay] = (stored, filters) =>
+              Completer<NostrRelayRead>().future;
+        }
         final notesSync = sync(newTradeWait: const Duration(milliseconds: 100));
         final waited = Stopwatch()..start();
         expect(await nextRobot(internal0, notesSync), 0);
@@ -888,4 +1102,32 @@ final class _Keys with KeysFromRead implements GarageKeyRepository {
   Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) => throw UnimplementedError();
+}
+
+/// The notes of the device, whose floors cannot be recorded: every reading with a floor is refused, as by a storage that fails.
+final class _NoFloor implements GarageRecoveryNoteRepository {
+  final GarageRecoveryNoteRepository _inner;
+
+  _NoFloor(this._inner);
+
+  @override
+  Future<Result<GarageNoteStanding, P2pFailure>> standingOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) => _inner.standingOf(network, key);
+
+  @override
+  Future<Result<void, P2pFailure>> recordReading(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key, {
+    required int? floor,
+    required bool answered,
+  }) async {
+    if (floor != null) return const Err(P2pStorageFailure());
+    return _inner.recordReading(network, key, floor: null, answered: answered);
+  }
+
+  @override
+  Stream<Result<int?, P2pFailure>> watchFloor(GarageKeyFingerprint key) =>
+      _inner.watchFloor(key);
 }
