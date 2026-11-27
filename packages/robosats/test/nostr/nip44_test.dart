@@ -157,6 +157,47 @@ void main() {
     }
   });
 
+  test('only the canonical base64 of @scure/base is decrypted', () {
+    const alphabet =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    var urlSafe = 0;
+    var unpadded = 0;
+    var paddingBits = 0;
+    for (final c in [
+      ...maps(valid['encrypt_decrypt']),
+      ...maps(valid['encrypt_decrypt_long_msg']),
+    ]) {
+      final payload = c['payload'] as String?;
+      if (payload == null) continue;
+      final key = hex.decode(c['conversation_key'] as String);
+      expect(Nip44.decrypt(payload, key), isNotEmpty);
+      final variants = <String>[' $payload', '$payload\n'];
+      if (payload.contains(RegExp('[+/]'))) {
+        urlSafe++;
+        variants.add(payload.replaceAll('+', '-').replaceAll('/', '_'));
+      }
+      if (payload.endsWith('=')) {
+        unpadded++;
+        variants.add(payload.replaceAll('=', ''));
+        // The last character before the padding with its lowest bit flipped: the same bytes for a lenient decoder, non-zero padding bits for @scure/base.
+        final last = payload.indexOf('=') - 1;
+        final flipped = alphabet[alphabet.indexOf(payload[last]) ^ 1];
+        variants.add(payload.replaceRange(last, last + 1, flipped));
+        paddingBits++;
+      }
+      for (final variant in variants) {
+        expect(
+          () => Nip44.decrypt(variant, key),
+          throwsFormatException,
+          reason: 'a payload @scure/base refuses',
+        );
+      }
+    }
+    expect(urlSafe, greaterThan(0));
+    expect(unpadded, greaterThan(0));
+    expect(paddingBits, greaterThan(0));
+  });
+
   test('isPublicKey agrees with the invalid public keys of the vectors', () {
     for (final c in maps(invalid['get_conversation_key'])) {
       if ((c['note'] as String).startsWith('pub2')) {

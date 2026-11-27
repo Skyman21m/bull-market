@@ -1,0 +1,68 @@
+{
+  "_comment": "Public test data of the design study of #81 (2026-11-26), computed by two implementations: a Python one and a Node one with nostr-tools 2.25.2, which agreed on every value. The Garage Key is the one derived from the BIP-39 test phrase 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about' (no passphrase), mainnet, index 0, at m/83696968'/82796679'/0'/0'/0'. python_note was built by the Python implementation and read by nostr-tools' unwrapEvent with the reference's checks (account 3); nostr_tools_note was built by nostr-tools' nip59.wrapEvent with the reference's rumor (account 42). wrap_bytes is the length of the JSON of a note's gift wrap, for account 0 and account 2147483647 alike.",
+  "garage_key_hex": "f7286792c19ad8ad15fe2ebd0f6af77d0ed73a583963a1029476084b1471b9fc",
+  "recovery_nostr_secret_key_hex": "af59002d40945af7292c30c15fe75d66dec4ad70770377c467ac3f6ebd6c3568",
+  "recovery_nostr_pubkey_hex": "75f91dc787043930959dd9ee71d8410e8abbf0aa391d530263d545fd98541766",
+  "legacy_recovery_nostr_pubkey_hex": "15def739c4a2387a2937aa1f6a9a629687c4a1f57ffd2966f877fd707ec0210e",
+  "wrap_bytes": 1701,
+  "python_note": {
+    "account": 3,
+    "rumor": {
+      "created_at": 1767225600,
+      "content": "",
+      "tags": [
+        [
+          "d",
+          "robosats-garage-account"
+        ],
+        [
+          "account",
+          "3"
+        ]
+      ],
+      "kind": 30078,
+      "pubkey": "75f91dc787043930959dd9ee71d8410e8abbf0aa391d530263d545fd98541766",
+      "id": "3550a16d49b3702f9e90ee753c41478d020e0fcd54087ee1603647f5ea6c741a"
+    },
+    "seal": {
+      "kind": 13,
+      "content": "AoD9VrcEm0o5guqHC2jZVBCGbw+jHyIomXWcPh01YtZNVrtrm34OnagsWXT+oKocdRI9xjUKDmvtaGsJ2LVXZvek+VkzcF2PiPTBnD15WGI5W0ZE54t7Zxs3NbXxk5YXCDYRiyLlrZY0wG6UvQWn9EXL4bSsIR/jxh1q3xyF1CrMm/o04yfvs36/jv4oUd4CEUupHjmzWYvemehxQwj0PeO+CMX0ed3xnTHBhhvook3sLqdArC/B0YGoCLDlbKDpCwwri0TWe0mbz5DaHmcdrI4J5wwNzHPfVG46q7Rqg8VpA61Jvbk0cckGKyPkYmp0U+gfXHYNxg8TfctSiD8rWZvVLzYLLL9ZzI1AyAz8N5jEqNb/AFzAzGA7blhvsHKBwo3gcDUpM7QeeiOS1iqtvIahNbQQQlZInu6MCj4qxLldM+A=",
+      "created_at": 1767197191,
+      "tags": [],
+      "pubkey": "75f91dc787043930959dd9ee71d8410e8abbf0aa391d530263d545fd98541766",
+      "id": "b4fbe1df7f3e017b12328952667677eff6e56ae6391fcf903cabeeff92841421",
+      "sig": "c411bd8f3ff7cffc5d6f8947a840cb6e3a3338ff40e8b05bf5662f51b40dfb153b6ceb16cc87ad20aa31bf4a6445dd611eceb490b928cb8ac29e8aa931b8cba7"
+    },
+    "wrap": {
+      "kind": 1059,
+      "content": "AqwHzRiB7dXGfsr+W9wEoUTrFmBZ4egsxXu5LG5ZxHjgKe10Z9+bPs5ZkyZ9bP/Ect42ygJ2Tbjz9EAIi7wfV3AGJCmm7cqUhX04e+xmpLFsVpGsWQo++V0IOYtP6ZFbRZxn3M4jJTwg1Ie7uHaFNHe338Rm/GUHD5YyXGftmbyMIAgoQC+Wxar7YlY33GybEZdyTKX+8s0VnPfW6MNAlss6+nl5aH98/QhUNRHnGY+T6ykZaVYBFZas/S5X4To/lPcOZKA1bLt2fkRfW9IiGReAt4h9WNU88q3MN8Hg9avNxqYMvEoeI7bt/FXbJnRXFZh1cHCDrcGyVRpZg9kePvJ4rZbs36+tzcTWzPCoqKLa+hLrZQkVUGnyNCRq+GZG9RwAUJD7KjDXGwImbR66/d83Z+OiM4PPuP0Ga9VVs8yfQdn7xVG57DDTlWU0UIZ81VeKJIS2a6mxS0H6RcSzG6ny8KBDeoWsKW1JBqhPM5ysRygUHILsW35NcDWGBcwNAL2zMC1wKix27CaYYG5a1mOMHdEhDtPTkE/0BPOEhRc9vFipozByLII7MGazORx+wk+z6/BzGJCVBgkN9UZenYDri6wCID6K8vSQ5BNnTnD6M3KOXvJCYOcrRmpDUuXfdkzr4xHBRpVDt1YKJzMwncXPhoLbE22J6+0HHsxi0UYdIeYsblN9suWu/foebhRl+CRV0TAV38mu9u0OzBXnStIGjSoVVj58Yfqnlq2sgJSHfCQ+xLzcriA6pZMK9TvmAHmJn/V3H0zat+xodER15GmKd9DnsrhhCFtWLaeHzYE5bUeIBAGHibpevPXVgO8U8P/nswar7bRHllccQiY15ckYXnRHY2hW9ZGE2hgT6yhuVYxqWKEZFJ03vHCOjqzsLoGQbysXzc7obBdy72fywPJkI6Jfsywxp3HeuEMg94uNN2cMvzZ+Uq5D3GesdcqrYeBnumVxefODIf3bbLgg5i2aQQDZxhGH05cy408aJ7FTDqnY3+OwpK7a1dTI3hoce/R9+tfwLVhT61BClDXjt6O7JPhdx0dOg13noRsgLPFAIS2QU2g+/DuMWHGeETi2T49hdgzO3sA6xCcM48nn/rt3tzlUXyfuuu7M0c79UxpzBR3qa1fUupD0RrNkrU2b3md6OZL0/oc/gaZXeIwZc6ntyBORgMzWq4mqGd0qzUgZE/WjNAwuAEdY3/JNmbF7VaqsZ7LSBOXzTFdcKDPFw5k8WzrZfBKcR3Zxrfjcg9y/39sqaCRfMOsqG28C61VwTaAd",
+      "created_at": 1767208729,
+      "tags": [
+        [
+          "p",
+          "75f91dc787043930959dd9ee71d8410e8abbf0aa391d530263d545fd98541766"
+        ]
+      ],
+      "pubkey": "202b81fcc49df01c06a58591e7f1958e3a8575ca4134a8f14455e81aa338f1cb",
+      "id": "8dbe61e42d3b4227abcf40b10d6da625c2c5a7fde992bf3ca4379c71edf20a64",
+      "sig": "789e2e7469a9900a17c472f36174fa54e407b68b21fdf5c6196c029414fff567f18418e012c47684e2b50c20431a250264187e129d88b99b1fb70d6ea5feca73"
+    }
+  },
+  "nostr_tools_note": {
+    "account": 42,
+    "wrap": {
+      "kind": 1059,
+      "content": "AnxOgz5FfHc18Ki35aESjylZlFQ6xOZH6Vqb++IhdnC4XDHtCJry1q21lIDIsaOo79pJn1kA3ELpEuh/CCs6DEPuan0YCHMxhJMv5hlJv3xicCMTAqbCDEqWwkJueWrCnMlFx/vVheZ57GcktYJfdE3eawaROoOK4K2k55qh2kb6p/kzHTDrC5xXde1mgO1yorg63cznys6e2aGfWTsr0ognk1fkIm37i4Rvgt0d1FDX+JKCa2dIeLIH6G4SqD3gGEbFB2HwFVIAEyNpLcU0FiUKQn4R5ldLBJdpZjzRXuON+yCpmnUjsAVzbC4Z51g4PiXPo5uD+HnbGSfEFbQ7uCQtTutu3NqWzEYAhg8rNdLklISTpA1Iujr9BJG37h0nNoToRxvS5CDOWb2eLBj/ArsFyBMyKRPJdVSjK75zkqOzSmcxdA234+YG0UmrxCAGJY/RNWWqbjfU8bX8lH4PL6hq1YdpkWptX2kQNu5pcgsyoiruqLIpdLMkgwrlaKLRiwzelbL++sJDd08GYt2bmb93TnLXEQqRWhJAGiCoWaLLbhNSEO942hBEisUtQS5hqa/cSEJd0Iqowy50vjccSDu41haRgkPefYJK4WaSJhwUWhR0OjjHIsZqbFTfhC4DUH17m6/tvpPwbsHffwN0mwUa17b4qW0k+YMH1xiPIQPOYpiSgRDyUQ+xhGnT9V/um5ujISUWxsFpdHzNAKCd4IPDsHbm11zrYHiKpy/Kgra9TONXpZ5MdIzM0Mc5Foo9UbptMBWX/vye7XyTzm5BkfO0D0BHxfPE0GalwMxUSrZjF2gh8ufeu1e9crOiCIGAb78WHV4RwUxGYu2/z+en2S3sALgKV9uVqv6SItD08unicVX5acMW8xiQYqBK7A/nnAsJeAtrfdawIu1Mo4EG69MAvoYULLfH7ldSQ1U60RjioRhpy4VCN3NjucdortnLRyluZJAUOXWnJspwcTTkU9oPAK4Qucjev0hbyHfxHRD05xsJOFWvqlYfwN0eCApGaR2LklWnZ91YKXiYiDo5cR/fbf9XQjpJJYIniskm8Edblxo1M0qb9Z7/tPvC1MQclgTb8bN7spxLWl/Y7sRuBjdGaz9rcVRCqFFrzcmsoKTZa0FOu2Lu0rO49oHYtGo2Y7OPVzM97i8urt+C7F06n4KgJI6HHq+plDmcRLUkSWTXnZTe4tbulOjkIdckIVETQrqFMQAceM3B9R+1QRzQ63PJY+UCapj+G1RORu9taI+MifmS9n65y3HuSCs26yOsiVF4",
+      "created_at": 1795517329,
+      "tags": [
+        [
+          "p",
+          "75f91dc787043930959dd9ee71d8410e8abbf0aa391d530263d545fd98541766"
+        ]
+      ],
+      "pubkey": "584be918cef2919f3af084c00efe2ebd99141863d9011d5bd0beeca205a1eb2d",
+      "id": "a4d01938ebed50c6432c8a0b0d140b101258705993c9a4621e6008714cf3e731",
+      "sig": "2ca78d5247c8cc8c88f8a1f32b266a4500b3aa9f8024fdd7b0ba4904e75f8e223e2e14b06766d4b9707f18bd93be4d8a48bf7835de6e79c8ea2fa15cc2167c25"
+    }
+  }
+}
