@@ -8,6 +8,7 @@ import '../../trade/trade_pause.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import 'pauses_in_flight.dart';
+import 'trade_keyring.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -19,6 +20,7 @@ import 'trade_take_locks.dart';
 /// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]); the request is sent only if that read is marked stored and still shows the status the user saw ([PauseStatusMoved] otherwise, with the status now, nothing sent), so that a pause never leaves for an order already paused, paused elsewhere, taken or expired;
 /// 4. the request is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: an answer lost, unreadable or late is an outcome unknown, resolved by the reads that follow, never by a second request;
 /// 5. the order is read again and kept (the answer, accepted or refused, only says what the coordinator did with the request); the status then shown is compared with what the user asked ([PauseWanted.reachedAt]): [PauseDone] only when a status marked stored shows the order where the user asked, never because the request was accepted; [PauseNotReached] when the coordinator accepted it and the order is read elsewhere (toggled twice or the other way, taken, expired, or a coordinator that answers falsely), so that the screen says when the order stayed or became public again; [PauseNotDone] when it was refused or never left; [PauseOutcomeUnknown] otherwise.
+/// The request is signed by the robot's key, leased from [TradeKeyring] for it ([TradeKeyring.signWith], GHSA-22q8-9ghc-jg3h); a key that cannot be had sends nothing, and is told as a pause not done.
 /// While it runs, the pause is known to [PausesInFlight] ([running]), so that a screen of the trade opened meanwhile shows it running and gives its outcome rather than a second tap.
 /// Nothing here pays or moves the wallet's funds; nothing is printed or logged.
 final class PauseOrderUsecase {
@@ -27,6 +29,7 @@ final class PauseOrderUsecase {
   final RobotRequestLimiter _limiter;
   final TradeTakeLocks _locks;
   final PausesInFlight _inFlight;
+  final TradeKeyring _keyring;
 
   const PauseOrderUsecase(
     this._client,
@@ -34,6 +37,7 @@ final class PauseOrderUsecase {
     this._limiter,
     this._locks,
     this._inFlight,
+    this._keyring,
   );
 
   /// The pause of [record]'s order this process is sending now, `null` when none runs.
@@ -187,14 +191,21 @@ final class PauseOrderUsecase {
 
     // Sent once: never again by this use case, whatever the outcome.
     final actionTimes = _reader.request();
-    final sent = await requests.send(
-      record.network,
-      trade.coordinator,
-      () => _reader.timed(
-        actionTimes,
-        () => _client.pauseOrder(identity: robot.identity, lastRead: lastRead),
+    final sent = await TradeKeyring.signWith(
+      _keyring.lease(trade),
+      (key) => requests.send(
+        record.network,
+        trade.coordinator,
+        () => _reader.timed(
+          actionTimes,
+          () => _client.pauseOrder(
+            identity: robot.identity,
+            key: key,
+            lastRead: lastRead,
+          ),
+        ),
+        isBusy: _answeredBusy,
       ),
-      isBusy: _answeredBusy,
     );
 
     // A read after it. The answer itself is the coordinator's read of the order once toggled (`api/views.py:695`), checked by the package (`parseTradeActionAnswer`), but it is not kept as the status shown: only the read sent after the request is. What this gains: an answer lost on the way back is resolved at once by that read (done when it shows the order where the user asked), and a request with no direction is said done only from a read, never from its own answer. It does not catch a coordinator that lies: the read comes from the same coordinator (functional review of #184, R2).

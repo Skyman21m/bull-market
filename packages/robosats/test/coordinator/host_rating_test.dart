@@ -164,6 +164,7 @@ void main() {
     Future<Result<HostReviewToken, CoordinatorFailure>> ask() =>
         client.fetchReviewToken(
           identity: us,
+          key: interopUnlockedKey,
           coordinator: temple,
           network: network,
           nostrPublicKeyHex: us.nostrKeyPair().publicKeyHex,
@@ -182,9 +183,12 @@ void main() {
           'Content-Type': 'application/json',
           'Authorization': us.authorizationHeader(),
         });
-        expect(jsonDecode(utf8.decode(request.body ?? const [])), {
-          'pubkey': us.nostrKeyPair().publicKeyHex,
-        });
+        // Then the signature of `review:{pubkey}`, last (GHSA-22q8-9ghc-jg3h).
+        final pubkey = us.nostrKeyPair().publicKeyHex;
+        expect(
+          unsignedBody(request.body, 'review:$pubkey'),
+          jsonEncode({'pubkey': pubkey}),
+        );
         expect(request.robot, us.sessionKey);
         expect(request.maxResponseBytes, CoordinatorReadBounds.reviewBytes);
       },

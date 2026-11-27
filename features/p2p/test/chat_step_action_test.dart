@@ -67,9 +67,10 @@ void main() {
     expect(fiatSentShown(outcome.seen), isTrue);
     expect(outcome.seen.stored, isTrue);
     expect(app.coordinator.status, 10);
-    // The read before, the action once, the read after.
+    // The read before, the robot read back for the key the action is signed with (GHSA-22q8-9ghc-jg3h), the action once, the read after.
     expect(app.coordinator.received, [
       ScriptedRequest.order,
+      ScriptedRequest.robot,
       confirms,
       ScriptedRequest.order,
     ]);
@@ -539,6 +540,7 @@ void main() {
           expect(app.coordinator.status, 11);
           expect(app.coordinator.received, [
             ScriptedRequest.order,
+            ScriptedRequest.robot,
             ScriptedRequest.dispute,
             ScriptedRequest.order,
           ]);
@@ -779,6 +781,7 @@ void main() {
       expect(app.coordinator.platformRating, 4);
       expect(app.coordinator.received, [
         ScriptedRequest.order,
+        ScriptedRequest.robot,
         ScriptedRequest.rate,
       ]);
       expect(steps, [

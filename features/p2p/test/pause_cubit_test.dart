@@ -158,7 +158,7 @@ void main() {
   );
 
   test(
-    'one tap, three requests: the read before, the pause, the read after; the watch reads nothing more at once (functional review of #184, R2: four before)',
+    'one tap, the read before, the robot read back for the key the pause is signed with (GHSA-22q8-9ghc-jg3h), the pause, the read after; the watch reads nothing more at once (functional review of #184, R2)',
     () async {
       final (harness, record, cubit) = await followed();
       final seen = cubit.state.seen;
@@ -168,6 +168,7 @@ void main() {
       await harness.settle();
       expect(harness.coordinator.received.sublist(before), [
         ScriptedMakerRequest.order,
+        ScriptedMakerRequest.robot,
         ScriptedMakerRequest.pause,
         ScriptedMakerRequest.order,
       ]);

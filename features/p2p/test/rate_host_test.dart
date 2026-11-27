@@ -10,6 +10,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 
 /// « Rate your host » (#95): the token of `POST /api/review/` and the event of kind 31986 on the relays, as the official client asks and publishes them (`TradeBox/Prompts/Successful.tsx:54-105`, commit ff1998c), over the coordinator the tests play and relays the tests record, never a real one.
@@ -63,14 +64,17 @@ void main() {
         final robot = app.robot(0);
         final key = robot.nostrKeyPair().publicKeyHex;
         expect(token.hex, app.coordinator.reviewToken(key));
-        final request = app.coordinator.requests.single;
+        // The robot read back first, for the key the request is signed with (GHSA-22q8-9ghc-jg3h), then the request once.
+        expect(app.coordinator.requests.map((r) => r.url.path), [
+          '/api/robot/',
+          '/api/review/',
+        ]);
+        final request = app.coordinator.requests.last;
         expect(request.method, CoordinatorHttpMethod.post);
         expect(request.url.path, '/api/review/');
         expect(request.robot, robot.sessionKey);
         expect(request.headers['Authorization'], robot.authorizationHeader());
-        expect(jsonDecode(utf8.decode(request.body ?? const [])), {
-          'pubkey': key,
-        });
+        expect(jsonDecode(unsignedBodyOf(request.body)), {'pubkey': key});
         expect(app.relays.published, isEmpty);
       },
     );

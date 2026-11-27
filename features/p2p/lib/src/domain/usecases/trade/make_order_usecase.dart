@@ -25,6 +25,7 @@ import '../../trade_robots.dart';
 import '../put_robot_on_coordinator_usecase.dart';
 import '../read_robot_on_coordinator_usecase.dart';
 import 'action_outcome_log.dart';
+import 'trade_keyring.dart';
 import 'trade_make_locks.dart';
 import 'trade_read_order.dart';
 import 'trade_reader.dart';
@@ -35,7 +36,7 @@ import 'trade_reader.dart';
 /// 1. without a robot: the coordinator is in the federation list on the network; its `/api/info/` (the maker fee) and `/api/limits/` (the price and the limits of the order's currency) are read once, at once, anonymously (no robot's token, as the book); the price check the user saw under the form still holds at that price ([MakePriceSeen.holdsAt], #181), else [MakePriceCheckChanged]; the amount is within the limits the reference's form allows ([MakerAmountLimits]); the terms are built ([MakerTerms.create]): a make refused here costs no robot;
 /// 2. a fresh robot is reserved and bound to the coordinator ([TradeRobots.robotForNewTrade]), then put on it ([PutRobotOnCoordinatorUsecase]); a robot the coordinator already knew, or that held an order, is not used, nor one whose Garage Key was deleted or replaced meanwhile: so the robot never had another order on that coordinator, which is what makes the resolution sound;
 /// 3. the pending make and its terms are written, in that order ([TradeRecordRepository.recordPendingMake], [TradeTrailRepository.recordMakerTerms]), and the terms read back and compared with those built: the make is refused (and the pending make closed) when any of it fails;
-/// 4. `makeOrder` is sent once, with the request given, which equals the terms' ([MakerTerms.request], kept without the password's hash, #189), through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again, whatever it gives;
+/// 4. `makeOrder` is sent once, signed by the robot's key leased from [TradeKeyring] for the request ([TradeKeyring.leaseRobot], GHSA-22q8-9ghc-jg3h: a key that cannot be had sends nothing and closes the pending make), with the request given, which equals the terms' ([MakerTerms.request], kept without the password's hash, #189), through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again, whatever it gives;
 /// 5. its answer: a refusal known to come before the order is made (`OrderActionRefused`), or a transport that never sent it, closes the pending make ([MakeNotMade]); an outcome unknown leaves it pending ([MakePending]); a `MadeOrder` is read by the robot (`GET /api/order/`), and only a read that shows this robot as the order's maker ([TradeReader.showsMaker]) confirms the make with that order's id, then starts its trail with `TradeStatus.afterMake` of that read, on the terms read back from the records ([TradeTerms.restoreMade]), never rebuilt from a later read; a read that does not, goes on as the resolution below.
 ///
 /// The resolution of a pending make ([resolve]): a make whose terms were never written never sent its request and is closed at once ([MakeNeverSent]); otherwise the robot is read back (its binding's coordinator, the short header), and its `active_order_id`, else its `last_order_id` (`RobotView.get`, `api/views.py:725-737`), names the only order this robot can have made (step 2): that order is read by the robot, and confirms the make only as step 5 says; error 1043, which proves nothing, closes it, as a robot that names no order does, its read being sent after the make's request ended (the lock, or a restart). A request still in flight that lands later makes an order at 0 that this app never shows, which the coordinator expires 300 seconds after its creation with nothing paid (`api/logics.py:329-338`). Anything else leaves the make pending, and no bond is shown for it.
@@ -55,6 +56,7 @@ final class MakeOrderUsecase {
   final Bolt11Reader _invoices;
   final TradeMakeLocks _locks;
   final Federation _federation;
+  final TradeKeyring _keyring;
 
   const MakeOrderUsecase(
     this._client,
@@ -68,6 +70,7 @@ final class MakeOrderUsecase {
     this._invoices,
     this._locks,
     this._federation,
+    this._keyring,
   );
 
   /// Makes the order of [request] on [coordinator] and [network], the price check under the form being [seen] when the user pressed « Create order » (#181).
@@ -570,17 +573,21 @@ final class MakeOrderUsecase {
     // 4. The make, once.
     final requests = _limiter.open(robot.identity.sessionKey);
     try {
-      final sent = await requests.send(
-        network,
-        coordinator,
-        () => _client.makeOrder(
-          coordinator,
+      final sent = await TradeKeyring.signWith(
+        _keyring.leaseRobot(robot),
+        (key) => requests.send(
           network,
-          identity: robot.identity,
-          // The request given, with its password's hash: the terms keep it without (#189), equal to it.
-          request: request,
+          coordinator,
+          () => _client.makeOrder(
+            coordinator,
+            network,
+            identity: robot.identity,
+            key: key,
+            // The request given, with its password's hash: the terms keep it without (#189), equal to it.
+            request: request,
+          ),
+          isBusy: _answeredBusy,
         ),
-        isBusy: _answeredBusy,
       );
 
       // 5. What it gave.

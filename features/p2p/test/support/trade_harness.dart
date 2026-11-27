@@ -98,6 +98,21 @@ enum KillAt {
 /// The robots' key pairs, made once for the whole run (one S2K of 32 MiB each).
 final Map<RobotHashId, RobotPgpKey> _pairs = {};
 
+/// The robots' key pairs unlocked, once for the whole run.
+final Map<RobotHashId, UnlockedRobotPgpKey> _unlockedPairs = {};
+
+/// The pair of [identity] that [HarnessKeys.generate] gives, unlocked once for the run: for the tests that drive the coordinator client themselves, which signs every request of a robot that changes a state (GHSA-22q8-9ghc-jg3h).
+UnlockedRobotPgpKey unlockedPairOf(RobotIdentity identity) =>
+    _unlockedPairs.putIfAbsent(
+      identity.hashId,
+      () => switch (_pairs
+          .putIfAbsent(identity.hashId, () => pairOf(identity))
+          .unlock(identity)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      },
+    );
+
 /// The key work of the trade tests on the test's own isolate: the pairs made once for the run, the proofs the package's, and every unlock counted, failed or held back when the test says.
 final class HarnessKeys implements RobotKeyComputePort {
   /// The robots whose key was unlocked, in order.
@@ -227,6 +242,8 @@ final class HarnessKeys implements RobotKeyComputePort {
     if (unlockError case final error?) throw error;
     if (unlockFailure case final failure?) return Err(failure);
     unlocked.add(identity.hashId);
+    // The pair made for the run is unlocked once for it: each action is now signed, and an unlock hashes 32 MiB; any other pair as asked.
+    if (_pairs[identity.hashId] == key) return Ok(Ok(unlockedPairOf(identity)));
     return Ok(key.unlock(identity));
   }
 }
@@ -583,6 +600,15 @@ final class TradeHarness {
     );
     final fetch = FetchRobotUsecase(client, bindings, keys);
     final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
+    keyring = TradeKeyring(
+      ReadRobotOnCoordinatorUsecase(
+        fetch,
+        bindings,
+        limiter,
+        Federation.robosats,
+      ),
+      keys,
+    );
     take = TakeOrderUsecase(
       client,
       robots,
@@ -593,15 +619,7 @@ final class TradeHarness {
       limiter,
       invoices,
       locks,
-    );
-    keyring = TradeKeyring(
-      ReadRobotOnCoordinatorUsecase(
-        fetch,
-        bindings,
-        limiter,
-        Federation.robosats,
-      ),
-      keys,
+      keyring,
     );
     holdKey = HoldTradeKeyUsecase(keyring);
     payout = SubmitPayoutUsecase(
@@ -650,8 +668,8 @@ final class TradeHarness {
       ),
       watchRegistry,
     );
-    cancel = CancelTradeUsecase(client, reader, limiter, locks);
-    chat = ChatStepActionUsecase(client, reader, limiter, locks);
+    cancel = CancelTradeUsecase(client, reader, limiter, locks, keyring);
+    chat = ChatStepActionUsecase(client, reader, limiter, locks, keyring);
     rateHost = RateHostUsecase(
       client,
       reader,
@@ -660,6 +678,7 @@ final class TradeHarness {
       relays,
       Federation.robosats,
       Random(7),
+      keyring,
     );
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
   }

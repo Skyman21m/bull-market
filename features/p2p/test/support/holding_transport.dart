@@ -60,4 +60,5 @@ PauseOrderUsecase pauseThrough(
   harness.limiter,
   harness.locks,
   harness.pausesInFlight,
+  harness.keyring,
 );

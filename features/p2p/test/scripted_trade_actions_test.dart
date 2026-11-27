@@ -6,7 +6,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
-import 'support/trade_harness.dart' show TradeHarness;
+import 'support/trade_harness.dart' show TradeHarness, unlockedPairOf;
 
 /// The scripted coordinator plays the actions of the chat step as the reference backend answers them (#95), through the package's client: what the trade's use cases will meet.
 void main() {
@@ -31,6 +31,7 @@ void main() {
       coordinator.coordinator,
       network,
       identity: taker,
+      key: unlockedPairOf(taker),
       orderId: coordinator.orderId,
     );
     expect(take, isA<Ok<TakeOrderOutcome, OrderActionFailure>>());
@@ -102,13 +103,21 @@ void main() {
       // « fiat sent » an hour into the chat: its deadline is the chat's, not restarted (`api/logics.py:1693-1699`).
       now = now.add(const Duration(hours: 1));
       final sent = accepted(
-        await client.confirmFiat(identity: taker, lastRead: chat),
+        await client.confirmFiat(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        ),
       );
       expect(sent.status, CoordinatorOrderStatus.fiatSent);
       expect(sent.isFiatSent, isTrue);
       expect(sent.expiresAt, chat.expiresAt);
       final back = accepted(
-        await client.undoConfirmFiat(identity: taker, lastRead: sent),
+        await client.undoConfirmFiat(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: sent,
+        ),
       );
       expect(back.status, CoordinatorOrderStatus.sendingFiat);
       expect(back.isFiatSent, isFalse);
@@ -122,10 +131,20 @@ void main() {
       await traded();
       coordinator.moveTo(9);
       final chat = await read();
-      accepted(await client.confirmFiat(identity: taker, lastRead: chat));
+      accepted(
+        await client.confirmFiat(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        ),
+      );
       // Sent from a stale read of 9, the coordinator at 10 already.
       final again = accepted(
-        await client.confirmFiat(identity: taker, lastRead: chat),
+        await client.confirmFiat(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        ),
       );
       expect(again.status, CoordinatorOrderStatus.fiatSent);
       expect(coordinator.status, 10);
@@ -137,7 +156,13 @@ void main() {
       final chat = await read();
       coordinator.moveTo(11);
       expect(
-        refusedCause(await client.confirmFiat(identity: taker, lastRead: chat)),
+        refusedCause(
+          await client.confirmFiat(
+            identity: taker,
+            key: unlockedPairOf(taker),
+            lastRead: chat,
+          ),
+        ),
         isA<TradeActionNotNow>().having(
           (f) => f.fromLastRead,
           'fromLastRead',
@@ -149,7 +174,11 @@ void main() {
       coordinator.moveTo(9);
       expect(
         refusedCause(
-          await client.undoConfirmFiat(identity: taker, lastRead: sent),
+          await client.undoConfirmFiat(
+            identity: taker,
+            key: unlockedPairOf(taker),
+            lastRead: sent,
+          ),
         ),
         isA<TradeActionNotNow>(),
       );
@@ -174,7 +203,11 @@ void main() {
         coordinator.moveTo(9);
         final chat = await read();
         coordinator.failNext(ScriptedRequest.confirm, ScriptedFault.landsLate);
-        final first = await client.confirmFiat(identity: taker, lastRead: chat);
+        final first = await client.confirmFiat(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        );
         expect(
           (first as Err<TradeActionOutcome, OrderActionFailure>).failure,
           isA<OrderActionOutcomeUnknown>(),
@@ -185,7 +218,11 @@ void main() {
         expect(coordinator.status, 10);
         // A second tap from the read that showed 9: one confirmed state, no error.
         final second = accepted(
-          await client.confirmFiat(identity: taker, lastRead: before),
+          await client.confirmFiat(
+            identity: taker,
+            key: unlockedPairOf(taker),
+            lastRead: before,
+          ),
         );
         expect(second.status, CoordinatorOrderStatus.fiatSent);
         expect(coordinator.status, 10);
@@ -197,7 +234,11 @@ void main() {
       coordinator.moveTo(9);
       final chat = await read();
       coordinator.failNext(ScriptedRequest.confirm, ScriptedFault.answerLost);
-      final lost = await client.confirmFiat(identity: taker, lastRead: chat);
+      final lost = await client.confirmFiat(
+        identity: taker,
+        key: unlockedPairOf(taker),
+        lastRead: chat,
+      );
       expect(lost, isA<Err<TradeActionOutcome, OrderActionFailure>>());
       expect(
         (lost as Err<TradeActionOutcome, OrderActionFailure>).failure,
@@ -219,6 +260,7 @@ void main() {
         expect(chat.askedToCancel, isFalse);
         final asked = switch (await client.cancelOrder(
           identity: taker,
+          key: unlockedPairOf(taker),
           lastRead: chat,
         )) {
           Ok(value: OrderCancelAccepted(:final order)) => order,
@@ -239,7 +281,11 @@ void main() {
         final chat = await read();
         expect(chat.peerAskedToCancel, isTrue);
         expect(chat.askedToCancel, isNull);
-        final ended = await client.cancelOrder(identity: taker, lastRead: chat);
+        final ended = await client.cancelOrder(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        );
         expect(
           ended,
           isA<Ok<CancelOrderOutcome, OrderActionFailure>>().having(
@@ -274,7 +320,11 @@ void main() {
       coordinator.moveTo(9);
       final chat = await read();
       expect(
-        await client.cancelOrder(identity: taker, lastRead: chat),
+        await client.cancelOrder(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        ),
         isA<Ok<CancelOrderOutcome, OrderActionFailure>>(),
       );
       coordinator.peerAcceptsCancel();
@@ -307,7 +357,11 @@ void main() {
       final chat = await read();
       coordinator.moveTo(10);
       expect(
-        await client.cancelOrder(identity: taker, lastRead: chat),
+        await client.cancelOrder(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        ),
         isA<Err<CancelOrderOutcome, OrderActionFailure>>().having(
           (r) => r.failure.cause,
           'cause',
@@ -316,7 +370,11 @@ void main() {
       );
       final sent = await read();
       expect(
-        await client.cancelOrder(identity: taker, lastRead: sent),
+        await client.cancelOrder(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: sent,
+        ),
         isA<Err<CancelOrderOutcome, OrderActionFailure>>().having(
           (r) => r.failure.cause,
           'cause',
@@ -338,7 +396,13 @@ void main() {
         clock: () => now.add(const Duration(hours: 6)),
       );
       expect(
-        refusedCause(await early.openDispute(identity: taker, lastRead: chat)),
+        refusedCause(
+          await early.openDispute(
+            identity: taker,
+            key: unlockedPairOf(taker),
+            lastRead: chat,
+          ),
+        ),
         isA<DisputeTooEarly>().having(
           (f) => f.fromLastRead,
           'fromLastRead',
@@ -348,7 +412,11 @@ void main() {
       expect(coordinator.status, 9);
       now = now.add(const Duration(hours: 6));
       final open = accepted(
-        await client.openDispute(identity: taker, lastRead: chat),
+        await client.openDispute(
+          identity: taker,
+          key: unlockedPairOf(taker),
+          lastRead: chat,
+        ),
       );
       expect(open.status, CoordinatorOrderStatus.inDispute);
       expect(open.statementSubmitted, isFalse);
@@ -363,7 +431,13 @@ void main() {
       final chat = await read();
       coordinator.moveTo(13);
       expect(
-        refusedCause(await client.openDispute(identity: taker, lastRead: chat)),
+        refusedCause(
+          await client.openDispute(
+            identity: taker,
+            key: unlockedPairOf(taker),
+            lastRead: chat,
+          ),
+        ),
         isA<TradeActionNotNow>(),
       );
     });
@@ -378,6 +452,7 @@ void main() {
         accepted(
           await client.ratePlatform(
             identity: taker,
+            key: unlockedPairOf(taker),
             lastRead: done,
             rating: PlatformRating.of(stars)!,
           ),

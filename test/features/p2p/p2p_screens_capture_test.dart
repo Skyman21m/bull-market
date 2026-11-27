@@ -2997,6 +2997,18 @@ void main() {
         );
         await settle();
         await capture('fin-litige-envoi');
+        // The step is shown before the request reaches the coordinator: the robot's key is leased first (read back, proven and unlocked away from the UI isolate) for the dispute's signature (GHSA-22q8-9ghc-jg3h). Its answer is let go only once the coordinator holds it, else nothing is held yet to let go.
+        for (
+          var i = 0;
+          i < 1200 && !coordinator.received.contains(ScriptedRequest.dispute);
+          i++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await tester.pump(const Duration(milliseconds: 200));
+        }
+        expect(coordinator.received, contains(ScriptedRequest.dispute));
         coordinator.deliverDelayed();
         await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
         await settle();

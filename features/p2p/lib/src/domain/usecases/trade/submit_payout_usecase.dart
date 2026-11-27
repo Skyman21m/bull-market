@@ -27,8 +27,8 @@ import 'wallet_payout_destinations.dart';
 /// 2. the robot's key is leased from [TradeKeyring] (read back from its coordinator and unlocked away from the UI isolate, unless the trade screen's hold keeps it);
 /// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]): only a status marked stored goes on;
 /// 4. the destination shown is checked again against that read ([PayoutAsk.check]): a refusal, or anything the user would now see differently (a figure, a warning), sends nothing ([PayoutNoLongerValid], [PayoutChangedSinceShown]);
-/// 5. the very text shown is signed (`UnlockedRobotPgpKey.signPayoutInvoice`, `signPayoutAddress`), the signed text, network and signer compared with what was shown, and the lease closed;
-/// 6. the payout is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: a refusal the coordinator client decided from that read (`PayoutRefused.fromLastRead`) is followed by one more read and one more try, signed again, before anything is told;
+/// 5. the very text shown is signed (`UnlockedRobotPgpKey.signPayoutInvoice`, `signPayoutAddress`), the signed text, network and signer compared with what was shown;
+/// 6. the payout is sent once, the action itself signed by the same lease's key (GHSA-22q8-9ghc-jg3h: `CoordinatorClient` signs `update_invoice` or `update_address` just before the request leaves), then the lease closed, through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: a refusal the coordinator client decided from that read (`PayoutRefused.fromLastRead`) is followed by one more read and one more try, signed again, before anything is told;
 /// 7. once the coordinator answered that it took the payout, or may have (an outcome unknown), where it came from is recorded for the contract it was signed for (schema 9, #204: from this wallet, when the text is an invoice or an address this wallet gave during this run, else pasted), before anything else; never for a refusal, whose payout the coordinator does not hold;
 /// 8. its answer is kept, then the order read again and kept: [PayoutGiven], [PayoutNotTaken] or [PayoutOutcomeUnknown], each with the status as stored (or the trail on disk's own), never one made up.
 /// Nothing here pays or moves the wallet's funds; nothing is printed or logged.
@@ -175,6 +175,7 @@ final class SubmitPayoutUsecase {
     // The contract the payout is signed for, and what it is, for its record (#204).
     final int take;
     final ({PayoutTraceKind kind, bool fromWallet}) given;
+    var sending = false;
     try {
       // The order as it is now, kept: the payout is signed from this read only.
       onProgress?.call(PayoutProgress.readingOrder);
@@ -263,6 +264,7 @@ final class SubmitPayoutUsecase {
               submit = () => _client.submitPayoutInvoice(
                 identity: robot.identity,
                 lastRead: lastRead,
+                key: lease.key,
                 invoice: invoice,
                 routingBudget: budget,
               );
@@ -278,23 +280,32 @@ final class SubmitPayoutUsecase {
               submit = () => _client.submitPayoutAddress(
                 identity: robot.identity,
                 lastRead: lastRead,
+                key: lease.key,
                 address: signedAddress,
                 miningFeeRate: rate,
               );
           }
       }
+      sending = true;
+    } finally {
+      // Kept for the request, which the client signs as an action too; closed here on every way out before it.
+      if (!sending) lease.close();
+    }
+
+    final RequestTimes submitTimes;
+    final Result<Result<PayoutOutcome, OrderActionFailure>, P2pFailure> sent;
+    try {
+      onProgress?.call(PayoutProgress.sending);
+      submitTimes = _reader.request();
+      sent = await requests.send(
+        record.network,
+        trade.coordinator,
+        () => _reader.timed(submitTimes, submit),
+        isBusy: _answeredBusy,
+      );
     } finally {
       lease.close();
     }
-
-    onProgress?.call(PayoutProgress.sending);
-    final submitTimes = _reader.request();
-    final sent = await requests.send(
-      record.network,
-      trade.coordinator,
-      () => _reader.timed(submitTimes, submit),
-      isBusy: _answeredBusy,
-    );
 
     // A refusal decided from the read, nothing sent: once more from a fresh read, signed again.
     if (sent case Ok(

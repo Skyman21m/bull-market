@@ -671,18 +671,40 @@ void main() {
           referring((r) => r == 'ReadRobotOnCoordinatorUsecase.provenPairOf'),
           {keyring},
         );
-        // A lease only for the payout's signature and the chat's messages, a hold only through the use case the screens call.
+        // Since the fix of GHSA-22q8-9ghc-jg3h (RoboSats pull request 2955), every request of a robot that changes a state is signed by its key, which the client of the package takes from a lease: the make and the take (a robot reserved, `leaseRobot`), the cancel, the pause, the chat step's actions and the token to rate the coordinator.
+        const make = '${_tradeUseCases}make_order_usecase.dart';
+        const take = '${_tradeUseCases}take_order_usecase.dart';
+        const cancel = '${_tradeUseCases}cancel_trade_usecase.dart';
+        const pause = '${_tradeUseCases}pause_order_usecase.dart';
+        const chatStep = '${_tradeUseCases}chat_step_action_usecase.dart';
+        const rateHost = '${_tradeUseCases}rate_host_usecase.dart';
+        // A lease only for a signature (the payout's, the actions' of the robot) and the chat's messages, a hold only through the use case the screens call.
         expect(referring((r) => r == 'TradeKeyring.lease'), {
           chatExport,
           payout,
           chatRead,
           chatSend,
+          cancel,
+          pause,
+          chatStep,
+          rateHost,
+        });
+        expect(referring((r) => r == 'TradeKeyring.leaseRobot'), {make, take});
+        // The lease of an action kept for its request only, closed as soon as the request has ended.
+        expect(referring((r) => r == 'TradeKeyring.signWith'), {
+          make,
+          take,
+          cancel,
+          pause,
+          chatStep,
         });
         expect(referring((r) => r == 'TradeKeyLease.key'), {
+          keyring,
           chatExport,
           payout,
           chatRead,
           chatSend,
+          rateHost,
         });
         expect(referring((r) => r == 'TradeKeyring.hold'), {
           '${_tradeUseCases}hold_trade_key_usecase.dart',
@@ -696,6 +718,12 @@ void main() {
               chatRead,
               chatSend,
               chatExport,
+              make,
+              take,
+              cancel,
+              pause,
+              chatStep,
+              rateHost,
               '${_tradeUseCases}hold_trade_key_usecase.dart',
               'lib/src/p2p_locator.dart',
             }),
@@ -749,6 +777,8 @@ void main() {
               payout,
               chatRead,
               chatSend,
+              // The chat step's actions name the key their requests are signed with (GHSA-22q8-9ghc-jg3h), and hand it to the client only.
+              chatStep,
               // The tests' library, which names the type for the app's captures to encrypt the maker's messages (#93); no library of the app imports it.
               'lib/testing.dart',
             }),
@@ -2638,7 +2668,7 @@ const _watched = {
     {'execute', 'provenPairOf'},
   ),
   // The keyring of the trades (#90): who unlocks a robot's key, who keeps it, who signs with it.
-  'TradeKeyring': ('package:p2p/', {'hold', 'lease'}),
+  'TradeKeyring': ('package:p2p/', {'hold', 'lease', 'leaseRobot', 'signWith'}),
   'TradeKeyLease': ('package:p2p/', {'key'}),
   'RobotKeyComputePort': ('package:p2p/', {'unlock', 'decryptChat'}),
   'UnlockedRobotPgpKey': (

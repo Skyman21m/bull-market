@@ -15,7 +15,8 @@ import 'trade_reader.dart';
 /// The pair of a robot is not stored: a [lease] reads the robot back from the coordinator of its binding, its pair proven by its token (`ReadRobotOnCoordinatorUsecase.provenPairOf`), then unlocks it with the token away from the UI isolate (`RobotKeyComputePort.unlock`: two works of 32 MiB of SHA-256 for a key of the official client or of this app).
 /// The key is kept per robot of a trade while a [hold] or a lease of it is open, and dropped as soon as none is:
 /// - the trade screen takes a hold (`HoldTradeKeyUsecase`) while it is shown and the app in the foreground, and releases it when it closes or the app is hidden or paused, taking a new one on return; a hold unlocks nothing by itself, it only keeps a key that a lease unlocked;
-/// - the payout use case takes a lease just to sign, and closes it right after the signature, before anything is sent; without a hold, the key is unlocked for that signature only and dropped when its lease closes;
+/// - the payout use case takes a lease to sign the payout and its request, and closes it as soon as the request has ended; without a hold, the key is unlocked for that payout only and dropped when its lease closes;
+/// - every request of a robot that changes a state is signed by its key since the fix of GHSA-22q8-9ghc-jg3h (RoboSats pull request 2955): the make, the take, the cancel, the pause, the chat step's actions, the payout and the token to rate the coordinator each take a lease through [signWith] (a robot reserved for a new trade through [leaseRobot]), which `CoordinatorClient` signs with just before the request leaves, and close it as soon as the request has ended, its busy retries included, each signed again;
 /// - two screens of one trade hold one key, kept while either holds it; a lease open when the last hold is released keeps the key until it closes (the app sent to the background during a signature), and the key is dropped then.
 /// One unlock at a time per robot, shared by the leases that come meanwhile; an unlock that failed, or threw, is not kept, so the next lease tries again; an entry dropped is emptied, and a closed lease holds neither the key nor the entry.
 /// Dropping a key forgets it: the package gives no way to wipe its secret values, which the garbage collector reclaims later without clearing them (a limit stated in `AGENTS.md`).
@@ -38,9 +39,51 @@ final class TradeKeyring {
   ///
   /// [Err] when it could not be had, with its cause: a [P2pFailure] of the read (the binding, the limiter, a robot released, the work that could not start), a `CoordinatorFailure` of the coordinator's answer (`RobotUnknown`, `RobotPgpKeyNotProven`, …), or a `PgpFailure` of the unlock; nothing is kept then.
   /// Close the lease as soon as the key is no longer needed.
-  Future<Result<TradeKeyLease, Failure>> lease(OpenTrade trade) async {
-    final slot = trade.record.robot;
-    final robot = trade.robot;
+  Future<Result<TradeKeyLease, Failure>> lease(OpenTrade trade) =>
+      _lease(trade.record.robot, trade.robot);
+
+  /// The unlocked key of [robot], a robot reserved for a new trade and put on its coordinator, for the signature of its make or its take: as [lease], kept under the robot's own slot.
+  Future<Result<TradeKeyLease, Failure>> leaseRobot(NetworkRobot robot) =>
+      _lease(robot.slot, robot);
+
+  /// [action] run with the key of the lease [leased] gives, the lease closed as soon as [action] has ended, for an action of a robot that `CoordinatorClient` signs (GHSA-22q8-9ghc-jg3h).
+  ///
+  /// When the key cannot be had, [action] does not run, so nothing is sent, and the failure is returned as the result of an action never sent: a [P2pFailure] as the outer [Err] (the binding, the limiter, a robot released, the work that could not start), a `CoordinatorFailure` of the read back as an `OrderActionRefused` of it (the coordinator unreachable, the robot unknown or its pair not proven), and anything else, an unlock that failed, as an `OrderActionRefused` of `ActionSignatureRefused` with `ActionSignatureRefusal.notSigned`.
+  static Future<Result<Result<T, OrderActionFailure>, P2pFailure>> signWith<T>(
+    Future<Result<TradeKeyLease, Failure>> leased,
+    Future<Result<Result<T, OrderActionFailure>, P2pFailure>> Function(
+      UnlockedRobotPgpKey key,
+    )
+    action,
+  ) async {
+    final TradeKeyLease lease;
+    switch (await leased) {
+      case Err(failure: final P2pFailure failure):
+        return Err(failure);
+      case Err(failure: final CoordinatorFailure failure):
+        return Ok(Err(OrderActionRefused(failure)));
+      case Err():
+        return const Ok(
+          Err(
+            OrderActionRefused(
+              ActionSignatureRefused(ActionSignatureRefusal.notSigned),
+            ),
+          ),
+        );
+      case Ok(:final value):
+        lease = value;
+    }
+    try {
+      return await action(lease.key);
+    } finally {
+      lease.close();
+    }
+  }
+
+  Future<Result<TradeKeyLease, Failure>> _lease(
+    RobotSlot slot,
+    NetworkRobot robot,
+  ) async {
     final entry = _entries[slot] ??= _Entry();
     entry.leases++;
     var handedOut = false;

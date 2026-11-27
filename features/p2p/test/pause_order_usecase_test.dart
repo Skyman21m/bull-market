@@ -19,6 +19,7 @@ import 'package:test/test.dart';
 import 'support/fakes.dart' show FakeTransport;
 import 'support/holding_transport.dart';
 import 'support/make_harness.dart';
+import 'support/signed_bodies.dart';
 
 /// The pause and « Unpause Order » of a public order made here (#184, design note `docs/design/phase-3-making-an-order.md` § 1.6, § 3.4), over the real records, reader, limiter and state machine, the coordinator played by `ScriptedMakerCoordinator` as the reference answers a maker's `pause` (`api/views.py:617-619`, `:686-695`, `Logics.pause_unpause_public_order`, `api/logics.py:1758-1783`).
 ///
@@ -81,9 +82,10 @@ void main() {
         expect(done.seen.stored, isTrue);
         expect(done.seen.status, isPublic(paused: true));
         expect(statusAt(harness, record), 2);
-        // A read first, the pause once, a read after it.
+        // A read first, the robot read back for the key the pause is signed with (GHSA-22q8-9ghc-jg3h), the pause once, a read after it.
         expect(harness.coordinator.received.sublist(before), [
           ScriptedMakerRequest.order,
+          ScriptedMakerRequest.robot,
           ScriptedMakerRequest.pause,
           ScriptedMakerRequest.order,
         ]);
@@ -93,10 +95,7 @@ void main() {
               r.method == CoordinatorHttpMethod.post &&
               r.url.path == '/api/order/',
         );
-        expect(
-          String.fromCharCodes(sent.body ?? const []),
-          '{"action":"pause"}',
-        );
+        expect(unsignedBodyOf(sent.body), '{"action":"pause"}');
       },
     );
 

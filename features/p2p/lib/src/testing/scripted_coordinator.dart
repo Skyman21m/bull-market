@@ -8,6 +8,7 @@ import 'package:robosats/robosats.dart';
 
 import '../domain/trade/bolt11.dart';
 import 'bolt11_test_invoice.dart';
+import 'scripted_signatures.dart';
 
 /// What the next request of a kind meets instead of its answer.
 enum ScriptedFault {
@@ -281,6 +282,11 @@ final class ScriptedCoordinator implements CoordinatorTransport {
            },
        _createdAt = clock().toUtc().subtract(const Duration(hours: 1));
 
+  /// Whether the coordinator checks the signature of every request of a robot that changes a state, as one running the fix of GHSA-22q8-9ghc-jg3h does (RoboSats pull request 2955, head `0943c97`): before anything else (after the participant check, 1047, for an action other than `take` and `cancel`, as the reference), a body with no signature is refused with 1059, one whose signature does not verify with the key the robot gave at its first contact or signs another text with 1048 ([scriptedSignatureRefusal]); the take, the cancel, the payout, the chat step's actions and the token to rate it, never the chat's post.
+  ///
+  /// `false` plays a coordinator not updated yet, at commit babf62e, which reads only the fields its serializers declare and ignores the signature.
+  bool checksSignatures = true;
+
   /// The public key [robot] gave at its first contact, armored, as the coordinator keeps it: what the peer encrypts its messages to.
   String? publicKeyOf(RobotIdentity robot) =>
       _kept[robot.sessionKey]?['public_key'] as String?;
@@ -518,6 +524,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     ScriptedRequest kind,
     CoordinatorRequest request,
   ) {
+    if (_signatureRefused(kind, request) case final refused?) return refused;
     switch (kind) {
       case ScriptedRequest.info:
         return _json(200, _info());
@@ -607,6 +614,57 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedRequest.review:
         return _review(_robotOf(request), request);
     }
+  }
+
+  /// The refusal of the signature of [request] when [checksSignatures] and it is a request of a robot that changes a state, `null` otherwise: see [checksSignatures].
+  CoordinatorResponse? _signatureRefused(
+    ScriptedRequest kind,
+    CoordinatorRequest request,
+  ) {
+    if (!checksSignatures ||
+        request.method != CoordinatorHttpMethod.post ||
+        kind == ScriptedRequest.chatPost) {
+      return null;
+    }
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final action = fields['action'];
+    final orderId = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final ScriptedSignedText expected;
+    switch (request.url.path) {
+      case '/api/review/':
+        // Built here as `api/views.py` builds it, never with the package's own builders, so that a text the package changes is refused.
+        expected = ScriptedExactText('review:${fields['pubkey']}');
+      case '/api/order/' when action is String && orderId != null:
+        // `take` and `cancel` are checked first; every other action after the participant check (1047, `api/views.py` at `0943c97`), which a robot that is no participant is left to.
+        if (action != 'take' &&
+            action != 'cancel' &&
+            _taker != _robotOf(request).sessionKey) {
+          return null;
+        }
+        expected = ScriptedExactText(
+          '$action:$orderId:${coordinator.shortAlias}',
+        );
+      default:
+        // The serializer's refusals come first: an action it does not know is an empty 400.
+        return null;
+    }
+    final publicKey = publicKeyOf(_robotOf(request));
+    // A robot the coordinator does not know is refused by its authentication first (7001).
+    if (publicKey == null) return null;
+    final code = scriptedSignatureRefusal(
+      fields,
+      publicKey: publicKey,
+      expected: expected,
+      now: clock(),
+    );
+    if (code == null) return null;
+    return _json(400, {
+      'error_code': code,
+      'bad_request': scriptedSignatureMessage(code),
+    });
   }
 
   /// `POST /api/review/` as the reference answers it (`ReviewView`, `api/views.py:1236-1269`).

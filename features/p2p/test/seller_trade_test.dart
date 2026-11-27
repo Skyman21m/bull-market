@@ -272,8 +272,10 @@ void main() {
         );
         expect(app.coordinator.status, 13);
         expect(app.coordinator.escrowSettlements, 1);
+        // The read before, the robot read back for the key the release is signed with (GHSA-22q8-9ghc-jg3h), the release once, the read after.
         expect(app.coordinator.received, [
           ScriptedRequest.order,
+          ScriptedRequest.robot,
           confirms,
           ScriptedRequest.order,
         ]);

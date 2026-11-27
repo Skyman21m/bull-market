@@ -8,6 +8,7 @@ import '../../trade/trade_cancel.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'trade_keyring.dart';
 import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
@@ -19,17 +20,20 @@ import 'trade_take_locks.dart';
 /// An answer that says the order ended closes the record, even if a coordinator that lies shows the order alive at the read that follows (it holds the bond anyway; a taker's cancel behaves the same). An order answered as it was, alive, gives [CancelDone] with the live status: a screen judges by [CancelOutcome.seen]'s status, never by the type of the outcome, and never says « bond returned » on [CancelDone.makerBondReturned] alone (security review of #179).
 /// At the pre-take (3) the cancel is free; once the bond is locked and the escrow is not (6, 7) it loses the bond, and is sent only with a [BondLossAcknowledged] given for this trade at the status seen; in the chat (9) it is the collaborative cancel, free, which the reference offers there only (#95): an ask, or the acceptance of the peer's; at 8 the reference offers none; at any other status no cancel exists.
 /// The cancel is sent once, through the robot's places in `RobotRequestLimiter`, and never again: an outcome unknown is said as such, and the watch of the trade resolves it.
+/// It is signed by the robot's key, leased from [TradeKeyring] for the request ([TradeKeyring.signWith], GHSA-22q8-9ghc-jg3h); a key that cannot be had sends nothing, and is told as a cancel not done.
 final class CancelTradeUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
   final TradeTakeLocks _locks;
+  final TradeKeyring _keyring;
 
   const CancelTradeUsecase(
     this._client,
     this._reader,
     this._limiter,
     this._locks,
+    this._keyring,
   );
 
   /// Cancels the trade of [record] as [seen] showed it, [bondLoss] given when the user confirmed losing the bond.
@@ -100,17 +104,21 @@ final class CancelTradeUsecase {
         final requests = _limiter.open(trade.robot.identity.sessionKey);
         try {
           final cancelTimes = _reader.request();
-          final sent = await requests.send(
-            record.network,
-            trade.coordinator,
-            () => _reader.timed(
-              cancelTimes,
-              () => _client.cancelOrder(
-                identity: trade.robot.identity,
-                lastRead: lastRead,
+          final sent = await TradeKeyring.signWith(
+            _keyring.lease(trade),
+            (key) => requests.send(
+              record.network,
+              trade.coordinator,
+              () => _reader.timed(
+                cancelTimes,
+                () => _client.cancelOrder(
+                  identity: trade.robot.identity,
+                  key: key,
+                  lastRead: lastRead,
+                ),
               ),
+              isBusy: _answeredBusy,
             ),
-            isBusy: _answeredBusy,
           );
           var current = trade;
           P2pFailure? problem;

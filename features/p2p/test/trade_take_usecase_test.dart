@@ -11,6 +11,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 
 /// The take of an order as its taker (#87): what it reads before, the robot it spends, what it writes before its request leaves, and what each answer gives; the app killed between each pair of steps, then started again.
@@ -37,11 +38,12 @@ void main() {
         expect(started.record.closedAt, isNull);
         expect(started.record.origin, TradeOrigin.takenHere);
         expect(started.record.robot.accountIndex, isNonNegative);
-        // The book shown, the fresh book and info, the robot read back (unknown) then its first contact, the take: nothing else, once.
+        // The book shown, the fresh book and info, the robot read back (unknown) then its first contact, read back once more for the key the take is signed with (GHSA-22q8-9ghc-jg3h), the take: nothing else, once.
         expect(app.coordinator.received, [
           ScriptedRequest.book,
           ScriptedRequest.book,
           ScriptedRequest.info,
+          ScriptedRequest.robot,
           ScriptedRequest.robot,
           ScriptedRequest.robot,
           take,
@@ -67,7 +69,7 @@ void main() {
         await app.takeShown();
         final post = app.coordinator.requests.last;
         expect(post.method, CoordinatorHttpMethod.post);
-        expect(jsonDecode(utf8.decode(post.body ?? const [])), {
+        expect(jsonDecode(unsignedBodyOf(post.body)), {
           'action': 'take',
           'amount': 0,
         });

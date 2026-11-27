@@ -284,6 +284,19 @@ extension TradePauseNoticeL10n on TradePauseNotice {
       // Never left either, the coordinator not on the trade's network (unreachable here, the read just before having reached it): the generic words.
       PauseWasNotDone(cause: CoordinatorNotOnNetwork()) =>
         l10n.p2pTradePauseNotDoneAfter(l10n.p2pBookError),
+      // The signature refused for a reason of its own (1059, 1060, 1061), or not made here: its words, before nothing changed.
+      PauseWasNotDone(
+        cause: ActionSignatureRefused(
+              reason: ActionSignatureRefusal.clockSkew ||
+                  ActionSignatureRefusal.missing ||
+                  ActionSignatureRefusal.otherCoordinator ||
+                  ActionSignatureRefusal.notSigned,
+            ) &&
+            final CoordinatorFailure refused,
+      ) =>
+        l10n.p2pTradePauseNotDoneAfter(
+          refused.toRobotText(context, coordinator: coordinator),
+        ),
       // Any other refusal left and changed nothing (1032, 1033, 1047, the empty 400 of the form check, the authentication's): the coordinator's, never its text.
       PauseWasNotDone(cause: CoordinatorFailure()) =>
         l10n.p2pTradePauseRefusedBy(coordinator),
@@ -398,6 +411,17 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       ChatStepWasNotDone(cause: OrderReadElsewhere()) => notSent(
         l10n.p2pBookError,
       ),
+      // The signature refused for a reason of its own (1059, 1060, 1061), or not made here: its words; nothing was recorded.
+      ChatStepWasNotDone(
+        cause: ActionSignatureRefused(
+              reason: ActionSignatureRefusal.clockSkew ||
+                  ActionSignatureRefusal.missing ||
+                  ActionSignatureRefusal.otherCoordinator ||
+                  ActionSignatureRefusal.notSigned,
+            ) &&
+            final CoordinatorFailure refused,
+      ) =>
+        notSent(refused.toRobotText(context, coordinator: coordinator)),
       // Any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: the coordinator's, not « this robot ».
       ChatStepWasNotDone(cause: CoordinatorFailure()) => said(
         confirmation: l10n.p2pEndRefusedBy(coordinator),
