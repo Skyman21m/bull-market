@@ -110,7 +110,7 @@ abstract final class Nip44 {
     } on FormatException {
       throw const FormatException('invalid base64');
     }
-    // `base64.decode` also takes the URL-safe alphabet, a missing padding and non-zero padding bits, which `base64.decode` of `@scure/base`, the decoder of `nip44.ts`, refuses: only the canonical form, which encodes back to the very payload, is read.
+    // `base64.decode` also takes the URL-safe alphabet, which `base64.decode` of `@scure/base`, the decoder of `nip44.ts`, refuses: only the canonical form, which encodes back to the very payload, is read (Dart's decoder already refuses a missing padding and non-zero padding bits, as `@scure/base` does).
     if (base64.encode(data) != payload) {
       throw const FormatException('invalid base64');
     }
