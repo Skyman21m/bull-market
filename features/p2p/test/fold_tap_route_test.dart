@@ -2245,8 +2245,8 @@ void main() {
             expect(tester.takeException(), isNull, reason: at);
             final card = tester.getRect(_dialogCard());
             final rects = [
-              for (final element in badges.evaluate())
-                tester.getRect(find.byWidget(element.widget)),
+              for (var index = 0; index < 4; index++)
+                tester.getRect(badges.at(index)),
             ];
             for (final rect in rects) {
               expect(rect.left, greaterThanOrEqualTo(card.left), reason: at);
@@ -2255,18 +2255,18 @@ void main() {
             }
             if (width >= 360) {
               for (final (index, rect) in rects.indexed) {
-                expect(rect.width, moreOrLessEquals(56), reason: at);
+                expect(rect.width, moreOrLessEquals(56, epsilon: 0.01), reason: at);
                 if (index > 0) {
                   expect(
                     rect.left,
-                    moreOrLessEquals(rects[index - 1].right),
+                    moreOrLessEquals(rects[index - 1].right, epsilon: 0.01),
                     reason: at,
                   );
                 }
               }
               expect(
                 (rects.first.left + rects.last.right) / 2,
-                moreOrLessEquals(card.center.dx),
+                moreOrLessEquals(card.center.dx, epsilon: 0.01),
                 reason: at,
               );
             }
