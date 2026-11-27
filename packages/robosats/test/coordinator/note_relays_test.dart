@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'dart:convert';
 
 import 'package:primitives/primitives.dart';
@@ -22,7 +24,7 @@ void main() {
   });
 
   test('the filters of a note are relay filters under the official client\'s label', () {
-    final key = switch (GarageKey.fromBytes(List.filled(32, 5))) {
+    final key = switch (GarageKey.fromBytes(Uint8List.fromList(List.filled(32, 5)))) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     };

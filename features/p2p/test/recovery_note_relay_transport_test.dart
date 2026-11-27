@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -66,7 +68,7 @@ void main() {
     return relay;
   }
 
-  final key = switch (GarageKey.fromBytes(List.filled(32, 7))) {
+  final key = switch (GarageKey.fromBytes(Uint8List.fromList(List.filled(32, 7)))) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };

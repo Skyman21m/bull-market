@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'dart:convert';
 
 import 'package:p2p/src/data/isolate_garage_note_compute.dart';
@@ -8,7 +10,7 @@ import 'package:test/test.dart';
 
 /// The work on the recovery note in an isolate of its own (#81): a note composed there reads back, and a reading that takes longer than its limit is stopped.
 void main() {
-  final key = switch (GarageKey.fromBytes(List.filled(32, 9))) {
+  final key = switch (GarageKey.fromBytes(Uint8List.fromList(List.filled(32, 9)))) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };

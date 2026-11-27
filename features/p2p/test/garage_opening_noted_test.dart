@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/garage_opening.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
@@ -10,7 +12,7 @@ import 'package:test/test.dart';
 void main() {
   NetworkGarageKey keyOf(int byte) => NetworkGarageKey(
     RobosatsNetwork.testnet,
-    switch (GarageKey.fromBytes(List.filled(32, byte))) {
+    switch (GarageKey.fromBytes(Uint8List.fromList(List.filled(32, byte)))) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     },

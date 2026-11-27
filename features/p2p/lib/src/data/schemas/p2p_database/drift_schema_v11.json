@@ -1,0 +1,3001 @@
+{
+  "_meta": {
+    "description": "This file contains a serialized version of schema entities for drift.",
+    "version": "1.3.0"
+  },
+  "options": {
+    "store_date_time_values_as_text": false
+  },
+  "entities": [
+    {
+      "id": 0,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "garage_recovery_notes",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "account_floor",
+            "getter_name": "accountFloor",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "read_at",
+            "getter_name": "readAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(network) = 'text' AND typeof(key_fingerprint) = 'text' AND (account_floor IS NULL OR typeof(account_floor) = 'integer') AND (read_at IS NULL OR typeof(read_at) = 'integer'))",
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (account_floor IS NULL OR account_floor BETWEEN 0 AND 2147483647)",
+          "CHECK (read_at IS NULL OR read_at BETWEEN 0 AND 8640000000000000)"
+        ],
+        "explicit_pk": [
+          "network",
+          "key_fingerprint"
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "references": [
+        0
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 0,
+        "references_in_body": [
+          0
+        ],
+        "name": "garage_recovery_notes_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_never_deleted BEFORE DELETE ON garage_recovery_notes\nBEGIN\n  SELECT RAISE(ABORT, 'a recovery note read is kept');\nEND;"
+      }
+    },
+    {
+      "id": 2,
+      "references": [
+        0
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 0,
+        "references_in_body": [
+          0
+        ],
+        "name": "garage_recovery_notes_forward",
+        "sql": "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes\nWHEN NEW.network IS NOT OLD.network\n  OR NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR (OLD.account_floor IS NOT NULL AND (NEW.account_floor IS NULL OR NEW.account_floor < OLD.account_floor))\n  OR (OLD.read_at IS NOT NULL AND NEW.read_at IS NOT OLD.read_at)\nBEGIN\n  SELECT RAISE(ABORT, 'a recovery note read only goes forward');\nEND;"
+      }
+    },
+    {
+      "id": 3,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "garage_key_histories",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "origin",
+            "getter_name": "origin",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "recorded_at",
+            "getter_name": "recordedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (length(key_fingerprint) = 64)",
+          "CHECK (origin IN ('generated', 'imported', 'acknowledged'))"
+        ],
+        "explicit_pk": [
+          "network",
+          "key_fingerprint"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "robot_bindings",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_alias",
+            "getter_name": "coordinatorAlias",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_onion",
+            "getter_name": "coordinatorOnion",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_node_keys",
+            "getter_name": "coordinatorNodeKeys",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_nostr_key",
+            "getter_name": "coordinatorNostrKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "bound_at",
+            "getter_name": "boundAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "provenance",
+            "getter_name": "provenance",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": "NOT NULL DEFAULT 'generated' CHECK (provenance IN ('generated', 'acknowledged'))",
+            "default_dart": "const CustomExpression('\\'generated\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (length(key_fingerprint) = 64)",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (length(coordinator_alias) > 0)",
+          "CHECK (length(coordinator_onion) > 0)",
+          "CHECK (length(coordinator_nostr_key) > 0)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "references": [
+        4
+      ],
+      "type": "table",
+      "data": {
+        "name": "trades",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_alias",
+            "getter_name": "coordinatorAlias",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_onion",
+            "getter_name": "coordinatorOnion",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "order_id",
+            "getter_name": "orderId",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "role",
+            "getter_name": "role",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "origin",
+            "getter_name": "origin",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "taken_at",
+            "getter_name": "takenAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "confirmed_at",
+            "getter_name": "confirmedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "closed_at",
+            "getter_name": "closedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (length(coordinator_alias) > 0)",
+          "CHECK (length(coordinator_onion) > 0)",
+          "CHECK ((order_id IS NOT NULL AND order_id > 0) OR (order_id IS NULL AND origin = 'madeHere' AND confirmed_at IS NULL))",
+          "CHECK (role IN ('buyer', 'seller'))",
+          "CHECK (origin IN ('takenHere', 'madeHere', 'recovered'))",
+          "CHECK (origin <> 'madeHere' OR ((order_id IS NULL) = (confirmed_at IS NULL)))",
+          "CHECK (origin <> 'recovered' OR confirmed_at IS NOT NULL)",
+          "CHECK (taken_at BETWEEN 0 AND 8640000000000000)",
+          "CHECK (confirmed_at IS NULL OR confirmed_at BETWEEN 0 AND 8640000000000000)",
+          "CHECK (closed_at IS NULL OR closed_at BETWEEN 0 AND 8640000000000000)",
+          "FOREIGN KEY (key_fingerprint, robot_index, network) REFERENCES robot_bindings (key_fingerprint, robot_index, network)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_terms",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "version",
+            "getter_name": "version",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_alias",
+            "getter_name": "coordinatorAlias",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "order_id",
+            "getter_name": "orderId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "role",
+            "getter_name": "role",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "order_type",
+            "getter_name": "orderType",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "currency_id",
+            "getter_name": "currencyId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "amount",
+            "getter_name": "amount",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "is_range",
+            "getter_name": "isRange",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"is_range\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"is_range\" IN (0, 1))"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "premium_percent",
+            "getter_name": "premiumPercent",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "explicit_satoshis",
+            "getter_name": "explicitSatoshis",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "bond_size_percent",
+            "getter_name": "bondSizePercent",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "escrow_seconds",
+            "getter_name": "escrowSeconds",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "book_price",
+            "getter_name": "bookPrice",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "taker_fee",
+            "getter_name": "takerFee",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(is_range) = 'integer' AND (explicit_satoshis IS NULL OR typeof(explicit_satoshis) = 'integer') AND typeof(escrow_seconds) = 'integer')",
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (version >= 1)",
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (length(coordinator_alias) > 0)",
+          "CHECK (order_id BETWEEN 1 AND 9007199254740992)",
+          "CHECK (role IN ('buyer', 'seller'))",
+          "CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller'))",
+          "CHECK (currency_id > 0)",
+          "CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000)",
+          "CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000)",
+          "CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000)",
+          "CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15)",
+          "CHECK (escrow_seconds BETWEEN 1800 AND 36000)",
+          "CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000)",
+          "CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01)",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_trails",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "version",
+            "getter_name": "version",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_alias",
+            "getter_name": "coordinatorAlias",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "order_id",
+            "getter_name": "orderId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "role",
+            "getter_name": "role",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "position",
+            "getter_name": "position",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "read_at",
+            "getter_name": "readAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "bond_hash",
+            "getter_name": "bondHash",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "escrow_hash",
+            "getter_name": "escrowHash",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deadline",
+            "getter_name": "deadline",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "bond_step_seen_at",
+            "getter_name": "bondStepSeenAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "bond_step_deadline",
+            "getter_name": "bondStepDeadline",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "breached",
+            "getter_name": "breached",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"breached\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"breached\" IN (0, 1))"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "history_unknown",
+            "getter_name": "historyUnknown",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"history_unknown\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"history_unknown\" IN (0, 1))"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "take",
+            "getter_name": "take",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "take_deadline",
+            "getter_name": "takeDeadline",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "taker_hash_id",
+            "getter_name": "takerHashId",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "taken_amount",
+            "getter_name": "takenAmount",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "earlier_escrows",
+            "getter_name": "earlierEscrows",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "seen_late",
+            "getter_name": "seenLate",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"seen_late\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"seen_late\" IN (0, 1))"
+            },
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "terms_changed_at",
+            "getter_name": "termsChangedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": "NULL CHECK (terms_changed_at IS NULL OR (typeof(terms_changed_at) = 'integer' AND terms_changed_at BETWEEN 0 AND read_at))",
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "terms_changed_premium_low",
+            "getter_name": "termsChangedPremiumLow",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": "NULL CHECK (terms_changed_premium_low IS NULL OR (terms_changed_at IS NOT NULL AND typeof(terms_changed_premium_low) = 'real' AND terms_changed_premium_low BETWEEN -100 AND 999))",
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "terms_changed_premium_high",
+            "getter_name": "termsChangedPremiumHigh",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": "NULL CHECK ((terms_changed_premium_high IS NULL) = (terms_changed_premium_low IS NULL) AND (terms_changed_premium_high IS NULL OR (typeof(terms_changed_premium_high) = 'real' AND terms_changed_premium_high BETWEEN -100 AND 999 AND terms_changed_premium_high >= terms_changed_premium_low)))",
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (version >= 1)",
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (length(coordinator_alias) > 0)",
+          "CHECK (order_id BETWEEN 1 AND 9007199254740992)",
+          "CHECK (role IN ('buyer', 'seller'))",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(position) = 'text' AND typeof(read_at) = 'integer' AND (bond_hash IS NULL OR typeof(bond_hash) = 'text') AND (escrow_hash IS NULL OR typeof(escrow_hash) = 'text') AND (deadline IS NULL OR typeof(deadline) = 'integer') AND (bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = 'integer') AND (bond_step_deadline IS NULL OR typeof(bond_step_deadline) = 'integer') AND typeof(breached) = 'integer' AND typeof(history_unknown) = 'integer')",
+          "CHECK (position IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable'))",
+          "CHECK (read_at BETWEEN 0 AND 253402300799999999)",
+          "CHECK (deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999)",
+          "CHECK (bond_step_seen_at IS NULL OR bond_step_seen_at BETWEEN 0 AND read_at)",
+          "CHECK (bond_step_deadline IS NULL OR bond_step_deadline BETWEEN 0 AND 253402300799999999)",
+          "CHECK (bond_hash IS NULL OR (length(bond_hash) = 64 AND bond_hash NOT GLOB '*[^0-9a-f]*'))",
+          "CHECK (escrow_hash IS NULL OR (length(escrow_hash) = 64 AND escrow_hash NOT GLOB '*[^0-9a-f]*'))",
+          "CHECK (typeof(take) = 'integer' AND (take_deadline IS NULL OR typeof(take_deadline) = 'integer') AND (taker_hash_id IS NULL OR typeof(taker_hash_id) = 'text') AND (taken_amount IS NULL OR typeof(taken_amount) = 'real'))",
+          "CHECK (take >= 0)",
+          "CHECK (take_deadline IS NULL OR take_deadline BETWEEN 0 AND 253402300799999999)",
+          "CHECK (taker_hash_id IS NULL OR (length(taker_hash_id) = 64 AND taker_hash_id NOT GLOB '*[^0-9a-f]*'))",
+          "CHECK (taken_amount IS NULL OR (taken_amount > 0 AND taken_amount < 10000000000))",
+          "CHECK (take = 0 OR take_deadline IS NOT NULL)",
+          "CHECK (typeof(earlier_escrows) = 'text' AND length(earlier_escrows) % 65 = 0 AND earlier_escrows NOT GLOB '*[^0-9a-f;]*' AND typeof(seen_late) = 'integer' AND seen_late IN (0, 1))",
+          "CHECK (take > 0 OR (earlier_escrows = '' AND seen_late = 0))",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_payments",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "step",
+            "getter_name": "step",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "payment_hash",
+            "getter_name": "paymentHash",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "started_at",
+            "getter_name": "startedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "wallet_payment_id",
+            "getter_name": "walletPaymentId",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "take",
+            "getter_name": "take",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "confirmed_sats",
+            "getter_name": "confirmedSats",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": "NULL CHECK (confirmed_sats IS NULL OR (typeof(confirmed_sats) = 'integer' AND confirmed_sats BETWEEN 1 AND 2100000000000000))",
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (step IN ('bond', 'escrow'))",
+          "CHECK (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (started_at BETWEEN 0 AND 253402300799999999)",
+          "CHECK (wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256)",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(step) = 'text' AND typeof(payment_hash) = 'text' AND typeof(started_at) = 'integer' AND (wallet_payment_id IS NULL OR typeof(wallet_payment_id) = 'text'))",
+          "CHECK (typeof(take) = 'integer' AND take >= 0)",
+          "CHECK (step = 'escrow' OR take = 0)",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index",
+          "step",
+          "take"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_chat_pins",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "primary_fingerprint",
+            "getter_name": "primaryFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "subkey_fingerprint",
+            "getter_name": "subkeyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "armored_key",
+            "getter_name": "armoredKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB '*[^0-9A-F]*')",
+          "CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*')",
+          "CHECK (length(armored_key) <= 20000 AND armored_key GLOB '-----BEGIN PGP PUBLIC KEY BLOCK-----*')",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text' AND typeof(armored_key) = 'text')",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_chat_nostr_pins",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "peer_key",
+            "getter_name": "peerKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "own_key",
+            "getter_name": "ownKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (length(peer_key) = 64 AND peer_key NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (length(own_key) = 64 AND own_key NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(peer_key) = 'text' AND typeof(own_key) = 'text')",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "maker_terms",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "version",
+            "getter_name": "version",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "coordinator_alias",
+            "getter_name": "coordinatorAlias",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "role",
+            "getter_name": "role",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "order_type",
+            "getter_name": "orderType",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "currency_id",
+            "getter_name": "currencyId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "amount",
+            "getter_name": "amount",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "min_amount",
+            "getter_name": "minAmount",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "max_amount",
+            "getter_name": "maxAmount",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "premium_percent",
+            "getter_name": "premiumPercent",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "payment_method",
+            "getter_name": "paymentMethod",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "bond_size_percent",
+            "getter_name": "bondSizePercent",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "public_seconds",
+            "getter_name": "publicSeconds",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "escrow_seconds",
+            "getter_name": "escrowSeconds",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "description",
+            "getter_name": "description",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "has_password",
+            "getter_name": "hasPassword",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"has_password\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"has_password\" IN (0, 1))"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "latitude",
+            "getter_name": "latitude",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "longitude",
+            "getter_name": "longitude",
+            "moor_type": "double",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_price",
+            "getter_name": "createdPrice",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "maker_fee",
+            "getter_name": "makerFee",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(payment_method) = 'text' AND typeof(public_seconds) = 'integer' AND typeof(escrow_seconds) = 'integer' AND (description IS NULL OR typeof(description) = 'text') AND typeof(has_password) = 'integer')",
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (version >= 1)",
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (instr(CAST(coordinator_alias AS BLOB), X'00') = 0 AND length(coordinator_alias) > 0)",
+          "CHECK (role IN ('buyer', 'seller'))",
+          "CHECK ((order_type = 0 AND role = 'buyer') OR (order_type = 1 AND role = 'seller'))",
+          "CHECK (currency_id > 0)",
+          "CHECK ((amount IS NOT NULL AND min_amount IS NULL AND max_amount IS NULL AND typeof(amount) = 'real' AND amount > 0 AND amount < 10000000000) OR (amount IS NULL AND min_amount IS NOT NULL AND max_amount IS NOT NULL AND typeof(min_amount) = 'real' AND typeof(max_amount) = 'real' AND min_amount > 0 AND max_amount < 10000000000 AND min_amount <= max_amount / 1.5 AND min_amount >= max_amount / 15))",
+          "CHECK (typeof(premium_percent) = 'real' AND premium_percent > -100 AND premium_percent <= 999)",
+          "CHECK (instr(CAST(payment_method AS BLOB), X'00') = 0 AND length(payment_method) BETWEEN 1 AND 70)",
+          "CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15)",
+          "CHECK (public_seconds BETWEEN 600 AND 86400)",
+          "CHECK (escrow_seconds BETWEEN 1800 AND 36000)",
+          "CHECK (description IS NULL OR (instr(CAST(description AS BLOB), X'00') = 0 AND length(description) BETWEEN 1 AND 240))",
+          "CHECK ((latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL AND typeof(latitude) = 'real' AND typeof(longitude) = 'real' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180))",
+          "CHECK (typeof(created_price) = 'real' AND created_price > 0 AND created_price < 1000000000000000)",
+          "CHECK (typeof(maker_fee) = 'real' AND maker_fee BETWEEN 0 AND 0.01)",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "references": [
+        5
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_payouts",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "take",
+            "getter_name": "take",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "source",
+            "getter_name": "source",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "kind",
+            "getter_name": "kind",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "submitted_at",
+            "getter_name": "submittedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer'))",
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (take >= 0)",
+          "CHECK (source IN ('thisWallet', 'pasted', 'unrecorded'))",
+          "CHECK (kind IS NULL OR kind IN ('invoice', 'address'))",
+          "CHECK ((source = 'unrecorded' AND kind IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL))",
+          "CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999)",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index",
+          "take"
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "derived_garage_keys",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_index",
+            "getter_name": "keyIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "activated_at",
+            "getter_name": "activatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(network) = 'text' AND typeof(key_index) = 'integer' AND typeof(key_fingerprint) = 'text' AND typeof(activated_at) = 'integer')",
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (key_index BETWEEN 0 AND 2147483647)",
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (activated_at BETWEEN 0 AND 8640000000000000)",
+          "UNIQUE (network, key_fingerprint)"
+        ],
+        "explicit_pk": [
+          "network",
+          "key_index"
+        ]
+      }
+    },
+    {
+      "id": 14,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "selected_garage_keys",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "network",
+            "getter_name": "network",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "key_index",
+            "getter_name": "keyIndex",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "last_internal_index",
+            "getter_name": "lastInternalIndex",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(network) = 'text' AND (key_index IS NULL OR typeof(key_index) = 'integer') AND (last_internal_index IS NULL OR typeof(last_internal_index) = 'integer'))",
+          "CHECK (network IN ('mainnet', 'testnet'))",
+          "CHECK (key_index IS NULL OR key_index BETWEEN 0 AND 2147483647)",
+          "CHECK (last_internal_index IS NULL OR last_internal_index BETWEEN 0 AND 2147483647)",
+          "CHECK (key_index IS NULL OR last_internal_index = key_index)"
+        ],
+        "explicit_pk": [
+          "network"
+        ]
+      }
+    },
+    {
+      "id": 15,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "garage_notices",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "notice",
+            "getter_name": "notice",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "shown",
+            "getter_name": "shown",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (typeof(notice) = 'text' AND typeof(shown) = 'integer')",
+          "CHECK (notice IN ('externalKeyNamed'))",
+          "CHECK (shown IN (0, 1))"
+        ],
+        "explicit_pk": [
+          "notice"
+        ]
+      }
+    },
+    {
+      "id": 16,
+      "references": [
+        13
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 13,
+        "references_in_body": [
+          13
+        ],
+        "name": "derived_garage_keys_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_deleted BEFORE DELETE ON derived_garage_keys\nBEGIN\n  SELECT RAISE(ABORT, 'an activated Garage Key is kept');\nEND;"
+      }
+    },
+    {
+      "id": 17,
+      "references": [
+        13
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 13,
+        "references_in_body": [
+          13
+        ],
+        "name": "derived_garage_keys_never_changed",
+        "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_changed BEFORE UPDATE ON derived_garage_keys\nBEGIN\n  SELECT RAISE(ABORT, 'an activated Garage Key never changes');\nEND;"
+      }
+    },
+    {
+      "id": 18,
+      "references": [
+        13
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 13,
+        "references_in_body": [
+          13
+        ],
+        "name": "derived_garage_keys_in_order",
+        "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys\nWHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1)\nBEGIN\n  SELECT RAISE(ABORT, 'a Garage Key out of order');\nEND;"
+      }
+    },
+    {
+      "id": 19,
+      "references": [
+        13
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 13,
+        "references_in_body": [
+          13
+        ],
+        "name": "derived_garage_keys_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys\nWHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 20,
+      "references": [
+        15
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 15,
+        "references_in_body": [
+          15
+        ],
+        "name": "garage_notices_shown_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices\nWHEN NOT (OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice)\nBEGIN\n  SELECT RAISE(ABORT, 'a Garage notice only turns shown');\nEND;"
+      }
+    },
+    {
+      "id": 21,
+      "references": [
+        15
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 15,
+        "references_in_body": [
+          15
+        ],
+        "name": "garage_notices_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices\nBEGIN\n  SELECT RAISE(ABORT, 'a Garage notice is kept');\nEND;"
+      }
+    },
+    {
+      "id": 22,
+      "references": [
+        12
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 12,
+        "references_in_body": [
+          12
+        ],
+        "name": "trade_payouts_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_never_deleted BEFORE DELETE ON trade_payouts\nBEGIN\n  SELECT RAISE(ABORT, 'the payout of a contract is kept');\nEND;"
+      }
+    },
+    {
+      "id": 23,
+      "references": [
+        12,
+        5,
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 12,
+        "references_in_body": [
+          12,
+          5,
+          7
+        ],
+        "name": "trade_payouts_forward",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_forward BEFORE UPDATE ON trade_payouts\nWHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.take IS NOT OLD.take\n  OR NEW.source IS 'unrecorded'\n  OR (OLD.submitted_at IS NOT NULL AND (NEW.submitted_at IS NULL OR NEW.submitted_at < OLD.submitted_at))\n  OR NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trades.role = 'buyer' AND trade_trails.take = NEW.take)\nBEGIN\n  SELECT RAISE(ABORT, 'a payout only moves forward');\nEND;"
+      }
+    },
+    {
+      "id": 24,
+      "references": [
+        12,
+        5,
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 12,
+        "references_in_body": [
+          12,
+          5,
+          7
+        ],
+        "name": "trade_payouts_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_of_their_trade BEFORE INSERT ON trade_payouts\nWHEN (NEW.source IS NOT 'thisWallet' AND NEW.source IS NOT 'pasted')\n  OR NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trades.role = 'buyer' AND trade_trails.take = NEW.take)\nBEGIN\n  SELECT RAISE(ABORT, 'a payout of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 25,
+      "references": [
+        12
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 12,
+        "references_in_body": [
+          12
+        ],
+        "name": "trade_payouts_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_inserted_once BEFORE INSERT ON trade_payouts\nWHEN EXISTS (SELECT 1 FROM trade_payouts WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND take = NEW.take)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 26,
+      "references": [
+        11
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 11,
+        "references_in_body": [
+          11
+        ],
+        "name": "maker_terms_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_never_deleted BEFORE DELETE ON maker_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a make are kept');\nEND;"
+      }
+    },
+    {
+      "id": 27,
+      "references": [
+        11
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 11,
+        "references_in_body": [
+          11
+        ],
+        "name": "maker_terms_set_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_set_once BEFORE UPDATE ON maker_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a make are set once');\nEND;"
+      }
+    },
+    {
+      "id": 28,
+      "references": [
+        11
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 11,
+        "references_in_body": [
+          11
+        ],
+        "name": "maker_terms_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_inserted_once BEFORE INSERT ON maker_terms\nWHEN EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 29,
+      "references": [
+        11,
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 11,
+        "references_in_body": [
+          11,
+          5
+        ],
+        "name": "maker_terms_of_their_make",
+        "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_of_their_make BEFORE INSERT ON maker_terms\nWHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND role = NEW.role AND origin = 'madeHere' AND order_id IS NULL AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'terms of no pending make');\nEND;"
+      }
+    },
+    {
+      "id": 30,
+      "references": [
+        9
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 9,
+        "references_in_body": [
+          9
+        ],
+        "name": "trade_chat_pins_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_never_deleted BEFORE DELETE ON trade_chat_pins\nBEGIN\n  SELECT RAISE(ABORT, 'the pinned key of a trade is kept');\nEND;"
+      }
+    },
+    {
+      "id": 31,
+      "references": [
+        9
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 9,
+        "references_in_body": [
+          9
+        ],
+        "name": "trade_chat_pins_never_changed",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_never_changed BEFORE UPDATE ON trade_chat_pins\nBEGIN\n  SELECT RAISE(ABORT, 'the pinned key of a trade never changes');\nEND;"
+      }
+    },
+    {
+      "id": 32,
+      "references": [
+        9
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 9,
+        "references_in_body": [
+          9
+        ],
+        "name": "trade_chat_pins_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_inserted_once BEFORE INSERT ON trade_chat_pins\nWHEN EXISTS (SELECT 1 FROM trade_chat_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 33,
+      "references": [
+        9,
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 9,
+        "references_in_body": [
+          9,
+          5
+        ],
+        "name": "trade_chat_pins_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON trade_chat_pins\nWHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a pin of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 34,
+      "references": [
+        10
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 10,
+        "references_in_body": [
+          10
+        ],
+        "name": "trade_chat_nostr_pins_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins\nBEGIN\n  SELECT RAISE(ABORT, 'the Nostr keys of a trade are kept');\nEND;"
+      }
+    },
+    {
+      "id": 35,
+      "references": [
+        10
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 10,
+        "references_in_body": [
+          10
+        ],
+        "name": "trade_chat_nostr_pins_never_changed",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins\nBEGIN\n  SELECT RAISE(ABORT, 'the Nostr keys of a trade never change');\nEND;"
+      }
+    },
+    {
+      "id": 36,
+      "references": [
+        10
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 10,
+        "references_in_body": [
+          10
+        ],
+        "name": "trade_chat_nostr_pins_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins\nWHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 37,
+      "references": [
+        10,
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 10,
+        "references_in_body": [
+          10,
+          5
+        ],
+        "name": "trade_chat_nostr_pins_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins\nWHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a Nostr pin of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 38,
+      "references": [
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8
+        ],
+        "name": "trade_payments_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_never_deleted BEFORE DELETE ON trade_payments\nBEGIN\n  SELECT RAISE(ABORT, 'the payment of a trade is kept');\nEND;"
+      }
+    },
+    {
+      "id": 39,
+      "references": [
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8
+        ],
+        "name": "trade_payments_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments\nWHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 40,
+      "references": [
+        8,
+        5,
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8,
+          5,
+          7
+        ],
+        "name": "trade_payments_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments\nWHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trade_trails.take = NEW.take AND (NEW.take = 0 OR trades.origin = 'madeHere'))\nBEGIN\n  SELECT RAISE(ABORT, 'a payment of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 41,
+      "references": [
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8
+        ],
+        "name": "trade_payments_forward",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments\nWHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.step IS NOT OLD.step\n  OR NEW.payment_hash IS NOT OLD.payment_hash\n  OR NEW.started_at < OLD.started_at\n  OR NEW.take IS NOT OLD.take\nBEGIN\n  SELECT RAISE(ABORT, 'a payment only moves forward');\nEND;"
+      }
+    },
+    {
+      "id": 42,
+      "references": [
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8
+        ],
+        "name": "trade_payments_hash_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_hash_once BEFORE INSERT ON trade_payments\nWHEN EXISTS (SELECT 1 FROM trade_payments WHERE payment_hash = NEW.payment_hash AND NOT (key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take))\nBEGIN\n  SELECT RAISE(ABORT, 'an invoice is paid once');\nEND;"
+      }
+    },
+    {
+      "id": 43,
+      "references": [
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8
+        ],
+        "name": "trade_payments_sats_known",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_sats_known BEFORE INSERT ON trade_payments\nWHEN NEW.confirmed_sats IS NULL\nBEGIN\n  SELECT RAISE(ABORT, 'a payment is recorded with its amount');\nEND;"
+      }
+    },
+    {
+      "id": 44,
+      "references": [
+        8
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 8,
+        "references_in_body": [
+          8
+        ],
+        "name": "trade_payments_sats_forward",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_sats_forward BEFORE UPDATE ON trade_payments\nWHEN (OLD.confirmed_sats IS NULL AND NEW.confirmed_sats IS NOT NULL)\n  OR (OLD.confirmed_sats IS NOT NULL AND (NEW.confirmed_sats IS NULL OR NEW.confirmed_sats < OLD.confirmed_sats))\nBEGIN\n  SELECT RAISE(ABORT, 'the amount of a payment never goes down');\nEND;"
+      }
+    },
+    {
+      "id": 45,
+      "references": [
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 5,
+        "references_in_body": [
+          5
+        ],
+        "name": "trades_one_open_per_order",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades\nWHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'an order has one open trade');\nEND;"
+      }
+    },
+    {
+      "id": 46,
+      "references": [
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 5,
+        "references_in_body": [
+          5
+        ],
+        "name": "trades_one_open_per_order_update",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order_update BEFORE UPDATE OF order_id ON trades\nWHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL AND NOT (key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index))\nBEGIN\n  SELECT RAISE(ABORT, 'an order has one open trade');\nEND;"
+      }
+    },
+    {
+      "id": 47,
+      "references": [
+        6
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 6,
+        "references_in_body": [
+          6
+        ],
+        "name": "trade_terms_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a trade are kept');\nEND;"
+      }
+    },
+    {
+      "id": 48,
+      "references": [
+        6
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 6,
+        "references_in_body": [
+          6
+        ],
+        "name": "trade_terms_set_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a trade are set once');\nEND;"
+      }
+    },
+    {
+      "id": 49,
+      "references": [
+        6
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 6,
+        "references_in_body": [
+          6
+        ],
+        "name": "trade_terms_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms\nWHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 50,
+      "references": [
+        6,
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 6,
+        "references_in_body": [
+          6,
+          5
+        ],
+        "name": "trade_terms_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms\nWHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND origin IN ('takenHere', 'recovered') AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'terms of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 51,
+      "references": [
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7
+        ],
+        "name": "trade_trails_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails\nBEGIN\n  SELECT RAISE(ABORT, 'the trail of a trade is kept');\nEND;"
+      }
+    },
+    {
+      "id": 52,
+      "references": [
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7
+        ],
+        "name": "trade_trails_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails\nWHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 53,
+      "references": [
+        7,
+        5,
+        6,
+        11
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7,
+          5,
+          6,
+          11
+        ],
+        "name": "trade_trails_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails\nWHEN NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL AND NEW.take = 0 AND ((trades.origin IN ('takenHere', 'recovered') AND NEW.take_deadline IS NULL AND NEW.taker_hash_id IS NULL AND NEW.taken_amount IS NULL AND EXISTS (SELECT 1 FROM trade_terms WHERE trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index)) OR (trades.origin = 'madeHere' AND EXISTS (SELECT 1 FROM maker_terms WHERE maker_terms.key_fingerprint = trades.key_fingerprint AND maker_terms.robot_index = trades.robot_index))))\nBEGIN\n  SELECT RAISE(ABORT, 'a trail of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 54,
+      "references": [
+        7,
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7,
+          5
+        ],
+        "name": "trade_trails_closed",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails\nWHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 55,
+      "references": [
+        7,
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7,
+          5
+        ],
+        "name": "trade_trails_forward",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails\nWHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.network IS NOT OLD.network\n  OR NEW.coordinator_alias IS NOT OLD.coordinator_alias\n  OR NEW.order_id IS NOT OLD.order_id\n  OR NEW.role IS NOT OLD.role\n  OR NEW.version < OLD.version\n  OR NEW.read_at < OLD.read_at\n  OR NEW.breached < OLD.breached\n  OR NEW.history_unknown IS NOT OLD.history_unknown\n  OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)\n  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)\n  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)\n  OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))\n  OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)\n  OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position)\n  OR (NEW.take IS NOT OLD.take AND NOT (NEW.take IS OLD.take + 1 AND OLD.position IN ('public', 'paused', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NOT (OLD.position = 'waitingForPayout' AND OLD.role = 'buyer') AND OLD.take_deadline IS NOT NULL AND ((NEW.position IN ('waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND NEW.seen_late = 0) OR (NEW.position IN ('chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL AND NEW.escrow_hash IS NULL AND (OLD.position IN ('public', 'paused') OR NEW.taker_hash_id IS NOT OLD.taker_hash_id) AND NEW.seen_late = 1)) AND NEW.earlier_escrows IS (OLD.earlier_escrows || coalesce(OLD.escrow_hash || ';', '')) AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere')))\n  OR (NEW.take IS OLD.take AND (NEW.earlier_escrows IS NOT OLD.earlier_escrows OR NEW.seen_late IS NOT OLD.seen_late))\n  OR (NEW.escrow_hash IS NOT NULL AND instr(';' || NEW.earlier_escrows, ';' || NEW.escrow_hash || ';') > 0)\n  OR (OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)\n  OR (OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)\n  OR (OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)\n  OR (NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)\n  OR (NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)\n  OR (NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)\n  OR (NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)\n  OR (NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)\n  OR ((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere'))\nBEGIN\n  SELECT RAISE(ABORT, 'a trail only moves forward');\nEND;"
+      }
+    },
+    {
+      "id": 56,
+      "references": [
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7
+        ],
+        "name": "trade_trails_terms_trace",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails\nWHEN (OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)\n  OR (OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)\n  OR (OLD.terms_changed_premium_low IS NOT NULL AND (NEW.terms_changed_premium_low IS NULL OR NEW.terms_changed_premium_low > OLD.terms_changed_premium_low))\n  OR (OLD.terms_changed_premium_high IS NOT NULL AND (NEW.terms_changed_premium_high IS NULL OR NEW.terms_changed_premium_high < OLD.terms_changed_premium_high))\nBEGIN\n  SELECT RAISE(ABORT, 'the trace of terms shown otherwise is kept');\nEND;"
+      }
+    },
+    {
+      "id": 57,
+      "references": [
+        4
+      ],
+      "type": "index",
+      "data": {
+        "on": 4,
+        "name": "robot_bindings_network",
+        "sql": "CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network\n  ON robot_bindings (key_fingerprint, robot_index, network);",
+        "unique": true,
+        "columns": []
+      }
+    },
+    {
+      "id": 58,
+      "references": [
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 5,
+        "references_in_body": [
+          5
+        ],
+        "name": "trades_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades\nBEGIN\n  SELECT RAISE(ABORT, 'a trade record is kept');\nEND;"
+      }
+    },
+    {
+      "id": 59,
+      "references": [
+        5,
+        11
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 5,
+        "references_in_body": [
+          5,
+          11
+        ],
+        "name": "trades_set_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades\nWHEN OLD.closed_at IS NOT NULL\n  OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)\n  OR NEW.network IS NOT OLD.network\n  OR NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.coordinator_alias IS NOT OLD.coordinator_alias\n  OR NEW.coordinator_onion IS NOT OLD.coordinator_onion\n  OR (NEW.order_id IS NOT OLD.order_id AND NOT (OLD.origin IS 'madeHere' AND OLD.order_id IS NULL AND OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index)))\n  OR NEW.role IS NOT OLD.role\n  OR NEW.origin IS NOT OLD.origin\n  OR NEW.taken_at IS NOT OLD.taken_at\nBEGIN\n  SELECT RAISE(ABORT, 'a trade record only gains its times');\nEND;"
+      }
+    },
+    {
+      "id": 60,
+      "references": [
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 5,
+        "references_in_body": [
+          5
+        ],
+        "name": "trades_made_pending",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_made_pending BEFORE INSERT ON trades\nWHEN NEW.origin IS 'madeHere' AND (NEW.order_id IS NOT NULL OR NEW.closed_at IS NOT NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a make is recorded pending');\nEND;"
+      }
+    },
+    {
+      "id": 61,
+      "references": [
+        5
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 5,
+        "references_in_body": [
+          5
+        ],
+        "name": "trades_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades\nWHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    }
+  ],
+  "fixed_sql": [
+    {
+      "name": "garage_recovery_notes",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"garage_recovery_notes\" (\"network\" TEXT NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"account_floor\" INTEGER NULL, \"read_at\" INTEGER NULL, PRIMARY KEY (\"network\", \"key_fingerprint\"), CHECK (typeof(network) = 'text' AND typeof(key_fingerprint) = 'text' AND (account_floor IS NULL OR typeof(account_floor) = 'integer') AND (read_at IS NULL OR typeof(read_at) = 'integer')), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (account_floor IS NULL OR account_floor BETWEEN 0 AND 2147483647), CHECK (read_at IS NULL OR read_at BETWEEN 0 AND 8640000000000000));"
+        }
+      ]
+    },
+    {
+      "name": "garage_recovery_notes_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_never_deleted BEFORE DELETE ON garage_recovery_notes BEGIN SELECT RAISE (ABORT, 'a recovery note read is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "garage_recovery_notes_forward",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes WHEN NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR(OLD.account_floor IS NOT NULL AND(NEW.account_floor IS NULL OR NEW.account_floor < OLD.account_floor))OR(OLD.read_at IS NOT NULL AND NEW.read_at IS NOT OLD.read_at)BEGIN SELECT RAISE (ABORT, 'a recovery note read only goes forward');END"
+        }
+      ]
+    },
+    {
+      "name": "garage_key_histories",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"garage_key_histories\" (\"network\" TEXT NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"origin\" TEXT NOT NULL, \"recorded_at\" INTEGER NOT NULL, PRIMARY KEY (\"network\", \"key_fingerprint\"), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(key_fingerprint) = 64), CHECK (origin IN ('generated', 'imported', 'acknowledged')));"
+        }
+      ]
+    },
+    {
+      "name": "robot_bindings",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"robot_bindings\" (\"network\" TEXT NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"coordinator_onion\" TEXT NOT NULL, \"coordinator_node_keys\" TEXT NOT NULL, \"coordinator_nostr_key\" TEXT NOT NULL, \"bound_at\" INTEGER NOT NULL, \"provenance\" TEXT NOT NULL DEFAULT 'generated' CHECK (provenance IN ('generated', 'acknowledged')), PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (length(coordinator_nostr_key) > 0));"
+        }
+      ]
+    },
+    {
+      "name": "trades",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trades\" (\"network\" TEXT NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"coordinator_onion\" TEXT NOT NULL, \"order_id\" INTEGER NULL, \"role\" TEXT NOT NULL, \"origin\" TEXT NOT NULL, \"taken_at\" INTEGER NOT NULL, \"confirmed_at\" INTEGER NULL, \"closed_at\" INTEGER NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK ((order_id IS NOT NULL AND order_id > 0) OR (order_id IS NULL AND origin = 'madeHere' AND confirmed_at IS NULL)), CHECK (role IN ('buyer', 'seller')), CHECK (origin IN ('takenHere', 'madeHere', 'recovered')), CHECK (origin <> 'madeHere' OR ((order_id IS NULL) = (confirmed_at IS NULL))), CHECK (origin <> 'recovered' OR confirmed_at IS NOT NULL), CHECK (taken_at BETWEEN 0 AND 8640000000000000), CHECK (confirmed_at IS NULL OR confirmed_at BETWEEN 0 AND 8640000000000000), CHECK (closed_at IS NULL OR closed_at BETWEEN 0 AND 8640000000000000), FOREIGN KEY (key_fingerprint, robot_index, network) REFERENCES robot_bindings (key_fingerprint, robot_index, network));"
+        }
+      ]
+    },
+    {
+      "name": "trade_terms",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_terms\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"order_type\" INTEGER NOT NULL, \"currency_id\" INTEGER NOT NULL, \"amount\" REAL NOT NULL, \"is_range\" INTEGER NOT NULL CHECK (\"is_range\" IN (0, 1)), \"premium_percent\" REAL NOT NULL, \"explicit_satoshis\" INTEGER NULL, \"bond_size_percent\" REAL NOT NULL, \"escrow_seconds\" INTEGER NOT NULL, \"book_price\" REAL NOT NULL, \"taker_fee\" REAL NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(is_range) = 'integer' AND (explicit_satoshis IS NULL OR typeof(explicit_satoshis) = 'integer') AND typeof(escrow_seconds) = 'integer'), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller')), CHECK (currency_id > 0), CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000), CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000), CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000), CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15), CHECK (escrow_seconds BETWEEN 1800 AND 36000), CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000), CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_trails\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"position\" TEXT NOT NULL, \"read_at\" INTEGER NOT NULL, \"bond_hash\" TEXT NULL, \"escrow_hash\" TEXT NULL, \"deadline\" INTEGER NULL, \"bond_step_seen_at\" INTEGER NULL, \"bond_step_deadline\" INTEGER NULL, \"breached\" INTEGER NOT NULL CHECK (\"breached\" IN (0, 1)), \"history_unknown\" INTEGER NOT NULL CHECK (\"history_unknown\" IN (0, 1)), \"take\" INTEGER NOT NULL DEFAULT 0, \"take_deadline\" INTEGER NULL, \"taker_hash_id\" TEXT NULL, \"taken_amount\" REAL NULL, \"earlier_escrows\" TEXT NOT NULL DEFAULT '', \"seen_late\" INTEGER NOT NULL DEFAULT 0 CHECK (\"seen_late\" IN (0, 1)), \"terms_changed_at\" INTEGER NULL CHECK (terms_changed_at IS NULL OR (typeof(terms_changed_at) = 'integer' AND terms_changed_at BETWEEN 0 AND read_at)), \"terms_changed_premium_low\" REAL NULL CHECK (terms_changed_premium_low IS NULL OR (terms_changed_at IS NOT NULL AND typeof(terms_changed_premium_low) = 'real' AND terms_changed_premium_low BETWEEN -100 AND 999)), \"terms_changed_premium_high\" REAL NULL CHECK ((terms_changed_premium_high IS NULL) = (terms_changed_premium_low IS NULL) AND (terms_changed_premium_high IS NULL OR (typeof(terms_changed_premium_high) = 'real' AND terms_changed_premium_high BETWEEN -100 AND 999 AND terms_changed_premium_high >= terms_changed_premium_low))), PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(position) = 'text' AND typeof(read_at) = 'integer' AND (bond_hash IS NULL OR typeof(bond_hash) = 'text') AND (escrow_hash IS NULL OR typeof(escrow_hash) = 'text') AND (deadline IS NULL OR typeof(deadline) = 'integer') AND (bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = 'integer') AND (bond_step_deadline IS NULL OR typeof(bond_step_deadline) = 'integer') AND typeof(breached) = 'integer' AND typeof(history_unknown) = 'integer'), CHECK (position IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable')), CHECK (read_at BETWEEN 0 AND 253402300799999999), CHECK (deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999), CHECK (bond_step_seen_at IS NULL OR bond_step_seen_at BETWEEN 0 AND read_at), CHECK (bond_step_deadline IS NULL OR bond_step_deadline BETWEEN 0 AND 253402300799999999), CHECK (bond_hash IS NULL OR (length(bond_hash) = 64 AND bond_hash NOT GLOB '*[^0-9a-f]*')), CHECK (escrow_hash IS NULL OR (length(escrow_hash) = 64 AND escrow_hash NOT GLOB '*[^0-9a-f]*')), CHECK (typeof(take) = 'integer' AND (take_deadline IS NULL OR typeof(take_deadline) = 'integer') AND (taker_hash_id IS NULL OR typeof(taker_hash_id) = 'text') AND (taken_amount IS NULL OR typeof(taken_amount) = 'real')), CHECK (take >= 0), CHECK (take_deadline IS NULL OR take_deadline BETWEEN 0 AND 253402300799999999), CHECK (taker_hash_id IS NULL OR (length(taker_hash_id) = 64 AND taker_hash_id NOT GLOB '*[^0-9a-f]*')), CHECK (taken_amount IS NULL OR (taken_amount > 0 AND taken_amount < 10000000000)), CHECK (take = 0 OR take_deadline IS NOT NULL), CHECK (typeof(earlier_escrows) = 'text' AND length(earlier_escrows) % 65 = 0 AND earlier_escrows NOT GLOB '*[^0-9a-f;]*' AND typeof(seen_late) = 'integer' AND seen_late IN (0, 1)), CHECK (take > 0 OR (earlier_escrows = '' AND seen_late = 0)), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_payments\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"step\" TEXT NOT NULL, \"payment_hash\" TEXT NOT NULL, \"started_at\" INTEGER NOT NULL, \"wallet_payment_id\" TEXT NULL, \"take\" INTEGER NOT NULL DEFAULT 0, \"confirmed_sats\" INTEGER NULL CHECK (confirmed_sats IS NULL OR (typeof(confirmed_sats) = 'integer' AND confirmed_sats BETWEEN 1 AND 2100000000000000)), PRIMARY KEY (\"key_fingerprint\", \"robot_index\", \"step\", \"take\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (step IN ('bond', 'escrow')), CHECK (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*'), CHECK (started_at BETWEEN 0 AND 253402300799999999), CHECK (wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(step) = 'text' AND typeof(payment_hash) = 'text' AND typeof(started_at) = 'integer' AND (wallet_payment_id IS NULL OR typeof(wallet_payment_id) = 'text')), CHECK (typeof(take) = 'integer' AND take >= 0), CHECK (step = 'escrow' OR take = 0), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_pins",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_chat_pins\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"primary_fingerprint\" TEXT NOT NULL, \"subkey_fingerprint\" TEXT NOT NULL, \"armored_key\" TEXT NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB '*[^0-9A-F]*'), CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*'), CHECK (length(armored_key) <= 20000 AND armored_key GLOB '-----BEGIN PGP PUBLIC KEY BLOCK-----*'), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text' AND typeof(armored_key) = 'text'), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_chat_nostr_pins\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"peer_key\" TEXT NOT NULL, \"own_key\" TEXT NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(peer_key) = 64 AND peer_key NOT GLOB '*[^0-9a-f]*'), CHECK (length(own_key) = 64 AND own_key NOT GLOB '*[^0-9a-f]*'), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(peer_key) = 'text' AND typeof(own_key) = 'text'), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "maker_terms",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"maker_terms\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"role\" TEXT NOT NULL, \"order_type\" INTEGER NOT NULL, \"currency_id\" INTEGER NOT NULL, \"amount\" REAL NULL, \"min_amount\" REAL NULL, \"max_amount\" REAL NULL, \"premium_percent\" REAL NOT NULL, \"payment_method\" TEXT NOT NULL, \"bond_size_percent\" REAL NOT NULL, \"public_seconds\" INTEGER NOT NULL, \"escrow_seconds\" INTEGER NOT NULL, \"description\" TEXT NULL, \"has_password\" INTEGER NOT NULL CHECK (\"has_password\" IN (0, 1)), \"latitude\" REAL NULL, \"longitude\" REAL NULL, \"created_price\" REAL NOT NULL, \"maker_fee\" REAL NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(payment_method) = 'text' AND typeof(public_seconds) = 'integer' AND typeof(escrow_seconds) = 'integer' AND (description IS NULL OR typeof(description) = 'text') AND typeof(has_password) = 'integer'), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (instr(CAST(coordinator_alias AS BLOB), X'00') = 0 AND length(coordinator_alias) > 0), CHECK (role IN ('buyer', 'seller')), CHECK ((order_type = 0 AND role = 'buyer') OR (order_type = 1 AND role = 'seller')), CHECK (currency_id > 0), CHECK ((amount IS NOT NULL AND min_amount IS NULL AND max_amount IS NULL AND typeof(amount) = 'real' AND amount > 0 AND amount < 10000000000) OR (amount IS NULL AND min_amount IS NOT NULL AND max_amount IS NOT NULL AND typeof(min_amount) = 'real' AND typeof(max_amount) = 'real' AND min_amount > 0 AND max_amount < 10000000000 AND min_amount <= max_amount / 1.5 AND min_amount >= max_amount / 15)), CHECK (typeof(premium_percent) = 'real' AND premium_percent > -100 AND premium_percent <= 999), CHECK (instr(CAST(payment_method AS BLOB), X'00') = 0 AND length(payment_method) BETWEEN 1 AND 70), CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15), CHECK (public_seconds BETWEEN 600 AND 86400), CHECK (escrow_seconds BETWEEN 1800 AND 36000), CHECK (description IS NULL OR (instr(CAST(description AS BLOB), X'00') = 0 AND length(description) BETWEEN 1 AND 240)), CHECK ((latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL AND typeof(latitude) = 'real' AND typeof(longitude) = 'real' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)), CHECK (typeof(created_price) = 'real' AND created_price > 0 AND created_price < 1000000000000000), CHECK (typeof(maker_fee) = 'real' AND maker_fee BETWEEN 0 AND 0.01), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "trade_payouts",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_payouts\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"take\" INTEGER NOT NULL, \"source\" TEXT NOT NULL, \"kind\" TEXT NULL, \"submitted_at\" INTEGER NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\", \"take\"), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(take) = 'integer' AND typeof(source) = 'text' AND (kind IS NULL OR typeof(kind) = 'text') AND (submitted_at IS NULL OR typeof(submitted_at) = 'integer')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (take >= 0), CHECK (source IN ('thisWallet', 'pasted', 'unrecorded')), CHECK (kind IS NULL OR kind IN ('invoice', 'address')), CHECK ((source = 'unrecorded' AND kind IS NULL AND submitted_at IS NULL) OR (source <> 'unrecorded' AND kind IS NOT NULL AND submitted_at IS NOT NULL)), CHECK (submitted_at IS NULL OR submitted_at BETWEEN 0 AND 253402300799999999), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "derived_garage_keys",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"derived_garage_keys\" (\"network\" TEXT NOT NULL, \"key_index\" INTEGER NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"activated_at\" INTEGER NOT NULL, PRIMARY KEY (\"network\", \"key_index\"), CHECK (typeof(network) = 'text' AND typeof(key_index) = 'integer' AND typeof(key_fingerprint) = 'text' AND typeof(activated_at) = 'integer'), CHECK (network IN ('mainnet', 'testnet')), CHECK (key_index BETWEEN 0 AND 2147483647), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (activated_at BETWEEN 0 AND 8640000000000000), UNIQUE (network, key_fingerprint));"
+        }
+      ]
+    },
+    {
+      "name": "selected_garage_keys",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"selected_garage_keys\" (\"network\" TEXT NOT NULL, \"key_index\" INTEGER NULL, \"last_internal_index\" INTEGER NULL, PRIMARY KEY (\"network\"), CHECK (typeof(network) = 'text' AND (key_index IS NULL OR typeof(key_index) = 'integer') AND (last_internal_index IS NULL OR typeof(last_internal_index) = 'integer')), CHECK (network IN ('mainnet', 'testnet')), CHECK (key_index IS NULL OR key_index BETWEEN 0 AND 2147483647), CHECK (last_internal_index IS NULL OR last_internal_index BETWEEN 0 AND 2147483647), CHECK (key_index IS NULL OR last_internal_index = key_index));"
+        }
+      ]
+    },
+    {
+      "name": "garage_notices",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"garage_notices\" (\"notice\" TEXT NOT NULL, \"shown\" INTEGER NOT NULL, PRIMARY KEY (\"notice\"), CHECK (typeof(notice) = 'text' AND typeof(shown) = 'integer'), CHECK (notice IN ('externalKeyNamed')), CHECK (shown IN (0, 1)));"
+        }
+      ]
+    },
+    {
+      "name": "derived_garage_keys_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_deleted BEFORE DELETE ON derived_garage_keys BEGIN SELECT RAISE (ABORT, 'an activated Garage Key is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "derived_garage_keys_never_changed",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_never_changed BEFORE UPDATE ON derived_garage_keys BEGIN SELECT RAISE (ABORT, 'an activated Garage Key never changes');END"
+        }
+      ]
+    },
+    {
+      "name": "derived_garage_keys_in_order",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_in_order BEFORE INSERT ON derived_garage_keys WHEN NEW.key_index > 0 AND NOT EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index - 1) BEGIN SELECT RAISE (ABORT, 'a Garage Key out of order');END"
+        }
+      ]
+    },
+    {
+      "name": "derived_garage_keys_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS derived_garage_keys_inserted_once BEFORE INSERT ON derived_garage_keys WHEN EXISTS (SELECT 1 FROM derived_garage_keys WHERE network = NEW.network AND key_index = NEW.key_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "garage_notices_shown_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS garage_notices_shown_once BEFORE UPDATE ON garage_notices WHEN NOT(OLD.shown = 0 AND NEW.shown = 1 AND NEW.notice = OLD.notice)BEGIN SELECT RAISE (ABORT, 'a Garage notice only turns shown');END"
+        }
+      ]
+    },
+    {
+      "name": "garage_notices_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS garage_notices_never_deleted BEFORE DELETE ON garage_notices BEGIN SELECT RAISE (ABORT, 'a Garage notice is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payouts_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_never_deleted BEFORE DELETE ON trade_payouts BEGIN SELECT RAISE (ABORT, 'the payout of a contract is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payouts_forward",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_forward BEFORE UPDATE ON trade_payouts WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.take IS NOT OLD.take OR NEW.source IS 'unrecorded' OR(OLD.submitted_at IS NOT NULL AND(NEW.submitted_at IS NULL OR NEW.submitted_at < OLD.submitted_at))OR NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trades.role = 'buyer' AND trade_trails.take = NEW.take) BEGIN SELECT RAISE (ABORT, 'a payout only moves forward');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payouts_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_of_their_trade BEFORE INSERT ON trade_payouts WHEN(NEW.source IS NOT 'thisWallet' AND NEW.source IS NOT 'pasted')OR NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trades.role = 'buyer' AND trade_trails.take = NEW.take) BEGIN SELECT RAISE (ABORT, 'a payout of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payouts_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payouts_inserted_once BEFORE INSERT ON trade_payouts WHEN EXISTS (SELECT 1 FROM trade_payouts WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND take = NEW.take) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "maker_terms_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_never_deleted BEFORE DELETE ON maker_terms BEGIN SELECT RAISE (ABORT, 'the terms of a make are kept');END"
+        }
+      ]
+    },
+    {
+      "name": "maker_terms_set_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_set_once BEFORE UPDATE ON maker_terms BEGIN SELECT RAISE (ABORT, 'the terms of a make are set once');END"
+        }
+      ]
+    },
+    {
+      "name": "maker_terms_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_inserted_once BEFORE INSERT ON maker_terms WHEN EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "maker_terms_of_their_make",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS maker_terms_of_their_make BEFORE INSERT ON maker_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND role = NEW.role AND origin = 'madeHere' AND order_id IS NULL AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'terms of no pending make');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_pins_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_never_deleted BEFORE DELETE ON trade_chat_pins BEGIN SELECT RAISE (ABORT, 'the pinned key of a trade is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_pins_never_changed",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_never_changed BEFORE UPDATE ON trade_chat_pins BEGIN SELECT RAISE (ABORT, 'the pinned key of a trade never changes');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_pins_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_inserted_once BEFORE INSERT ON trade_chat_pins WHEN EXISTS (SELECT 1 FROM trade_chat_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_pins_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON trade_chat_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'a pin of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, 'the Nostr keys of a trade are kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_never_changed",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, 'the Nostr keys of a trade never change');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins WHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'a Nostr pin of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_never_deleted BEFORE DELETE ON trade_payments BEGIN SELECT RAISE (ABORT, 'the payment of a trade is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trade_trails.take = NEW.take AND(NEW.take = 0 OR trades.origin = 'madeHere')) BEGIN SELECT RAISE (ABORT, 'a payment of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_forward",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at OR NEW.take IS NOT OLD.take BEGIN SELECT RAISE (ABORT, 'a payment only moves forward');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_hash_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_hash_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE payment_hash = NEW.payment_hash AND NOT(key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take)) BEGIN SELECT RAISE (ABORT, 'an invoice is paid once');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_sats_known",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_sats_known BEFORE INSERT ON trade_payments WHEN NEW.confirmed_sats IS NULL BEGIN SELECT RAISE (ABORT, 'a payment is recorded with its amount');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_payments_sats_forward",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_sats_forward BEFORE UPDATE ON trade_payments WHEN(OLD.confirmed_sats IS NULL AND NEW.confirmed_sats IS NOT NULL)OR(OLD.confirmed_sats IS NOT NULL AND(NEW.confirmed_sats IS NULL OR NEW.confirmed_sats < OLD.confirmed_sats))BEGIN SELECT RAISE (ABORT, 'the amount of a payment never goes down');END"
+        }
+      ]
+    },
+    {
+      "name": "trades_one_open_per_order",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'an order has one open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trades_one_open_per_order_update",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order_update BEFORE UPDATE OF order_id ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL AND NOT(key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)) BEGIN SELECT RAISE (ABORT, 'an order has one open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_terms_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms BEGIN SELECT RAISE (ABORT, 'the terms of a trade are kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_terms_set_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms BEGIN SELECT RAISE (ABORT, 'the terms of a trade are set once');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_terms_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms WHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_terms_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND origin IN ('takenHere', 'recovered') AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'terms of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails BEGIN SELECT RAISE (ABORT, 'the trail of a trade is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails WHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL AND NEW.take = 0 AND((trades.origin IN ('takenHere', 'recovered') AND NEW.take_deadline IS NULL AND NEW.taker_hash_id IS NULL AND NEW.taken_amount IS NULL AND EXISTS (SELECT 1 FROM trade_terms WHERE trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index))OR(trades.origin = 'madeHere' AND EXISTS (SELECT 1 FROM maker_terms WHERE maker_terms.key_fingerprint = trades.key_fingerprint AND maker_terms.robot_index = trades.robot_index)))) BEGIN SELECT RAISE (ABORT, 'a trail of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails_closed",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails_forward",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR(OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)OR(OLD.bond_step_seen_at IS NOT NULL AND(NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))OR(OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)OR(OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position)OR(NEW.take IS NOT OLD.take AND NOT(NEW.take IS OLD.take + 1 AND OLD.position IN ('public', 'paused', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NOT(OLD.position = 'waitingForPayout' AND OLD.role = 'buyer')AND OLD.take_deadline IS NOT NULL AND((NEW.position IN ('waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND NEW.seen_late = 0)OR(NEW.position IN ('chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL AND NEW.escrow_hash IS NULL AND(OLD.position IN ('public', 'paused') OR NEW.taker_hash_id IS NOT OLD.taker_hash_id)AND NEW.seen_late = 1))AND NEW.earlier_escrows IS(OLD.earlier_escrows || coalesce(OLD.escrow_hash || ';', ''))AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere')))OR(NEW.take IS OLD.take AND(NEW.earlier_escrows IS NOT OLD.earlier_escrows OR NEW.seen_late IS NOT OLD.seen_late))OR(NEW.escrow_hash IS NOT NULL AND instr(';' || NEW.earlier_escrows, ';' || NEW.escrow_hash || ';') > 0)OR(OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)OR(OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)OR(OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)OR(NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)OR(NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)OR(NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)OR(NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)OR(NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)OR((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL)AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere'))BEGIN SELECT RAISE (ABORT, 'a trail only moves forward');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_trails_terms_trace",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_terms_trace BEFORE UPDATE ON trade_trails WHEN(OLD.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT OLD.terms_changed_at)OR(OLD.terms_changed_at IS NULL AND NEW.terms_changed_at IS NOT NULL AND NEW.terms_changed_at IS NOT NEW.read_at)OR(OLD.terms_changed_premium_low IS NOT NULL AND(NEW.terms_changed_premium_low IS NULL OR NEW.terms_changed_premium_low > OLD.terms_changed_premium_low))OR(OLD.terms_changed_premium_high IS NOT NULL AND(NEW.terms_changed_premium_high IS NULL OR NEW.terms_changed_premium_high < OLD.terms_changed_premium_high))BEGIN SELECT RAISE (ABORT, 'the trace of terms shown otherwise is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "robot_bindings_network",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)"
+        }
+      ]
+    },
+    {
+      "name": "trades_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE (ABORT, 'a trade record is kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trades_set_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR(OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR(NEW.order_id IS NOT OLD.order_id AND NOT(OLD.origin IS 'madeHere' AND OLD.order_id IS NULL AND OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index)))OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE (ABORT, 'a trade record only gains its times');END"
+        }
+      ]
+    },
+    {
+      "name": "trades_made_pending",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_made_pending BEFORE INSERT ON trades WHEN NEW.origin IS 'madeHere' AND(NEW.order_id IS NOT NULL OR NEW.closed_at IS NOT NULL)BEGIN SELECT RAISE (ABORT, 'a make is recorded pending');END"
+        }
+      ]
+    },
+    {
+      "name": "trades_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    }
+  ]
+}
