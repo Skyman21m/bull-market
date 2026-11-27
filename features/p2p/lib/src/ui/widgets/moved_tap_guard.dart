@@ -1,17 +1,27 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// What [MovedTapGuard] gives its builder: [onTap] wrapped so that a tap is ignored while the guarded widget has just moved; `null` stays `null`.
 typedef GuardedTap = VoidCallback? Function(VoidCallback? onTap);
 
-/// A guard for a button whose tap matters (« Pay », « Continue » before a take, and since #283 the « Confirm » of the dialog « Confirm … sent », the one tap that cannot be undone; « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
+/// A guard for a button whose tap matters (« Pay », « Continue » before a take, and since #283 the « Confirm » of the buyer's dialog « Confirm … sent », the declaration that the fiat was sent; the seller's « Confirm » of « Confirm … received », which releases the escrow, has none (#293); « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
 ///
-/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) never sets it off, while a move of the layout does; one move is not seen, where the scroll offset changes with it by as much (the page scrolled to its end whose content under the button shrinks, so that the page is scrolled back: #267); its first place, when it appears, is only recorded. Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
+/// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) never sets it off, while a move of the layout does. When it appears (the confirmation opened, the dialog opened, the card built anew as when the tab « Contract » is shown again), its first measure starts the delay too ([armsWhenShown]): a tap on a button that appeared less than [afterMove] ago is ignored, since a tap meant for a button just shown, whose amounts are still to read, is no ordinary gesture, while a second tap at the same place, aimed at what stood there (« Pay with this wallet » where « Pay » is brought into view), is (security review of #291, B1). Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
+///
+/// Its place on the screen alone is measured too, for the one move the first measure does not see, where the scroll offset changes with the layout by as much: the page scrolled to its end whose content under the button shrinks (« Hide details » under « Pay », a line under the card that goes) or whose viewport grows (the keyboard or a system bar that goes, a rotation) is brought back to its new end by the layout, so that everything above moves down on the screen and nothing moves in the content (#267, #288). A move on the screen sets it off when no [ScrollPosition] around it scrolled since the last measure made: a scroll, whether by a finger, a fling, an animation or a jump (`ensureVisible` when the confirmation opens), tells the position's listeners, and a bring back by the layout (`ScrollPosition.correctPixels`) tells nobody; while a finger holds the page, or a scroll runs, nothing is compared on the screen.
 class MovedTapGuard extends StatefulWidget {
   final Widget Function(BuildContext context, GuardedTap guard) builder;
 
-  const MovedTapGuard({super.key, required this.builder});
+  /// Whether its first measure starts the delay, a tap on the button just shown being ignored (security review of #291, B1); `false` for « Continue », which is shown only once the robot's read the user waited for has come, where « Take Order » stood busy, so that no second tap can reach it.
+  final bool armsWhenShown;
+
+  const MovedTapGuard({
+    super.key,
+    required this.builder,
+    this.armsWhenShown = true,
+  });
 
   /// How long a tap is ignored after a move: long enough for a tap aimed at what was there before the move, short enough that a second tap, aimed at the button now in view, pays.
   static const afterMove = Duration(milliseconds: 700);
@@ -21,9 +31,24 @@ class MovedTapGuard extends StatefulWidget {
 }
 
 class _MovedTapGuardState extends State<MovedTapGuard> {
-  /// The place of the guarded widget in the scrolled content at the last frame; `null` before its first frame.
+  /// The place of the guarded widget in the scrolled content at the last measure made; `null` before its first measure.
   Offset? _place;
+
+  /// The place of the guarded widget on the screen at the last measure made; `null` before its first measure.
+  Offset? _onScreen;
   Timer? _moved;
+
+  /// The scroll positions around the guarded widget, listened to: each tells its listeners when it scrolls.
+  List<ScrollPosition> _positions = const [];
+
+  /// Whether a position around scrolled since the last measure.
+  var _scrolled = false;
+
+  /// Whether a position around scrolled after this frame's layout and before this frame's measure (from another callback after the frame, as `ensureVisible` when the confirmation opens): the screen shows that scroll only at the next frame, so this measure would add the new scroll offset to the place on the screen before it; it is skipped, the next one recording.
+  var _stale = false;
+
+  /// The time stamp of the frame of the last measure, to tell a scroll after the layout that came before this frame's measure from one that came after it.
+  Duration? _measuredAt;
 
   @override
   void initState() {
@@ -32,39 +57,106 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listened to from the first frame: a scroll after that frame's layout, before the first measure, makes that measure stale.
+    _listenTo(_positionsNow());
+  }
+
+  @override
   void dispose() {
     _moved?.cancel();
+    _listenTo(const []);
     super.dispose();
+  }
+
+  void _onScroll() {
+    final scheduler = SchedulerBinding.instance;
+    if (scheduler.schedulerPhase == SchedulerPhase.postFrameCallbacks &&
+        _measuredAt != scheduler.currentSystemFrameTimeStamp) {
+      _stale = true;
+    }
+    _scrolled = true;
   }
 
   /// Measures the place after each frame while mounted. A post-frame callback schedules no frame: nothing runs while the screen is still.
   void _watch() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final place = _placeNow();
-      final last = _place;
-      if (place != null) {
-        if (last != null && (place - last).distance > 0.5) {
-          _moved?.cancel();
-          _moved = Timer(MovedTapGuard.afterMove, () {});
-        }
-        _place = place;
+      final positions = _positionsNow();
+      _listenTo(positions);
+      if (_stale) {
+        // The scroll marked the layout dirty: the next frame comes, and its measure is compared with the last one.
+        _stale = false;
+      } else {
+        _measure(positions);
+        _measuredAt = SchedulerBinding.instance.currentSystemFrameTimeStamp;
       }
       _watch();
     });
   }
 
-  /// The guarded widget's top left on the screen, with the scroll offset of every [Scrollable] around it added back along its axis: a scroll (of the page, between tabs, of a nested list, or the screen bringing the button into view) leaves it unchanged, and a move of the layout changes it, whatever the structure of the page; a move the scroll offset follows by as much (content under the widget that shrinks at the page's end) leaves it unchanged too (#267).
-  Offset? _placeNow() {
-    final box = context.findRenderObject();
-    if (box is! RenderBox || !box.attached || !box.hasSize) return null;
-    var place = box.localToGlobal(Offset.zero);
+  /// Compares the places with those of the last measure, sets the guard off when one moved, and records them.
+  void _measure(List<ScrollPosition> positions) {
+    final scrolled =
+        _scrolled ||
+        positions.any((position) => position.isScrollingNotifier.value);
+    _scrolled = false;
+    final onScreen = _onScreenNow();
+    final place = _placeNow(onScreen, positions);
+    if (onScreen == null || place == null) return;
+    final last = _place;
+    final lastOnScreen = _onScreen;
+    final movedInContent = last != null && (place - last).distance > 0.5;
+    // The page brought back by the layout, no scroll meanwhile (#288).
+    final movedOnScreen =
+        !scrolled &&
+        lastOnScreen != null &&
+        (onScreen - lastOnScreen).distance > 0.5;
+    // Just appeared: the delay starts at its first measure (security review of #291, B1).
+    if ((last == null && widget.armsWhenShown) ||
+        movedInContent ||
+        movedOnScreen) {
+      _moved?.cancel();
+      _moved = Timer(MovedTapGuard.afterMove, () {});
+    }
+    _place = place;
+    _onScreen = onScreen;
+  }
+
+  /// The positions of every [Scrollable] around the guarded widget, from the nearest.
+  List<ScrollPosition> _positionsNow() => [
     for (
       var scrollable = Scrollable.maybeOf(context);
       scrollable != null;
       scrollable = Scrollable.maybeOf(scrollable.context)
-    ) {
-      final position = scrollable.position;
+    )
+      scrollable.position,
+  ];
+
+  /// Listens to [positions], and no longer to those around before that are gone.
+  void _listenTo(List<ScrollPosition> positions) {
+    for (final position in _positions) {
+      if (!positions.contains(position)) position.removeListener(_onScroll);
+    }
+    for (final position in positions) {
+      if (!_positions.contains(position)) position.addListener(_onScroll);
+    }
+    _positions = positions;
+  }
+
+  /// The guarded widget's top left on the screen.
+  Offset? _onScreenNow() {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero);
+  }
+
+  /// The guarded widget's top left on the screen ([onScreen]), with the scroll offset of every position of [positions] added back along its axis: a scroll (of the page, between tabs, of a nested list, or the screen bringing the button into view) leaves it unchanged, and a move of the layout changes it, whatever the structure of the page; a move the scroll offset follows by as much (content under the widget that shrinks at the page's end) leaves it unchanged too, the place on the screen seeing it (#267, #288).
+  Offset? _placeNow(Offset? onScreen, List<ScrollPosition> positions) {
+    if (onScreen == null) return null;
+    var place = onScreen;
+    for (final position in positions) {
       final scrolled = position.hasPixels ? position.pixels : 0.0;
       // Scrolling by d moves the content by d against the axis direction.
       place += switch (position.axisDirection) {

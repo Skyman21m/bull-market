@@ -24,6 +24,7 @@ import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/bond_payment_panel.dart';
 import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -163,6 +164,8 @@ Future<void> _confirming(WidgetTester tester, Payments payments) async {
   payments.quotes.single.complete(Ok(walletQuote()));
   await tester.pump();
   await tester.pump();
+  // « Pay » just shown ignores taps for a moment (security review of #291, B1): a user's tap comes later.
+  await tester.pump(MovedTapGuard.afterMove);
 }
 
 void _follow(Payments payments, P2pWalletPaymentProgress progress) =>
