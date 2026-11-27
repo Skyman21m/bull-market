@@ -147,16 +147,25 @@ class DeleteGarageKeyDialog extends StatelessWidget {
   /// The trades in progress of the external Garage Key: each is named.
   final List<TradeRecord> inProgress;
 
-  const DeleteGarageKeyDialog({super.key, this.inProgress = const []});
+  /// Whether the trades could not be read (review of #292, R-3): the dialog then says a trade in progress may use the key, instead of naming them; « Delete » stays enabled.
+  final bool unread;
+
+  const DeleteGarageKeyDialog({
+    super.key,
+    this.inProgress = const [],
+    this.unread = false,
+  });
 
   /// Opens the dialog; completes with `true` only when the user confirmed.
   static Future<bool> show(
     BuildContext context, {
     List<TradeRecord> inProgress = const [],
+    bool unread = false,
   }) async =>
       await BullDialog.show<bool>(
         context: context,
-        builder: (_) => DeleteGarageKeyDialog(inProgress: inProgress),
+        builder: (_) =>
+            DeleteGarageKeyDialog(inProgress: inProgress, unread: unread),
       ) ??
       false;
 
@@ -166,7 +175,9 @@ class DeleteGarageKeyDialog extends StatelessWidget {
     return GarageDialogBody(
       title: l10n.p2pGarageDeleteExternalTitle,
       text: l10n.p2pGarageDeleteExternalText,
-      warning: inProgress.isEmpty
+      warning: unread
+          ? l10n.p2pGarageDeleteExternalUnread
+          : inProgress.isEmpty
           ? null
           : l10n.p2pGarageDeleteExternalTrades(
               inProgress.length,

@@ -328,7 +328,15 @@ class GarageCubit extends Cubit<GarageState> {
     _records = records;
     final current = state;
     if (isClosed || current is! GarageWithKey || current.key != key) return;
-    if (records is Err) return;
+    // Records that cannot be read move nothing, but « Delete the external Garage Key? » says they could not be read (review of #292, R-3).
+    if (records is Err) {
+      if (!current.inProgressUnread) {
+        emit(
+          current.copyWith(inProgressUnread: true, failure: current.failure),
+        );
+      }
+      return;
+    }
     final target = switch (_navigation.robotOf(key, records)) {
       final slot? => key.robotOf(slot),
       null => switch (key.firstUsableRobot(0)) {
@@ -338,7 +346,13 @@ class GarageCubit extends Cubit<GarageState> {
     };
     if (target != null && target.accountIndex != current.robot.index) {
       emit(
-        _showing(current.copyWith(inProgress: _inProgressOf(records)), target),
+        _showing(
+          current.copyWith(
+            inProgress: _inProgressOf(records),
+            inProgressUnread: false,
+          ),
+          target,
+        ),
       );
       return;
     }
@@ -354,11 +368,13 @@ class GarageCubit extends Cubit<GarageState> {
     );
     final inProgress = _inProgressOf(records);
     if (!_sameOrders(notServed, current.ordersNotServed) ||
-        !_sameRecords(inProgress, current.inProgress)) {
+        !_sameRecords(inProgress, current.inProgress) ||
+        current.inProgressUnread) {
       emit(
         current.copyWith(
           ordersNotServed: notServed,
           inProgress: inProgress,
+          inProgressUnread: false,
           failure: current.failure,
         ),
       );
@@ -521,6 +537,7 @@ class GarageCubit extends Cubit<GarageState> {
         externalNoticeDue:
             keyring.externalNoticeDue && externalSelected && !_noticeShown,
         inProgress: _inProgressOf(_records),
+        inProgressUnread: _records is Err,
         failure: failure,
         ordersNotServed: _ordersNotServedOf(shown.slot),
       ),

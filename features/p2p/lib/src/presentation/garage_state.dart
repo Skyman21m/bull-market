@@ -50,6 +50,9 @@ final class GarageWithKey extends GarageState {
   /// The trades of the network in progress, of every Garage Key (#81): those of another key than the one shown have a line of their own, and those of the external Garage Key are named when it is deleted. Records only: robot slots, coordinators and order ids, never a token.
   final List<TradeRecord> inProgress;
 
+  /// Whether the last reading of the network's trades failed (review of #292, R-3): [inProgress] may then miss a trade, and « Delete the external Garage Key? » says so in the warning colour instead of naming them, its « Delete » staying enabled: it warns, it never blocks.
+  final bool inProgressUnread;
+
   /// Whether removing the external key shown asks the wallet's PIN after « Delete Garage Key? », as the feature's database said when the user last asked (`NeedsPinToDeleteGarageKeyUsecase`): `true` until then, so that the button is never shown as free of the PIN by mistake.
   final bool deletionNeedsPin;
 
@@ -69,6 +72,7 @@ final class GarageWithKey extends GarageState {
     this.externalKey,
     this.externalNoticeDue = false,
     this.inProgress = const [],
+    this.inProgressUnread = false,
     this.deletionNeedsPin = true,
     this.failure,
     this.ordersNotServed = const {},
@@ -99,6 +103,7 @@ final class GarageWithKey extends GarageState {
     GarageRobotFace? robot,
     Set<(String, int)>? ordersNotServed,
     List<TradeRecord>? inProgress,
+    bool? inProgressUnread,
     bool? externalNoticeDue,
     bool? deletionNeedsPin,
     P2pFailure? failure,
@@ -112,6 +117,7 @@ final class GarageWithKey extends GarageState {
     externalKey: externalKey,
     externalNoticeDue: externalNoticeDue ?? this.externalNoticeDue,
     inProgress: inProgress ?? this.inProgress,
+    inProgressUnread: inProgressUnread ?? this.inProgressUnread,
     deletionNeedsPin: deletionNeedsPin ?? this.deletionNeedsPin,
     failure: failure,
     ordersNotServed: ordersNotServed ?? this.ordersNotServed,

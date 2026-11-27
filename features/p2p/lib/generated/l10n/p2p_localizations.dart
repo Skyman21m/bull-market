@@ -6786,6 +6786,12 @@ abstract class P2pLocalizations {
   /// **'{count, plural, =1{Trade {orders} uses this Garage Key: without it, you will not be able to continue it.} other{Trades {orders} use this Garage Key: without it, you will not be able to continue them.}}'**
   String p2pGarageDeleteExternalTrades(int count, String orders);
 
+  /// Not in the RoboSats texts: the project's own (#81, review of #292, R-3; 'Garage Key' always written in full). The line in the warning colour of « Delete the external Garage Key? », in place of the trades it names, when the trades could not be read; « Delete » stays enabled: it warns, it never blocks.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Wallet could not read your trades: a trade in progress may use this Garage Key.'**
+  String get p2pGarageDeleteExternalUnread;
+
   /// Not in the RoboSats texts: the project's own (#81, the Garage Key card of the mock-up decided on 2026-11-26; 'Garage Key' always written in full). The button of « Delete the external Garage Key? » that deletes it.
   ///
   /// In en, this message translates to:

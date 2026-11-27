@@ -93,6 +93,7 @@ class _GarageKeyCardState extends State<GarageKeyCard> {
         !await DeleteGarageKeyDialog.show(
           context,
           inProgress: widget.state.inProgressOfKeyShown,
+          unread: widget.state.inProgressUnread,
         ) ||
         !mounted) {
       return;

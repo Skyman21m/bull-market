@@ -1139,6 +1139,42 @@ void main() {
       timeout: slow,
     );
 
+    test(
+      'trades that cannot be read are said with the state, so that « Delete the external Garage Key? » warns of them; read again, they are not (review of #292, R-3)',
+      () async {
+        final records =
+            StreamController<Result<GarageRecords, P2pFailure>>.broadcast();
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          words: memoryWords,
+          tradesOf: (_) {
+            scheduleMicrotask(
+              () => records.add(const Err(P2pStorageFailure())),
+            );
+            return records.stream;
+          },
+        );
+        await cubit.load();
+        await pumpEventQueue();
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).inProgressUnread, isTrue);
+        expect(shown(cubit).inProgressOfKeyShown, isEmpty);
+        records.add(
+          Ok(
+            GarageRecords(inProgress: const [], closed: const [], fresh: null),
+          ),
+        );
+        await pumpEventQueue();
+        expect(shown(cubit).inProgressUnread, isFalse);
+        records.add(const Err(P2pStorageFailure()));
+        await pumpEventQueue();
+        expect(shown(cubit).inProgressUnread, isTrue);
+        await cubit.close();
+        await records.close();
+      },
+      timeout: slow,
+    );
+
     for (final reason in P2pGarageKeyRefusalReason.values) {
       test(
         'words that refuse (${reason.name}): the external key stays shown and usable; the internal side says why, with the way back (C-passphrase)',

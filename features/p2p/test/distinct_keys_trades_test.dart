@@ -254,6 +254,74 @@ void main() {
     },
     timeout: slow,
   );
+
+  /// A take with [key] selected whose first robot the coordinator already knows with another pair, without an order (the official client, or another device, put it there first): the take is refused before anything is sent, and the next take goes with the next robot (review of #292, C-2).
+  Future<void> takeRefusedOnAKnownRobot(TradeHarness app, GarageKey key) async {
+    final robots = TradeHarness.robotsOf(testnet, key);
+    final first = robots.first;
+    final pair = pairOf(first);
+    app.coordinator.robotAnswerHas(first, {
+      'public_key': pair.publicKey.armored,
+      'encrypted_private_key': pair.encryptedPrivateKeyArmored,
+      'nostr_pubkey': first.nostrKeyPair().publicKeyHex,
+    });
+    expect(
+      await app.takeShown(),
+      isA<Err<TakeOutcome, TakeRefusal>>().having(
+        (err) => err.failure,
+        'refusal',
+        isA<TakeRobotRefused>().having(
+          (r) => r.failure,
+          'failure',
+          isA<RobotNotForNewTradeFailure>(),
+        ),
+      ),
+    );
+    expect(app.coordinator.received, isNot(contains(ScriptedRequest.take)));
+    expect(await app.allTrades(), isEmpty);
+    // The robot refused stays bound to that coordinator: the next take goes with the next one.
+    final taken = TradeHarness.recordOf(await app.takeShown());
+    expect(taken.robot.keyFingerprint, fingerprintOf(key));
+    expect(taken.robot.accountIndex, 1);
+    expect(app.coordinator.received, contains(ScriptedRequest.take));
+  }
+
+  test(
+    'an imported key: a robot the coordinator already knows with another pair is refused, nothing is taken with it, and the next take takes the next robot',
+    () async {
+      final app = await TradeHarness.start(
+        key: externalKey,
+        garageOver: garageOver,
+      );
+      expect(
+        await garage.keyring(testnet),
+        isA<Ok<GarageKeyring, P2pFailure>>(),
+      );
+      expect(
+        await ImportGarageKeyUsecase(
+          garage,
+          RobotBindingRepositoryImpl(app.database, clock: () => app.now),
+        ).execute(testnet, text: externalKey.revealBech32()),
+        isOk(null),
+      );
+      expect(keyOfNewTrade(await garage.forNewTrade(testnet)), externalKey);
+      await takeRefusedOnAKnownRobot(app, externalKey);
+    },
+    timeout: slow,
+  );
+
+  test(
+    'an internal key: a robot the coordinator already knows with another pair is refused, nothing is taken with it, and the next take takes the next robot',
+    () async {
+      await storeExternal();
+      final one = await internalKey(1);
+      final app = await TradeHarness.start(key: one, garageOver: garageOver);
+      await keysWith(const SelectedWordsKey(1));
+      expect(keyOfNewTrade(await garage.forNewTrade(testnet)), one);
+      await takeRefusedOnAKnownRobot(app, one);
+    },
+    timeout: slow,
+  );
 }
 
 /// The key of a new trade.

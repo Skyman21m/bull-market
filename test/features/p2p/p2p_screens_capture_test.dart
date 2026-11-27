@@ -1020,7 +1020,7 @@ void main() {
 
   // The Garage Keys (#81), the seven plates of the mock-up decided on 2026-11-26, over a vault in memory, on testnet, with the public test phrase « abandon ×11 about » as the default wallet's words (never a real wallet's), derived by the app's own adapter, in each language, dark and light.
   // First a new install: internal key 0 and its card, its explanation, « New Garage Key », the key shown after the PIN (the public vector of key 0), « Import an external Garage Key » and « Robot recovery », the public example key of the RoboSats frontend tests imported as the external Garage Key (never revealed), its card, its explanation, « Back to internal Garage Keys », « Switch to the external Garage Key », « Delete the external Garage Key? ».
-  // Then an update: a book of schema 9 whose key, the same public example key, has a trade in progress and finished trades, opened by the app: « Your Garage Keys » once, the line of the trade on an internal key, the history with each order's key and robot, and the delete that names the trade.
+  // Then an update: a book of schema 9 whose key, the same public example key, has a trade in progress and finished trades, opened by the app: « Your Garage Keys » once, the line of the trade on an internal key, the history with each order's key and robot, and the delete that names the trade; last, that trade's row damaged, the delete that says the trades could not be read.
   for (final (locale, theme) in const [
     (Locale('fr'), AppThemeType.dark),
     (Locale('en'), AppThemeType.dark),
@@ -1307,6 +1307,22 @@ void main() {
         );
         await settle();
         await capture('garage-p6-historique');
+        await close(locator, tor);
+
+        // The trades that cannot be read (review of #292, R-3): the row of the trade in progress damaged, one this app never writes; on the external Garage Key, « Delete the external Garage Key? » says a trade in progress may use it, « Delete » enabled.
+        _unreadableTrade(updated, 48120);
+        (locator, tor) = await open(updated);
+        await tap(find.text(l10n.p2pGarageSwitchToExternal));
+        tor.add(P2pTorState.ready);
+        await settle();
+        await letTheVaultSettle();
+        await tap(find.text(l10n.p2pGarageDeleteExternal));
+        needed(
+          find.text(l10n.p2pGarageDeleteExternalUnread),
+          'the line of the trades not read',
+        );
+        await capture('garage-r3-supprimer-echanges-illisibles');
+        await tap(find.text(l10n.p2pCommonCancel));
         await close(locator, tor);
       },
     );
@@ -3632,6 +3648,33 @@ final class _DefaultWallet implements WalletRepository {
 }
 
 /// The book at [file], written by this version of the app, made a book of schema 9, the one an update finds: the objects of schema 10 dropped and the version set back, then [rows] written.
+/// Gives the trade [orderId] of the book at [file] a role this app never writes, as a book damaged on the device: its trades can no longer be read (review of #292, R-3). The trigger that keeps a role is set aside for the change and put back as it was.
+void _unreadableTrade(File file, int orderId) {
+  final database = sqlite3.open(file.path);
+  try {
+    final trigger =
+        database
+                .select(
+                  "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trades_set_once'",
+                )
+                .single
+                .values
+                .single
+            as String;
+    for (final statement in [
+      'DROP TRIGGER trades_set_once',
+      'PRAGMA ignore_check_constraints = ON',
+      "UPDATE trades SET role = 'unknown' WHERE order_id = $orderId",
+      'PRAGMA ignore_check_constraints = OFF',
+      trigger,
+    ]) {
+      database.execute(statement);
+    }
+  } finally {
+    database.dispose();
+  }
+}
+
 void _toSchema9(File file, List<String> rows) {
   final database = sqlite3.open(file.path);
   try {

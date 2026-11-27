@@ -4373,6 +4373,10 @@ class P2pLocalizationsKa extends P2pLocalizations {
   }
 
   @override
+  String get p2pGarageDeleteExternalUnread =>
+      'Bull Wallet could not read your trades: a trade in progress may use this Garage Key.';
+
+  @override
   String get p2pGarageDeleteConfirm => 'Delete';
 
   @override
