@@ -1755,7 +1755,7 @@ void main() {
     ]) {
       final at = '$width × $height ×$scale ${locale.languageCode}';
       testWidgets(
-        'the dialog opened, brought to its end when taller than the screen (a scroll, which never sets the guard off), then « Confirm » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps within 0.7 s are ignored, the first after releases',
+        'the dialog opened, brought to its end by a jump when taller than the screen (a scroll, which sets no guard off; a fling that hits the end would, by Android\'s stretch), then « Confirm » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps within 0.7 s are ignored, the first after releases',
         (tester) async {
           final confirmation = await _sellerAt10(tester, locale: locale);
           await _size(tester, width: width, height: height, scale: scale);
