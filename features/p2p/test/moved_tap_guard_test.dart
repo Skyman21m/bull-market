@@ -695,5 +695,75 @@ void main() {
         expect(taps, 1);
       },
     );
+
+    testWidgets(
+      'covered by a dialog, then the dialog closed and the page jumped by a callback after that very frame, before the guard\'s measure (as another widget\'s `ensureVisible`): that measure is skipped, and the next one, the jump shown and the dialog on its way out, tries a tap and finds the button reached again: a tap right after that frame is ignored, one after the delay counts (#299)',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        ScrollPosition? jumping;
+        var running = true;
+        addTearDown(() => running = false);
+        // Registered before the guard is built, and again at each frame before the guard's own callback: it runs first after every frame.
+        void first(Duration _) {
+          if (!running) return;
+          final position = jumping;
+          if (position != null) {
+            jumping = null;
+            position.jumpTo(position.pixels + 10);
+          }
+          WidgetsBinding.instance.addPostFrameCallback(first);
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback(first);
+        final page = await covered(tester, shown: shown);
+        await tester.pump(MovedTapGuard.afterMove);
+        await openDialog(tester, page);
+        await tester.pump(MovedTapGuard.afterMove);
+        final position = Scrollable.of(tester.element(find.text('Pay'))).position;
+        final before = position.pixels;
+        jumping = position;
+        Navigator.of(tester.element(find.text('dialog'))).pop();
+        // The first frame of the closing, the jump after it, its measure skipped.
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(position.pixels, before + 10);
+        // The next frame shows the jump; the dialog on its way out takes no tap.
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(find.text('dialog'), findsOneWidget);
+        await tester.tap(find.text('Pay'));
+        await tester.pump();
+        expect(taps, 0, reason: 'shown again a frame ago');
+        await tester.pump(MovedTapGuard.afterMove);
+        await tester.tap(find.text('Pay'));
+        expect(taps, 1);
+      },
+    );
+
+    testWidgets(
+      'shown, then the page scrolled by an animation (the list ignores taps while it runs, which is no cover): nothing is tried while it runs, so its end starts no delay; a tap 100 ms after it counts (#299)',
+      (tester) async {
+        final shown = ValueNotifier<bool>(true);
+        addTearDown(shown.dispose);
+        await covered(tester, shown: shown);
+        await tester.pump(MovedTapGuard.afterMove);
+        final position = Scrollable.of(tester.element(find.text('Pay'))).position;
+        unawaited(
+          position.animateTo(
+            20,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.linear,
+          ),
+        );
+        await tester.pump();
+        expect(position.isScrollingNotifier.value, isTrue);
+        for (var i = 0; i < 25 && position.isScrollingNotifier.value; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(position.isScrollingNotifier.value, isFalse);
+        expect(position.pixels, 20);
+        await tapSoon(tester);
+        expect(taps, 1);
+      },
+    );
   });
 }

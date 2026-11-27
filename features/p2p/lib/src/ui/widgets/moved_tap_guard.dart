@@ -107,9 +107,10 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
 
   /// Compares the places with those of the last measure, sets the guard off when one moved, and records them.
   void _measure(List<ScrollPosition> positions) {
-    final scrolled =
-        _scrolled ||
-        positions.any((position) => position.isScrollingNotifier.value);
+    final scrolling = positions.any(
+      (position) => position.isScrollingNotifier.value,
+    );
+    final scrolled = _scrolled || scrolling;
     _scrolled = false;
     final onScreen = _onScreenNow();
     final place = _placeNow(onScreen, positions);
@@ -122,8 +123,8 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
         !scrolled &&
         lastOnScreen != null &&
         (onScreen - lastOnScreen).distance > 0.5;
-    // Shown again: what was drawn over it no longer takes a tap there (#294). Not while a position around scrolls: a scrolling list ignores the taps on its content (`Scrollable`), which is no cover.
-    final reachable = scrolled ? null : _reachableNow(positions);
+    // Shown again: what was drawn over it no longer takes a tap there (#294). Not while a position around scrolls (a finger, a fling, an animation): a scrolling list ignores the taps on its content (`Scrollable`), which is no cover. A jump since the last measure is no reason to skip it: the list takes taps again at once, and this frame's layout already shows the jump, so that a jump in the very frame a dialog starts to close does not hide the uncovering for one more frame (#299).
+    final reachable = scrolling ? null : _reachableNow(positions);
     final uncovered = _reachable == false && reachable == true;
     if (reachable != null) _reachable = reachable;
     // Just appeared: the delay starts at its first measure (security review of #291, B1).
