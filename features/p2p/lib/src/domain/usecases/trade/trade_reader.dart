@@ -20,6 +20,7 @@ import '../../trade/trade_terms.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import '../../trade_robots.dart';
+import 'action_outcome_log.dart';
 import 'trade_read_order.dart';
 
 /// A recorded trade opened for reading: its record, its robot, its coordinator, its terms and the last status seen.
@@ -486,6 +487,17 @@ final class TradeReader {
       at: at,
       request: request,
     );
+    // A pending take, read after its request: the support log says what the read concluded, when it concludes, once per take (every read says it again while the confirmation cannot be stored).
+    if (trade.record.confirmedAt == null &&
+        trade.record.origin == TradeOrigin.takenHere &&
+        taker) {
+      ActionOutcomeLog.resolvedOnce(
+        'take',
+        'taker',
+        step.trade.seen.status.position.name,
+        once: trade.record.robot,
+      );
+    }
     // From the trail now on disk (stored or kept), never from one only in memory.
     final notMade =
         !taker &&
@@ -494,6 +506,11 @@ final class TradeReader {
         step.trade.seen.status.trail.bondStepSeenAt == null &&
         step.trade.seen.status.isTerminal;
     if (!notMade || step.superseded) return step;
+    ActionOutcomeLog.resolved(
+      'take',
+      'notMade',
+      step.trade.seen.status.position.name,
+    );
     return TradeStep(
       step.trade,
       recordProblem: step.recordProblem,

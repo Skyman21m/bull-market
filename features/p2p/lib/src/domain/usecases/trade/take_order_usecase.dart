@@ -16,6 +16,7 @@ import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import '../../trade_robots.dart';
 import '../put_robot_on_coordinator_usecase.dart';
+import 'action_outcome_log.dart';
 import 'trade_reader.dart';
 import 'prepared_takes.dart';
 import 'trade_take_locks.dart';
@@ -71,8 +72,25 @@ final class TakeOrderUsecase {
       network,
       shown.coordinator,
       shown.id,
-      () => _take(shown, network: network, amount: amount, password: password),
+      () async => _saidIfNotSent(
+        await _take(
+          shown,
+          network: network,
+          amount: amount,
+          password: password,
+        ),
+      ),
     );
+  }
+
+  /// [taken], after the support log has said, for a take refused before its request left, the type of its refusal (its type only).
+  static Result<TakeOutcome, TakeRefusal> _saidIfNotSent(
+    Result<TakeOutcome, TakeRefusal> taken,
+  ) {
+    if (taken case Err(:final failure)) {
+      ActionOutcomeLog.notSent('take', failure);
+    }
+    return taken;
   }
 
   /// Prepares a take of [shown], the order the user is about to take on [network], for [amount] when it has a range (#119): every step and check of [execute] before the take's request, then a read of the order by the robot that will take it, nothing written in the trade records and no take sent.
@@ -192,7 +210,8 @@ final class TakeOrderUsecase {
       terms.network,
       terms.coordinator,
       terms.orderId,
-      () => _confirm(prepared, password, onStep ?? _noStep),
+      () async =>
+          _saidIfNotSent(await _confirm(prepared, password, onStep ?? _noStep)),
     );
   }
 
@@ -771,6 +790,21 @@ final class TakeOrderUsecase {
     }
 
     // 5. What it gave.
+    ActionOutcomeLog.answered(
+      'take',
+      switch (taken) {
+        Err() => 'notSent',
+        Ok(value: Err(failure: OrderActionRefused())) => 'refused',
+        Ok(value: Err()) => 'pending',
+        Ok(value: Ok(value: final outcome)) =>
+          'answered ${outcome.runtimeType}',
+      },
+      switch (taken) {
+        Err(:final failure) => failure,
+        Ok(value: Err(:final failure)) => failure,
+        Ok(value: Ok()) => null,
+      },
+    );
     switch (taken) {
       case Err(:final failure):
         // Busy every time, or the robot released: the take never reached the coordinator.

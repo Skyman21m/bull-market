@@ -5,7 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:bull_tor/tor.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show DebugPrintCallback, debugPrint;
 import 'package:p2p/src/data/tor_coordinator_transport.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -3509,6 +3509,177 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(sessions.closed, {0});
       expect(raw.connections, 0);
+    });
+  });
+
+  group('the support log of a request that acts', () {
+    final lines = <String>[];
+    late DebugPrintCallback previous;
+    setUp(() {
+      lines.clear();
+      previous = debugPrint;
+      debugPrint = (message, {wrapWidth}) => lines.add(message ?? '');
+    });
+    tearDown(() => debugPrint = previous);
+
+    /// A robot's `POST` with its credential and a body, as the client sends a make.
+    CoordinatorRequest robotPost(Uri url) => CoordinatorRequest(
+      method: CoordinatorHttpMethod.post,
+      url: url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': _identity(1).authorizationHeader(),
+      },
+      body: Uint8List.fromList('{"premium":-21,"amount":212}'.codeUnits),
+      maxResponseBytes: 4096,
+      robot: _robot(1),
+    );
+
+    /// The lines of the transport, none of which holds the address, the path, the credential or the body of [request].
+    List<String> transportLines(CoordinatorRequest request) {
+      final ours = [
+        for (final line in lines)
+          if (line.contains('P2P coordinator')) line,
+      ];
+      final token = (request.headers['Authorization'] ?? '').split(' ').last;
+      for (final line in ours) {
+        expect(line, isNot(contains(request.url.host)));
+        expect(line, isNot(contains(request.url.path)));
+        expect(line, isNot(contains('${request.url.port}')));
+        expect(line, isNot(contains(token)));
+        expect(line, isNot(contains('premium')));
+        expect(line, isNot(contains('212')));
+      }
+      return ours;
+    }
+
+    test('a connection refused: the reason, nothing of the request', () async {
+      final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = socket.port;
+      await socket.close();
+      final request = robotPost(Uri.parse('http://127.0.0.1:$port/api/make/'));
+      expect(
+        await transport().send(request),
+        _failsWith<CoordinatorUnreachable>(),
+      );
+      final ours = transportLines(request);
+      expect(
+        ours,
+        contains(contains('P2P coordinator post failed before headers (')),
+      );
+      expect(
+        ours,
+        contains(contains('P2P coordinator post connection failed (')),
+      );
+    });
+
+    test('a 500: its hundred, nothing of the request', () async {
+      final server = await serve({
+        '/api/make/': (request) async {
+          request.response.statusCode = 500;
+          await request.response.close();
+        },
+      });
+      final request = robotPost(server.url('/api/make/'));
+      expect(await transport().send(request), isA<Ok<Object?, Failure>>());
+      expect(
+        transportLines(request),
+        contains(contains('P2P coordinator post answered (5xx)')),
+      );
+    });
+
+    test(
+      'the robot\'s sessions closed under its POST: the close, then the failure, nothing of the request',
+      () async {
+        final held = _Held();
+        final server = await serve({'/held': held.handle});
+        final tor = transport();
+        final request = robotPost(server.url('/held'));
+        final sent = tor.send(request);
+        await held.waiting(1).timeout(const Duration(seconds: 5));
+        await tor.closeRobotSessions(_robot(1));
+        held.release();
+        expect(
+          await sent,
+          isA<Err<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        final ours = transportLines(request);
+        final closed = ours.indexWhere(
+          (line) =>
+              line.contains('P2P coordinator sessions closed (one robot)'),
+        );
+        expect(closed, isNonNegative);
+        expect(
+          ours.skip(closed + 1),
+          contains(contains('P2P coordinator post ')),
+        );
+      },
+    );
+
+    test(
+      'what a GET throws: one line per type thrown, a POST\'s every time',
+      () async {
+        var opened = 0;
+        final tor = transport(
+          openSession: () async =>
+              throw opened++ < 3 ? StateError('bug') : ArgumentError(),
+        );
+        for (var read = 0; read < 3; read++) {
+          await expectLater(
+            tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/'))),
+            throwsA(isA<StateError>()),
+          );
+        }
+        for (var read = 0; read < 2; read++) {
+          await expectLater(
+            tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/'))),
+            throwsA(isA<ArgumentError>()),
+          );
+        }
+        for (var post = 0; post < 2; post++) {
+          await expectLater(
+            tor.send(robotPost(Uri.parse('http://127.0.0.1:1/api/make/'))),
+            throwsA(isA<ArgumentError>()),
+          );
+        }
+        final threw = [
+          for (final line in lines)
+            if (line.contains('P2P coordinator')) line,
+        ];
+        expect(threw.where((line) => line.contains('threw')), hasLength(4));
+        expect(
+          threw.where(
+            (line) => line.contains('P2P coordinator get threw (StateError)'),
+          ),
+          hasLength(1),
+        );
+        expect(
+          threw.where(
+            (line) =>
+                line.contains('P2P coordinator get threw (ArgumentError)'),
+          ),
+          hasLength(1),
+        );
+        expect(
+          threw.where(
+            (line) =>
+                line.contains('P2P coordinator post threw (ArgumentError)'),
+          ),
+          hasLength(2),
+        );
+        for (final line in threw) {
+          expect(line, isNot(contains('127.0.0.1')));
+          expect(line, isNot(contains('/api/')));
+          expect(line, isNot(contains('bug')));
+        }
+      },
+    );
+
+    test('a GET is not logged', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      final request = _get(server.url('/api/robot/'));
+      expect(await transport().send(request), isA<Ok<Object?, Failure>>());
+      expect(transportLines(request), isEmpty);
     });
   });
 }

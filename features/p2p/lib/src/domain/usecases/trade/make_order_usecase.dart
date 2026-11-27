@@ -24,6 +24,7 @@ import '../../trade_record.dart';
 import '../../trade_robots.dart';
 import '../put_robot_on_coordinator_usecase.dart';
 import '../read_robot_on_coordinator_usecase.dart';
+import 'action_outcome_log.dart';
 import 'trade_make_locks.dart';
 import 'trade_read_order.dart';
 import 'trade_reader.dart';
@@ -78,11 +79,19 @@ final class MakeOrderUsecase {
     required Coordinator coordinator,
     required RobosatsNetwork network,
     required MakePriceSeen seen,
-  }) => _locks.run(
-    network,
-    () =>
-        _make(request, coordinator: coordinator, network: network, seen: seen),
-  );
+  }) => _locks.run(network, () async {
+    final made = await _make(
+      request,
+      coordinator: coordinator,
+      network: network,
+      seen: seen,
+    );
+    // A make refused before its request left: the support log says by which refusal, its type only.
+    if (made case Err(:final failure)) {
+      ActionOutcomeLog.notSent('make', failure);
+    }
+    return made;
+  });
 
   /// Resolves the pending make [make]: whether it made an order, read from the coordinator by its robot (see the class).
   ///
@@ -575,6 +584,20 @@ final class MakeOrderUsecase {
       );
 
       // 5. What it gave.
+      ActionOutcomeLog.answered(
+        'make',
+        switch (sent) {
+          Err() => 'notSent',
+          Ok(value: Err(failure: OrderActionRefused())) => 'refused',
+          Ok(value: Err()) => 'pending',
+          Ok(value: Ok()) => 'answered',
+        },
+        switch (sent) {
+          Err(:final failure) => failure,
+          Ok(value: Err(:final failure)) => failure,
+          Ok(value: Ok()) => null,
+        },
+      );
       return Ok(switch (sent) {
         // Busy every time, or the robot released: the make never reached the coordinator.
         Err(:final failure) => await _notMade(pending, refusal: failure),
@@ -598,31 +621,42 @@ final class MakeOrderUsecase {
   }
 
   Future<MakeOutcome> _resolve(PendingMake make) async {
-    if (!make.isActive) return MakeNoLongerPending(make);
+    if (!make.isActive) {
+      return _said(MakeNoLongerPending(make), 'notActive');
+    }
     // The make as the records hold it now: one confirmed or closed since it was listed is not resolved again, and its robot not read.
     switch (await _records.watchPendingMakes(make.network).first) {
       case Ok(:final value) when value.any((m) => m.robot == make.robot):
         break;
       case Ok():
-        return MakeNoLongerPending(make);
+        return _said(MakeNoLongerPending(make), 'noLongerListed');
       case Err():
-        return MakePending(make, MakePendingReason.unread);
+        return _said(
+          MakePending(make, MakePendingReason.unread),
+          'recordsUnread',
+        );
     }
     final MakerTermsRecord? record;
     switch (await _trails.makerTermsOf(make.robot)) {
       case Ok(:final value):
         record = value;
       case Err():
-        return MakePending(make, MakePendingReason.unread);
+        return _said(
+          MakePending(make, MakePendingReason.unread),
+          'termsUnread',
+        );
     }
     // The make sends its request only once its terms are written: without them it never left.
     if (record == null) {
-      return MakeNeverSent(
-        make,
-        closed: switch (await _records.closePendingMake(make)) {
-          Ok() => true,
-          Err() => false,
-        },
+      return _said(
+        MakeNeverSent(
+          make,
+          closed: switch (await _records.closePendingMake(make)) {
+            Ok() => true,
+            Err() => false,
+          },
+        ),
+        'noTerms',
       );
     }
     final coordinator = _federation.byAlias(make.coordinatorAlias);
@@ -631,14 +665,20 @@ final class MakeOrderUsecase {
             make.coordinatorOnion ||
         record.coordinatorAlias != make.coordinatorAlias ||
         record.network != make.network.name) {
-      return MakePending(make, MakePendingReason.unread);
+      return _said(
+        MakePending(make, MakePendingReason.unread),
+        'coordinatorNotListed',
+      );
     }
     final NetworkRobot robot;
     switch (await _robots.robotOfSlot(make.robot)) {
       case Ok(:final value):
         robot = value;
-      case Err():
-        return MakePending(make, MakePendingReason.unread);
+      case Err(:final failure):
+        return _said(
+          MakePending(make, MakePendingReason.unread),
+          'robot ${failure.runtimeType}',
+        );
     }
     final requests = _limiter.open(robot.identity.sessionKey);
     try {
@@ -660,7 +700,10 @@ final class MakeOrderUsecase {
       switch (await _readMade(make, robot, coordinator, requests, candidate)) {
         case _Read(:final order, :final times)
             when _isOurs(make, coordinator, candidate, order):
-          return _confirm(make, robot, coordinator, order, times);
+          return _said(
+            await _confirm(make, robot, coordinator, order, times),
+            'answerOrder',
+          );
         case _:
           // Not shown as this robot's order, or not read: the robot says which order it made.
           break;
@@ -670,19 +713,41 @@ final class MakeOrderUsecase {
     switch (await _readRobot.execute(robot)) {
       case Ok(value: Ok(value: final face)):
         named = face.activeOrderId ?? face.lastOrderId;
-      case Ok(value: Err()) || Err():
-        return MakePending(make, MakePendingReason.unread);
+      case Ok(value: Err(:final failure)):
+        return _said(
+          MakePending(make, MakePendingReason.unread),
+          'robotUnread ${ActionOutcomeLog.causeOf(failure)}',
+        );
+      case Err(:final failure):
+        return _said(
+          MakePending(make, MakePendingReason.unread),
+          'robotUnread ${failure.runtimeType}',
+        );
     }
     // Read after the make's request ended: a robot that names no order made none that this app could show.
-    if (named == null) return _notMade(make, refusal: null);
+    if (named == null) {
+      return _said(await _notMade(make, refusal: null), 'noOrderNamed');
+    }
     return switch (await _readMade(make, robot, coordinator, requests, named)) {
       _Read(:final order, :final times)
           when _isOurs(make, coordinator, named, order) =>
-        _confirm(make, robot, coordinator, order, times),
-      _Read() => MakePending(make, MakePendingReason.notRecognized),
+        _said(
+          await _confirm(make, robot, coordinator, order, times),
+          'orderNamed',
+        ),
+      _Read() => _said(
+        MakePending(make, MakePendingReason.notRecognized),
+        'notTheMaker',
+      ),
       // Error 1043 proves nothing about the maker, but leaves nothing to pay: no invoice was ever shown for this make.
-      _Cancelled() => _notMade(make, refusal: const OrderCancelled()),
-      _NotRead() => MakePending(make, MakePendingReason.unread),
+      _Cancelled() => _said(
+        await _notMade(make, refusal: const OrderCancelled()),
+        'cancelled',
+      ),
+      _NotRead() => _said(
+        MakePending(make, MakePendingReason.unread),
+        'orderUnread',
+      ),
     };
   }
 
@@ -792,6 +857,18 @@ final class MakeOrderUsecase {
       stored: step.stored,
       recordProblem: step.recordProblem,
     );
+  }
+
+  /// [outcome], once its line is in the support log ([ActionOutcomeLog.resolved]) with [reason], a fixed word.
+  static MakeOutcome _said(MakeOutcome outcome, String reason) {
+    ActionOutcomeLog.resolved('make', switch (outcome) {
+      MakeStarted() => 'started',
+      MakeNotMade() => 'notMade',
+      MakeNeverSent() => 'neverSent',
+      MakePending(:final reason) => 'pending ${reason.name}',
+      MakeNoLongerPending() => 'noLongerPending',
+    }, reason);
+    return outcome;
   }
 
   /// Whether the transport answered the make busy: nothing reached the coordinator ([OrderActionRefused]).
