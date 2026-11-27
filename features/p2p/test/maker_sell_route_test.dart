@@ -662,6 +662,8 @@ void main() {
         await settle(tester);
         expect(find.byType(Dialog), findsOneWidget);
         expect(journey.coordinator.sellerConfirmations, 0);
+        // The dialog's « Confirm » just shown ignores taps for a moment (#293): the tap comes later, as a user's.
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(
           find.descendant(
             of: find.byType(Dialog),

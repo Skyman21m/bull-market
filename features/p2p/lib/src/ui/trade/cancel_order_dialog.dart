@@ -27,6 +27,8 @@ class CancelOrderDialog extends StatelessWidget {
       backLabel: l10n.p2pTradeCancelBack,
       onBack: () => Navigator.of(context).pop(false),
       goLabel: l10n.p2pTradeConfirmCancellation,
+      // The tap that cancels the order, which cannot be undone: a second tap on « Cancel » can land on it as the dialog opens (#298).
+      guardsGo: true,
       onGo: () => Navigator.of(context).pop(true),
       note: note,
     );

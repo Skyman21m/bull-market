@@ -36,6 +36,7 @@ import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/trade/renew_check_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -635,6 +636,8 @@ void main() {
           findsOneWidget,
         );
         expect(pages.opened, isEmpty);
+        // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Renew anyway'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));

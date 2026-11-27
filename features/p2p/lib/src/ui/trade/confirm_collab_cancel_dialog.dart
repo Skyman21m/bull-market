@@ -48,6 +48,8 @@ class ConfirmCollabCancelDialog extends StatelessWidget {
         onBack: () => Navigator.of(context).pop(false),
         goLabel: peerAsked ? l10n.p2pEndCollabAccept : l10n.p2pEndCollabAsk,
         backFirst: true,
+        // The ask, or the acceptance that cancels the trade: a second tap on « Collaborative Cancel » can land on it as the dialog opens (#298).
+        guardsGo: true,
         onGo: () => Navigator.of(context).pop(true),
       ),
     );

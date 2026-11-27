@@ -27,6 +27,7 @@ import 'package:p2p/src/ui/garage/garage_profile.dart';
 import 'package:p2p/src/ui/trade/renew_check_dialog.dart';
 import 'package:p2p/src/ui/trade/trade_record_row.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart';
@@ -37,6 +38,7 @@ import 'package:secrets/testing.dart';
 
 import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
+import 'support/lean_confirmation.dart' show loadAppFont;
 import 'support/make_harness.dart';
 import 'support/trade_harness.dart'
     show HarnessKeys, TradeHarness, otherTradeKey, tradeKey;
@@ -1294,6 +1296,109 @@ void main() {
         await app.openGarage();
         expect(shown(tester), 0);
         expect(find.text('Robot #0'), findsOneWidget);
+        await app.close();
+      },
+    );
+  });
+  // Last in the file: the app's font, loaded here, stays loaded for the tests after it.
+  group('#298: a second tap on « Renew Order » as « Renew this order? » opens', () {
+    /// The ended order opened again from the Garage, its coordinator showing it cancelled, so that « Renew Order » goes through « Renew this order? »; the view at 390 × 640, with the app's font, « Renew Order » at the top of the page's view.
+    Future<_App> opened(WidgetTester tester) async {
+      await loadAppFont();
+      final app = await _App.start(tester);
+      final id = app.first.orderId;
+      app.coordinator.order(id).status = 4;
+      await app.openGarage();
+      await _tap(tester, _lastOrder(id));
+      await app.settle(12);
+      tester.view.physicalSize = const Size(390 * 3, 640 * 3);
+      await tester.pump();
+      for (var i = 0; i < 6 && _renewOrder.evaluate().isEmpty; i++) {
+        for (final element in find.byType(Scrollable).evaluate().toList()) {
+          if (element case StatefulElement(:final ScrollableState state)) {
+            state.position.jumpTo(state.position.maxScrollExtent);
+          }
+        }
+        await tester.pump();
+      }
+      unawaited(
+        Scrollable.ensureVisible(tester.element(_renewOrder), alignment: 0),
+      );
+      await tester.pump();
+      await tester.pump(MovedTapGuard.afterMove);
+      return app;
+    }
+
+    final renewAnyway = find.descendant(
+      of: find.byType(RenewCheckDialog),
+      matching: find.widgetWithText(TradeButton, 'Renew anyway'),
+    );
+
+    for (final gap in const [100, 250]) {
+      testWidgets(
+        '« Renew Order » tapped twice $gap ms apart: the second tap lands on « Renew anyway » and opens nothing; a tap on it after the delay opens the renewal\'s page, nothing sent',
+        (tester) async {
+          final app = await opened(tester);
+          final viewport = tester.getRect(
+            find
+                .ancestor(of: _renewOrder, matching: find.byType(Scrollable))
+                .first,
+          );
+          final point = tester.getRect(_renewOrder).intersect(viewport).center;
+          await tester.tapAt(point);
+          await tester.pump();
+          await tester.pump(Duration(milliseconds: gap));
+          final path = {
+            for (final entry in tester.hitTestOnBinding(point).path)
+              entry.target,
+          };
+          expect(
+            renewAnyway.evaluate().any(
+              (element) => path.contains(element.renderObject),
+            ),
+            isTrue,
+          );
+          await tester.tapAt(point);
+          await app.settle();
+          expect(find.byType(CreateOrderScreen), findsNothing);
+          expect(find.byType(RenewCheckDialog), findsOneWidget);
+          await tester.pump(MovedTapGuard.afterMove);
+          await tester.tap(renewAnyway);
+          await app.settle(12);
+          expect(find.byType(CreateOrderScreen), findsOneWidget);
+          expect(app.makes, hasLength(1));
+          await app.close();
+        },
+      );
+    }
+
+    testWidgets(
+      '« Renew Order » tapped once, then « Renew anyway » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame: the taps within 0.7 s are ignored, the first after opens the renewal\'s page',
+      (tester) async {
+        final app = await opened(tester);
+        await tester.tap(_renewOrder);
+        await tester.pump();
+        expect(renewAnyway, findsOneWidget);
+        final outcomes = <int, bool>{};
+        var elapsed = 0;
+        for (final ms in const [300, 500, 700, 900]) {
+          await tester.pump(Duration(milliseconds: ms - elapsed));
+          elapsed = ms;
+          await tester.tapAt(tester.getCenter(renewAnyway));
+          await tester.pump();
+          // Gone on: the dialog's route popped, on its way out.
+          outcomes[ms] =
+              !(ModalRoute.of(tester.element(renewAnyway))?.isCurrent ?? false);
+          if (outcomes[ms] ?? false) break;
+        }
+        debugPrint(
+          'GESTURE « Renew anyway » after « Renew Order »: opened at $outcomes, ${outcomes.values.where((went) => !went).length} ignored',
+        );
+        expect(outcomes[300], isFalse);
+        expect(outcomes[500], isFalse);
+        await app.settle(12);
+        expect(find.byType(CreateOrderScreen), findsOneWidget);
+        expect(app.makes, hasLength(1));
         await app.close();
       },
     );

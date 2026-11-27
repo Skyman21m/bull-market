@@ -25,6 +25,7 @@ import 'package:p2p/src/presentation/trade_panel.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
+import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:robosats/robosats.dart';
@@ -591,6 +592,8 @@ void main() {
         watch.emit(_watched('six'));
         await tester.pump();
         await tester.pump();
+        // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Confirm cancellation'));
         await settle(tester);
         final (seen, bondLoss) = cancels.asked.single;
@@ -647,6 +650,8 @@ void main() {
 
         await tester.tap(find.text('Cancel'));
         await settle(tester);
+        // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Confirm cancellation'));
         await settle(tester);
         expect(cancels.asked, hasLength(1));
@@ -688,6 +693,8 @@ void main() {
 
           await tester.tap(find.text('Cancel'));
           await settle(tester);
+          // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+          await tester.pump(MovedTapGuard.afterMove);
           await tester.tap(find.text('Confirm Cancel'));
           await settle(tester);
           expect(cancels.asked, hasLength(1));
@@ -717,6 +724,8 @@ void main() {
       await _reveal(tester, find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
       await settle(tester);
+      // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(find.text('Confirm cancellation'));
       await settle(tester);
       expect(find.text('You cannot cancel this order'), findsOneWidget);
@@ -734,6 +743,8 @@ void main() {
       await _reveal(tester, find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
       await settle(tester);
+      // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+      await tester.pump(MovedTapGuard.afterMove);
       await tester.tap(find.text('Confirm cancellation'));
       await settle(tester);
       expect(
@@ -821,6 +832,8 @@ void main() {
         await _reveal(tester, find.text('Cancel'));
         await tester.tap(find.text('Cancel'));
         await settle(tester);
+        // The button that goes on ignores a tap for a moment once the dialog is shown (#298).
+        await tester.pump(MovedTapGuard.afterMove);
         await tester.tap(find.text('Confirm Cancel'));
         await tester.pump();
         await tester.pump();
