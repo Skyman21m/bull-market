@@ -58,7 +58,7 @@ class GarageCubit extends Cubit<GarageState> {
   /// `WatchTradeUsecase.readOnce`: one read of a trade, as its page reads it when it opens (#251, step 0); `null` where the feature holds no trades.
   final Future<void> Function(TradeRecord record)? _readOnce;
 
-  /// `RecoveryNoteSync.visit` (#81): the Garage shows a key, whose recovery note is read in the background unless it was read for good on this installation or this run already read it; `null` where nothing reads the notes.
+  /// `RecoveryNoteSync.visit` (#81): the Garage shows a key, whose recovery note is read in the background, unless this run already reads it; `null` where nothing reads the notes.
   final void Function(NetworkGarageKey key)? _visit;
 
   /// The robot the Garage opened on in this visit, the one whose open record it may read once.
