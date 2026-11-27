@@ -16,6 +16,7 @@ import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import '../../trade_robots.dart';
 import '../put_robot_on_coordinator_usecase.dart';
+import 'action_outcome_log.dart';
 import 'trade_reader.dart';
 import 'prepared_takes.dart';
 import 'trade_take_locks.dart';
@@ -771,6 +772,21 @@ final class TakeOrderUsecase {
     }
 
     // 5. What it gave.
+    ActionOutcomeLog.answered(
+      'take',
+      switch (taken) {
+        Err() => 'notSent',
+        Ok(value: Err(failure: OrderActionRefused())) => 'refused',
+        Ok(value: Err()) => 'pending',
+        Ok(value: Ok(value: final outcome)) =>
+          'answered ${outcome.runtimeType}',
+      },
+      switch (taken) {
+        Err(:final failure) => failure,
+        Ok(value: Err(:final failure)) => failure,
+        Ok(value: Ok()) => null,
+      },
+    );
     switch (taken) {
       case Err(:final failure):
         // Busy every time, or the robot released: the take never reached the coordinator.

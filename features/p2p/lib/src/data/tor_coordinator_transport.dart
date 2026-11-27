@@ -218,6 +218,7 @@ final class TorCoordinatorTransport
     final timer = Timer(_deadline, () {
       deadline.expire();
       if (!completer.isCompleted) {
+        _logAction(request, 'timed out at the deadline');
         completer.complete(const Err(CoordinatorTimedOut()));
       }
     });
@@ -228,6 +229,10 @@ final class TorCoordinatorTransport
       },
       onError: (Object error, StackTrace trace) {
         timer.cancel();
+        // Every method: the type only, never the message, which could quote a URL or a header.
+        log.fine(
+          'P2P coordinator ${request.method.name} threw (${error.runtimeType})',
+        );
         if (completer.isCompleted) {
           // The caller already has its answer: a late bug still surfaces in the zone.
           Zone.current.handleUncaughtError(error, trace);
@@ -243,6 +248,7 @@ final class TorCoordinatorTransport
 
   @override
   Future<void> closeSessions() async {
+    log.fine('P2P coordinator sessions closed (all)');
     _epoch++;
     // A session still opening is no longer waited for, and is closed as soon as it is open.
     for (final slot in _slots.values) {
@@ -255,6 +261,8 @@ final class TorCoordinatorTransport
 
   @override
   Future<void> closeRobotSessions(RobotSessionKey robot) async {
+    // Never which robot: a log line never ties a robot to anything.
+    log.fine('P2P coordinator sessions closed (one robot)');
     // The requests of this robot that are running fail at their next step, whatever session they are on.
     _robotRequests[robot]?.generation++;
     for (final key in List.of(_slots.keys)) {
@@ -329,6 +337,7 @@ final class TorCoordinatorTransport
         url.host.isEmpty ||
         url.userInfo.isNotEmpty ||
         !_acceptsHost(url.host)) {
+      _logAction(request, 'refused before sending (url)');
       return const Err(CoordinatorTransportFailed());
     }
     // A credential on an anonymous session would tie that session, and the reads of the book, to a robot.
@@ -337,10 +346,12 @@ final class TorCoordinatorTransport
         request.headers.keys.any(
           (name) => name.toLowerCase() == HttpHeaders.authorizationHeader,
         )) {
+      _logAction(request, 'refused before sending (credential on anonymous)');
       return const Err(CoordinatorTransportFailed());
     }
     // Checked before any session opens: `dart:io` would refuse a header it finds invalid with an exception that quotes its value, and a header of megabytes would cost three sessions before it failed.
     if (!_areSendable(request.headers)) {
+      _logAction(request, 'refused before sending (headers)');
       return const Err(CoordinatorTransportFailed());
     }
     final robot = request.robot;
@@ -641,6 +652,12 @@ final class TorCoordinatorTransport
     }
   }
 
+  /// A line of the support log on the fate of [request], a request that acts (any method but `GET`, whose reads are too many to log): `P2P coordinator <method> <what>`, [what] being fixed words, Dart type names and names of enum values only, never the request's address, path, headers or body, nor an exception's message.
+  static void _logAction(CoordinatorRequest request, String what) {
+    if (request.method == CoordinatorHttpMethod.get) return;
+    log.fine('P2P coordinator ${request.method.name} $what');
+  }
+
   static final RegExp _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
   static final RegExp _headerValue = RegExp(r'^[\x20-\x7E]*$');
 
@@ -695,24 +712,43 @@ final class TorCoordinatorTransport
     // Whether [closeSessions], or [closeRobotSessions] for the robot of this request, ran since the request started.
     bool closed() => epoch != _epoch || generation != requests?.generation;
     for (var attempt = 0; ; attempt++) {
-      if (deadline.passed) return const Err(CoordinatorTimedOut());
+      if (deadline.passed) {
+        _logAction(request, 'timed out before an attempt');
+        return const Err(CoordinatorTimedOut());
+      }
       // After [closeSessions] or [closeRobotSessions], a request still running fails instead of opening a new session, whichever session it was on.
-      if (closed()) return const Err(CoordinatorTransportFailed());
+      if (closed()) {
+        _logAction(request, 'stopped (sessions closed)');
+        return const Err(CoordinatorTransportFailed());
+      }
       final slot = _slotFor(key);
       // No place for a new session of this robot: nothing was sent on this attempt, and the same request may pass later.
-      if (slot == null) return const Err(CoordinatorTransportBusy());
+      if (slot == null) {
+        _logAction(request, 'busy (no place)');
+        return const Err(CoordinatorTransportBusy());
+      }
       final _Route route;
       // Counted from here, without a gap, so that the session is never closed as unused before this request takes it.
       slot.waiting++;
       try {
         route = await slot.opening;
       } on _RouteException catch (exception) {
+        _logAction(
+          request,
+          'session not opened (${exception.failure.runtimeType})',
+        );
         return Err(exception.failure);
       } finally {
         slot.waiting--;
       }
-      if (closed()) return const Err(CoordinatorTransportFailed());
-      if (deadline.passed) return const Err(CoordinatorTimedOut());
+      if (closed()) {
+        _logAction(request, 'stopped (sessions closed)');
+        return const Err(CoordinatorTransportFailed());
+      }
+      if (deadline.passed) {
+        _logAction(request, 'timed out before an attempt');
+        return const Err(CoordinatorTimedOut());
+      }
 
       route.acquire();
       final _Attempt outcome;
@@ -727,10 +763,12 @@ final class TorCoordinatorTransport
           return result;
         case _Abandoned():
           _retire(key, slot, route);
+          _logAction(request, 'abandoned at the deadline');
           return const Err(CoordinatorTimedOut());
         case _ConnectFailed(:final reason):
           _retire(key, slot, route);
           if (attempt >= retries || deadline.passed) {
+            _logAction(request, 'connection failed (${reason.name})');
             return const Err(CoordinatorUnreachable());
           }
           // The reason and two counters only: the coordinator, the robot and the headers of the request never go to a log, where they would tie a robot to a coordinator or leak its credential.
@@ -1005,6 +1043,11 @@ final class TorCoordinatorTransport
               : (_, _) => written(),
         );
       } on DioException catch (exception) {
+        // Its type and the type of its cause only: the exception's message quotes the URL.
+        _logAction(
+          request,
+          'failed before headers (${exception.type.name}, ${exception.error.runtimeType})',
+        );
         return _failureBeforeHeaders(exception);
       }
 
@@ -1012,8 +1055,10 @@ final class TorCoordinatorTransport
       final statusCode = response.statusCode;
       if (body == null || statusCode == null) {
         cancel.cancel();
+        _logAction(request, 'answer without status');
         return const _Answered(Err(CoordinatorTransportFailed()));
       }
+      _logAction(request, 'answered (${statusCode ~/ 100}xx)');
       final headers = {
         for (final MapEntry(:key, :value) in response.headers.map.entries)
           key.toLowerCase(): value.join(', '),
@@ -1023,6 +1068,7 @@ final class TorCoordinatorTransport
       );
       if (announced != null && announced > request.maxResponseBytes) {
         cancel.cancel();
+        _logAction(request, 'answer too large');
         return const _Answered(Err(CoordinatorResponseTooLarge()));
       }
       final read = await _readCapped(
@@ -1030,6 +1076,9 @@ final class TorCoordinatorTransport
         request.maxResponseBytes,
         cancel,
       );
+      if (read case Err(:final failure)) {
+        _logAction(request, 'body not read (${failure.runtimeType})');
+      }
       return _Answered(switch (read) {
         Ok(value: final bytes) => Ok(
           CoordinatorResponse(

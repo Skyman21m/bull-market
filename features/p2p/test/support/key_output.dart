@@ -39,7 +39,25 @@ Future<String> captureKeyOutput(Future<void> Function() body) async {
   directory.deleteSync(recursive: true);
   expect(printed, contains('print capture works'));
   expect(written, contains('logger capture works'));
-  return '${printed.join('\n')}\n$written';
+  return [
+    for (final line in '${printed.join('\n')}\n$written'.split('\n'))
+      if (!_isOutcomeLine(line)) line,
+  ].join('\n');
+}
+
+/// The support log's lines on how a request that acts, a make or a take ended (`ActionOutcomeLog`, `TorCoordinatorTransport`), and nothing else on the line but its time and level: fixed words, type names and figures only, which a capture of keys leaves out; a line that would carry anything more stays in the output.
+final RegExp _outcomeMessage = RegExp(
+  r'P2P (?:(?:make|take)(?: resolved)?: [A-Za-z]+(?: [A-Za-z]+)? \([A-Za-z0-9_ ,]*\)'
+  r'|coordinator (?:get|post|put|delete) [a-z ]+(?:\([A-Za-z0-9_ ,]*\))?'
+  r'|coordinator sessions closed \((?:all|one robot)\))',
+);
+final RegExp _ansi = RegExp(r'\x1b\[[0-9;]*m');
+final RegExp _timeAndLevel = RegExp(r'^[0-9T:.\-]+\s+FINE$');
+
+bool _isOutcomeLine(String line) {
+  if (!_outcomeMessage.hasMatch(line)) return false;
+  final rest = line.replaceAll(_ansi, '').replaceFirst(_outcomeMessage, '');
+  return _timeAndLevel.hasMatch(rest.trim());
 }
 
 /// Fails if [output] holds any usual form of any of [keys]: hexadecimal, a list of bytes, base64 or the `robo1…` text.
