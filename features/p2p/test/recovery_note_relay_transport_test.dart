@@ -170,6 +170,23 @@ void main() {
   );
 
   test(
+    'exactly the bound of events, then the ends of the answer: whole; one more event: cut, incomplete, the bound kept',
+    () async {
+      final whole = await relay(_Behaviour.answer)
+        ..events = List.filled(maxRelayReadEvents ~/ 2, event);
+      final read = await transport().readOnOwnSession(whole.url, filters);
+      expect(read.complete, isTrue);
+      expect(read.events, hasLength(maxRelayReadEvents));
+      final over = await relay(_Behaviour.answer)
+        ..events = List.filled(maxRelayReadEvents ~/ 2 + 1, event);
+      final cut = await transport().readOnOwnSession(over.url, filters);
+      expect(cut.complete, isFalse);
+      expect(cut.label, 'tooManyEvents');
+      expect(cut.events, hasLength(maxRelayReadEvents));
+    },
+  );
+
+  test(
     'a relay that cuts the connection gives what it sent, incomplete',
     () async {
       final fake = await relay(_Behaviour.cut)

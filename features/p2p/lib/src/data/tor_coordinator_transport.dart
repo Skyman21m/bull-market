@@ -652,10 +652,12 @@ final class TorCoordinatorTransport
           case 'EVENT' when message.length >= 3:
             final event = message[2];
             if (event is! Map<String, Object?>) return;
-            events.add(jsonEncode(event));
+            // A thousand events are kept, and an answer that ends there is whole (500 per request, the reference relay's bound); one more stops the read, incomplete (review of #302).
             if (events.length >= maxRelayReadEvents) {
               finish(complete: false, label: 'tooManyEvents');
+              return;
             }
+            events.add(jsonEncode(event));
           case 'EOSE':
             pending.remove(id);
             if (pending.isEmpty) {
