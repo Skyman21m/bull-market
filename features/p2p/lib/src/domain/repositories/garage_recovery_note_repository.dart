@@ -35,7 +35,7 @@ final class GarageNoteStanding {
   /// The robot index the note said, at its highest over the readings; `null` while none was read.
   final int? floor;
 
-  /// Whether a reading counted as read for good, on the whole answer of a strict majority of the network's relays: new trades of the key then no longer wait for its reading (it is still read at each run, review of #302).
+  /// Whether a reading counted as read for good, on the whole answer of a strict majority of the network's relays: in a later run, a majority of the relays that gives no note then lets new trades of the key go without waiting for the relays left (its one use, security review of #302); the key is still read at each run.
   final bool read;
 
   const GarageNoteStanding({required this.floor, required this.read});

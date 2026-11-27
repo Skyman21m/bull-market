@@ -219,7 +219,7 @@ final class P2pLocator {
     locator.registerLazySingleton<RobotBindingRepository>(
       () => RobotBindingRepositoryImpl(locator(), clock: clock),
     );
-    // What this device read of the recovery notes of the Garage Keys (schema 11, #81), and, where the shell lent the relays, the note kept on them: read once per run (at the first showing of the P2P tab for the key new trades take and the keys in use, at the visit of a key, before a new trade), its floor recorded relay by relay, awaited by a new trade only for a key never read for good, written after each confirmed trade and at each opening of the P2P tab once the reading of the run reached a strict majority of the relays. One for the feature: its readings and writes of a run are its memory.
+    // What this device read of the recovery notes of the Garage Keys (schema 11, #81), and, where the shell lent the relays, the note kept on them: read once per run (at the first showing of the P2P tab for the key new trades take and the keys in use, at the visit of a key, before a new trade), its floor recorded relay by relay, awaited by a new trade of any key at most 40 s, written after each confirmed trade and at each opening of the P2P tab once the reading of the run reached a strict majority of the relays. One for the feature: its readings and writes of a run are its memory.
     locator.registerLazySingleton<GarageRecoveryNoteRepository>(
       () => GarageRecoveryNoteRepositoryImpl(locator(), clock: clock),
     );
