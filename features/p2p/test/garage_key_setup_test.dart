@@ -6,7 +6,9 @@ import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/recovery_note_sync.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
+import 'package:p2p/src/domain/repositories/garage_recovery_note_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_key_compute_port.dart';
@@ -95,6 +97,9 @@ void main() {
     // The robot panel of the Garage, and the coordinators it lists.
     locator.isRegistered<ListRobotHostsUsecase>(),
     locator.isRegistered<RobotCoordinatorCubit>(),
+    // The recovery notes of the Garage Keys (#81): what this device read of them, and their reading and writing on the coordinators' relays of the app's transport (functional review of #302, R8: without them, no note is read nor written, and no other test would see it).
+    locator.isRegistered<GarageRecoveryNoteRepository>(),
+    locator.isRegistered<RecoveryNoteSync>(),
   ];
 
   test(
