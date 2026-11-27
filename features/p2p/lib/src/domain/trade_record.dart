@@ -253,6 +253,8 @@ final class NewTradeStanding {
       Object.hash(Object.hashAllUnordered(indexesInUse), noteFloor);
 
   @override
-  String toString() =>
-      'NewTradeStanding(${indexesInUse.length} in use, floor: $noteFloor)';
+  String toString() => switch (noteFloor) {
+    null => 'NewTradeStanding(${indexesInUse.length} in use)',
+    final floor => 'NewTradeStanding(${indexesInUse.length} in use, floor: $floor)',
+  };
 }

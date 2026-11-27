@@ -46,6 +46,7 @@ final class RecoveryNoteSync {
   final OwnSessionNostrRelayTransport _relays;
   final GarageNoteComputePort _compute;
   final GarageRecoveryNoteRepository _notes;
+
   /// `TradeRecordRepository.newTradeStandingOf`: the robots in use of a key and its floor.
   final NewTradeStandingOf _standing;
 
