@@ -65,10 +65,10 @@ void main() {
         final key = robot.nostrKeyPair().publicKeyHex;
         expect(token.hex, app.coordinator.reviewToken(key));
         // The robot read back first, for the key the request is signed with (GHSA-22q8-9ghc-jg3h), then the request once.
-        expect(
-          app.coordinator.requests.map((r) => r.url.path),
-          ['/api/robot/', '/api/review/'],
-        );
+        expect(app.coordinator.requests.map((r) => r.url.path), [
+          '/api/robot/',
+          '/api/review/',
+        ]);
         final request = app.coordinator.requests.last;
         expect(request.method, CoordinatorHttpMethod.post);
         expect(request.url.path, '/api/review/');

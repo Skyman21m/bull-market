@@ -33,6 +33,7 @@ import 'package:secrets/testing.dart';
 
 import 'support/harness.dart';
 import 'support/lean_confirmation.dart' show loadAppFont;
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// The owner's payment rule on the order page, before the take (#249, slice 4; design note `docs/design/phase-3-taken-order-price-check.md` § 3, first row, § 8 point 4; option B decided on 2026-11-24, the alert only), on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`) by the user's gestures, in English and in French, for a taker buyer and a taker seller, from the book and from an order reached by its URL (#245).
@@ -115,7 +116,7 @@ final class _Journey {
     for (final request in coordinator.requests)
       if (request.method == CoordinatorHttpMethod.post &&
           request.url.path == '/api/order/')
-        utf8.decode(request.body ?? const []),
+        unsignedBodyOf(request.body),
   ];
 
   Future<void> waitFor(Finder finder, {int seconds = 60}) async {

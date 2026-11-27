@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/presentation/unlisted_order_cubit.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
@@ -252,10 +250,7 @@ void main() {
       final take = app.coordinator.requests.lastWhere(
         (request) => request.method == CoordinatorHttpMethod.post,
       );
-      expect(
-        unsignedBodyOf(take.body),
-        '{"action":"take","amount":0}',
-      );
+      expect(unsignedBodyOf(take.body), '{"action":"take","amount":0}');
       await cubit.close();
     });
   });
