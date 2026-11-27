@@ -96,7 +96,7 @@ abstract final class Nip44 {
     return base64.encode([_version, ...nonce, ...ciphertext, ...mac]);
   }
 
-  /// The plaintext of [payload], or a [FormatException] for any payload that is not a well-formed version 2 payload of [conversationKey]: unknown version, bad size, bad base64, bad MAC, bad padding.
+  /// The plaintext of [payload], or a [FormatException] for any payload that is not a well-formed version 2 payload of [conversationKey]: unknown version, bad size, bad base64 (anything but the canonical standard alphabet with its padding, as `@scure/base` reads it), bad MAC, bad padding.
   static String decrypt(String payload, List<int> conversationKey) {
     if (payload.isEmpty || payload.startsWith('#')) {
       throw const FormatException('unknown encryption version');
@@ -108,6 +108,10 @@ abstract final class Nip44 {
     try {
       data = base64.decode(payload);
     } on FormatException {
+      throw const FormatException('invalid base64');
+    }
+    // `base64.decode` also takes the URL-safe alphabet, a missing padding and non-zero padding bits, which `base64.decode` of `@scure/base`, the decoder of `nip44.ts`, refuses: only the canonical form, which encodes back to the very payload, is read.
+    if (base64.encode(data) != payload) {
       throw const FormatException('invalid base64');
     }
     if (data.length < 99 || data.length > 65603) {

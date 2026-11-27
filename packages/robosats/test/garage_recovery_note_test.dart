@@ -55,7 +55,7 @@ void main() {
   };
 
   int? read(List<String> events) =>
-      GarageRecoveryNote.latestAccount(key, events);
+      GarageRecoveryNote.latestNote(key, events)?.accountIndex;
 
   final secureRandom = DeterministicRandom('crafted');
   List<int> bytes32() =>
@@ -686,6 +686,15 @@ void main() {
       craftedWrap(rawRumorJson({'created_at': null})),
     );
     ignored('a rumor that is not an object', craftedWrap('[1,2,3]'));
+    ignored(
+      'a genuine note whose wrap a relay rewrote in URL-safe base64',
+      edited(
+        jsonOf(pythonNote['wrap']),
+        (wrap) => wrap['content'] = (wrap['content'] as String)
+            .replaceAll('+', '-')
+            .replaceAll('/', '_'),
+      ),
+    );
     ignored('a rumor that is not JSON', craftedWrap('{"kind":30078,'));
     for (final (reason, text) in [
       ('broken JSON', '{"kind":1059,'),
@@ -700,7 +709,7 @@ void main() {
     }
   });
 
-  group('ignores a seal that does not verify', () {
+  group('ignores a seal that verifyEvent refuses', () {
     final wrapJson = craftedWrap(rumorJson());
 
     /// [wrapJson] whose seal is changed by [change] and wrapped again for the identity.
@@ -737,6 +746,17 @@ void main() {
       expect(read([withSeal((_) {})]), 7);
     });
 
+    test('an uppercase signature counts, as hexToBytes reads either case', () {
+      expect(
+        read([
+          withSeal(
+            (seal) => seal['sig'] = (seal['sig'] as String).toUpperCase(),
+          ),
+        ]),
+        7,
+      );
+    });
+
     for (final (reason, change)
         in <(String, void Function(Map<String, dynamic>))>[
           (
@@ -747,12 +767,13 @@ void main() {
               (seal['sig'] as String).startsWith('00') ? '01' : '00',
             ),
           ),
-          (
-            'an uppercase signature',
-            (seal) => seal['sig'] = (seal['sig'] as String).toUpperCase(),
-          ),
           ('no signature', (seal) => seal.remove('sig')),
           ('a signature of zeros', (seal) => seal['sig'] = '0' * 128),
+          (
+            'a signature whose r is zero',
+            (seal) => seal['sig'] =
+                '${'0' * 64}${(seal['sig'] as String).substring(64)}',
+          ),
           ('a signature of ones', (seal) => seal['sig'] = 'f' * 128),
           (
             'a signature whose s is zero',
@@ -761,6 +782,10 @@ void main() {
           ),
           ('a short signature', (seal) => seal['sig'] = 'ab' * 32),
           ('another id', (seal) => seal['id'] = '0' * 64),
+          (
+            'an uppercase id, which verifyEvent compares as it is',
+            (seal) => seal['id'] = (seal['id'] as String).toUpperCase(),
+          ),
           ('another date', (seal) => seal['created_at'] = 1767200001),
           ('a decimal date', (seal) => seal['created_at'] = 1767200000.5),
           (
@@ -770,7 +795,7 @@ void main() {
             ],
           ),
           (
-            'an uppercase pubkey',
+            'an uppercase pubkey, which validateEvent refuses',
             (seal) => seal['pubkey'] = (seal['pubkey'] as String).toUpperCase(),
           ),
         ]) {
@@ -816,22 +841,66 @@ void main() {
       );
     });
 
+    /// A gift wrap of [sealJson] to the identity, naming both identities so that it is tried with both keys.
+    final floodThrowaway = NostrKeyPair.generate(DeterministicRandom('flood'));
+    final floodConversation = floodThrowaway.conversationKeyWith(
+      identity.publicKeyHex,
+    );
+    String floodWrap(String sealJson) => jsonOf({
+      'kind': 1059,
+      'content': Nip44.encrypt(sealJson, floodConversation, bytes32()),
+      'created_at': 1767210000,
+      'tags': [
+        ['p', identity.publicKeyHex],
+        ['p', legacy.publicKeyHex],
+      ],
+      'pubkey': floodThrowaway.publicKeyHex,
+      'id': '0' * 64,
+      'sig': '0' * 128,
+    });
+
     test(
-      'reads a thousand hostile events addressed to both identities',
+      'reads a thousand hostile events whose seals claim the identity',
       () {
-        // The costliest events a third party can make: each decrypts with the identity's key, holds a seal of the third party that verifies, and names the legacy identity too, so that it is tried with both keys.
-        final attackerConversation = stranger.conversationKeyWith(
-          identity.publicKeyHex,
+        // The costliest events a third party can make: each decrypts with the identity's key, holds a seal that says it is the identity's with a signature that is well formed but false, so that it is checked, and names the legacy identity too.
+        final content = Nip44.encrypt(
+          rumorJson(),
+          stranger.conversationKeyWith(identity.publicKeyHex),
+          bytes32(),
         );
-        final throwaway = NostrKeyPair.generate(DeterministicRandom('flood'));
-        final wrapConversation = throwaway.conversationKeyWith(
-          identity.publicKeyHex,
-        );
+        final seal = jsonOf({
+          'kind': NostrGiftWrap.sealKind,
+          'content': content,
+          'created_at': 1767200000,
+          'tags': <List<String>>[],
+          'pubkey': identity.publicKeyHex,
+          'id': NostrEvent.idOf(
+            identity.publicKeyHex,
+            1767200000,
+            NostrGiftWrap.sealKind,
+            const [],
+            content,
+          ),
+          'sig': '7' * 128,
+        });
+        final flood = [
+          for (var i = 0; i < GarageRecoveryNote.maxEvents - 1; i++)
+            floodWrap(seal),
+        ];
+        expect(read([...flood, noteJson(5)]), 5);
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+
+    test(
+      'reads a thousand hostile events whose seals are a third party\'s',
+      () {
+        // A seal of a third party that verifies: dropped on its author, before its signature is checked.
         final seal = stranger.sign(
           kind: NostrGiftWrap.sealKind,
           content: Nip44.encrypt(
             rumorJson(pubkey: stranger.publicKeyHex),
-            attackerConversation,
+            stranger.conversationKeyWith(identity.publicKeyHex),
             bytes32(),
           ),
           createdAt: 1767200000,
@@ -840,27 +909,75 @@ void main() {
         );
         final flood = [
           for (var i = 0; i < GarageRecoveryNote.maxEvents - 1; i++)
-            jsonOf({
-              'kind': 1059,
-              'content': Nip44.encrypt(
-                seal.toJson(),
-                wrapConversation,
-                bytes32(),
-              ),
-              'created_at': 1767210000,
-              'tags': [
-                ['p', identity.publicKeyHex],
-                ['p', legacy.publicKeyHex],
-              ],
-              'pubkey': throwaway.publicKeyHex,
-              'id': '0' * 64,
-              'sig': '0' * 128,
-            }),
+            floodWrap(seal.toJson()),
         ];
         expect(read([...flood, noteJson(5)]), 5);
       },
       timeout: const Timeout(Duration(minutes: 5)),
     );
+  });
+
+  group('readings, and the choice among relays', () {
+    test('a reading gives the index and the rumor\'s date', () {
+      expect(
+        GarageRecoveryNote.latestNote(key, [jsonOf(pythonNote['wrap'])]),
+        const GarageRecoveryReading(accountIndex: 3, createdAt: 1767225600),
+      );
+      final at = DateTime.utc(2026, 11, 20, 8, 30, 15, 999);
+      expect(
+        GarageRecoveryNote.latestNote(key, [noteJson(17, at: at)]),
+        GarageRecoveryReading(
+          accountIndex: 17,
+          createdAt: at.millisecondsSinceEpoch ~/ 1000,
+        ),
+      );
+      expect(GarageRecoveryNote.latestNote(key, const []), isNull);
+    });
+
+    test('the latest of several relays\' readings, as the reference', () {
+      const older = GarageRecoveryReading(accountIndex: 9, createdAt: 100);
+      const newer = GarageRecoveryReading(accountIndex: 4, createdAt: 200);
+      const tie = GarageRecoveryReading(accountIndex: 6, createdAt: 200);
+      final future = GarageRecoveryReading(
+        accountIndex: 2,
+        createdAt: DateTime.utc(2100).millisecondsSinceEpoch ~/ 1000,
+      );
+      expect(GarageRecoveryNote.latestOf([older, newer]), newer);
+      expect(GarageRecoveryNote.latestOf([newer, older]), newer);
+      expect(GarageRecoveryNote.latestOf([newer, tie]), tie);
+      expect(GarageRecoveryNote.latestOf([tie, newer]), tie);
+      expect(GarageRecoveryNote.latestOf([null, older, null]), older);
+      expect(GarageRecoveryNote.latestOf([older, newer, future]), future);
+      expect(GarageRecoveryNote.latestOf(const [null, null]), isNull);
+      expect(GarageRecoveryNote.latestOf(const []), isNull);
+    });
+
+    test('one relay\'s flood does not hide another relay\'s note', () {
+      final flood = [
+        for (var i = 0; i < GarageRecoveryNote.maxEvents; i++)
+          '{"kind":1059,"n":$i}',
+      ];
+      final relayA = GarageRecoveryNote.latestNote(key, flood);
+      final relayB = GarageRecoveryNote.latestNote(key, [noteJson(5)]);
+      expect(relayA, isNull);
+      expect(GarageRecoveryNote.latestOf([relayA, relayB])?.accountIndex, 5);
+      expect(read([...flood, noteJson(5)]), isNull, reason: 'mixed together');
+    });
+
+    test('choosing reading by reading is choosing among all notes', () {
+      final notes = [
+        noteJson(3, at: DateTime.utc(2026, 11, 2)),
+        noteJson(8, at: DateTime.utc(2026, 11, 4)),
+        noteJson(5, writer: legacy, at: DateTime.utc(2026, 11, 4)),
+        noteJson(1, at: DateTime.utc(2026, 11, 3)),
+      ];
+      final together = GarageRecoveryNote.latestNote(key, notes);
+      final apart = GarageRecoveryNote.latestOf([
+        for (final note in notes) GarageRecoveryNote.latestNote(key, [note]),
+      ]);
+      expect(apart, together);
+      expect(together?.accountIndex, 8);
+    });
   });
 
   group('secrecy', () {

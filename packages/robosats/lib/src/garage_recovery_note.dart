@@ -16,7 +16,10 @@ import 'package:robosats/src/robosats_failure.dart';
 /// The note is a NIP-59 gift wrap from the key's recovery identity to itself ([GarageKey.recoveryNostrKeyPair]); its rumor is of kind [kind], with the tags `['d', 'robosats-garage-account']` and `['account', <index in decimal>]` and an empty content.
 /// The official client reads the notes of the recovery identity and of the legacy one ([GarageKey.legacyRecoveryNostrKeyPair]), and writes with the recovery identity only.
 ///
-/// What the number read is worth: a note counts only when its seal is signed by one of the two identities, which only a holder of the Garage Key can do, so no relay and no third party can make up a number; but a relay chooses which notes it gives, so it can withhold the latest one (an older number, or none), and any holder of the key (another device, the official client, whoever has the key or the words it comes from) can write any index, dated at any time, the future included, which then wins as it does in the official client.
+/// What the number read is worth: a note counts only when its seal is signed by one of the two identities, which only a holder of the Garage Key can do, so no relay and no third party can make up a number, raise it or date it in the future.
+/// But any relay can withhold the latest note and give an older one, and since the official client writes the note only when it moves forward, older means smaller: a robot that already served would be taken again, which is the money risk of this number; a relay can also give none.
+/// And any holder of the key (another device, the official client, whoever has the key or the words it comes from) can write any index, dated at any time, the future included, which then wins as it does in the official client.
+/// The README of the package, « What a caller must do », lists what follows for the caller.
 abstract final class GarageRecoveryNote {
   /// The kind of the rumor, `ACCOUNT_RECOVERY_KIND` of the reference: application-specific data (NIP-78), addressable.
   static const int kind = 30078;
@@ -24,12 +27,12 @@ abstract final class GarageRecoveryNote {
   /// The value of the rumor's `d` tag, `D_TAG_VALUE` of the reference.
   static const String dTagValue = 'robosats-garage-account';
 
-  /// How many events [latestAccount] looks at, at most: the first ones of the list given, every one counted, duplicates and refused ones included; the others are ignored.
+  /// How many events one call of [latestNote] looks at, at most: the first ones of the list given, every one counted, duplicates and refused ones included; the others are ignored.
   ///
-  /// Twice what a coordinator's relay of the reference gives for one request (`docker/strfry/strfry.conf:81-82`, 500).
+  /// What one coordinator's relay of the reference gives at most for the two [filters], 500 for each (`maxFilterLimit`, `docker/strfry/strfry.conf:81-82`): the bound of one relay's answer, never of several relays' answers put together.
   static const int maxEvents = 1000;
 
-  /// The longest event [latestAccount] reads, in UTF-16 code units of its JSON: the largest event a coordinator's relay of the reference takes (`maxEventSize`, 65,536 bytes, `docker/strfry/strfry.conf:21`); a longer one is ignored before it is decoded.
+  /// The longest event [latestNote] reads, in UTF-16 code units of its JSON: the largest event a coordinator's relay of the reference takes (`maxEventSize`, 65,536 bytes, `docker/strfry/strfry.conf:21`); a longer one is ignored before it is decoded.
   static const int maxEventLength = 65536;
 
   static final RegExp _canonicalDecimal = RegExp(r'^(0|[1-9][0-9]*)$');
@@ -93,28 +96,32 @@ abstract final class GarageRecoveryNote {
         GarageRecoveryFilter._(key.legacyRecoveryNostrKeyPair.publicKeyHex),
       ]);
 
-  /// The robot index of the latest note of [key] among [events], or `null` when none counts.
+  /// The latest note of [key] among [events], its robot index with its date, or `null` when none counts.
   ///
-  /// [events] are the JSON texts of the events relays answered to [filters], each as received: from any relay, in any order, duplicates included.
-  /// Reads the notes of the recovery identity and of the legacy one, as the official client does; see [latestAccountFor].
-  static int? latestAccount(GarageKey key, Iterable<String> events) =>
-      latestAccountFor([
-        key.recoveryNostrKeyPair,
-        key.legacyRecoveryNostrKeyPair,
-      ], events);
+  /// [events] are the JSON texts of the events one relay answered to the two [filters], each as received, in any order, duplicates included.
+  /// Call it once per relay, each under its own bound of [maxEvents], then choose among the relays' answers with [latestOf]: the official client reads each relay apart, so that one relay's events never hide another's.
+  /// Reads the notes of the recovery identity and of the legacy one, as the official client does; see [latestNoteFor].
+  static GarageRecoveryReading? latestNote(
+    GarageKey key,
+    Iterable<String> events,
+  ) => latestNoteFor([
+    key.recoveryNostrKeyPair,
+    key.legacyRecoveryNostrKeyPair,
+  ], events);
 
-  /// [latestAccount] with the identities [identities] in place of a Garage Key, for an isolate that must not receive it.
+  /// [latestNote] with the identities [identities] in place of a Garage Key, for an isolate that must not receive it.
   ///
   /// A note counts for an identity when its wrap has a `p` tag naming it (what the filter of that identity returns), it unwraps with that identity's key as `unwrapEvent` unwraps it ([NostrGiftUnwrap]), its rumor is that identity's (`RoboPool/index.ts:684-685`), and the rumor reads as `parseAccountRecoveryEvent` reads it (`accountRecovery.ts:32-53`): kind [kind], the first `d` tag [dTagValue], the first `account` tag a canonical decimal (no sign, no leading zero) of a robot index; the content is not read, as in the reference.
-  /// Besides the `p` tag, which the reference leaves to the relay's filter, two points are stricter than the reference, where only a holder of the key could make a note differ: every tag of the rumor must be a list of strings, and its `created_at` an integer of at least 0.
-  /// The choice is the reference's: the latest rumor `created_at`, the larger index on a tie, whichever identity wrote it; a note dated in the future is not set apart.
+  /// A seal whose `pubkey` is not the identity is dropped before its signature is checked: the reference drops its rumor anyway, since the rumor must name both the seal's `pubkey` and the identity.
+  /// Four points are stricter than the reference, each about a note only a holder of the key could make: the wrap must have the identity in a `p` tag, which the reference leaves to the relay's filter; every tag of the rumor must be a list of strings; the rumor's `created_at` must be an integer of at least 0 (the reference also keeps a note dated -1 whose index is above the index it starts from); the seal's `kind` and `created_at` must be integers.
+  /// The choice is the reference's ([latestOf]): the latest rumor `created_at`, the larger index on a tie, whichever identity wrote it; a note dated in the future is not set apart.
   /// Everything else is ignored, without an exception or a log; at most [maxEvents] events are looked at, and none longer than [maxEventLength].
-  static int? latestAccountFor(
+  static GarageRecoveryReading? latestNoteFor(
     List<NostrKeyPair> identities,
     Iterable<String> events,
   ) {
     final seen = <String>{};
-    ({int createdAt, int accountIndex})? latest;
+    GarageRecoveryReading? latest;
     var looked = 0;
     for (final text in events) {
       if (looked == maxEvents) break;
@@ -123,18 +130,36 @@ abstract final class GarageRecoveryNote {
       final wrap = _decodedObject(text);
       if (wrap == null) continue;
       for (final identity in identities) {
-        final note = _noteOf(wrap, identity);
-        final current = latest;
-        if (note != null &&
-            (current == null ||
-                note.createdAt > current.createdAt ||
-                (note.createdAt == current.createdAt &&
-                    note.accountIndex > current.accountIndex))) {
-          latest = note;
-        }
+        latest = _later(latest, _noteOf(wrap, identity));
       }
     }
-    return latest?.accountIndex;
+    return latest;
+  }
+
+  /// The reading the official client keeps among [readings], the answers of several relays: the latest rumor `created_at`, the larger index on a tie (`GarageKey.model.ts:103-109`); `null` when none is given.
+  static GarageRecoveryReading? latestOf(
+    Iterable<GarageRecoveryReading?> readings,
+  ) {
+    GarageRecoveryReading? latest;
+    for (final reading in readings) {
+      latest = _later(latest, reading);
+    }
+    return latest;
+  }
+
+  /// The later of [current] and [candidate] by the reference's rule, [current] when they are the same note.
+  static GarageRecoveryReading? _later(
+    GarageRecoveryReading? current,
+    GarageRecoveryReading? candidate,
+  ) {
+    if (candidate == null) return current;
+    if (current == null ||
+        candidate.createdAt > current.createdAt ||
+        (candidate.createdAt == current.createdAt &&
+            candidate.accountIndex > current.accountIndex)) {
+      return candidate;
+    }
+    return current;
   }
 
   static Map<String, Object?>? _decodedObject(String text) {
@@ -147,19 +172,26 @@ abstract final class GarageRecoveryNote {
   }
 
   /// The note [wrap] carries for [identity], or `null`.
-  static ({int createdAt, int accountIndex})? _noteOf(
+  static GarageRecoveryReading? _noteOf(
     Map<String, Object?> wrap,
     NostrKeyPair identity,
   ) {
     if (!_addressedTo(wrap, identity.publicKeyHex)) return null;
-    final rumor = NostrGiftUnwrap.unwrap(wrap, identity);
+    final rumor = NostrGiftUnwrap.unwrap(
+      wrap,
+      identity,
+      sealAuthor: identity.publicKeyHex,
+    );
     if (rumor == null || rumor['pubkey'] != identity.publicKeyHex) return null;
     final accountIndex = _accountIndexOf(rumor);
     final createdAt = rumor['created_at'];
     if (accountIndex == null || createdAt is! int || createdAt < 0) {
       return null;
     }
-    return (createdAt: createdAt, accountIndex: accountIndex);
+    return GarageRecoveryReading(
+      accountIndex: accountIndex,
+      createdAt: createdAt,
+    );
   }
 
   /// Whether [wrap] has a `p` tag naming [publicKeyHex], as a relay matches `'#p'`.
@@ -259,4 +291,31 @@ final class GarageRecoveryFilter {
 
   @override
   String toString() => 'GarageRecoveryFilter';
+}
+
+/// The note a reading kept: the robot index it says and the `created_at` of its rumor, with which the answers of several relays are compared ([GarageRecoveryNote.latestOf]).
+@immutable
+final class GarageRecoveryReading {
+  /// The robot index the note says, 0 to [GarageKey.maxAccountIndex].
+  final int accountIndex;
+
+  /// The `created_at` of the note's rumor, in seconds since 1970, as its writer's clock gave it: it may be in the future.
+  final int createdAt;
+
+  const GarageRecoveryReading({
+    required this.accountIndex,
+    required this.createdAt,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is GarageRecoveryReading &&
+      other.accountIndex == accountIndex &&
+      other.createdAt == createdAt;
+
+  @override
+  int get hashCode => Object.hash(accountIndex, createdAt);
+
+  @override
+  String toString() => 'GarageRecoveryReading($accountIndex, $createdAt)';
 }
