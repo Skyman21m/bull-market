@@ -8,6 +8,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show CoordinatorHttpMethod;
 import 'package:test/test.dart';
 
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 
 /// The cubits of a password-protected order (#245): the read of its page, and its take, over the real use case and a played coordinator.
@@ -252,7 +253,7 @@ void main() {
         (request) => request.method == CoordinatorHttpMethod.post,
       );
       expect(
-        utf8.decode(take.body ?? const []),
+        unsignedBodyOf(take.body),
         '{"action":"take","amount":0}',
       );
       await cubit.close();

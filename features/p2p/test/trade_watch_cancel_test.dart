@@ -32,6 +32,7 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'support/key_output.dart';
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 
 /// The watch of a trade, its cancel and the list of the active trades (#87), over the coordinator the tests play: the cadence on the test's clock, the reads in flight, the abnormal answers, and nothing printed.
@@ -354,7 +355,7 @@ void main() {
         final post = app.coordinator.requests.lastWhere(
           (r) => r.method == CoordinatorHttpMethod.post,
         );
-        expect(jsonDecode(utf8.decode(post.body ?? const [])), {
+        expect(jsonDecode(unsignedBodyOf(post.body)), {
           'action': 'cancel',
           'cancel_status': 1,
         });
@@ -412,7 +413,7 @@ void main() {
         final post = app.coordinator.requests.lastWhere(
           (r) => r.method == CoordinatorHttpMethod.post,
         );
-        expect(jsonDecode(utf8.decode(post.body ?? const [])), {
+        expect(jsonDecode(unsignedBodyOf(post.body)), {
           'action': 'cancel',
           'cancel_status': 6,
         });

@@ -19,6 +19,7 @@ import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/harness.dart';
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart' show HarnessKeys, TradeHarness, tradeKey;
 
 /// A password-protected order taken on the app's real composition (`P2pFeature().route` over `setUpP2pForTesting`) by the user's gestures (#245), in English and in French: « Search order » with its URL, the page its robot reads, « Password », « Take Order », « Continue », « Done »; a wrong password, then the right one.
@@ -112,7 +113,7 @@ final class _Journey {
     for (final request in coordinator.requests)
       if (request.method == CoordinatorHttpMethod.post &&
           request.url.path == '/api/order/')
-        utf8.decode(request.body ?? const []),
+        unsignedBodyOf(request.body),
   ];
 
   Future<void> waitFor(Finder finder, {int seconds = 60}) async {

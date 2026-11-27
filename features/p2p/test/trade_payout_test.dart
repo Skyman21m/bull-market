@@ -73,6 +73,8 @@ void main() {
     await run.subscription.cancel();
     expect(status.stored, isTrue);
     expect(status.record.robot, record.robot);
+    // The take's own unlock, for the key its request was signed with (GHSA-22q8-9ghc-jg3h): the payout's are counted from here.
+    app.keys.unlocked.clear();
     return (app, status.record, status.seen);
   }
 
@@ -638,8 +640,8 @@ void main() {
           ),
           isTrue,
         );
-        // Signed without a hold: the key was unlocked for that signature, and dropped before the request left.
-        expect(keptWhileSent, [false]);
+        // Signed without a hold: the key was unlocked for that payout, kept while its request, signed by the client too (GHSA-22q8-9ghc-jg3h), was being sent, and dropped once it had ended.
+        expect(keptWhileSent, [true]);
         expect(app.keys.unlocked, [app.robot(0).hashId]);
         expect(app.keyring.keepsKeyOf(record.robot), isFalse);
         expect(app.keyring.openOf(record.robot), (holds: 0, leases: 0));
@@ -962,6 +964,8 @@ void main() {
         );
         final other = await TradeHarness.start(orderId: 43);
         final otherRecord = TradeHarness.recordOf(await other.takeShown());
+        // The take's own unlock, for its signed request (GHSA-22q8-9ghc-jg3h).
+        other.keys.unlocked.clear();
         final before = other.coordinator.requests.length;
         expect(
           await other.payout.execute(otherRecord, shown),

@@ -9,6 +9,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'fakes.dart';
+import 'robot_coordinators.dart' show pairOf;
 
 /// The order of the trade tests: number 42 on temple.
 const tradeOrderId = 42;
@@ -42,6 +43,12 @@ RobotIdentity _identityAt(int index) => switch (NetworkGarageKey(
 /// This device's robot, the taker of every trade of the tests, and the maker.
 final RobotIdentity us = _identityAt(0);
 final RobotIdentity peer = _identityAt(1);
+
+/// The key of [us], made and unlocked once for the run: the take's request is signed (GHSA-22q8-9ghc-jg3h).
+final UnlockedRobotPgpKey _usKey = switch (pairOf(us).unlock(us)) {
+  Ok(:final value) => value,
+  Err(:final failure) => throw StateError('$failure'),
+};
 
 /// The robot of the tests' Garage Key at [index]: 0 is [us], 1 [peer].
 RobotIdentity robotOfTests(int index) => _identityAt(index);
@@ -303,6 +310,7 @@ Future<OrderTakeStarted> takeStarted(
     coordinator('temple'),
     network,
     identity: us,
+    key: _usKey,
     orderId: tradeOrderId,
   );
   return switch (taken) {

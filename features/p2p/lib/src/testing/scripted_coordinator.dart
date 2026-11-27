@@ -635,12 +635,11 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     final ScriptedSignedText expected;
     switch (request.url.path) {
       case '/api/review/':
-        expected = ScriptedExactText(
-          reviewActionContent('${fields['pubkey']}'),
-        );
+        // Built here as `api/views.py` builds it, never with the package's own builders, so that a text the package changes is refused.
+        expected = ScriptedExactText('review:${fields['pubkey']}');
       case '/api/order/' when action is String && orderId != null:
         expected = ScriptedExactText(
-          orderActionContent(action, orderId, coordinator.shortAlias),
+          '$action:$orderId:${coordinator.shortAlias}',
         );
       default:
         // The serializer's refusals come first: an action it does not know is an empty 400.

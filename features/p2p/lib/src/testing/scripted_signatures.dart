@@ -56,8 +56,9 @@ int? scriptedSignatureRefusal(
       final signedAt = int.tryParse(rest.substring(colon + 1));
       if (signedAt == null) return 1048;
       if (rest.substring(0, colon) != shortAlias) return 1061;
-      final skew = unixSeconds(now) - signedAt;
-      return skew.abs() > actionSignatureWindow.inSeconds ? 1060 : null;
+      // `datetime.now(...).timestamp()` against the signed seconds, 300 either way (`ACTION_SIGNATURE_WINDOW`), with no help from the package.
+      final skew = now.millisecondsSinceEpoch / 1000 - signedAt;
+      return skew.abs() > 300 ? 1060 : null;
   }
 }
 

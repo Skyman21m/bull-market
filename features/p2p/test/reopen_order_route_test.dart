@@ -40,6 +40,7 @@ import 'support/fakes.dart' show FakeTransport;
 import 'support/harness.dart';
 import 'support/lean_confirmation.dart' show loadAppFont;
 import 'support/make_harness.dart';
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart'
     show HarnessKeys, TradeHarness, otherTradeKey, tradeKey;
 
@@ -311,7 +312,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 }
 
 Map<String, Object?> _body(CoordinatorRequest request) =>
-    jsonDecode(utf8.decode(request.body ?? const [])) as Map<String, Object?>;
+    jsonDecode(unsignedBodyOf(request.body)) as Map<String, Object?>;
 
 /// The line of the terms kept, whatever the day it names.
 const _keptLine =

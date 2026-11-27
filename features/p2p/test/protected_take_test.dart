@@ -9,6 +9,7 @@ import 'package:robosats/robosats.dart'
     show CoordinatorHttpMethod, OrderWrongPassword;
 import 'package:test/test.dart';
 
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 
 /// The take of a password-protected order (#245): read by the robot that will take it, since no book lists it; prepared and confirmed as an order of the book is (#119), every protection kept; the password sent as its SHA-256 only, never kept.
@@ -25,16 +26,15 @@ void main() {
   int count(TradeHarness app, ScriptedRequest kind) =>
       app.coordinator.received.where((k) => k == kind).length;
 
-  /// The body of the last take sent.
-  String takeBody(TradeHarness app) => utf8.decode(
+  /// The body of the last take sent, before its signature (GHSA-22q8-9ghc-jg3h).
+  String takeBody(TradeHarness app) => unsignedBodyOf(
     app.coordinator.requests
-            .lastWhere(
-              (request) =>
-                  request.method == CoordinatorHttpMethod.post &&
-                  request.url.path == '/api/order/',
-            )
-            .body ??
-        const [],
+        .lastWhere(
+          (request) =>
+              request.method == CoordinatorHttpMethod.post &&
+              request.url.path == '/api/order/',
+        )
+        .body,
   );
 
   Future<(TradeHarness, UnlistedOrder)> readOne({
@@ -116,7 +116,8 @@ void main() {
           ),
         );
         expect(count(app, ScriptedRequest.order), 3);
-        expect(count(app, ScriptedRequest.robot), 2);
+        // Twice for the robot itself, once more for the key its take is signed with (GHSA-22q8-9ghc-jg3h).
+        expect(count(app, ScriptedRequest.robot), 3);
         expect(count(app, ScriptedRequest.take), 1);
         final body = takeBody(app);
         expect(body, '{"action":"take","password":"$hash","amount":0}');

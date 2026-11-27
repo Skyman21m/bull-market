@@ -441,19 +441,24 @@ final class OrderRequestRefused extends CoordinatorOrderFailure {
 /// Why the signature of an action was refused, by the coordinator (errors 1059, 1060, 1061 and 1048 of RoboSats pull request 2955, head `0943c97`, `api/utils.py`, `validate_action_signature` and `validate_signed_action_timestamp`) or by this package before anything was sent.
 enum ActionSignatureRefusal {
   /// The coordinator received no signature (error 1059): it asks for a client that signs its actions.
-  missing,
+  missing(1059),
 
   /// The time in the signed text is more than 300 seconds from the coordinator's clock (error 1060): the device's clock is off, or the coordinator's.
-  clockSkew,
+  clockSkew(1060),
 
   /// The signed text names another coordinator (error 1061, for `make` only among the requests of this client): this client signed for another alias than the one the coordinator reads in its federation list.
-  otherCoordinator,
+  otherCoordinator(1061),
 
   /// The signature does not verify with the robot's key, or does not sign the text the coordinator expects (error 1048 on an action other than a payout, where the reference never sent it before pull request 2955).
-  invalid,
+  invalid(1048),
 
   /// This package could not sign, and sent nothing: the key given is another robot's, or the signature could not be made (a clock outside the dates an OpenPGP signature can hold).
-  notSigned,
+  notSigned(null);
+
+  /// The coordinator's error code of this refusal, a fixed number of the reference, or `null` for [notSigned], which this package decided.
+  final int? code;
+
+  const ActionSignatureRefusal(this.code);
 }
 
 /// The coordinator refused the signature of an action for [reason], or this package could not sign it ([ActionSignatureRefusal.notSigned]): the coordinator checks the signature before it changes anything (pull request 2955, `api/views.py`), so nothing was done.

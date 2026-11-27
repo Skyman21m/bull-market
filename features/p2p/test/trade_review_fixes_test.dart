@@ -34,6 +34,7 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'support/fakes.dart';
+import 'support/signed_bodies.dart';
 import 'support/trade_harness.dart';
 import 'support/two_connections.dart';
 
@@ -640,7 +641,7 @@ void main() {
         final post = app.coordinator.requests.lastWhere(
           (r) => r.method == CoordinatorHttpMethod.post,
         );
-        expect(jsonDecode(utf8.decode(post.body ?? const [])), {
+        expect(jsonDecode(unsignedBodyOf(post.body)), {
           'action': 'cancel',
           'cancel_status': 7,
         });

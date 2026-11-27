@@ -46,7 +46,7 @@ final class ScriptedMadeOrder {
   /// The robot that made it.
   final RobotIdentity maker;
 
-  /// The body of the make, as sent.
+  /// The body of the make, as sent, without its signature (GHSA-22q8-9ghc-jg3h), which the reference does not store.
   final Map<String, Object?> body;
 
   final DateTime createdAt;
@@ -439,8 +439,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       case '/api/make/':
         expected = ScriptedTimedText('make', coordinator.shortAlias);
       case '/api/order/' when action is String && orderId != null:
+        // Built here as `api/views.py` builds it, never with the package's own builders, so that a text the package changes is refused.
         expected = ScriptedExactText(
-          orderActionContent(action, orderId, coordinator.shortAlias),
+          '$action:$orderId:${coordinator.shortAlias}',
         );
       default:
         return null;
@@ -721,7 +722,8 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     final made = ScriptedMadeOrder._(
       id: nextOrderId++,
       maker: robot,
-      body: Map.unmodifiable(body),
+      // The order's fields only: the signature is a write-only field of the serializer, never stored on the order (RoboSats pull request 2955, `MakeOrderSerializer`).
+      body: Map.unmodifiable({...body}..remove('signature')),
       createdAt: now,
       expiresAt: now.add(makerBondTime),
       lastSatoshis: 0,
