@@ -32,6 +32,61 @@ abstract interface class NostrRelayTransport {
   });
 }
 
+/// A filter of a relay request (`["REQ", <subscription id>, <filter>]`, NIP-01), as an [OwnSessionNostrRelayTransport] sends it.
+abstract interface class NostrRelayFilter {
+  /// The filter's JSON object, as it is sent.
+  String toJson();
+
+  /// The start of the subscription id the request is sent under, to which the transport adds `_` and a few random characters, as the official client names its subscriptions (`accountRecovery_<random>`, `RoboPool/index.ts:634`, commit babf62e): a fixed word of the client, never a value of the filter.
+  String get subscriptionLabel;
+}
+
+/// The port to the coordinators' Nostr relays for what belongs to no robot, such as the recovery note of a Garage Key (#81): a publication or a read, each on a Tor session of its own, which the app implements over Tor in `features/p2p`.
+///
+/// Contract of an implementation:
+/// - each call goes through a Tor session of its own, opened for that call and closed after it, shared with no robot, with no anonymous read of the books and with no other call: a relay, or anyone watching one, can tie one call to another only by what the calls themselves carry, and by their times;
+/// - [publishOnOwnSession] sends [NostrRelayPublication.relayMessages] in order, waits for the relay's `OK` to each event and closes, as [NostrRelayTransport.publish] does;
+/// - [readOnOwnSession] sends one `REQ` per filter on one websocket, each under its own subscription id, keeps the events the relay sends for those subscriptions until each has its `EOSE`, or its `CLOSED`, or a bound is reached, then sends a `CLOSE` for each and closes;
+/// - both always complete, never throw, within a bound of time of their own; a read is also bounded in events, in bytes and in the length of one message, so that a relay that sends without end, slowly, or never sends `EOSE` costs a bounded time and memory;
+/// - they log nothing of the events, the filters or the relay: at most a fixed word.
+abstract interface class OwnSessionNostrRelayTransport {
+  Future<NostrRelayOutcome> publishOnOwnSession(
+    Uri relay,
+    NostrRelayPublication message,
+  );
+
+  Future<NostrRelayRead> readOnOwnSession(
+    Uri relay,
+    List<NostrRelayFilter> filters,
+  );
+}
+
+/// What one relay answered to the filters of a read ([OwnSessionNostrRelayTransport.readOnOwnSession]).
+@immutable
+final class NostrRelayRead {
+  /// The JSON texts of the events the relay sent for the read's subscriptions, in the order received, duplicates included, as many as the transport's bound at most: data from the relay, never trusted.
+  final List<String> events;
+
+  /// Whether every subscription ended with the relay's `EOSE` within the bounds: the relay's whole answer. A relay that closed a subscription (`CLOSED`), stopped, or went past a bound gave part of it at most.
+  final bool complete;
+
+  /// A fixed word for a log line: never a relay, an event or a filter.
+  final String label;
+
+  NostrRelayRead({
+    required Iterable<String> events,
+    required this.complete,
+    required this.label,
+  }) : events = List.unmodifiable(events);
+
+  /// No answer: the relay could not be reached, or the read failed before any event.
+  const NostrRelayRead.none(this.label) : events = const [], complete = false;
+
+  @override
+  String toString() =>
+      'NostrRelayRead(${events.length} events, complete: $complete, $label)';
+}
+
 /// What one relay did with the events of a publication: a value for a log line, nothing else, since the official client awaits no `OK` and tells nothing (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:622-626`, commit babf62e; it only tries a socket not yet connected again every 500 ms, `sendMessage`, `:387-403`).
 sealed class NostrRelayOutcome {
   const NostrRelayOutcome();
@@ -132,3 +187,14 @@ List<Uri> nostrRelaysFor(
   }
   return List.unmodifiable(relays);
 }
+
+/// Every coordinator relay of [federation] on [network], in the federation's order: where the recovery note of a Garage Key is written and read (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « This design »: on every coordinator relay of the network, where the official client draws `min(3, n)` of them, `nostrRelaysFor`).
+///
+/// A coordinator without a relay on [network] gives none.
+List<Uri> nostrRelaysOfNetwork(
+  Federation federation,
+  RobosatsNetwork network,
+) => List.unmodifiable([
+  for (final coordinator in federation.coordinators)
+    ?OutgoingNostrChatMessage.relayUrl(coordinator, network),
+]);

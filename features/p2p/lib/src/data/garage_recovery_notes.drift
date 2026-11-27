@@ -1,0 +1,18 @@
+-- The rules of what this device read of the recovery notes that the database keeps itself (schema 11, #81): see `StoredGarageRecoveryNotes` in `p2p_tables.dart`.
+import 'p2p_tables.dart';
+
+-- A reading is never deleted: the floor of the key's new trades holds across restarts.
+CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_never_deleted BEFORE DELETE ON garage_recovery_notes
+BEGIN
+  SELECT RAISE(ABORT, 'a recovery note read is kept');
+END;
+
+-- The floor only goes up, a reading recorded stays, and a row stays the row of its network and key.
+CREATE TRIGGER IF NOT EXISTS garage_recovery_notes_forward BEFORE UPDATE ON garage_recovery_notes
+WHEN NEW.network IS NOT OLD.network
+  OR NEW.key_fingerprint IS NOT OLD.key_fingerprint
+  OR (OLD.account_floor IS NOT NULL AND (NEW.account_floor IS NULL OR NEW.account_floor < OLD.account_floor))
+  OR (OLD.read_at IS NOT NULL AND NEW.read_at IS NOT OLD.read_at)
+BEGIN
+  SELECT RAISE(ABORT, 'a recovery note read only goes forward');
+END;

@@ -9,6 +9,7 @@ import 'package:robosats/robosats.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/book_filter.dart';
 import 'domain/p2p_shuffle.dart';
+import 'domain/recovery_note_sync.dart';
 import 'domain/trade/trade_take.dart';
 import 'domain/trade/trade_watch.dart';
 import 'domain/trade_record.dart';
@@ -751,6 +752,10 @@ class _P2pPageState extends State<_P2pPage> {
   Widget build(BuildContext context) {
     final locator = widget.locator;
     final current = widget.network(context);
+    // The recovery note of every Garage Key in use on this network written again on the relays (#81), once per network and run of the app, in the background, where the relays were lent: nothing waits for it, nothing is shown.
+    if (locator.isRegistered<RecoveryNoteSync>()) {
+      locator<RecoveryNoteSync>().opened(current);
+    }
     // Registered only when the shell gave the feature the vault's handle: otherwise the Garage is disabled and nothing reads the vault.
     final hasGarage = locator.isRegistered<GarageCubit>();
     final hasTrades = locator.isRegistered<ActiveTradesCubit>();

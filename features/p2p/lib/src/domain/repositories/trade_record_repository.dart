@@ -18,13 +18,21 @@ import '../trade_record.dart';
 /// Never call it inside a database transaction (`transaction(…)`): a reservation, a record or a change that answered success there is undone if the transaction rolls back, after its robot may have been sent to the coordinator, and a robot whose binding was undone could go to a second coordinator.
 /// Each method is one statement that commits on its own; `robot_bindings_architecture_test.dart` pins that nothing in the feature opens a transaction (drift gives no public way to tell, at run time, that a call runs inside one).
 abstract interface class TradeRecordRepository {
-  /// What a new trade on [network] may use of the key of [key]: its robot indexes already bound, on either network, or recorded with a trade. Where the key comes from does not matter (decided on 2026-11-26, #81).
+  /// What a new trade on [network] may use of the key of [key]: its robot indexes already bound, on either network, or recorded with a trade, and the floor the key's recovery note gave, read on either network's relays (schema 11, #81). Where the key comes from does not matter (decided on 2026-11-26, #81).
   ///
   /// It reads only, in one statement: a database that cannot be read, or a row this code never writes, is a [P2pStorageFailure].
   @useResult
   Future<Result<NewTradeStanding, P2pFailure>> newTradeStandingOf(
     RobosatsNetwork network,
     GarageKeyFingerprint key,
+  );
+
+  /// The keys that have a robot bound on [network], or recorded with a trade there, by fingerprint: the keys whose recovery note is written again at each opening of the app (#81).
+  ///
+  /// It reads only, in one statement: a database that cannot be read, or a row this code never writes, is a [P2pStorageFailure].
+  @useResult
+  Future<Result<Set<GarageKeyFingerprint>, P2pFailure>> keysInUse(
+    RobosatsNetwork network,
   );
 
   /// Binds [robot] to [coordinator] for a new trade, in one statement, and gives the [TradeReservation] a pending take needs when this call bound it.

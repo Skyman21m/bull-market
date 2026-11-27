@@ -226,18 +226,32 @@ final class NewTradeStanding {
   /// The robot indexes of the key that are bound to a coordinator, on either network, or have a trade record: a new trade never uses one of them.
   final Set<int> indexesInUse;
 
-  NewTradeStanding({required Iterable<int> indexesInUse})
+  /// The robot index the key's recovery note said, at its highest over what this device read on the relays (#81, design note `docs/design/garage-key-from-the-words.md` § 3): a new trade takes a robot strictly above it; `null` when no note was read.
+  final int? noteFloor;
+
+  NewTradeStanding({required Iterable<int> indexesInUse, this.noteFloor})
     : indexesInUse = Set.unmodifiable(indexesInUse);
+
+  /// The highest robot index this device knows was used for the key: its own robots in use and the note's floor; `null` when it knows none.
+  int? get highestKnown {
+    int? highest = noteFloor;
+    for (final index in indexesInUse) {
+      if (highest == null || index > highest) highest = index;
+    }
+    return highest;
+  }
 
   @override
   bool operator ==(Object other) =>
       other is NewTradeStanding &&
+      other.noteFloor == noteFloor &&
       other.indexesInUse.length == indexesInUse.length &&
       other.indexesInUse.containsAll(indexesInUse);
 
   @override
-  int get hashCode => Object.hashAllUnordered(indexesInUse);
+  int get hashCode => Object.hash(Object.hashAllUnordered(indexesInUse), noteFloor);
 
   @override
-  String toString() => 'NewTradeStanding(${indexesInUse.length} in use)';
+  String toString() =>
+      'NewTradeStanding(${indexesInUse.length} in use, floor: $noteFloor)';
 }

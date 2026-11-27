@@ -473,6 +473,11 @@ final class MakeRecords implements TradeRecordRepository {
   ) => _inner.newTradeStandingOf(network, key);
 
   @override
+  Future<Result<Set<GarageKeyFingerprint>, P2pFailure>> keysInUse(
+    RobosatsNetwork network,
+  ) => _inner.keysInUse(network);
+
+  @override
   Future<Result<TradeReservation?, P2pFailure>> reserveForNewTrade(
     RobotSlot robot,
     CoordinatorIdentity coordinator,

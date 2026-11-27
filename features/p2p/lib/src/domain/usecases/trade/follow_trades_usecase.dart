@@ -9,6 +9,7 @@ import '../../network_garage_key.dart';
 import '../../next_trade_robot.dart';
 import '../../order_history.dart';
 import '../../p2p_failure.dart';
+import '../../robot_binding.dart';
 import '../../trade/active_trade.dart';
 import '../../trade_record.dart';
 
@@ -40,11 +41,15 @@ final class FollowTradesUsecase {
   final ClosedTradesOf _closedTrades;
   final NewTradeStandingOf _standing;
 
+  /// The changes of what this device read of the recovery note of a key (`GarageRecoveryNoteRepository.watchFloor`, #81), after which the records are given again with the floor read; `null` where nothing reads the notes.
+  final Stream<Object?> Function(GarageKeyFingerprint key)? _floorChanges;
+
   const FollowTradesUsecase(
     this._activeTrades,
     this._closedTrades,
-    this._standing,
-  );
+    this._standing, {
+    Stream<Object?> Function(GarageKeyFingerprint key)? floorChanges,
+  }) : _floorChanges = floorChanges;
 
   /// The records of [key]'s network for the Garage of [key]: a first value once both lists were read, then one after each new list, in order; a database that cannot be read, or a key that gives no fingerprint, gives a failure in place of the records.
   ///
@@ -54,6 +59,7 @@ final class FollowTradesUsecase {
     Result<List<ClosedTrade>, P2pFailure>? closed;
     StreamSubscription<Result<List<ActiveTrade>, P2pFailure>>? activeSub;
     StreamSubscription<Result<List<ClosedTrade>, P2pFailure>>? closedSub;
+    StreamSubscription<Object?>? floorSub;
     late final StreamController<Result<GarageRecords, P2pFailure>> out;
     // Each read of the standing waits for the one before it, so that the records come out in the order of the lists.
     var chain = Future<void>.value();
@@ -88,11 +94,21 @@ final class FollowTradesUsecase {
           closed = value;
           changed();
         }, onError: failed);
+        // A note read since moves the floor, the fresh robot and the robot noted: the records are given again, nothing else changing.
+        if ((_floorChanges, key.fingerprint) case (
+          final floorChanges?,
+          Ok(value: final fingerprint),
+        )) {
+          floorSub = floorChanges(
+            fingerprint,
+          ).skip(1).listen((_) => changed(), onError: failed);
+        }
       },
       onCancel: () async {
         cancelled = true;
         await activeSub?.cancel();
         await closedSub?.cancel();
+        await floorSub?.cancel();
       },
     );
     return out.stream;
@@ -143,6 +159,10 @@ final class FollowTradesUsecase {
         fresh: switch (NextTradeRobot.of(key, standing)) {
           Ok(:final value) => value.slot,
           Err() => null,
+        },
+        noted: switch (standing.noteFloor) {
+          final floor? => RobotSlot(key.network, fingerprint, floor),
+          null => null,
         },
       ),
     );

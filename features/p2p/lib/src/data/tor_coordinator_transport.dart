@@ -46,6 +46,26 @@ const maxRelayBytes = 64 * 1024;
 /// The most messages read from a relay in one publication: two `OK`s are expected, and a relay may add a few notices. Beyond, the publication fails.
 const maxRelayFrames = 64;
 
+/// Time one read of a relay on a session of its own may take in total ([TorCoordinatorTransport.readOnOwnSession], #81): the Tor session, the websocket and the relay's whole answer.
+///
+/// [torConnectDeadline], the time one connection through Tor is given: on cold installs a first onion contact took up to 34 seconds (`torConnectBudget`), and a relay answers a request for a few events within a second or two once connected. A read is not tried again on a new session: the caller reads again at a later opening of the app.
+final relayReadDeadline = torConnectDeadline;
+
+/// The most events one read keeps, every event of the read's subscriptions counted: what one call of `GarageRecoveryNote.latestNote` looks at, which is what one coordinator's relay of the reference answers at most for the two requests of a note (500 each). Past it the read stops, incomplete.
+const maxRelayReadEvents = GarageRecoveryNote.maxEvents;
+
+/// The longest message of a relay a read looks at: the longest event `GarageRecoveryNote.latestNote` reads, with room for the message around it (`["EVENT","<subscription id>",…]`); a longer message is ignored, but counted.
+const maxRelayReadFrameLength = GarageRecoveryNote.maxEventLength + 256;
+
+/// The most messages one read takes from a relay: [maxRelayReadEvents] events, an `EOSE` or a `CLOSED` per subscription, and room for a few notices. Past it the read stops, incomplete.
+const maxRelayReadFrames = maxRelayReadEvents + 64;
+
+/// The most bytes one read takes from a relay's socket after the handshake, counted as for a publication ([maxRelayBytes]): a note is 1,701 bytes, so a thousand of them take less than 2 MiB. Past it the socket is destroyed and the read stops, incomplete; it bounds the memory a hostile relay costs.
+const maxRelayReadBytes = 8 * 1024 * 1024;
+
+/// Tor sessions of their own that relay calls may hold at once ([TorCoordinatorTransport.readOnOwnSession], [TorCoordinatorTransport.publishOnOwnSession]), apart from [maxRobotSessions]: one per coordinator relay of the network with the most (six on mainnet), so that a note is read from, or written to, every relay at once. A call beyond waits for a place within its own deadline, the first come first served, and gives [NostrRelayBusy] or an empty read when none frees in time.
+const maxOwnRelaySessions = 6;
+
 /// Places for robot Tor sessions, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
 ///
 /// A session holds a place from the moment it starts to open until it is closed, the sessions replaced after a connection failure included while a request still uses them.
@@ -125,6 +145,8 @@ const maxTotalHeaderLength = 32 * 1024;
 /// Nostr relays ([publish], #94): a relay is the coordinator's own origin (`ws://<onion>/relay/`), so its websocket goes through the robot's session to that origin, the one its requests use, with the same `HttpClient`, through its SOCKS connection factory, and a handshake of this transport's own: no redirect followed, no extension offered or accepted (so no compression), the accept key checked; then the bytes read are counted before `dart:io` assembles a message, at most [maxRelayBytes] and [maxRelayFrames] messages, beyond which the socket is destroyed (security review of #158).
 /// [publish] always completes within [coordinatorRequestDeadline] too, with a [NostrRelayOutcome]; a connection failure replaces the session and is retried [relayConnectRetries] time; messages longer than [maxRelayFrameLength] and binary ones are ignored; only the outcome's fixed label is logged, never the relay, the robot, an event id or a relay's text.
 ///
+/// Relay calls on a session of their own ([OwnSessionNostrRelayTransport], the recovery note of a Garage Key, #81): each opens a new Tor session, with its own HTTP client, for that call only, outside the places of the robots and the sessions of the anonymous requests, and closes it when the call ends, so that nothing ties the call to a robot, to the books, or to another such call; at most [maxOwnRelaySessions] at once, a call beyond waiting for a place within its deadline. The websocket is made as for [publish], with the same handshake and the same counting of the bytes; a publication is bounded by [coordinatorRequestDeadline], a read by [relayReadDeadline], in events by [maxRelayReadEvents], in messages by [maxRelayReadFrames], in bytes by [maxRelayReadBytes]. Neither is tried again on a new session. [closeSessions] ends them too.
+///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
 /// `Accept-Encoding` is `identity` for every request, where `dart:io` would ask for `gzip`, and a body is never decompressed: the size cap counts the bytes that arrive, so a small compressed body cannot inflate in memory.
@@ -132,7 +154,8 @@ final class TorCoordinatorTransport
     implements
         CoordinatorTransport,
         CoordinatorSessionsPort,
-        NostrRelayTransport {
+        NostrRelayTransport,
+        OwnSessionNostrRelayTransport {
   final OpenTorSession _openSession;
   final CreateTorHttpClient _createHttpClient;
   final Duration _deadline;
@@ -140,6 +163,17 @@ final class TorCoordinatorTransport
   final Duration _closeTimeout;
   final bool Function(String host) _acceptsHost;
   final int _placesPerCoordinator;
+  final Duration _readDeadline;
+  final int _ownPlaces;
+
+  /// The relay calls on a session of their own that hold a place, opening, open or closing: at most [_ownPlaces].
+  int _ownInUse = 0;
+
+  /// The relay calls waiting for a place on a session of their own, the first come first served.
+  final List<Completer<bool>> _ownWaiting = [];
+
+  /// The sessions of their own of the relay calls running, with their clients: [closeSessions] closes them.
+  final Set<_OwnSession> _ownSessions = {};
 
   /// Starts the timer that answers a relay's publication when its deadline passes: [Timer.new], or a late one in a test, which shows that nothing inside the publication waits for it to know the deadline has passed (review of #158).
   final Timer Function(Duration duration, void Function() callback)
@@ -186,6 +220,7 @@ final class TorCoordinatorTransport
   /// [deadline] bounds a whole request, [attemptTimeout] the connection, the upload and every wait for data of one attempt, [closeTimeout] the close of one Tor session.
   /// [acceptsHost] decides which hosts may be reached, `.onion` hosts only by default, so that tests can reach a loopback server.
   /// [placesPerCoordinator] replaces [maxRobotSessionsPerCoordinator], so that the tests of [maxRobotSessions] can put every place on one loopback server.
+  /// [readDeadline] replaces [relayReadDeadline], [ownPlaces] replaces [maxOwnRelaySessions].
   @visibleForTesting
   TorCoordinatorTransport.withSeams({
     required this._openSession,
@@ -197,7 +232,11 @@ final class TorCoordinatorTransport
     int? placesPerCoordinator,
     Timer Function(Duration duration, void Function() callback)?
     publicationTimer,
+    Duration? readDeadline,
+    int? ownPlaces,
   }) : _publicationTimer = publicationTimer ?? Timer.new,
+       _readDeadline = readDeadline ?? relayReadDeadline,
+       _ownPlaces = ownPlaces ?? maxOwnRelaySessions,
        _deadline = deadline ?? coordinatorRequestDeadline,
        _attemptTimeout = attemptTimeout ?? torConnectDeadline,
        _closeTimeout = closeTimeout ?? torSessionCloseTimeout,
@@ -250,7 +289,11 @@ final class TorCoordinatorTransport
     }
     _slots.clear();
     // Every open session, the ones a connection failure replaced included: each leaves [_live] once it is closed.
-    await Future.wait(List.of(_live).map((route) => route.close()));
+    await Future.wait([
+      ...List.of(_live).map((route) => route.close()),
+      // The relay calls on a session of their own end with their session.
+      ...List.of(_ownSessions).map((own) => own.close()),
+    ]);
   }
 
   @override
@@ -306,6 +349,373 @@ final class TorCoordinatorTransport
       return outcome;
     });
   }
+
+  /// Publishes the events of [message] on [relay] through a Tor session of its own, opened for this publication and closed after it: see the class doc.
+  @override
+  Future<NostrRelayOutcome> publishOnOwnSession(
+    Uri relay,
+    NostrRelayPublication message,
+  ) => _ownSessionCall<NostrRelayOutcome>(
+    relay,
+    _deadline,
+    timedOut: const NostrRelayTimedOut(),
+    failed: const NostrRelayFailed(),
+    busy: const NostrRelayBusy(),
+    unreachable: const NostrRelayUnreachable(),
+    // The fixed label only: the relay, the event ids and the message never go to a log.
+    logLine: (outcome) => outcome is NostrRelayAccepted
+        ? null
+        : 'P2P Nostr note publication: ${outcome.label}',
+    work: (client, deadline) async {
+      switch (await _upgradeRelay(client, relay, deadline, maxRelayBytes)) {
+        case _RelayUpgraded(:final socket):
+          return switch (await _publishOn(socket, message, deadline)) {
+            _RelayAnswered(:final outcome) => outcome,
+            _RelayConnectFailed() => const NostrRelayUnreachable(),
+          };
+        case _RelayNotUpgraded(attempt: _RelayAnswered(:final outcome)):
+          return outcome;
+        case _RelayNotUpgraded(attempt: _RelayConnectFailed()):
+          return deadline.passed
+              ? const NostrRelayTimedOut()
+              : const NostrRelayUnreachable();
+      }
+    },
+  );
+
+  /// Reads from [relay] the events of [filters] through a Tor session of its own, opened for this read and closed after it: see the class doc.
+  ///
+  /// The events received when the read stops short (its deadline, a bound, the relay closing) are given with the read marked incomplete.
+  @override
+  Future<NostrRelayRead> readOnOwnSession(
+    Uri relay,
+    List<NostrRelayFilter> filters,
+  ) {
+    if (filters.isEmpty) {
+      return Future.value(const NostrRelayRead.none('noFilter'));
+    }
+    return _ownSessionCall<NostrRelayRead>(
+      relay,
+      _readDeadline,
+      // The read answers by itself when its deadline passes, with what it received: this answer is for a read that has not reached the relay by then.
+      grace: _readGrace,
+      timedOut: const NostrRelayRead.none('timedOut'),
+      failed: const NostrRelayRead.none('failed'),
+      busy: const NostrRelayRead.none('busy'),
+      unreachable: const NostrRelayRead.none('unreachable'),
+      // The fixed label only: the relay, the filters and the events never go to a log.
+      logLine: (read) =>
+          read.complete ? null : 'P2P Nostr relay read: ${read.label}',
+      work: (client, deadline) async {
+        switch (await _upgradeRelay(
+          client,
+          relay,
+          deadline,
+          maxRelayReadBytes,
+        )) {
+          case _RelayUpgraded(:final socket):
+            return _readOn(socket, filters, deadline);
+          case _RelayNotUpgraded(attempt: _RelayAnswered(:final outcome)):
+            return NostrRelayRead.none(outcome.label);
+          case _RelayNotUpgraded(attempt: _RelayConnectFailed()):
+            return NostrRelayRead.none(
+              deadline.passed ? 'timedOut' : 'unreachable',
+            );
+        }
+      },
+    );
+  }
+
+  /// How long after its deadline a read's own answer is still awaited before the call answers « timed out » without it: the read answers at its deadline with what it received, and this is the time for that answer to come out.
+  static const _readGrace = Duration(seconds: 2);
+
+  /// One relay call on a Tor session of its own, answered [timedOut] once [total] and [grace] have passed whatever it waits for, [failed] for an [Exception], and logged by [logLine], which gives `null` for nothing to log.
+  Future<T> _ownSessionCall<T>(
+    Uri relay,
+    Duration total, {
+    Duration grace = Duration.zero,
+    required T timedOut,
+    required T failed,
+    required T busy,
+    required T unreachable,
+    required String? Function(T outcome) logLine,
+    required Future<T> Function(HttpClient client, _Deadline deadline) work,
+  }) {
+    final completer = Completer<T>();
+    final deadline = _Deadline(total);
+    final timer = _publicationTimer(total + grace, () {
+      deadline.expire();
+      if (!completer.isCompleted) completer.complete(timedOut);
+    });
+    _runOwnSession<T>(
+      relay,
+      deadline,
+      timedOut: timedOut,
+      failed: failed,
+      busy: busy,
+      unreachable: unreachable,
+      work: work,
+    ).then(
+      (outcome) {
+        timer.cancel();
+        if (!completer.isCompleted) completer.complete(outcome);
+      },
+      onError: (Object error, StackTrace trace) {
+        timer.cancel();
+        if (completer.isCompleted) {
+          Zone.current.handleUncaughtError(error, trace);
+        } else if (error is Exception) {
+          completer.complete(failed);
+        } else {
+          completer.completeError(error, trace);
+        }
+      },
+    );
+    return completer.future.then((outcome) {
+      if (logLine(outcome) case final line?) log.info(line);
+      return outcome;
+    });
+  }
+
+  /// Takes a place among [maxOwnRelaySessions], opens a Tor session and its client for this call alone, runs [work] on that client, and closes them: the place is given back once the session is closed, or given up after [torSessionCloseTimeout].
+  ///
+  /// The answer does not wait for the session to close.
+  Future<T> _runOwnSession<T>(
+    Uri relay,
+    _Deadline deadline, {
+    required T timedOut,
+    required T failed,
+    required T busy,
+    required T unreachable,
+    required Future<T> Function(HttpClient client, _Deadline deadline) work,
+  }) async {
+    // The relay of a coordinator, `getRelayUrl` of the reference: checked here as for [publish].
+    if (!_isRelayUrl(relay)) return failed;
+    final epoch = _epoch;
+    if (!await _takeOwnPlace(deadline)) {
+      return deadline.passed ? timedOut : busy;
+    }
+    TorSession? session;
+    _OwnSession? own;
+    try {
+      if (epoch != _epoch) return failed;
+      try {
+        session = await _openOwn(deadline);
+      } on Exception {
+        // Tor did not start, or gave no session: there is no circuit to the relay.
+        return unreachable;
+      }
+      if (session == null) return deadline.passed ? timedOut : unreachable;
+      final HttpClient client;
+      try {
+        client = _createHttpClient(session.endpoint);
+      } on Exception {
+        return failed;
+      }
+      client
+        ..userAgent = null
+        ..autoUncompress = false;
+      final opened = own = _OwnSession(session, client, _closeSession);
+      _ownSessions.add(opened);
+      if (epoch != _epoch) return failed;
+      return await work(client, deadline);
+    } finally {
+      final closing = switch ((own, session)) {
+        (final opened?, _) => opened.close(),
+        (null, final opened?) => _closeSession(opened),
+        (null, null) => Future.value(true),
+      };
+      unawaited(
+        closing.whenComplete(() {
+          _ownSessions.remove(own);
+          _giveOwnPlaceBack();
+        }),
+      );
+    }
+  }
+
+  /// Whether [relay] is the relay of a coordinator, as `getRelayUrl` of the reference writes it, at a host the transport accepts.
+  bool _isRelayUrl(Uri relay) =>
+      relay.isScheme('ws') &&
+      relay.host.isNotEmpty &&
+      relay.userInfo.isEmpty &&
+      relay.path == '/relay/' &&
+      !relay.hasQuery &&
+      !relay.hasFragment &&
+      _acceptsHost(relay.host);
+
+  /// A place among [_ownPlaces] for a relay call, waited for at most until [deadline] passes: `false` when none freed in time.
+  Future<bool> _takeOwnPlace(_Deadline deadline) async {
+    if (_ownInUse < _ownPlaces && _ownWaiting.isEmpty) {
+      _ownInUse++;
+      return true;
+    }
+    final waiter = Completer<bool>();
+    _ownWaiting.add(waiter);
+    final timer = Timer(deadline.left, () {
+      if (_ownWaiting.remove(waiter)) waiter.complete(false);
+    });
+    final taken = await waiter.future;
+    timer.cancel();
+    return taken;
+  }
+
+  /// Gives the place of a relay call back, to the first call waiting for one if any.
+  void _giveOwnPlaceBack() {
+    if (_ownWaiting.isNotEmpty) {
+      // Handed over: the count stays.
+      _ownWaiting.removeAt(0).complete(true);
+      return;
+    }
+    _ownInUse--;
+  }
+
+  /// Asks Tor for a session for one relay call, and waits for it at most until [deadline] passes: `null` when it stopped waiting. A session Tor gives after that is closed at once, unused.
+  Future<TorSession?> _openOwn(_Deadline deadline) {
+    final pending = _openSession();
+    final result = Completer<TorSession?>();
+    final timer = Timer(deadline.left, () {
+      if (!result.isCompleted) result.complete(null);
+    });
+    pending.then(
+      (session) {
+        timer.cancel();
+        if (result.isCompleted) {
+          unawaited(_closeSession(session));
+        } else {
+          result.complete(session);
+        }
+      },
+      onError: (Object error, StackTrace trace) {
+        timer.cancel();
+        if (!result.isCompleted) {
+          result.completeError(error, trace);
+        } else if (error is! Exception) {
+          // Nobody waits for this session any more: a late bug still surfaces in the zone.
+          Zone.current.handleUncaughtError(error, trace);
+        }
+      },
+    );
+    return result.future;
+  }
+
+  /// One read on [socket]: a `REQ` for each of [filters], each under its own subscription id; the events of those subscriptions kept until each has its `EOSE` or `CLOSED`, a bound is reached, the relay closes, or [deadline] passes; then a `CLOSE` for each, and the socket closed.
+  Future<NostrRelayRead> _readOn(
+    WebSocket socket,
+    List<NostrRelayFilter> filters,
+    _Deadline deadline,
+  ) async {
+    final ids = <String>[];
+    for (final filter in filters) {
+      String id;
+      do {
+        id = '${filter.subscriptionLabel}_${_subscriptionSuffix()}';
+      } while (ids.contains(id));
+      ids.add(id);
+    }
+    final pending = {...ids};
+    final events = <String>[];
+    var frames = 0;
+    var closedByRelay = false;
+    final done = Completer<NostrRelayRead>();
+    void finish({required bool complete, required String label}) {
+      if (!done.isCompleted) {
+        done.complete(
+          NostrRelayRead(events: events, complete: complete, label: label),
+        );
+      }
+    }
+
+    final subscription = socket.listen(
+      (Object? frame) {
+        if (done.isCompleted) return;
+        if (++frames > maxRelayReadFrames) {
+          finish(complete: false, label: 'tooManyMessages');
+          return;
+        }
+        // Binary messages and long ones are ignored: an event the note reader would read is shorter.
+        if (frame is! String || frame.length > maxRelayReadFrameLength) return;
+        final Object? message;
+        try {
+          message = jsonDecode(frame);
+        } on FormatException {
+          return;
+        }
+        // Only the messages of this read's subscriptions: a relay's notice, or a message for another subscription, is ignored.
+        if (message is! List<Object?> ||
+            message.length < 2 ||
+            !ids.contains(message[1])) {
+          return;
+        }
+        final id = message[1];
+        switch (message[0]) {
+          case 'EVENT' when message.length >= 3:
+            final event = message[2];
+            if (event is! Map<String, Object?>) return;
+            events.add(jsonEncode(event));
+            if (events.length >= maxRelayReadEvents) {
+              finish(complete: false, label: 'tooManyEvents');
+            }
+          case 'EOSE':
+            pending.remove(id);
+            if (pending.isEmpty) {
+              finish(
+                complete: !closedByRelay,
+                label: closedByRelay ? 'closedByRelay' : 'answered',
+              );
+            }
+          case 'CLOSED':
+            if (pending.remove(id)) closedByRelay = true;
+            if (pending.isEmpty) {
+              finish(complete: false, label: 'closedByRelay');
+            }
+        }
+      },
+      // Closed by the relay, or broken, before every subscription ended.
+      onError: (Object _) => finish(complete: false, label: 'broken'),
+      onDone: () => finish(complete: false, label: 'closed'),
+      cancelOnError: true,
+    );
+    deadline.watchSocket(socket);
+    try {
+      for (final (index, filter) in filters.indexed) {
+        socket.add('["REQ",${jsonEncode(ids[index])},${filter.toJson()}]');
+      }
+      final read = await done.future.timeout(
+        deadline.left,
+        onTimeout: () =>
+            NostrRelayRead(events: events, complete: false, label: 'timedOut'),
+      );
+      // The subscriptions are closed, as the reference does (`CLOSE`), on a socket still open.
+      if (socket.readyState == WebSocket.open) {
+        for (final id in ids) {
+          socket.add('["CLOSE",${jsonEncode(id)}]');
+        }
+      }
+      return read;
+    } finally {
+      deadline.forgetSocket(socket);
+      await subscription.cancel();
+      // Not awaited: the read is answered at once, and the session's client is closed after it anyway.
+      unawaited(_closeRelaySocket(socket));
+    }
+  }
+
+  /// A few random characters for a subscription id, as `Math.random().toString(36).substring(7)` gives the reference's: they tie nothing, but keep two subscriptions apart.
+  static String _subscriptionSuffix() => String.fromCharCodes([
+    for (var i = 0; i < 6; i++)
+      '0123456789abcdefghijklmnopqrstuvwxyz'.codeUnitAt(
+        _handshakeRandom.nextInt(36),
+      ),
+  ]);
+
+  /// The places of the relay calls on a session of their own that are taken, and the calls waiting for one, for tests.
+  @visibleForTesting
+  ({int inUse, int waiting, int open}) get ownSessionsForTesting => (
+    inUse: _ownInUse,
+    waiting: _ownWaiting.length,
+    open: _ownSessions.length,
+  );
 
   /// The counts behind the bounds, for tests.
   @visibleForTesting
@@ -466,6 +876,21 @@ final class TorCoordinatorTransport
     NostrRelayPublication message,
     _Deadline deadline,
   ) async {
+    switch (await _upgradeRelay(route.client, relay, deadline, maxRelayBytes)) {
+      case _RelayUpgraded(:final socket):
+        return _publishOn(socket, message, deadline);
+      case _RelayNotUpgraded(:final attempt):
+        return attempt;
+    }
+  }
+
+  /// A websocket to [relay] through [client], whose incoming bytes after the handshake are counted up to [maxBytes]; or what the attempt gave when there is none.
+  Future<_RelayUpgrade> _upgradeRelay(
+    HttpClient client,
+    Uri relay,
+    _Deadline deadline,
+    int maxBytes,
+  ) async {
     // The handshake is this transport's own (RFC 6455, § 4.1), on the session's client, so that no redirect is ever followed, no extension or subprotocol is accepted, compression included (a small compressed message could inflate in memory), and the bytes that come after it are counted before `dart:io` assembles a message (reviews of #158).
     // Its head is bounded by `dart:io`, at 1 MiB; each of its steps falls under the shorter of an attempt and what is left of the publication's deadline, so that none outlasts the deadline.
     // Whatever fails between the request and the end of the checks, the connection is destroyed in the `finally`: no socket is left open with the session.
@@ -484,7 +909,7 @@ final class TorCoordinatorTransport
     var upgradedOk = false;
     final Socket upgraded;
     try {
-      final opened = await route.client
+      final opened = await client
           .openUrl(
             'GET',
             Uri(
@@ -510,20 +935,26 @@ final class TorCoordinatorTransport
       final socket = await response.detachSocket().timeout(budget());
       detached = socket;
       if (_isWebSocketUpgrade(response, key) case final refused?) {
-        return _RelayAnswered(refused);
+        return _RelayNotUpgraded(_RelayAnswered(refused));
       }
       // The deadline passed while the websocket connected: nothing is written, and the socket is destroyed in the `finally`, inside this future, so that no late write or close can fail outside it.
-      if (deadline.passed) return const _RelayAnswered(NostrRelayTimedOut());
+      if (deadline.passed) {
+        return const _RelayNotUpgraded(_RelayAnswered(NostrRelayTimedOut()));
+      }
       upgradedOk = true;
       upgraded = socket;
     } on TimeoutException {
       // The session is given up in every case, so that closing its client cancels a connection still being made, which would otherwise stay open with the session (review of #158); no other attempt is made once the deadline has passed.
-      return const _RelayConnectFailed(TorConnectFailure.timeout);
+      return const _RelayNotUpgraded(
+        _RelayConnectFailed(TorConnectFailure.timeout),
+      );
     } on HttpException {
       // The service answered, not in HTTP: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
-      return const _RelayAnswered(NostrRelayUnreachable());
+      return const _RelayNotUpgraded(_RelayAnswered(NostrRelayUnreachable()));
     } on Exception catch (exception) {
-      return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
+      return _RelayNotUpgraded(
+        _RelayConnectFailed(TorHttpClientFactory.classify(exception)),
+      );
     } finally {
       if (!upgradedOk) {
         if (detached != null) {
@@ -533,11 +964,21 @@ final class TorCoordinatorTransport
         }
       }
     }
-    final socket = WebSocket.fromUpgradedSocket(
-      _CappedSocket(upgraded, maxRelayBytes),
-      serverSide: false,
-      compression: CompressionOptions.compressionOff,
+    return _RelayUpgraded(
+      WebSocket.fromUpgradedSocket(
+        _CappedSocket(upgraded, maxBytes),
+        serverSide: false,
+        compression: CompressionOptions.compressionOff,
+      ),
     );
+  }
+
+  /// Sends the events of [message] on [socket] in order, waits for an `OK` to each, and closes it.
+  Future<_RelayAttempt> _publishOn(
+    WebSocket socket,
+    NostrRelayPublication message,
+    _Deadline deadline,
+  ) async {
     var frames = 0;
     final waiting = {...message.eventIds};
     var refused = false;
@@ -1355,6 +1796,23 @@ final class _RelayConnectFailed extends _RelayAttempt {
   const _RelayConnectFailed(this.reason);
 }
 
+/// What the handshake of a websocket to a relay gave: the websocket, or how the attempt ended without one.
+sealed class _RelayUpgrade {
+  const _RelayUpgrade();
+}
+
+final class _RelayUpgraded extends _RelayUpgrade {
+  final WebSocket socket;
+
+  const _RelayUpgraded(this.socket);
+}
+
+final class _RelayNotUpgraded extends _RelayUpgrade {
+  final _RelayAttempt attempt;
+
+  const _RelayNotUpgraded(this.attempt);
+}
+
 /// Why no session could serve a request.
 final class _RouteException implements Exception {
   final CoordinatorTransportFailure failure;
@@ -1504,4 +1962,26 @@ final class _CappedSocket extends StreamView<Uint8List> implements Socket {
 
   @override
   void setRawOption(RawSocketOption option) => _inner.setRawOption(option);
+}
+
+/// The Tor session and HTTP client of one relay call on a session of its own.
+final class _OwnSession {
+  final TorSession _session;
+  final HttpClient _client;
+  final Future<bool> Function(TorSession session) _closeSession;
+  Future<bool>? _closing;
+
+  _OwnSession(this._session, this._client, this._closeSession);
+
+  /// Closes the client, which cancels a connection still being made, then the session, once.
+  Future<bool> close() => _closing ??= _close();
+
+  Future<bool> _close() async {
+    try {
+      _client.close(force: true);
+    } on Exception {
+      // Closing is best effort: the session below is closed either way.
+    }
+    return _closeSession(_session);
+  }
 }
