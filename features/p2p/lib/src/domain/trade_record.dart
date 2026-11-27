@@ -249,7 +249,8 @@ final class NewTradeStanding {
       other.indexesInUse.containsAll(indexesInUse);
 
   @override
-  int get hashCode => Object.hash(Object.hashAllUnordered(indexesInUse), noteFloor);
+  int get hashCode =>
+      Object.hash(Object.hashAllUnordered(indexesInUse), noteFloor);
 
   @override
   String toString() =>

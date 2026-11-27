@@ -30,11 +30,7 @@ final class InterimTradeRobots implements TradeRobots {
   /// `RecoveryNoteSync.beforeNewTrade` (#81): the first reading of the key's recovery note, awaited within its limit before the robot is chosen, so that the robot is above the note's floor; `null` where nothing reads the notes.
   final Future<void> Function(NetworkGarageKey key)? _beforeNewTrade;
 
-  const InterimTradeRobots(
-    this._keys,
-    this._records, {
-    Future<void> Function(NetworkGarageKey key)? beforeNewTrade,
-  }) : _beforeNewTrade = beforeNewTrade;
+  const InterimTradeRobots(this._keys, this._records, {this._beforeNewTrade});
 
   @override
   Future<Result<ReservedRobot, P2pFailure>> robotForNewTrade(

@@ -48,8 +48,8 @@ final class FollowTradesUsecase {
     this._activeTrades,
     this._closedTrades,
     this._standing, {
-    Stream<Object?> Function(GarageKeyFingerprint key)? floorChanges,
-  }) : _floorChanges = floorChanges;
+    this._floorChanges,
+  });
 
   /// The records of [key]'s network for the Garage of [key]: a first value once both lists were read, then one after each new list, in order; a database that cannot be read, or a key that gives no fingerprint, gives a failure in place of the records.
   ///

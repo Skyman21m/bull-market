@@ -68,7 +68,9 @@ void main() {
     return relay;
   }
 
-  final key = switch (GarageKey.fromBytes(Uint8List.fromList(List.filled(32, 7)))) {
+  final key = switch (GarageKey.fromBytes(
+    Uint8List.fromList(List.filled(32, 7)),
+  )) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
@@ -87,7 +89,8 @@ void main() {
   test(
     'a read sends one REQ per filter under the official client\'s ids, keeps the events of its subscriptions until each EOSE, sends a CLOSE for each, and closes its own session',
     () async {
-      final fake = await relay(_Behaviour.answer)..events = [event];
+      final fake = await relay(_Behaviour.answer)
+        ..events = [event];
       final read = await transport().readOnOwnSession(fake.url, filters);
       expect(read.complete, isTrue);
       expect(read.events, [jsonEncode(event), jsonEncode(event)]);
@@ -105,14 +108,11 @@ void main() {
       expect(ids, hasLength(2));
       expect(ids.every((id) => id.startsWith('accountRecovery_')), isTrue);
       await fake.closed.future.timeout(const Duration(seconds: 2));
-      expect(
-        {
-          for (final text in fake.received)
-            if ((jsonDecode(text) as List<Object?>)[0] == 'CLOSE')
-              (jsonDecode(text) as List<Object?>)[1],
-        },
-        ids,
-      );
+      expect({
+        for (final text in fake.received)
+          if ((jsonDecode(text) as List<Object?>)[0] == 'CLOSE')
+            (jsonDecode(text) as List<Object?>)[1],
+      }, ids);
       await _until(() => closed.length == opened.length);
       expect(opened, hasLength(1));
     },
@@ -129,19 +129,23 @@ void main() {
     expect(calls.ownSessionsForTesting, (inUse: 0, waiting: 0, open: 0));
   });
 
-  test('a publication on its own session sends the event and awaits its OK', () async {
-    final fake = await relay(_Behaviour.answer);
-    expect(
-      await transport().publishOnOwnSession(fake.url, note),
-      isA<NostrRelayAccepted>(),
-    );
-    expect(fake.received, note.relayMessages);
-  });
+  test(
+    'a publication on its own session sends the event and awaits its OK',
+    () async {
+      final fake = await relay(_Behaviour.answer);
+      expect(
+        await transport().publishOnOwnSession(fake.url, note),
+        isA<NostrRelayAccepted>(),
+      );
+      expect(fake.received, note.relayMessages);
+    },
+  );
 
   test(
     'a relay that never ends its subscriptions gives what it sent, incomplete, by the deadline',
     () async {
-      final fake = await relay(_Behaviour.noEose)..events = [event];
+      final fake = await relay(_Behaviour.noEose)
+        ..events = [event];
       final waited = Stopwatch()..start();
       final read = await transport(
         readDeadline: const Duration(milliseconds: 500),
@@ -152,21 +156,29 @@ void main() {
     },
   );
 
-  test('a relay that sends without end is cut at the bound of events', () async {
-    final fake = await relay(_Behaviour.flood)..events = [event];
-    final read = await transport(
-      readDeadline: const Duration(seconds: 20),
-    ).readOnOwnSession(fake.url, filters);
-    expect(read.complete, isFalse);
-    expect(read.events.length, lessThanOrEqualTo(maxRelayReadEvents));
-  });
+  test(
+    'a relay that sends without end is cut at the bound of events',
+    () async {
+      final fake = await relay(_Behaviour.flood)
+        ..events = [event];
+      final read = await transport(
+        readDeadline: const Duration(seconds: 20),
+      ).readOnOwnSession(fake.url, filters);
+      expect(read.complete, isFalse);
+      expect(read.events.length, lessThanOrEqualTo(maxRelayReadEvents));
+    },
+  );
 
-  test('a relay that cuts the connection gives what it sent, incomplete', () async {
-    final fake = await relay(_Behaviour.cut)..events = [event];
-    final read = await transport().readOnOwnSession(fake.url, filters);
-    expect(read.complete, isFalse);
-    expect(read.events, [jsonEncode(event)]);
-  });
+  test(
+    'a relay that cuts the connection gives what it sent, incomplete',
+    () async {
+      final fake = await relay(_Behaviour.cut)
+        ..events = [event];
+      final read = await transport().readOnOwnSession(fake.url, filters);
+      expect(read.complete, isFalse);
+      expect(read.events, [jsonEncode(event)]);
+    },
+  );
 
   test('a subscription the relay closes makes the read incomplete', () async {
     final fake = await relay(_Behaviour.closeSubscriptions);
@@ -178,7 +190,8 @@ void main() {
   test(
     'messages of other subscriptions, notices, binary and over-long messages are ignored',
     () async {
-      final fake = await relay(_Behaviour.noisy)..events = [event];
+      final fake = await relay(_Behaviour.noisy)
+        ..events = [event];
       final read = await transport().readOnOwnSession(fake.url, filters);
       expect(read.complete, isTrue);
       expect(read.events, [jsonEncode(event), jsonEncode(event)]);

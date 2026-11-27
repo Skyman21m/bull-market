@@ -37,8 +37,16 @@ void main() {
   };
 
   // Internal Garage Keys #0 and #1 of the test words on mainnet, and a key standing for an external one.
-  final internal0 = NetworkGarageKey(network, parsed(abandonMainnet0), index: 0);
-  final internal1 = NetworkGarageKey(network, parsed(abandonMainnet1), index: 1);
+  final internal0 = NetworkGarageKey(
+    network,
+    parsed(abandonMainnet0),
+    index: 0,
+  );
+  final internal1 = NetworkGarageKey(
+    network,
+    parsed(abandonMainnet1),
+    index: 1,
+  );
   final external = NetworkGarageKey(network, parsed(abandonMainnet2));
 
   GarageKeyFingerprint fingerprintOf(NetworkGarageKey key) =>
@@ -154,9 +162,9 @@ void main() {
     test(
       'a first visit reads every coordinator relay of the network apart, for the recovery identity and the legacy one, and keeps the floor across a restart',
       () async {
-        relaysPlayed.on(relays[2]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 7, at),
-        );
+        relaysPlayed
+            .on(relays[2])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 7, at));
         final first = sync();
         await first.beforeNewTrade(internal0);
         expect(relaysPlayed.reads.map((read) => read.$1), relays);
@@ -207,27 +215,32 @@ void main() {
       },
     );
 
-    test('a note of the legacy identity counts, as in the official client', () async {
-      relaysPlayed.on(relays[1]).add(
-        noteOf(internal0.key.legacyRecoveryNostrKeyPair, 5, at),
-      );
-      await sync().beforeNewTrade(internal0);
-      expect((await standingOf(internal0)).floor, 5);
-    });
+    test(
+      'a note of the legacy identity counts, as in the official client',
+      () async {
+        relaysPlayed
+            .on(relays[1])
+            .add(noteOf(internal0.key.legacyRecoveryNostrKeyPair, 5, at));
+        await sync().beforeNewTrade(internal0);
+        expect((await standingOf(internal0)).floor, 5);
+      },
+    );
 
     test(
       'among relays the latest note wins, whatever its index, and the floor never goes down',
       () async {
-        relaysPlayed.on(relays[0]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 9, at),
-        );
-        relaysPlayed.on(relays[1]).add(
-          noteOf(
-            internal0.key.recoveryNostrKeyPair,
-            3,
-            at.subtract(const Duration(days: 2)),
-          ),
-        );
+        relaysPlayed
+            .on(relays[0])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 9, at));
+        relaysPlayed
+            .on(relays[1])
+            .add(
+              noteOf(
+                internal0.key.recoveryNostrKeyPair,
+                3,
+                at.subtract(const Duration(days: 2)),
+              ),
+            );
         await sync().beforeNewTrade(internal0);
         expect((await standingOf(internal0)).floor, 9);
         // A later reading on another network's relays, or a lying relay, giving a smaller index: the floor stays.
@@ -249,9 +262,9 @@ void main() {
       'a relay that gives only an older, smaller note cannot take the robots below what the device knows',
       () async {
         await bind(internal0, [0, 1, 2, 3, 4, 5]);
-        relaysPlayed.on(relays[0]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 1, at),
-        );
+        relaysPlayed
+            .on(relays[0])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 1, at));
         final notesSync = sync();
         expect(await nextRobot(internal0, notesSync), 6);
       },
@@ -296,9 +309,9 @@ void main() {
               complete: true,
               label: 'answered',
             );
-        relaysPlayed.on(relays[1]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 12, at),
-        );
+        relaysPlayed
+            .on(relays[1])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 12, at));
         await sync().beforeNewTrade(internal0);
         expect(compute.readings, [GarageRecoveryNote.maxEvents, 1]);
         expect((await standingOf(internal0)).floor, 12);
@@ -308,9 +321,9 @@ void main() {
     test(
       'one relay of three with the note is enough; the others answer with nothing',
       () async {
-        relaysPlayed.on(relays[4]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 6, at),
-        );
+        relaysPlayed
+            .on(relays[4])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 6, at));
         await sync().beforeNewTrade(internal0);
         expect(
           await standingOf(internal0),
@@ -335,9 +348,9 @@ void main() {
         expect(relaysPlayed.reads, hasLength(reads));
         // The next run reads again.
         relaysPlayed.down.clear();
-        relaysPlayed.on(relays[0]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 20, at),
-        );
+        relaysPlayed
+            .on(relays[0])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 20, at));
         expect(await nextRobot(internal0, sync(), coordinator: 2), 21);
       },
     );
@@ -353,9 +366,9 @@ void main() {
                 label: 'timedOut',
               );
         }
-        relaysPlayed.on(relays[3]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 8, at),
-        );
+        relaysPlayed
+            .on(relays[3])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 8, at));
         await sync().beforeNewTrade(internal0);
         expect(
           await standingOf(internal0),
@@ -364,24 +377,21 @@ void main() {
       },
     );
 
-    test(
-      'the note of one key never moves the floor of another',
-      () async {
-        relaysPlayed.on(relays[0]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 30, at),
-        );
-        final notesSync = sync();
-        await notesSync.beforeNewTrade(internal0);
-        await notesSync.beforeNewTrade(internal1);
-        expect((await standingOf(internal0)).floor, 30);
-        expect(
-          await standingOf(internal1),
-          const GarageNoteStanding(floor: null, read: true),
-        );
-        expect(await nextRobot(internal1, notesSync), 0);
-        expect(await nextRobot(internal0, notesSync, coordinator: 1), 31);
-      },
-    );
+    test('the note of one key never moves the floor of another', () async {
+      relaysPlayed
+          .on(relays[0])
+          .add(noteOf(internal0.key.recoveryNostrKeyPair, 30, at));
+      final notesSync = sync();
+      await notesSync.beforeNewTrade(internal0);
+      await notesSync.beforeNewTrade(internal1);
+      expect((await standingOf(internal0)).floor, 30);
+      expect(
+        await standingOf(internal1),
+        const GarageNoteStanding(floor: null, read: true),
+      );
+      expect(await nextRobot(internal1, notesSync), 0);
+      expect(await nextRobot(internal0, notesSync, coordinator: 1), 31);
+    });
   });
 
   group('the floor of a new trade', () {
@@ -428,34 +438,43 @@ void main() {
       'the robot of a new trade is never at or below the note, nor one the device holds',
       () async {
         await bind(internal0, [0, 1, 9, 10]);
-        relaysPlayed.on(relays[0]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 9, at),
-        );
+        relaysPlayed
+            .on(relays[0])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 9, at));
         final notesSync = sync();
         expect(await nextRobot(internal0, notesSync), 11);
         expect(await nextRobot(internal0, notesSync, coordinator: 1), 12);
       },
     );
 
-    test('a note at the last index leaves the key no robot for a new trade', () async {
-      relaysPlayed.on(relays[0]).add(
-        noteOf(internal0.key.recoveryNostrKeyPair, GarageKey.maxAccountIndex, at),
-      );
-      final notesSync = sync();
-      keys.selected = internal0;
-      final robots = InterimTradeRobots(
-        keys,
-        records(),
-        beforeNewTrade: notesSync.beforeNewTrade,
-      );
-      expect(
-        await robots.robotForNewTrade(
-          network,
-          Federation.robosats.coordinators.first,
-        ),
-        isA<Err<ReservedRobot, P2pFailure>>(),
-      );
-    });
+    test(
+      'a note at the last index leaves the key no robot for a new trade',
+      () async {
+        relaysPlayed
+            .on(relays[0])
+            .add(
+              noteOf(
+                internal0.key.recoveryNostrKeyPair,
+                GarageKey.maxAccountIndex,
+                at,
+              ),
+            );
+        final notesSync = sync();
+        keys.selected = internal0;
+        final robots = InterimTradeRobots(
+          keys,
+          records(),
+          beforeNewTrade: notesSync.beforeNewTrade,
+        );
+        expect(
+          await robots.robotForNewTrade(
+            network,
+            Federation.robosats.coordinators.first,
+          ),
+          isA<Err<ReservedRobot, P2pFailure>>(),
+        );
+      },
+    );
   });
 
   group('writing', () {
@@ -478,9 +497,9 @@ void main() {
       'the note written never goes below the floor read, even when the device used lower robots only',
       () async {
         await bind(internal0, [0, 1]);
-        relaysPlayed.on(relays[0]).add(
-          noteOf(internal0.key.recoveryNostrKeyPair, 40, at),
-        );
+        relaysPlayed
+            .on(relays[0])
+            .add(noteOf(internal0.key.recoveryNostrKeyPair, 40, at));
         sync().opened(network);
         await _settled(relaysPlayed, relays.length);
         expect(publishedIndexes(internal0), List.filled(relays.length, 40));
@@ -504,21 +523,18 @@ void main() {
       },
     );
 
-    test(
-      'nothing is written over a note the device could not read',
-      () async {
-        await bind(internal0, [0]);
-        for (final relay in relays) {
-          relaysPlayed.answers[relay] = (stored, filters) async =>
-              const NostrRelayRead.none('unreachable');
-        }
-        final notesSync = sync();
-        notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 0));
-        notesSync.opened(network);
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        expect(relaysPlayed.published, isEmpty);
-      },
-    );
+    test('nothing is written over a note the device could not read', () async {
+      await bind(internal0, [0]);
+      for (final relay in relays) {
+        relaysPlayed.answers[relay] = (stored, filters) async =>
+            const NostrRelayRead.none('unreachable');
+      }
+      final notesSync = sync();
+      notesSync.tradeConfirmed(_record(fingerprintOf(internal0), 0));
+      notesSync.opened(network);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(relaysPlayed.published, isEmpty);
+    });
   });
 }
 
@@ -562,7 +578,9 @@ final class _Keys with KeysFromRead implements GarageKeyRepository {
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> ofSlot(RobotSlot slot) async {
     for (final key in _keys) {
-      if (key.fingerprint case Ok(:final value) when value == slot.keyFingerprint) {
+      if (key.fingerprint case Ok(
+        :final value,
+      ) when value == slot.keyFingerprint) {
         return Ok(key);
       }
     }

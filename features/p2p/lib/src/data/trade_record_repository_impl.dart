@@ -192,7 +192,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
             readsFrom: {
               _database.robotBindings,
               _database.trades,
-              _database.garageRecoveryNotes,
+              _database.storedGarageRecoveryNotes,
             },
           )
           .getSingle();

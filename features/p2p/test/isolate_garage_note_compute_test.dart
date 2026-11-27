@@ -10,38 +10,43 @@ import 'package:test/test.dart';
 
 /// The work on the recovery note in an isolate of its own (#81): a note composed there reads back, and a reading that takes longer than its limit is stopped.
 void main() {
-  final key = switch (GarageKey.fromBytes(Uint8List.fromList(List.filled(32, 9)))) {
+  final key = switch (GarageKey.fromBytes(
+    Uint8List.fromList(List.filled(32, 9)),
+  )) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
   const compute = IsolateGarageNoteCompute();
 
-  test('a note composed apart reads back apart, from the identities only', () async {
-    final note = switch (await compute.composeNote(
-      key.recoveryNostrKeyPair,
-      accountIndex: 17,
-      now: DateTime.utc(2026, 11, 27),
-    )) {
-      Ok(value: Ok(:final value)) => value,
-      final other => throw StateError('$other'),
-    };
-    final event = jsonEncode(
-      (jsonDecode(note.relayMessages.single) as List<Object?>)[1],
-    );
-    final reading = await compute.readNotes(
-      [key.recoveryNostrKeyPair, key.legacyRecoveryNostrKeyPair],
-      [event],
-      limit: const Duration(seconds: 30),
-    );
-    expect(
-      reading,
-      isA<Ok<GarageRecoveryReading?, RobotKeyComputeFailure>>().having(
-        (ok) => ok.value?.accountIndex,
-        'index',
-        17,
-      ),
-    );
-  });
+  test(
+    'a note composed apart reads back apart, from the identities only',
+    () async {
+      final note = switch (await compute.composeNote(
+        key.recoveryNostrKeyPair,
+        accountIndex: 17,
+        now: DateTime.utc(2026, 11, 27),
+      )) {
+        Ok(value: Ok(:final value)) => value,
+        final other => throw StateError('$other'),
+      };
+      final event = jsonEncode(
+        (jsonDecode(note.relayMessages.single) as List<Object?>)[1],
+      );
+      final reading = await compute.readNotes(
+        [key.recoveryNostrKeyPair, key.legacyRecoveryNostrKeyPair],
+        [event],
+        limit: const Duration(seconds: 30),
+      );
+      expect(
+        reading,
+        isA<Ok<GarageRecoveryReading?, RobotKeyComputeFailure>>().having(
+          (ok) => ok.value?.accountIndex,
+          'index',
+          17,
+        ),
+      );
+    },
+  );
 
   test('an index out of range is the package\'s refusal', () async {
     expect(
@@ -50,7 +55,12 @@ void main() {
         accountIndex: -1,
         now: DateTime.utc(2026, 11, 27),
       ),
-      isA<Ok<Result<OutgoingGarageRecoveryNote, AccountIndexOutOfRange>, RobotKeyComputeFailure>>()
+      isA<
+            Ok<
+              Result<OutgoingGarageRecoveryNote, AccountIndexOutOfRange>,
+              RobotKeyComputeFailure
+            >
+          >()
           .having((ok) => ok.value, 'inner', isA<Err>()),
     );
   });

@@ -182,9 +182,7 @@ void main() {
         "key_fingerprint = '${'ef' * 32}'",
       ]) {
         await expectLater(
-          database.customStatement(
-            'UPDATE garage_recovery_notes SET $change',
-          ),
+          database.customStatement('UPDATE garage_recovery_notes SET $change'),
           throwsA(isA<Exception>()),
           reason: change,
         );

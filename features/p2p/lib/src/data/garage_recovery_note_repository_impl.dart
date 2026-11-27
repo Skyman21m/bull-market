@@ -52,16 +52,19 @@ final class GarageRecoveryNoteRepositoryImpl
               Variable.withString(_networkValue(network)),
               Variable.withString(key.hex),
             ],
-            readsFrom: {_database.garageRecoveryNotes},
+            readsFrom: {_database.storedGarageRecoveryNotes},
           )
           .getSingleOrNull();
     } on Exception {
       return const Err(P2pStorageFailure());
     }
-    if (row == null) return const Ok(GarageNoteStanding(floor: null, read: false));
+    if (row == null) {
+      return const Ok(GarageNoteStanding(floor: null, read: false));
+    }
     final floor = row.data['account_floor'];
     final readAt = row.data['read_at'];
-    if ((floor != null && !_isIndex(floor)) || (readAt != null && readAt is! int)) {
+    if ((floor != null && !_isIndex(floor)) ||
+        (readAt != null && readAt is! int)) {
       return const Err(P2pStorageFailure());
     }
     return Ok(GarageNoteStanding(floor: floor as int?, read: readAt != null));
@@ -87,7 +90,7 @@ final class GarageRecoveryNoteRepositoryImpl
       // A raw statement tells drift nothing: the watches of the floor are told here.
       _database.notifyUpdates({
         TableUpdate.onTable(
-          _database.garageRecoveryNotes,
+          _database.storedGarageRecoveryNotes,
           kind: UpdateKind.update,
         ),
       });
@@ -103,7 +106,7 @@ final class GarageRecoveryNoteRepositoryImpl
           .customSelect(
             _floorSql,
             variables: [Variable.withString(key.hex)],
-            readsFrom: {_database.garageRecoveryNotes},
+            readsFrom: {_database.storedGarageRecoveryNotes},
           )
           .watchSingle()
           .map<Result<int?, P2pFailure>>((row) {

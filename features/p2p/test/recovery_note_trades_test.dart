@@ -1,9 +1,7 @@
 import 'package:p2p/src/domain/network_garage_key.dart';
-import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/testing.dart' show ScriptedRequest;
 import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'support/make_harness.dart';
@@ -11,15 +9,18 @@ import 'support/trade_harness.dart';
 
 /// The recovery note told only of the makes and takes the coordinator confirmed (#81, design note `docs/design/garage-key-from-the-words.md` § 3, « This design »), and its floor applied to the robot of a take and of a make, through the real use cases, records and robot layer of the trade harnesses, the coordinator scripted.
 void main() {
-  test('a take the coordinator confirmed tells the notes once, with its record', () async {
-    final confirmed = <TradeRecord>[];
-    final app = await TradeHarness.start(
-      notes: (confirmed: confirmed.add, beforeNewTrade: (_) async {}),
-    );
-    final taken = TradeHarness.recordOf(await app.takeShown());
-    expect(confirmed.map((record) => record.robot), [taken.robot]);
-    expect(confirmed.single.confirmedAt, isNotNull);
-  });
+  test(
+    'a take the coordinator confirmed tells the notes once, with its record',
+    () async {
+      final confirmed = <TradeRecord>[];
+      final app = await TradeHarness.start(
+        notes: (confirmed: confirmed.add, beforeNewTrade: (_) async {}),
+      );
+      final taken = TradeHarness.recordOf(await app.takeShown());
+      expect(confirmed.map((record) => record.robot), [taken.robot]);
+      expect(confirmed.single.confirmedAt, isNotNull);
+    },
+  );
 
   test(
     'a take the coordinator did not make tells the notes nothing, though its pending take was recorded',

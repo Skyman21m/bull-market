@@ -13,7 +13,10 @@ void main() {
       'wss://nostr.mom',
       'wss://nostr.oxtr.dev',
     ]);
-    expect(publicNoteRelays.every((url) => Uri.parse(url).isScheme('wss')), isTrue);
+    expect(
+      publicNoteRelays.every((url) => Uri.parse(url).isScheme('wss')),
+      isTrue,
+    );
   });
 
   test('no file of the feature reads the list: no public relay is reached', () {

@@ -34,8 +34,9 @@ final class ConfirmedTradeNotes implements TradeRecordRepository {
     TradeRecord record,
   ) async {
     final confirmed = await _records.confirmTake(record);
-    if (confirmed case Ok(:final value)
-        when record.confirmedAt == null && value.confirmedAt != null) {
+    if (confirmed case Ok(
+      :final value,
+    ) when record.confirmedAt == null && value.confirmedAt != null) {
       _confirmed(value);
     }
     return confirmed;

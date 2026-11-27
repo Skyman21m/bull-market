@@ -31,7 +31,12 @@ void main() {
     expect(
       GarageOpening.of(
         key,
-        GarageRecords(inProgress: const [], closed: const [], fresh: null, noted: noted),
+        GarageRecords(
+          inProgress: const [],
+          closed: const [],
+          fresh: null,
+          noted: noted,
+        ),
       ),
       noted,
     );

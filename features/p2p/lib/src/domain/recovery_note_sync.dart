@@ -64,28 +64,18 @@ final class RecoveryNoteSync {
   final Set<RobosatsNetwork> _opened = {};
 
   RecoveryNoteSync({
-    required OwnSessionNostrRelayTransport relays,
-    required GarageNoteComputePort compute,
-    required GarageRecoveryNoteRepository notes,
-    required TradeRecordRepository records,
-    required GarageKeyRepository keys,
-    required Federation federation,
-    required DateTime Function() clock,
-    Stream<P2pTorReport> Function()? torReports,
+    required this._relays,
+    required this._compute,
+    required this._notes,
+    required this._records,
+    required this._keys,
+    required this._federation,
+    required this._clock,
+    this._torReports,
     Duration? readDeadline,
-    Duration newTradeWait = newTradeNoteWait,
-    Duration torWait = noteTorWait,
-  }) : _relays = relays,
-       _compute = compute,
-       _notes = notes,
-       _records = records,
-       _keys = keys,
-       _federation = federation,
-       _clock = clock,
-       _torReports = torReports,
-       _readDeadline = readDeadline ?? noteReadDeadline,
-       _newTradeWait = newTradeWait,
-       _torWait = torWait;
+    this._newTradeWait = newTradeNoteWait,
+    this._torWait = noteTorWait,
+  }) : _readDeadline = readDeadline ?? noteReadDeadline;
 
   /// The Garage shows [key]: its note is read in the background unless it was read on this installation or this run already tried.
   void visit(NetworkGarageKey key) => unawaited(_firstReading(key));
@@ -140,8 +130,7 @@ final class RecoveryNoteSync {
     final filters = GarageRecoveryNote.filters(key.key);
     // Each relay read apart, and its events read apart: one relay's events never hide another's.
     final readings = await Future.wait([
-      for (final relay in relays)
-        _readRelay(relay, filters, identities, clock),
+      for (final relay in relays) _readRelay(relay, filters, identities, clock),
     ]);
     final answered = readings.any((reading) => reading.answered);
     final latest = GarageRecoveryNote.latestOf([
