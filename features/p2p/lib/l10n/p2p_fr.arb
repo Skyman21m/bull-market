@@ -1090,7 +1090,7 @@
   "p2pGarageDeleteExternalTitle": "Supprimer la clé de garage externe ?",
   "p2pGarageDeleteExternalText": "Elle n'est pas sauvegardée par votre Bull Wallet. Sans une copie, ses robots seront perdus pour cette app.",
   "p2pGarageDeleteExternalTrades": "{count, plural, =1{L'échange {orders} utilise cette clé de garage : sans elle, vous ne pourrez plus le continuer.} other{Les échanges {orders} utilisent cette clé de garage : sans elle, vous ne pourrez plus les continuer.}}",
-  "p2pGarageDeleteExternalUnread": "Bull Wallet n'a pas pu lire vos échanges : un échange en cours utilise peut-être cette clé de garage.",
+  "p2pGarageDeleteExternalUnread": "Bull Market n’a pas pu lire vos échanges : un échange en cours utilise peut-être cette clé de garage.",
   "p2pGarageDeleteConfirm": "Supprimer",
   "p2pGarageNoticeTitle": "Vos clés de garage",
   "p2pGarageNoticeText": "Votre clé de garage actuelle s'appelle maintenant « Clé de garage externe ». Les clés de garage internes, sauvegardées par votre Bull Wallet, sont à côté : appuyez sur « Revenir aux clés de garage internes ».",

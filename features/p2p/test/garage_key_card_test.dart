@@ -181,14 +181,14 @@ void main() {
     (
       const Locale('en'),
       'Delete the external Garage Key',
-      'Bull Wallet could not read your trades: a trade in progress may use this Garage Key.',
+      'Bull Market could not read your trades: a trade in progress may use this Garage Key.',
       'Delete',
       'Cancel',
     ),
     (
       const Locale('fr'),
       'Supprimer la clé de garage externe',
-      'Bull Wallet n\'a pas pu lire vos échanges\u00a0: un échange en cours utilise peut-être cette clé de garage.',
+      'Bull Market n’a pas pu lire vos échanges\u00a0: un échange en cours utilise peut-être cette clé de garage.',
       'Supprimer',
       'Annuler',
     ),

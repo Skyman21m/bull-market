@@ -4429,7 +4429,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageDeleteExternalUnread =>
-      'Bull Wallet n\'a pas pu lire vos échanges : un échange en cours utilise peut-être cette clé de garage.';
+      'Bull Market n’a pas pu lire vos échanges : un échange en cours utilise peut-être cette clé de garage.';
 
   @override
   String get p2pGarageDeleteConfirm => 'Supprimer';
