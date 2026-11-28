@@ -3133,7 +3133,8 @@ void main() {
           return null;
         });
         addTearDown(
-          () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+          () =>
+              messenger.setMockMethodCallHandler(SystemChannels.platform, null),
         );
 
         Future<void> capture(String name) async {
@@ -3227,13 +3228,19 @@ void main() {
         await settle();
         final row = find.text('100 EUR', findRichText: true);
         await waitFor(row);
-        await tester.tap(row);
+        await tester.ensureVisible(row.first);
         await settle();
-        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await tester.tap(row.first);
         await settle();
-        await tester.tap(find.text(l10n.p2pTakeOrder));
-        await waitFor(find.text(l10n.p2pCommonContinue));
-        await tester.ensureVisible(find.text(l10n.p2pCommonContinue));
+        final take = find.text(l10n.p2pTakeOrder, skipOffstage: false);
+        await waitFor(take);
+        await tester.ensureVisible(take);
+        await settle();
+        await tester.tap(take);
+        await waitFor(find.text(l10n.p2pCommonContinue, skipOffstage: false));
+        await tester.ensureVisible(
+          find.text(l10n.p2pCommonContinue, skipOffstage: false),
+        );
         await settle();
         await tester.tap(find.text(l10n.p2pCommonContinue));
         await settle();
