@@ -10,6 +10,7 @@ import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
+import 'package:p2p/src/ui/trade/active_trades_sheet.dart';
 import 'package:p2p/src/ui/trade/pending_make_lines.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -78,8 +79,9 @@ final class _Coordinators implements CoordinatorTransport {
 final class _Form {
   final WidgetTester tester;
   final ScriptedMakerCoordinator coordinator;
+  final GoRouter router;
 
-  _Form(this.tester, this.coordinator);
+  _Form(this.tester, this.coordinator, this.router);
 
   Finder inForm(Finder finder) =>
       find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
@@ -146,23 +148,60 @@ final class _Form {
     tor.add(P2pTorState.ready);
     await settle(tester);
     await settle(tester);
-    final form = _Form(tester, coordinator);
-    // « Create », « Buy », 100 USD, « Revolut » as a custom method, 2 %.
+    final form = _Form(tester, coordinator, router);
     await form.tap(find.text('Create'));
     await settle(tester);
+    await form.fill();
+    return form;
+  }
+
+  /// On the form just opened: « Buy », 100 USD, « Revolut » as a custom method, 2 %.
+  Future<void> fill() async {
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    await form.tap(form.inForm(find.text('Buy')));
-    await tester.enterText(form.inForm(find.byType(TextField)).at(0), '100');
+    await tap(inForm(find.text('Buy')));
+    await tester.enterText(inForm(find.byType(TextField)).at(0), '100');
     await settle(tester);
-    await form.tap(form.inForm(find.byTooltip('Add custom payment method')));
+    await tap(inForm(find.byTooltip('Add custom payment method')));
     await settle(tester);
     await tester.enterText(find.byType(TextField).last, 'Revolut');
     await tester.pump();
-    await form.tap(find.text('Add payment method'));
+    await tap(find.text('Add payment method'));
     await settle(tester);
-    await tester.enterText(form.inForm(find.byType(TextField)).at(1), '2');
+    await tester.enterText(inForm(find.byType(TextField)).at(1), '2');
     await settle(tester);
-    return form;
+  }
+
+  Finder inSheet(Finder finder) =>
+      find.descendant(of: find.byType(ActiveTradesSheet), matching: finder);
+
+  /// Back from the form (or the trade it opened) to the tab, as the system's back does.
+  Future<void> back() async {
+    router.pop();
+    await settle(tester);
+    await settle(tester);
+    expect(find.byType(CreateOrderScreen), findsNothing);
+  }
+
+  /// « Order », the tab's middle entry: « Active trades » opens, and resolves the pending makes listed.
+  Future<void> openSheet() async {
+    await tap(find.text('Order'));
+    await settle(tester);
+    await settle(tester);
+    expect(find.byType(ActiveTradesSheet), findsOneWidget);
+  }
+
+  /// A make whose request times out, then « Go back » to the tab and « Order »: the sheet's resolution finds that the robot names no order, the make closed as not made there; then « Create order » at the sheet's top, and the form filled again.
+  Future<void> makeClosedInSheet() async {
+    coordinator.failNext(ScriptedMakerRequest.make, ScriptedFault.timedOut);
+    await press();
+    expect(inForm(find.text('Retry')), findsOneWidget);
+    await back();
+    await openSheet();
+    expect(inSheet(find.text(_notMade)), findsOneWidget);
+    expect(inSheet(find.text(_creating)), findsNothing);
+    await tap(inSheet(find.text('Create order')));
+    await settle(tester);
+    await fill();
   }
 
   /// « Create order », then « Done » when [done], else « Go back »: the make sent, or the press stopped before it.
@@ -269,4 +308,112 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'a make closed as not made, then a second make refused before any robot is recorded: the form\'s line goes all the same (the list\'s rule never hears of such a make, #313)',
+    (tester) async {
+      final form = await _Form.open(tester);
+      await form.makeClosedAsNotMade();
+      final robots = form.coordinator.received
+          .where((kind) => kind == ScriptedMakerRequest.robot)
+          .length;
+      // The limits the make reads before any robot, unreachable: refused, nothing recorded, no robot's request.
+      form.coordinator.failNext(
+        ScriptedMakerRequest.limits,
+        ScriptedFault.unreachable,
+      );
+      await form.press();
+      expect(
+        form.coordinator.received
+            .where((kind) => kind == ScriptedMakerRequest.robot)
+            .length,
+        robots,
+      );
+      expect(find.text(_creating), findsNothing);
+      expect(form.closedLine, findsNothing);
+      expect(find.text(_notMade), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  group('« Active trades » of the tab, whose cubit outlives the form (#313)', () {
+    testWidgets(
+      'a make closed as not made in the sheet, then a new make that stays pending: the old line is no longer in the sheet, the new make\'s line stays with « Retry » and « Set aside », and the form still warns and makes nothing',
+      (tester) async {
+        final form = await _Form.open(tester);
+        await form.makeClosedInSheet();
+        form.coordinator.failNext(
+          ScriptedMakerRequest.make,
+          ScriptedFault.timedOut,
+        );
+        await form.press();
+        expect(form.inForm(find.text('Retry')), findsOneWidget);
+        await form.back();
+        // The sheet's resolution of the new make reads nothing: it stays pending.
+        form.coordinator.failNext(
+          ScriptedMakerRequest.robot,
+          ScriptedFault.timedOut,
+        );
+        await form.openSheet();
+        expect(form.inSheet(find.text(_notMade)), findsNothing);
+        expect(find.text(_notMade), findsNothing);
+        expect(form.inSheet(find.text(_creating)), findsOneWidget);
+        expect(form.inSheet(find.text('Retry')), findsOneWidget);
+        expect(form.inSheet(find.text('Set aside')), findsOneWidget);
+        // « Create order » at the sheet's top, the form's own resolution reading nothing either: the form says a make is pending, shows its line, and makes nothing.
+        form.coordinator.failNext(
+          ScriptedMakerRequest.robot,
+          ScriptedFault.timedOut,
+        );
+        final requests = form.coordinator.requests.length;
+        await form.tap(form.inSheet(find.text('Create order')));
+        await settle(tester);
+        await settle(tester);
+        expect(
+          form.inForm(find.textContaining('is still being created')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(PendingMakeLines),
+            matching: find.text(_creating),
+          ),
+          findsOneWidget,
+        );
+        expect(form.closedLine, findsNothing);
+        await form.fill();
+        await form.tap(form.inForm(find.text('Create order')));
+        await settle(tester);
+        expect(find.text('Done'), findsNothing);
+        expect(
+          form.coordinator.requests
+              .skip(requests)
+              .where((request) => request.url.path == '/api/make/'),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'a make closed as not made in the sheet, then a new make that makes its order: the old line is not shown above the new order',
+      (tester) async {
+        final form = await _Form.open(tester);
+        await form.makeClosedInSheet();
+        await form.press();
+        // The order made: its trade opened in place of the form.
+        expect(find.byType(CreateOrderScreen), findsNothing);
+        await form.back();
+        await form.openSheet();
+        final orderId = form.coordinator.orders.keys.single;
+        expect(
+          form.inSheet(find.text('Active order #$orderId')),
+          findsOneWidget,
+        );
+        expect(form.inSheet(find.text(_notMade)), findsNothing);
+        expect(form.inSheet(find.text(_creating)), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
 }

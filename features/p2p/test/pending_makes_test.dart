@@ -311,6 +311,97 @@ void main() {
         expect(after.blocksMaking, isTrue);
       },
     );
+
+    group('a new make listed (#313)', () {
+      final other = PendingMake(
+        robot: RobotSlot(_slot.network, _slot.keyFingerprint, 4),
+        coordinatorAlias: 'temple',
+        coordinatorOnion: _onion,
+        role: TradeRole.buyer,
+        writtenAt: madeAt,
+        closedAt: null,
+      );
+      final next = PendingMake(
+        robot: RobotSlot(_slot.network, _slot.keyFingerprint, 5),
+        coordinatorAlias: 'temple',
+        coordinatorOnion: _onion,
+        role: TradeRole.buyer,
+        writtenAt: madeAt,
+        closedAt: null,
+      );
+
+      /// The cubit once [_make] was closed as not made, [other] still pending (left so by its resolution).
+      Future<(_Makes, PendingMakesCubit)> closedOne() async {
+        final makes = _Makes()
+          ..listed = [
+            ActivePendingMake(_make, neverSent: false),
+            ActivePendingMake(other, neverSent: false),
+          ]
+          ..resolution = (make) async => make == _make
+              ? MakeNotMade(make)
+              : MakePending(make, MakePendingReason.notRecognized);
+        final cubit = makes.cubit()..start();
+        addTearDown(cubit.close);
+        await pumpEventQueue();
+        await cubit.resolveAll();
+        makes.list.add(Ok([ActivePendingMake(other, neverSent: false)]));
+        await pumpEventQueue();
+        expect(cubit.state.closed, isA<MakeWasNotMade>());
+        expect(cubit.state.closedAlias, 'temple');
+        return (makes, cubit);
+      }
+
+      test(
+        'a robot the last list did not have: the closed make\'s line goes in the same new state; the makes still pending, their steps and the robot of the make that ended stay',
+        () async {
+          final (makes, cubit) = await closedOne();
+          final before = cubit.state;
+          final states = <PendingMakesState>[];
+          final listening = cubit.stream.listen(states.add);
+          addTearDown(listening.cancel);
+          makes.list.add(
+            Ok([
+              ActivePendingMake(other, neverSent: false),
+              ActivePendingMake(next, neverSent: true),
+            ]),
+          );
+          await pumpEventQueue();
+          expect(states, hasLength(1));
+          final after = states.single;
+          expect(after.closed, isNull);
+          expect(after.closedAlias, isNull);
+          expect(
+            [for (final make in after.makes ?? []) make.make],
+            [other, next],
+          );
+          expect(after.steps, before.steps);
+          expect(after.steps[other.robot], isA<PendingMakeLeftPending>());
+          expect(after.ended, _slot);
+          expect(after.unreadable, isFalse);
+          expect(after.blocksMaking, isTrue);
+        },
+      );
+
+      test(
+        'the same list again, a list read after one that could not be, a make gone: the closed make\'s line stays',
+        () async {
+          final (makes, cubit) = await closedOne();
+          makes.list.add(Ok([ActivePendingMake(other, neverSent: false)]));
+          await pumpEventQueue();
+          expect(cubit.state.closed, isA<MakeWasNotMade>());
+          makes.list.add(const Err(P2pStorageFailure()));
+          await pumpEventQueue();
+          expect(cubit.state.unreadable, isTrue);
+          makes.list.add(Ok([ActivePendingMake(other, neverSent: false)]));
+          await pumpEventQueue();
+          expect(cubit.state.closed, isA<MakeWasNotMade>());
+          makes.list.add(const Ok([]));
+          await pumpEventQueue();
+          expect(cubit.state.closed, isA<MakeWasNotMade>());
+          expect(cubit.state.closedAlias, 'temple');
+        },
+      );
+    });
   });
 
   group('« Active trades »', () {

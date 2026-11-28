@@ -61,7 +61,7 @@ final class PendingMakesState {
   /// The trade a resolution confirmed, which the screen opens: set once per confirmation.
   final TradeRecord? started;
 
-  /// Why the last make closed by a resolution made no order, said once its line is gone; `null` when none was closed here, or once the form sent a new make ([PendingMakesCubit.forgetClosed]).
+  /// Why the last make closed by a resolution made no order, said once its line is gone; `null` when none was closed here, or once a new make was sent ([PendingMakesCubit.forgetClosed]): by the form as soon as its make starts, and by the list as soon as a new make is recorded ([PendingMakesCubit.start]).
   final MakeProblem? closed;
 
   /// The coordinator of [closed], its short alias.
@@ -100,6 +100,15 @@ final class PendingMakesState {
     closedAlias: closedAlias ?? this.closedAlias,
     ended: ended ?? this.ended,
   );
+
+  /// This state without [closed] and [closedAlias], everything else kept.
+  PendingMakesState _withoutClosed() => PendingMakesState(
+    makes: makes,
+    unreadable: unreadable,
+    steps: steps,
+    started: started,
+    ended: ended,
+  );
 }
 
 /// Lists, resolves and sets aside the pending makes of [network]: the only caller of [MakeOrderUsecase.pendingMakes], [MakeOrderUsecase.resolve] and [MakeOrderUsecase.dismiss].
@@ -118,6 +127,8 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
     : super(const PendingMakesState());
 
   /// Starts listing: a new list after each write of the records.
+  ///
+  /// A robot listed that the last list did not have is a new make, recorded as pending just before its request leaves, whichever screen sent it: why the last make closed here made no order is forgotten then, as [forgetClosed] does, in the same new state, so that its line never stays above the new make (#313, « Active trades » of the tab, whose cubit outlives the form). The form forgets it earlier, as soon as its make starts (`MakeSending`), which also covers a make refused before any robot is recorded; the tab's list does not hear of such a make, and keeps the line then.
   void start() {
     if (isClosed || _subscription != null) return;
     _subscription = _list(network).listen((result) {
@@ -125,8 +136,14 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
       switch (result) {
         case Ok(:final value):
           final robots = {for (final make in value) make.make.robot};
+          final before = state.makes;
+          final made =
+              before != null &&
+              robots.difference({
+                for (final make in before) make.make.robot,
+              }).isNotEmpty;
           emit(
-            state._with(
+            (made ? state._withoutClosed() : state)._with(
               makes: value,
               unreadable: false,
               steps: {
@@ -211,18 +228,10 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
     }
   }
 
-  /// The form sends a new make: why the last make closed made no order ([PendingMakesState.closed]) is no longer said, so that it is never read as the new make's outcome (seen in a real trial). Nothing else changes: the pending makes, their steps, [PendingMakesState.started] and [PendingMakesState.ended] stay.
+  /// A new make is sent (the form's make starts, or the list shows a make it did not have, [start]): why the last make closed made no order ([PendingMakesState.closed]) is no longer said, so that it is never read as the new make's outcome (seen in a real trial). Nothing else changes: the pending makes, their steps, [PendingMakesState.started] and [PendingMakesState.ended] stay.
   void forgetClosed() {
     if (isClosed || state.closed == null) return;
-    emit(
-      PendingMakesState(
-        makes: state.makes,
-        unreadable: state.unreadable,
-        steps: state.steps,
-        started: state.started,
-        ended: state.ended,
-      ),
-    );
+    emit(state._withoutClosed());
   }
 
   void _step(PendingMake make, PendingMakeStep? step) => emit(
