@@ -481,9 +481,9 @@ void main() {
         await app.copy(pass: true);
         expect(app.gate.asked, 2);
         expect(app.clipboard.text == tradeKey.revealBech32(), isTrue);
-        expect(app.inDialog(find.text('Copied!')), findsOneWidget);
         expect(app.drawn().contains(tradeKey.revealBech32()), isFalse);
         expect(app.drawn().contains('robo1'), isFalse);
+        expect(app.inDialog(find.text('Copied!')), findsOneWidget);
         expect(app.makes, 0);
         // The cubit's state never holds it.
         final form = tester.element(find.byType(CreateOrderScreen));
@@ -523,8 +523,8 @@ void main() {
         expect(app.clipboard.text, isNull);
         await app.copy(pass: true);
         expect(app.clipboard.text == tradeKey.revealBech32(), isTrue);
-        expect(app.inDialog(find.text('Copied!')), findsOneWidget);
         expect(app.drawn().contains('robo1'), isFalse);
+        expect(app.inDialog(find.text('Copied!')), findsOneWidget);
 
         await app.tap(app.inDialog(find.text('Go back')));
         await settle(tester);
