@@ -75,7 +75,12 @@ final class InterimTradeRobots implements TradeRobots {
       }
       switch (await _records.reserveForNewTrade(candidate.slot, identity)) {
         case Ok(value: final reservation?):
-          return switch (ReservedRobot.of(candidate, reservation)) {
+          return switch (ReservedRobot.of(
+            candidate,
+            reservation,
+            // The key the robot was derived from, as this call read it: an internal Garage Key has an index, the external one none.
+            externalKey: key.index == null,
+          )) {
             final reserved? => Ok(reserved),
             // The repository reserved another robot than the one asked: a bug of this code, never a robot to use.
             null => throw StateError('A reservation of another robot.'),

@@ -335,6 +335,7 @@ final class TakeOrderUsecase {
       terms: terms,
       amount: amount,
       readAt: _reader.now(),
+      externalKey: reserved.externalKey,
       // Kept with the robot when it was reserved, never computed again (#251, § 4.2).
       freshRobot:
           _prepared.changedRobotFor(network, coordinator.shortAlias, shown.id)

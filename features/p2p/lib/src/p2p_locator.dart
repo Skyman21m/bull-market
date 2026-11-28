@@ -98,6 +98,7 @@ import 'domain/usecases/trade/export_chat_usecase.dart';
 import 'domain/usecases/trade/send_chat_message_usecase.dart';
 import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
+import 'domain/usecases/trade/trade_garage_key_usecase.dart';
 import 'domain/usecases/trade/trade_chats.dart';
 import 'domain/usecases/trade/trade_keyring.dart';
 import 'domain/usecases/trade/trade_read_order.dart';
@@ -432,6 +433,10 @@ final class P2pLocator {
     locator.registerLazySingleton<TradeTakeLocks>(TradeTakeLocks.new);
     // One for the feature: a take prepared through one use case object is confirmed or abandoned through another (#119).
     locator.registerLazySingleton<PreparedTakes>(PreparedTakes.new);
+    // « Store your garage key » only for the external Garage Key, and its copy (#318).
+    locator.registerFactory<TradeGarageKeyUsecase>(
+      () => TradeGarageKeyUsecase(locator(), locator()),
+    );
     locator.registerFactory<TakeOrderUsecase>(
       () => TakeOrderUsecase(
         CoordinatorClient(transport(), clock: clock),
@@ -487,6 +492,7 @@ final class P2pLocator {
         fetchLimits: locator<FetchCoordinatorLimitsUsecase>().execute,
         make: locator<MakeOrderUsecase>().execute,
         hasGarageKey: locator<HasGarageKeyUsecase>().execute,
+        usesExternalKey: locator<TradeGarageKeyUsecase>().makeUsesExternalKey,
         lottery: locator<CoordinatorLottery>(),
         now: clock,
         checkPrice: paysBondFromWallet(locator)

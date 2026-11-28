@@ -147,14 +147,20 @@ void main() {
           TradeReservation(robot.slot, templeTestnet),
         );
         // A reservation pairs with its own robot only.
-        expect(ReservedRobot.of(robot, reserved.reservation), isNotNull);
+        expect(
+          ReservedRobot.of(robot, reserved.reservation, externalKey: true),
+          isNotNull,
+        );
         expect(
           ReservedRobot.of(
             robotOf(NetworkGarageKey(testnet, keyA).firstUsableRobot(1)),
             reserved.reservation,
+            externalKey: true,
           ),
           isNull,
         );
+        // The vault gave the key without an index, the external Garage Key: « Store your garage key » before its take (#318).
+        expect(reserved.externalKey, isTrue);
         expect(
           robot,
           robotOf(NetworkGarageKey(testnet, keyA).firstUsableRobot(0)),
@@ -168,6 +174,19 @@ void main() {
           ),
         );
         expect(await database.select(database.trades).get(), isEmpty);
+      },
+    );
+
+    test(
+      'of an internal Garage Key (an index) says so: no « Store your garage key » before its take (#318)',
+      () async {
+        vault.slots[testnet] = Ok(NetworkGarageKey(testnet, keyA, index: 0));
+        final reserved = reservedOf(
+          await robots.robotForNewTrade(testnet, temple),
+        );
+
+        expect(reserved.externalKey, isFalse);
+        expect(reserved.robot.slot, RobotSlot(testnet, fingerprintA, 0));
       },
     );
 

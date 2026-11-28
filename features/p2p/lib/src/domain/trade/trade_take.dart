@@ -338,11 +338,15 @@ final class PreparedTake {
   /// The nickname of the robot that read [order] and will take it, when it is not the robot the Garage showed before the take reserved it (#251, design note `docs/design/phase-3-fresh-robot.md` § 4.2): the order page then says « A fresh robot for this order »; `null` otherwise, or when the Garage's robot could not be told. Public, never a token.
   final String? freshRobot;
 
+  /// Whether the robot that read [order] and will take it is of the external Garage Key, the key the vault keeps, as its reservation said (`ReservedRobot.externalKey`): « Store your garage key » is shown before the take only then, a key of the wallet's words coming back with the words (#318, decided on 2026-11-28). Public, never the key.
+  final bool externalKey;
+
   const PreparedTake({
     required this.order,
     required this.terms,
     required this.amount,
     required this.readAt,
+    required this.externalKey,
     this.freshRobot,
   });
 

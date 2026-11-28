@@ -7,21 +7,42 @@ import 'package:test/test.dart';
 
 /// What `GarageKeyView` lets out: the custody gate allows `GarageKey.revealBech32` in any member of the class, so a public static, a getter returning the text or a tear-off of `revealBech32`, called from another file, would pass it.
 ///
-/// So its members are pinned here, from the syntax tree: the two fields, the constructor and `build`, nothing else; and `revealBech32` appears exactly twice, each time called on `garageKey`: as the text of the `Text`, and as the text given to `clipboard.copy`.
+/// So its members are pinned here, from the syntax tree: the two fields, the constructor, `build` and the static `copy` (#318), which returns only whether the clipboard took the key, nothing else; and `revealBech32` appears exactly twice, each time called on `garageKey`: as the text of the `Text`, and as the text given to `clipboard.copy` in `copy`, which the view's button calls too.
 /// Those names mean the widget of Flutter and the helper of the feature only because the file's imports and declarations are pinned too.
 void main() {
   // Tests run with the package directory as working directory.
   const path = 'lib/src/ui/widgets/garage_key_view.dart';
 
-  test('the view has two fields, its constructor and build, nothing else', () {
-    final view = _classNamed(_unit(File(path).readAsStringSync()));
+  test(
+    'the view has two fields, its constructor, its copy and build, nothing else',
+    () {
+      final view = _classNamed(_unit(File(path).readAsStringSync()));
 
-    expect(_surface(view), [
-      'field final GarageKey garageKey',
-      'field final GarageKeyClipboard clipboard',
-      'constructor GarageKeyView({super.key, required this.garageKey, required this.clipboard})',
-      'method @override Widget build(BuildContext context)',
-    ]);
+      expect(_surface(view), [
+        'field final GarageKey garageKey',
+        'field final GarageKeyClipboard clipboard',
+        'constructor GarageKeyView({super.key, required this.garageKey, required this.clipboard})',
+        'method static Future<bool> copy(GarageKeyClipboard clipboard, GarageKey garageKey)',
+        'method @override Widget build(BuildContext context)',
+      ]);
+    },
+  );
+
+  test('copy hands the text to the clipboard helper and returns nothing else', () {
+    // Its body, as written: a text returned, kept or given elsewhere would show here.
+    final view = _classNamed(_unit(File(path).readAsStringSync()));
+    final copy = switch (view.body) {
+      BlockClassBody(:final members) =>
+        members.whereType<MethodDeclaration>().singleWhere(
+          (m) => m.name.lexeme == 'copy',
+        ),
+      _ => throw StateError('no body'),
+    };
+
+    expect(
+      copy.body.toSource(),
+      '=> clipboard.copy(garageKey, garageKey.revealBech32());',
+    );
   });
 
   test('the view imports exactly its libraries, and declares nothing else', () {
