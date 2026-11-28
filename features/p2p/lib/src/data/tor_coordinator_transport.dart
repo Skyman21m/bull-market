@@ -681,7 +681,7 @@ final class TorCoordinatorTransport
             }
         }
       },
-      // Closed by the relay, or broken, before every subscription ended.
+      // Closed by the relay, or broken, before every subscription ended. Whatever reaches it ends the read, as « broken », an `Error` included: a declared exception to rule 11 of `AGENTS.md` (#314), since `dart:io`'s websocket never puts an error on its stream (it closes it, `_WebSocketImpl._fromSocket`), so that nothing is known to reach it, and the read must end in every case.
       onError: (Object _) => finish(complete: false, label: 'broken'),
       onDone: () => finish(complete: false, label: 'closed'),
       cancelOnError: true,
@@ -1059,7 +1059,7 @@ final class TorCoordinatorTransport
           );
         }
       },
-      // Closed by the relay, or broken, before every event was answered.
+      // Closed by the relay, or broken, before every event was answered. Whatever reaches it ends the publication, an `Error` included, as in the read of a relay above (a declared exception to rule 11 of `AGENTS.md`, #314).
       onError: (Object _) => finish(
         refused ? const NostrRelayRefused() : const NostrRelayFailed(),
       ),
@@ -1300,7 +1300,7 @@ final class TorCoordinatorTransport
     final slot = _Slot();
     final opening = slot.opening = _open(_epoch, key, slot, vacated);
     _slots[key] = slot;
-    // A session that fails to open leaves no trace, so the next request tries again.
+    // A session that fails to open leaves no trace, so the next request tries again: an `Error` included, which this callback does not swallow, since the same failure reaches every request that awaits [_Slot.opening] (#314), and a bug must not leave its origin blocked for good.
     opening.then<void>(
       (_) {},
       onError: (Object _) {
@@ -1624,6 +1624,7 @@ final class TorCoordinatorTransport
         }
         bytes.add(chunk);
       },
+      // An `Error` included: see [_failureWhileReading].
       onError: (Object error, StackTrace _) {
         if (completer.isCompleted) return;
         completer.complete(Err(_failureWhileReading(error)));
@@ -1655,7 +1656,7 @@ final class TorCoordinatorTransport
     DioExceptionType.connectionTimeout ||
     DioExceptionType.connectionError ||
     DioExceptionType.unknown => switch (exception.error) {
-      // Dio wraps whatever the stack threw: an Error there is a bug, not a connection problem.
+      // Dio wraps whatever the stack threw: an Error there is a bug, not a connection problem. It ends the request as a [CoordinatorTransportFailed], never retried, its type logged: a declared exception to rule 11 of `AGENTS.md` (#314), since Dio has already caught it, and the request may have left.
       Error() => const _Answered(Err(CoordinatorTransportFailed())),
       // The coordinator answered, but not in HTTP: a new circuit would get the same answer.
       HttpException() when exception.type == DioExceptionType.unknown =>
@@ -1670,6 +1671,8 @@ final class TorCoordinatorTransport
   };
 
   /// What a failure while the body arrives means: the connection worked, so it is not retried.
+  ///
+  /// Anything else than a timeout or a broken connection is a [CoordinatorTransportFailed], an `Error` on the body's stream included: a declared exception to rule 11 of `AGENTS.md` (#314), since the request has left and was answered, and the caller learns that the answer could not be read (`body not read (CoordinatorTransportFailed)` in the support log).
   static CoordinatorTransportFailure _failureWhileReading(Object error) =>
       switch (error) {
         DioException(

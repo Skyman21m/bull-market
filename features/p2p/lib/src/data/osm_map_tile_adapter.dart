@@ -245,10 +245,17 @@ final class _OsmMapTileSession implements MapTileSession {
       final http = await connecting.timeout(
         _adapter._connectTimeout,
         onTimeout: () {
-          // A connection that comes after its wait is let go at once, never kept unused until the session closes.
-          connecting
-              .then((late) => late.abort(), onError: (Object _) {})
-              .ignore();
+          // A connection that comes after its wait is let go at once, never kept unused until the session closes; one that fails after its wait is dropped, as the tile already failed, but an `Error`, a bug, still surfaces in the zone (rule 11 of `AGENTS.md`, #314).
+          unawaited(
+            connecting.then(
+              (late) => late.abort(),
+              onError: (Object error, StackTrace stackTrace) {
+                if (error is! Exception) {
+                  Error.throwWithStackTrace(error, stackTrace);
+                }
+              },
+            ),
+          );
           throw TimeoutException(null);
         },
       );

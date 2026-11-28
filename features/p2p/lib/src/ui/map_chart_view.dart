@@ -73,6 +73,8 @@ class MapChartView extends StatefulWidget {
 ///
 /// An asset the bundle cannot give, as a build that lost it would be, is no world, as one it gives garbled: the orders are drawn on an empty map, and nothing is thrown.
 /// It is not asked again: a bundled asset missing once stays missing for the life of the app.
+///
+/// What the bundle throws for an asset it cannot give, and only that, is caught: a [FlutterError], which is how Flutter's bundles say « Unable to load asset » (`PlatformAssetBundle.load`), and an [Exception] of the platform. Catching that [FlutterError], an `Error` by its type, is a declared exception to rule 11 of `AGENTS.md`, bounded to this read of the world map (#314); any other `Error` is a bug, and fails the read.
 final class _WorldLoad {
   late final Future<WorldMap?> future;
   bool done = false;
@@ -85,7 +87,10 @@ final class _WorldLoad {
           (data) => WorldMap.parse(
             data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
           ),
-          onError: (Object _) => null,
+          onError: (Object error, StackTrace stackTrace) {
+            if (error is FlutterError || error is Exception) return null;
+            Error.throwWithStackTrace(error, stackTrace);
+          },
         )
         .then((world) {
           outline = world == null ? null : MapChartPainter.outline(world);
