@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,11 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
+import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
+import 'package:p2p/src/domain/trade/trade_make.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/trade_robots.dart';
+import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/trade/active_trades_sheet.dart';
 import 'package:p2p/src/ui/trade/pending_make_lines.dart';
@@ -81,7 +87,10 @@ final class _Form {
   final ScriptedMakerCoordinator coordinator;
   final GoRouter router;
 
-  _Form(this.tester, this.coordinator, this.router);
+  /// The composition, for a pending make recorded as another screen would record it (#317).
+  final GetIt locator;
+
+  _Form(this.tester, this.coordinator, this.router, this.locator);
 
   Finder inForm(Finder finder) =>
       find.descendant(of: find.byType(CreateOrderScreen), matching: finder);
@@ -148,7 +157,7 @@ final class _Form {
     tor.add(P2pTorState.ready);
     await settle(tester);
     await settle(tester);
-    final form = _Form(tester, coordinator, router);
+    final form = _Form(tester, coordinator, router, locator);
     await form.tap(find.text('Create'));
     await settle(tester);
     await form.fill();
@@ -412,6 +421,138 @@ void main() {
         );
         expect(form.inSheet(find.text(_notMade)), findsNothing);
         expect(form.inSheet(find.text(_creating)), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  group('a make simply being sent (#317)', () {
+    Finder pendingFirst() => find.text(
+      'An order of yours is still being created. Check it again or set it aside before creating another.',
+    );
+    Finder inLines(Finder finder) =>
+        find.descendant(of: find.byType(PendingMakeLines), matching: finder);
+    List<ActivePendingMake> listed(WidgetTester tester) =>
+        BlocProvider.of<PendingMakesCubit>(
+          tester.element(find.byType(CreateOrderScreen)),
+        ).state.makes ??
+        const [];
+
+    testWidgets(
+      'held at the coordinator: its pending make recorded, yet neither the orange line, its line, « Retry » nor « Set aside » while it is sent, only « Creating your order… » under the button',
+      (tester) async {
+        final form = await _Form.open(tester);
+        final held = Completer<void>();
+        form.coordinator.holdMake = held.future;
+        await form.press();
+        for (var i = 0; i < 4; i++) {
+          await settle(tester);
+        }
+        // The make left and is held: it is recorded as pending, and the form sends it. No orange line at all: the one above the form leaves out this form's own make while it is sent, and the one under the button waits for the form to be idle.
+        expect(
+          form.coordinator.received.where(
+            (kind) => kind == ScriptedMakerRequest.make,
+          ),
+          hasLength(1),
+        );
+        expect(listed(tester), hasLength(1));
+        expect(pendingFirst(), findsNothing);
+        expect(inLines(find.text(_creating)), findsNothing);
+        expect(form.inForm(find.text('Retry')), findsNothing);
+        expect(form.inForm(find.text('Set aside')), findsNothing);
+        expect(form.inForm(find.text(_creating)), findsOneWidget);
+
+        // Answered: the order made, its trade opened.
+        held.complete();
+        await settle(tester);
+        await settle(tester);
+        expect(pendingFirst(), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'held, then its outcome unknown: absent while it is sent, the block as before once it ended so',
+      (tester) async {
+        final form = await _Form.open(tester);
+        final held = Completer<void>();
+        form.coordinator
+          ..holdMake = held.future
+          ..failNext(ScriptedMakerRequest.make, ScriptedFault.timedOut);
+        await form.press();
+        await settle(tester);
+        expect(listed(tester), hasLength(1));
+        expect(pendingFirst(), findsNothing);
+        expect(form.inForm(find.text('Retry')), findsNothing);
+
+        held.complete();
+        for (var i = 0; i < 4; i++) {
+          await settle(tester);
+        }
+        expect(pendingFirst(), findsOneWidget);
+        expect(inLines(find.text(_creating)), findsOneWidget);
+        expect(form.inForm(find.text('Retry')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'a pending make of before, recorded while « Store your garage key » is open: there at once, and still there while a new make is sent, held, then refused',
+      (tester) async {
+        final form = await _Form.open(tester);
+        await tester.tap(form.inForm(find.text('Create order')));
+        await settle(tester);
+        expect(find.text('Done'), findsOneWidget);
+        expect(pendingFirst(), findsNothing);
+
+        // Another screen's make, recorded as pending before its request leaves.
+        await tester.runAsync(() async {
+          final temple =
+              Federation.robosats.byAlias('temple') ??
+              (throw StateError('temple'));
+          final reserved = switch (await form
+              .locator<TradeRobots>()
+              .robotForNewTrade(_net, temple)) {
+            Ok(:final value) => value,
+            Err(:final failure) => throw StateError('$failure'),
+          };
+          expect(
+            await form.locator<TradeRecordRepository>().recordPendingMake(
+              reserved.reservation,
+              role: TradeRole.buyer,
+            ),
+            isA<Ok>(),
+          );
+        });
+        await settle(tester);
+        expect(listed(tester), hasLength(1));
+        // Above the form, and under the button too while the form is idle.
+        expect(pendingFirst(), findsNWidgets(2));
+        expect(inLines(find.text(_creating)), findsOneWidget);
+
+        // « Done »: the new make held, then refused; the make of before stays listed all along, the new one never.
+        final held = Completer<void>();
+        form.coordinator
+          ..holdMake = held.future
+          ..refuseNextMake(1004);
+        await tester.tap(find.text('Done'));
+        for (var i = 0; i < 4; i++) {
+          await settle(tester);
+        }
+        expect(form.inForm(find.text(_creating)), findsWidgets);
+        expect(listed(tester), hasLength(2));
+        expect(pendingFirst(), findsOneWidget);
+        expect(inLines(find.text(_creating)), findsOneWidget);
+
+        held.complete();
+        await settle(tester);
+        await settle(tester);
+        expect(
+          find.text('Your order is too big. The order was not created.'),
+          findsOneWidget,
+        );
+        expect(pendingFirst(), findsWidgets);
+        expect(inLines(find.text(_creating)), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
