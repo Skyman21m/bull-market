@@ -49,7 +49,10 @@ abstract final class NostrGiftUnwrap {
   ) {
     final content = event['content'];
     final sender = event['pubkey'];
-    if (content is! String || sender is! String) return null;
+    // A `pubkey` that is not the X coordinate of a curve point is refused before the conversation key, which would throw an `ArgumentError` for it: nothing here catches an `Error` (rule 11 of `AGENTS.md`, #314).
+    if (content is! String || sender is! String || !Nip44.isPublicKey(sender)) {
+      return null;
+    }
     try {
       final plaintext = Nip44.decrypt(
         content,
@@ -58,9 +61,6 @@ abstract final class NostrGiftUnwrap {
       final decoded = jsonDecode(plaintext);
       return decoded is Map<String, Object?> ? decoded : null;
     } on FormatException {
-      return null;
-    } on ArgumentError {
-      // A `pubkey` that is not the X coordinate of a curve point.
       return null;
     }
   }

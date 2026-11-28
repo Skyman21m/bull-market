@@ -1038,19 +1038,42 @@ void main() {
       identical(MapChartView.worldOf(bundle), MapChartView.worldOf(bundle)),
       isTrue,
     );
+    // The platform's failure to give it, an Exception: no world either.
+    final unread = _BrokenMapBundle(thrown: const FormatException('unread'));
+    expect(await tester.runAsync(() => MapChartView.worldOf(unread)), isNull);
   });
+
+  testWidgets(
+    'an Error of the bundle other than « Unable to load asset » is a bug: it fails the read, never taken for no world (#314)',
+    (tester) async {
+      final buggy = _BrokenMapBundle(thrown: StateError('a bug'));
+      Object? thrown;
+      await tester.runAsync(() async {
+        try {
+          await MapChartView.worldOf(buggy);
+        } on StateError catch (error) {
+          thrown = error;
+        }
+      });
+      expect(thrown, isA<StateError>());
+    },
+  );
 }
 
-/// The bundle of the tests, with a world map cut short, or without it when [missing], as a build that lost it.
+/// The bundle of the tests, with a world map cut short, or without it when [missing], as a build that lost it, or throwing [thrown] for it.
 final class _BrokenMapBundle extends CachingAssetBundle {
   final bool missing;
+  final Object? thrown;
 
-  _BrokenMapBundle({this.missing = false});
+  _BrokenMapBundle({this.missing = false, this.thrown});
 
   @override
   Future<ByteData> load(String key) async {
     if (key == MapChartView.worldAsset && missing) {
       throw FlutterError('Unable to load asset: "$key".');
+    }
+    if (key == MapChartView.worldAsset) {
+      if (thrown case final thrown?) throw thrown;
     }
     final data = await rootBundle.load(key);
     if (key != MapChartView.worldAsset) return data;

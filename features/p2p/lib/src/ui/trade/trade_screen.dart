@@ -29,6 +29,7 @@ import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_rate_cubit.dart';
 import '../../presentation/public_wait.dart';
 import '../../presentation/renewals_cubit.dart';
+import '../../presentation/settled_state.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/take_order_cubit.dart';
 import '../../presentation/trade_l10n.dart';
@@ -200,10 +201,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
         final cubit = context.read<RenewalsCubit>();
         var known = cubit.state;
         if (known is RenewalsReading) {
-          known = await cubit.stream
-              .firstWhere((state) => state is! RenewalsReading)
-              .timeout(_renewalsWait, onTimeout: () => cubit.state)
-              .catchError((Object _) => cubit.state);
+          known = await settledState<RenewalsState>(
+            cubit,
+            (state) => state is! RenewalsReading,
+            wait: _renewalsWait,
+          );
           if (!mounted) return;
         }
         switch (known) {

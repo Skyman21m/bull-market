@@ -93,4 +93,14 @@ void main() {
       stranger.publicKeyHex,
     );
   });
+
+  test(
+    'refuses, without throwing, a wrap whose pubkey is not the X coordinate of a curve point (#314)',
+    () {
+      for (final pubkey in ['0' * 64, 'f' * 64, 'xyz']) {
+        final wrap = wrapOf(rumorOf(stranger), stranger)..['pubkey'] = pubkey;
+        expect(NostrGiftUnwrap.unwrap(wrap, recipient), isNull);
+      }
+    },
+  );
 }

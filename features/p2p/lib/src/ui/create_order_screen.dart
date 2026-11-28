@@ -617,7 +617,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             }
           },
         ),
-        // A new make sent: the line of the last make a resolution closed goes, so that it is never read as the new make's outcome (seen in a real trial); a press stopped before the make starts keeps it.
+        // A new make sent: the line of the last make a resolution closed goes, so that it is never read as the new make's outcome (seen in a real trial); a press stopped before the make starts keeps it. Earlier than the list's own rule (`PendingMakesCubit.start`, once the make is recorded, #313), so that a make refused before it is recorded is covered too.
         BlocListener<MakeOrderCubit, MakeOrderState>(
           listenWhen: (previous, current) =>
               current.progress is MakeSending &&

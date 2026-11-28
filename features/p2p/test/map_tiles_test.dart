@@ -413,6 +413,34 @@ void main() {
       },
     );
 
+    test(
+      'a connection that fails after its wait: dropped when the network fails it, an Error still surfaces in the zone (#314)',
+      () async {
+        final outcomes = <MapTileOutcome>[];
+        final reported = <Object>[];
+        await runZonedGuarded(() async {
+          for (final late in <Object>[
+            const SocketException('late'),
+            StateError('a bug'),
+          ]) {
+            final session = OsmMapTileAdapter(
+              createClient: () => OsmMapTileAdapter.newClient()
+                ..connectionFactory = (uri, host, port) async {
+                  await Future<void>.delayed(const Duration(milliseconds: 600));
+                  throw late;
+                },
+              connectTimeout: const Duration(milliseconds: 300),
+            ).open();
+            outcomes.add(await session.fetch(tile));
+            await Future<void>.delayed(const Duration(milliseconds: 600));
+            session.close();
+          }
+        }, (error, _) => reported.add(error));
+        expect(outcomes, [isA<MapTileFailed>(), isA<MapTileFailed>()]);
+        expect(reported, [isA<StateError>()]);
+      },
+    );
+
     test('a direct connection, whatever proxy the environment names', () async {
       await HttpOverrides.runZoned(() async {
         final session = provider.adapter().open();

@@ -35,6 +35,7 @@ import 'presentation/pending_makes_cubit.dart';
 import 'presentation/unlisted_order_cubit.dart';
 import 'presentation/renewals_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
+import 'presentation/settled_state.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
 import 'presentation/trade_order_page_cubit.dart';
@@ -647,10 +648,11 @@ class _P2pPageState extends State<_P2pPage> {
       if (known is ActiveTradesLoading) {
         setState(() => _waitingForTrades = true);
         try {
-          known = await cubit.stream
-              .firstWhere((state) => state is! ActiveTradesLoading)
-              .timeout(_activeTradesWait, onTimeout: () => cubit.state)
-              .catchError((Object _) => cubit.state);
+          known = await settledState<ActiveTradesState>(
+            cubit,
+            (state) => state is! ActiveTradesLoading,
+            wait: _activeTradesWait,
+          );
         } finally {
           _waitingForTrades = false;
           if (mounted) setState(() {});
