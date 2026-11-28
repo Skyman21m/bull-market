@@ -424,14 +424,11 @@ void main() {
             StateError('a bug'),
           ]) {
             final session = OsmMapTileAdapter(
-              createClient: () =>
-                  OsmMapTileAdapter.newClient()
-                    ..connectionFactory = (uri, host, port) async {
-                      await Future<void>.delayed(
-                        const Duration(milliseconds: 600),
-                      );
-                      throw late;
-                    },
+              createClient: () => OsmMapTileAdapter.newClient()
+                ..connectionFactory = (uri, host, port) async {
+                  await Future<void>.delayed(const Duration(milliseconds: 600));
+                  throw late;
+                },
               connectTimeout: const Duration(milliseconds: 300),
             ).open();
             outcomes.add(await session.fetch(tile));

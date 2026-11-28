@@ -371,7 +371,10 @@ void main() {
           expect(after.closed, isNull);
           expect(after.closedAlias, isNull);
           expect(
-            [for (final make in after.makes ?? []) make.make],
+            [
+              for (final make in after.makes ?? const <ActivePendingMake>[])
+                make.make,
+            ],
             [other, next],
           );
           expect(after.steps, before.steps);

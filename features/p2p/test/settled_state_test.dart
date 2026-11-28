@@ -34,7 +34,10 @@ void main() {
     );
     cubit.read(1);
     expect(await settled, 1);
-    expect(watch.elapsed, greaterThanOrEqualTo(const Duration(milliseconds: 200)));
+    expect(
+      watch.elapsed,
+      greaterThanOrEqualTo(const Duration(milliseconds: 200)),
+    );
   });
 
   test(
@@ -46,10 +49,7 @@ void main() {
       await cubit.close();
       expect(await settled, 1);
       // Closed before the wait starts: the same.
-      expect(
-        await settledState(cubit, (state) => state >= 2, wait: wait),
-        1,
-      );
+      expect(await settledState(cubit, (state) => state >= 2, wait: wait), 1);
     },
   );
 

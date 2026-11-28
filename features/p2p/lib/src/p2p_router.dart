@@ -648,7 +648,7 @@ class _P2pPageState extends State<_P2pPage> {
       if (known is ActiveTradesLoading) {
         setState(() => _waitingForTrades = true);
         try {
-          known = await settledState(
+          known = await settledState<ActiveTradesState>(
             cubit,
             (state) => state is! ActiveTradesLoading,
             wait: _activeTradesWait,

@@ -201,7 +201,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
         final cubit = context.read<RenewalsCubit>();
         var known = cubit.state;
         if (known is RenewalsReading) {
-          known = await settledState(
+          known = await settledState<RenewalsState>(
             cubit,
             (state) => state is! RenewalsReading,
             wait: _renewalsWait,
