@@ -3659,7 +3659,6 @@ final class _DefaultWallet implements WalletRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// The book at [file], written by this version of the app, made a book of schema 9, the one an update finds: the objects of schema 10 dropped and the version set back, then [rows] written.
 /// Gives the trade [orderId] of the book at [file] a role this app never writes, as a book damaged on the device: its trades can no longer be read (review of #292, R-3). The trigger that keeps a role is set aside for the change and put back as it was.
 void _unreadableTrade(File file, int orderId) {
   final database = sqlite3.open(file.path);
@@ -3687,6 +3686,7 @@ void _unreadableTrade(File file, int orderId) {
   }
 }
 
+/// The book at [file], written by this version of the app, made a book of schema 9, the one an update finds: the objects of schema 10 dropped and the version set back, then [rows] written.
 void _toSchema9(File file, List<String> rows) {
   final database = sqlite3.open(file.path);
   try {

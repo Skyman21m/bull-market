@@ -16,10 +16,13 @@ import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/ui/coordinator_details_dialog.dart'
+    show CoordinatorBadge;
 import 'package:p2p/src/ui/trade/pay_confirmation_card.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/moved_tap_guard.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
+import 'package:p2p/src/ui/widgets/order_detail_row.dart' show OrderHostRow;
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:robosats/robosats.dart';
@@ -78,6 +81,9 @@ final class _Confirmation {
   final ScriptedMakerCoordinator? maker;
   final int? orderId;
 
+  /// Moves the clock of the app and of its coordinator on, for an order made here.
+  final void Function(Duration by) advance;
+
   _Confirmation(
     this.tester,
     this.locale,
@@ -88,6 +94,7 @@ final class _Confirmation {
     this.requests = _none,
     this.maker,
     this.orderId,
+    this.advance = _stillClock,
   }) {
     wallet.scriptPayment(
       Ok(P2pWalletPayment(id: 'fold', paymentHash: invoice.facts.paymentHash)),
@@ -117,6 +124,8 @@ final class _Confirmation {
 }
 
 int _none() => 0;
+
+void _stillClock(Duration by) => fail('no clock to move');
 
 ScrollPosition _position(WidgetTester tester) =>
     Scrollable.of(tester.element(_toggle)).position;
@@ -391,7 +400,7 @@ Future<_Confirmation> _maker(
     ..devicePixelRatio = 3;
   addTearDown(tester.view.reset);
   FakeSecureStoragePlatform().install();
-  final clock = DateTime.utc(2026, 11, 14, 9);
+  var clock = DateTime.utc(2026, 11, 14, 9);
   final coordinator = ScriptedMakerCoordinator(
     network: _net,
     robots: TradeHarness.robotsOf(_net),
@@ -476,6 +485,7 @@ Future<_Confirmation> _maker(
     requests: () => requests,
     maker: coordinator,
     orderId: record.orderId,
+    advance: (by) => clock = clock.add(by),
   );
 }
 
@@ -892,6 +902,59 @@ Future<Map<int, bool>> _goneOnAt(
     if (outcomes[ms] ?? false) break;
   }
   return outcomes;
+}
+
+/// How many disputes the order made here has received.
+int _disputesSent(_Confirmation confirmation) {
+  final maker = confirmation.maker;
+  if (maker == null) fail('no order made here');
+  return maker.requests.where((request) {
+    if (request.method != CoordinatorHttpMethod.post) return false;
+    final body = jsonDecode(utf8.decode(request.body ?? const []));
+    return body is Map<String, Object?> && body['action'] == 'dispute';
+  }).length;
+}
+
+/// The order made here as a seller, taken, its escrow locked and the buyer's invoice given: 9, or with [fiatSent] 10, its trade screen showing « … »; then the clock moved 7 hours on, so that « Open Dispute » of « Order options » is on (18 hours before the chat's end of 24).
+Future<_Confirmation> _sellerInChat(
+  WidgetTester tester, {
+  required bool fiatSent,
+  Locale locale = const Locale('en'),
+}) async {
+  final confirmation = await _maker(tester, collateral: true, locale: locale);
+  final maker = confirmation.maker;
+  final id = confirmation.orderId;
+  if (maker == null || id == null) fail('no order made here');
+  maker
+    ..lockEscrow(id)
+    ..buyerGivesInvoice(id);
+  if (fiatSent) maker.buyerSentFiat(id);
+  final shown = fiatSent ? _receivedOf(confirmation.l10n) : _options;
+  for (var i = 0; i < 120 && shown.evaluate().isEmpty; i++) {
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+  expect(shown, findsOneWidget);
+  expect(_options, findsOneWidget);
+  confirmation.advance(const Duration(hours: 7));
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pump(MovedTapGuard.afterMove);
+  return confirmation;
+}
+
+/// « Order options » opened, its dialog shown: its « Open Dispute », on.
+Future<Finder> _openDisputeOption(
+  WidgetTester tester,
+  P2pLocalizations l10n,
+) async {
+  await tester.ensureVisible(_options);
+  await tester.pump();
+  await tester.tap(_options);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  final dispute = _goIn(l10n.p2pEndOpenDispute);
+  expect(dispute, findsOneWidget);
+  expect(tester.widget<TradeButton>(dispute).onPressed, isNotNull);
+  return dispute;
 }
 
 void main() {
@@ -2051,4 +2114,179 @@ void main() {
       );
     },
   );
+
+  group('#301: « Agree and open dispute » of « Do you want to open a dispute? »', () {
+    void count(String gesture, int ignored) =>
+        debugPrint('GESTURE $gesture: $ignored ignored');
+
+    for (final (fiatSent, width, height, scale, locale) in const [
+      (true, 390.0, 800.0, 1.0, Locale('en')),
+      (true, 320.0, 640.0, 3.0, Locale('fr')),
+      (false, 360.0, 800.0, 2.0, Locale('en')),
+    ]) {
+      final at = '$width × $height ×$scale ${locale.languageCode}';
+      final who = fiatSent ? 'a seller at 10 (fiat sent)' : 'a seller at 9';
+      testWidgets(
+        '$who, « Open Dispute » on: « Open Dispute » tapped once, then « Agree and open dispute » tapped on purpose 300, 500, 700 and 900 ms after the dialog\'s first frame ($at): the taps at 300 and 500 ms are ignored, the one at 700 ms opens the dispute, once',
+        (tester) async {
+          final confirmation = await _sellerInChat(
+            tester,
+            fiatSent: fiatSent,
+            locale: locale,
+          );
+          await _size(tester, width: width, height: height, scale: scale);
+          final l10n = confirmation.l10n;
+          final dispute = await _openDisputeOption(tester, l10n);
+          await tester.tap(dispute);
+          await tester.pump();
+          final go = _goIn(l10n.p2pEndAgreeDispute);
+          expect(go, findsOneWidget);
+          // Into view when the dialog is taller than the screen: a scroll, which sets no guard off.
+          await tester.ensureVisible(go);
+          final outcomes = await _goneOnAt(
+            tester,
+            go,
+            () => _disputesSent(confirmation) > 0,
+          );
+          count(
+            '« Agree and open dispute » after « Open Dispute » ($who, $at): opened at $outcomes',
+            outcomes.values.where((done) => !done).length,
+          );
+          // Ignored before 0.7 s, opened by the first tap after it (security review of #301, R3).
+          expect(outcomes, {300: false, 500: false, 700: true});
+          expect(_disputesSent(confirmation), 1);
+          await confirmation.close();
+        },
+      );
+    }
+
+    for (final (width, height, scale, locale) in const [
+      (320.0, 640.0, 3.0, Locale('fr')),
+      (390.0, 800.0, 1.0, Locale('en')),
+    ]) {
+      final at = '$width × $height ×$scale ${locale.languageCode}';
+      testWidgets(
+        'a seller at 10 (fiat sent), « Open Dispute » on ($at): « Open Dispute » tapped twice 16, 100, 250 and 600 ms apart: the second tap never lands on « Agree and open dispute », no dispute sent (the sweep of #301)',
+        (tester) async {
+          final confirmation = await _sellerInChat(
+            tester,
+            fiatSent: true,
+            locale: locale,
+          );
+          await _size(tester, width: width, height: height, scale: scale);
+          final l10n = confirmation.l10n;
+          final go = _goIn(l10n.p2pEndAgreeDispute);
+          for (final gap in const [16, 100, 250, 600]) {
+            final dispute = await _openDisputeOption(tester, l10n);
+            expect(
+              await _doubleTap(
+                tester,
+                dispute,
+                go,
+                gap: Duration(milliseconds: gap),
+              ),
+              isFalse,
+              reason: '$gap ms',
+            );
+            expect(_disputesSent(confirmation), 0, reason: '$gap ms');
+            await tester.pump(const Duration(milliseconds: 400));
+            final disagree = _goIn(l10n.p2pEndDisagree);
+            if (disagree.evaluate().isNotEmpty) {
+              await tester.ensureVisible(disagree);
+              await tester.pump();
+              await tester.tap(disagree);
+              await tester.pump();
+              await tester.pump(const Duration(milliseconds: 400));
+            }
+            expect(find.byType(Dialog), findsNothing);
+            await tester.pump(MovedTapGuard.afterMove);
+          }
+          expect(_disputesSent(confirmation), 0);
+          await confirmation.close();
+        },
+      );
+    }
+  });
+
+  group('#300: the coordinator\'s dialog under the tab « Order »', () {
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      testWidgets(
+        'a maker\'s bond, ${locale.languageCode}: the tab « Order », the host tapped; at 320 points (640 high, the text ×1, ×2 and ×3, and 800 high ×2) nothing overflows and the four badges fit the dialog\'s card, each 48 points wide at least, the last one\'s explanation shown on a tap; at 360 and 390 points each badge keeps its 56 points, side by side and centred, as before',
+        (tester) async {
+          final confirmation = await _maker(tester, locale: locale);
+          final l10n = confirmation.l10n;
+          await tester.tap(
+            find.descendant(
+              of: find.byType(BullSegmented),
+              matching: find.text(l10n.p2pNavOrder),
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          final host = find.byType(OrderHostRow);
+          await tester.ensureVisible(host);
+          await tester.pump();
+          await tester.tap(host);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          final badges = find.byType(CoordinatorBadge);
+          expect(badges, findsNWidgets(4));
+          for (final (width, height, scale) in const [
+            (320.0, 640.0, 1.0),
+            (320.0, 640.0, 2.0),
+            (320.0, 640.0, 3.0),
+            (320.0, 800.0, 2.0),
+            (360.0, 640.0, 1.0),
+            (390.0, 800.0, 1.0),
+            (390.0, 800.0, 3.0),
+          ]) {
+            final at = '$width × $height ×$scale';
+            await _size(tester, width: width, height: height, scale: scale);
+            expect(tester.takeException(), isNull, reason: at);
+            final card = tester.getRect(_dialogCard());
+            final rects = [
+              for (var index = 0; index < 4; index++)
+                tester.getRect(badges.at(index)),
+            ];
+            for (final rect in rects) {
+              expect(rect.left, greaterThanOrEqualTo(card.left), reason: at);
+              expect(rect.right, lessThanOrEqualTo(card.right), reason: at);
+              expect(rect.width, greaterThanOrEqualTo(48 - 0.01), reason: at);
+            }
+            if (width >= 360) {
+              for (final (index, rect) in rects.indexed) {
+                expect(
+                  rect.width,
+                  moreOrLessEquals(56, epsilon: 0.01),
+                  reason: at,
+                );
+                if (index > 0) {
+                  expect(
+                    rect.left,
+                    moreOrLessEquals(rects[index - 1].right, epsilon: 0.01),
+                    reason: at,
+                  );
+                }
+              }
+              expect(
+                (rects.first.left + rects.last.right) / 2,
+                moreOrLessEquals(card.center.dx, epsilon: 0.01),
+                reason: at,
+              );
+            }
+          }
+          await _size(tester, width: 320, height: 640, scale: 2);
+          final last = tester.widget<CoordinatorBadge>(badges.last);
+          await tester.ensureVisible(badges.last);
+          await tester.pump();
+          await tester.tap(badges.last);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.text(last.explanation), findsOneWidget);
+          await tester.pump(const Duration(seconds: 3));
+          await confirmation.close();
+        },
+      );
+    }
+  });
 }

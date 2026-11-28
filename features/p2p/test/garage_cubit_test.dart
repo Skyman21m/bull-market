@@ -1175,6 +1175,70 @@ void main() {
       timeout: slow,
     );
 
+    test(
+      'a reading of the trades that fails after one that named a trade of the key shown: the state keeps that trade and says the trades could not be read, so that « Delete the external Garage Key? » shows both lines; read again, only the trades read (review of #292, R-8)',
+      () async {
+        final mine = TradeRecord(
+          robot: RobotSlot(RobosatsNetwork.testnet, fixedFingerprint, 3),
+          coordinatorAlias: 'temple',
+          coordinatorOnion: 'http://temple.onion',
+          orderId: 48120,
+          role: TradeRole.buyer,
+          origin: TradeOrigin.takenHere,
+          takenAt: DateTime.utc(2026, 11, 26),
+          confirmedAt: DateTime.utc(2026, 11, 26),
+          closedAt: null,
+        );
+        final read = Ok<GarageRecords, P2pFailure>(
+          GarageRecords(
+            inProgress: [
+              ActiveTrade(
+                mine,
+                const ActiveTradeAt(
+                  TradePosition.chatting,
+                  deadline: null,
+                  breached: false,
+                  historyUnknown: false,
+                ),
+              ),
+            ],
+            closed: const [],
+            fresh: null,
+          ),
+        );
+        final records =
+            StreamController<Result<GarageRecords, P2pFailure>>.broadcast();
+        final cubit = cubitOver(
+          holding([testnetEntry]),
+          words: memoryWords,
+          tradesOf: (_) {
+            scheduleMicrotask(() => records.add(read));
+            return records.stream;
+          },
+        );
+        await cubit.load();
+        await pumpEventQueue();
+        expect(shown(cubit).isExternal, isTrue);
+        expect(shown(cubit).inProgressOfKeyShown, [mine]);
+        expect(shown(cubit).inProgressUnread, isFalse);
+        records.add(const Err(P2pStorageFailure()));
+        await pumpEventQueue();
+        expect(shown(cubit).inProgressOfKeyShown, [mine]);
+        expect(shown(cubit).inProgressUnread, isTrue);
+        records.add(
+          Ok(
+            GarageRecords(inProgress: const [], closed: const [], fresh: null),
+          ),
+        );
+        await pumpEventQueue();
+        expect(shown(cubit).inProgressOfKeyShown, isEmpty);
+        expect(shown(cubit).inProgressUnread, isFalse);
+        await cubit.close();
+        await records.close();
+      },
+      timeout: slow,
+    );
+
     for (final reason in P2pGarageKeyRefusalReason.values) {
       test(
         'words that refuse (${reason.name}): the external key stays shown and usable; the internal side says why, with the way back (C-passphrase)',

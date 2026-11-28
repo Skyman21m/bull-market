@@ -8,7 +8,7 @@ import 'package:flutter/widgets.dart';
 /// What [MovedTapGuard] gives its builder: [onTap] wrapped so that a tap is ignored while the guarded widget has just moved; `null` stays `null`.
 typedef GuardedTap = VoidCallback? Function(VoidCallback? onTap);
 
-/// A guard for a button whose tap matters (« Pay », « Continue » before a take, since #283 the « Confirm » of the buyer's dialog « Confirm … sent », the declaration that the fiat was sent, since #293 the « Confirm » of the seller's dialog « Confirm … received », which releases the escrow, and since #298 the button that goes on of the dialogs a second tap on the button that opened them can reach as they open (« Confirm Cancel » at 6 and 7, which loses the bond, « Confirm cancellation », « Ask for Cancel » or « Accept Cancelation », « Renew anyway »); « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
+/// A guard for a button whose tap matters (« Pay », « Continue » before a take, since #283 the « Confirm » of the buyer's dialog « Confirm … sent », the declaration that the fiat was sent, since #293 the « Confirm » of the seller's dialog « Confirm … received », which releases the escrow, and since #298 the button that goes on of the dialogs a second tap on the button that opened them can reach as they open (« Confirm Cancel » at 6 and 7, which loses the bond, « Confirm cancellation », « Ask for Cancel » or « Accept Cancelation », « Renew anyway »), and since #301 « Agree and open dispute »; « Submit », « Generate Invoice » and the chat step's « Confirm … sent » have none, the user's own gestures moving them just before their natural tap, review of #283, C2): when the layout moves it (something above it or around it grows, shrinks, appears or goes, as an alert of the screen that comes or goes, or « Retry » that brings its answer), a tap on it is ignored for [afterMove], since it was aimed at what stood there a moment before (« Show details », « Go back »; security review of #268, C1 and C2). It is no lock: the button stays drawn and enabled, nothing is refused or announced, and the next tap after the delay goes through; each new move starts the delay again.
 ///
 /// Its place is measured after every frame on the screen with the scroll offsets of every [Scrollable] around it added back, so that scrolling (by the user, between tabs, or by the screen bringing the button into view) does not set it off, while a move of the layout does. Android's stretch at the end of a scroll (`StretchingOverscrollIndicator`) is no scroll: it moves the content under the button for real while the scroll offset stays at its end, so that a fling that hits the end of a list sets it off (« Pay » ignores taps for about a second after a fling that hits the page's end, and a seller's dialog taller than the screen, flung to its end, ignores « Confirm » for about 0.6 s; functional review of #296, C1 and R1), which is the safe side: the stretch does move « Go back » and « Confirm », stacked 8 points apart. When it appears (the confirmation opened, the dialog opened, the card built anew as when the tab « Contract » is shown again), its first measure starts the delay too ([armsWhenShown]): a tap on a button that appeared less than [afterMove] ago is ignored, since a tap meant for a button just shown, whose amounts are still to read, is no ordinary gesture, while a second tap at the same place, aimed at what stood there (« Pay with this wallet » where « Pay » is brought into view), is (security review of #291, B1). A button that something drawn over it hid from the finger (a dialog's barrier, a sheet, a page pushed over its screen, on whatever navigator) and that a tap reaches again is shown again, and starts the delay too, whether it was built, moved or left in place meanwhile: the tap that closed what covered it may come twice, the second aimed at what stood there (#294). Its delay is a [Timer], so that tests advance it with `tester.pump(duration)`.
 ///
@@ -107,9 +107,10 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
 
   /// Compares the places with those of the last measure, sets the guard off when one moved, and records them.
   void _measure(List<ScrollPosition> positions) {
-    final scrolled =
-        _scrolled ||
-        positions.any((position) => position.isScrollingNotifier.value);
+    final scrolling = positions.any(
+      (position) => position.isScrollingNotifier.value,
+    );
+    final scrolled = _scrolled || scrolling;
     _scrolled = false;
     final onScreen = _onScreenNow();
     final place = _placeNow(onScreen, positions);
@@ -122,8 +123,9 @@ class _MovedTapGuardState extends State<MovedTapGuard> {
         !scrolled &&
         lastOnScreen != null &&
         (onScreen - lastOnScreen).distance > 0.5;
-    // Shown again: what was drawn over it no longer takes a tap there (#294). Not while a position around scrolls: a scrolling list ignores the taps on its content (`Scrollable`), which is no cover.
-    final reachable = scrolled ? null : _reachableNow(positions);
+    // Shown again: what was drawn over it no longer takes a tap there (#294). The tap is tried after every frame, a jump since the last measure included, whose layout this frame already shows, so that a jump in the very frame a dialog starts to close does not hide the uncovering for one more frame (#299). While a position around scrolls, only a tap that reaches the button is kept: a scrolling list may ignore the taps on its content (a finger, a fling, an animation; `Scrollable`), which is no cover, so that a tap that does not reach it then says nothing; but a scroll does not always ignore them (the settling after a jump, as a page view brought back to its page, or a bounce past an edge, take taps), so that a tap that reaches it always means it is shown (security review of #299, C1).
+    final probe = _reachableNow(positions);
+    final reachable = scrolling && probe != true ? null : probe;
     final uncovered = _reachable == false && reachable == true;
     if (reachable != null) _reachable = reachable;
     // Just appeared: the delay starts at its first measure (security review of #291, B1).

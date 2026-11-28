@@ -6,15 +6,15 @@ import '../../domain/trade_record.dart';
 import '../widgets/trade_button.dart';
 import '../widgets/word_fit_text.dart';
 
-/// The body of the dialogs of the Garage Key card (#81, the mock-up decided on 2026-11-26): a title, a text, a line in the warning colour when there is one, then the button that goes on, filled, over « Cancel », outlined, when there is one.
+/// The body of the dialogs of the Garage Key card (#81, the mock-up decided on 2026-11-26): a title, a text, lines in the warning colour when there are some, then the button that goes on, filled, over « Cancel », outlined, when there is one.
 ///
 /// The buttons are stacked, each the dialog's width, and their labels wrap, so that a long French label at three times the text size never overflows on a phone of 320 points; the whole body scrolls.
 class GarageDialogBody extends StatelessWidget {
   final String title;
   final String text;
 
-  /// A line in the warning colour under [text]; `null` for none.
-  final String? warning;
+  /// The lines in the warning colour under [text], in this order, behind one bar; none when empty.
+  final List<String> warnings;
   final String goLabel;
   final VoidCallback onGo;
 
@@ -27,7 +27,7 @@ class GarageDialogBody extends StatelessWidget {
     required this.text,
     required this.goLabel,
     required this.onGo,
-    this.warning,
+    this.warnings = const [],
     this.onCancel,
   });
 
@@ -56,7 +56,7 @@ class GarageDialogBody extends StatelessWidget {
             text,
             style: styles.bodyMedium?.copyWith(color: colors.text),
           ),
-          if (warning case final warning?) ...[
+          if (warnings.isNotEmpty) ...[
             const Gap(BullSpacing.sm),
             Container(
               padding: const EdgeInsets.only(left: BullSpacing.sm),
@@ -65,9 +65,17 @@ class GarageDialogBody extends StatelessWidget {
                   left: BorderSide(color: colors.warning, width: 2),
                 ),
               ),
-              child: WordFitText(
-                warning,
-                style: styles.bodyMedium?.copyWith(color: colors.warning),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, warning) in warnings.indexed) ...[
+                    if (index > 0) const Gap(BullSpacing.xs),
+                    WordFitText(
+                      warning,
+                      style: styles.bodyMedium?.copyWith(color: colors.warning),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -141,13 +149,13 @@ class ExternalKeyNoticeDialog extends StatelessWidget {
 
 /// « Delete the external Garage Key? » (#81, plate 4 of the mock-up decided on 2026-11-26): it is not backed up by the wallet, then « Delete » and « Cancel ».
 ///
-/// Never refused: with a trade in progress of that key, a line in the warning colour names it and says it could not be continued, and « Delete » stays enabled. The PIN, when the delete asks it, comes after this confirmation, as before #81.
+/// Never refused: with a trade in progress of that key, a line in the warning colour names it and says it could not be continued, and « Delete » stays enabled; when a reading of the trades failed after one that succeeded while the Garage followed the key, the trades known are named first, then the line of the trades not read (review of #292, R-8). The PIN, when the delete asks it, comes after this confirmation, as before #81.
 /// A tap outside closes it without deleting.
 class DeleteGarageKeyDialog extends StatelessWidget {
   /// The trades in progress of the external Garage Key: each is named.
   final List<TradeRecord> inProgress;
 
-  /// Whether the trades could not be read (review of #292, R-3): the dialog then says a trade in progress may use the key, instead of naming them; « Delete » stays enabled.
+  /// Whether the trades could not be read (review of #292, R-3): the dialog then says a trade in progress may use the key, under the trades of [inProgress] still named, those of the last reading that succeeded while the Garage follows that key (review of #292, R-8); « Delete » stays enabled.
   final bool unread;
 
   const DeleteGarageKeyDialog({
@@ -175,14 +183,14 @@ class DeleteGarageKeyDialog extends StatelessWidget {
     return GarageDialogBody(
       title: l10n.p2pGarageDeleteExternalTitle,
       text: l10n.p2pGarageDeleteExternalText,
-      warning: unread
-          ? l10n.p2pGarageDeleteExternalUnread
-          : inProgress.isEmpty
-          ? null
-          : l10n.p2pGarageDeleteExternalTrades(
-              inProgress.length,
-              inProgress.map((record) => '#${record.orderId}').join(', '),
-            ),
+      warnings: [
+        if (inProgress.isNotEmpty)
+          l10n.p2pGarageDeleteExternalTrades(
+            inProgress.length,
+            inProgress.map((record) => '#${record.orderId}').join(', '),
+          ),
+        if (unread) l10n.p2pGarageDeleteExternalUnread,
+      ],
       goLabel: l10n.p2pGarageDeleteConfirm,
       onGo: () => Navigator.of(context).pop(true),
       onCancel: () => Navigator.of(context).pop(false),

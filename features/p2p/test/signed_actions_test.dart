@@ -1,8 +1,13 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
+import 'package:p2p/src/domain/trade/trade_status.dart';
+import 'package:p2p/src/domain/trade/trade_take.dart';
+import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/src/presentation/make_order_l10n.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
@@ -16,7 +21,7 @@ import 'package:robosats/robosats.dart';
 import 'support/harness.dart';
 import 'support/trade_harness.dart' show TradeHarness, unlockedPairOf;
 
-/// The signature of every request of a robot that changes a state (GHSA-22q8-9ghc-jg3h, RoboSats pull request 2955, head `0943c97`): what the scripted coordinators refuse, as a coordinator running the fix, and what the app says of the three new refusals.
+/// The signature of every request of a robot that changes a state (GHSA-22q8-9ghc-jg3h, RoboSats pull request 2955, head `0943c97`): what the scripted coordinators refuse, as a coordinator running the fix, what the app says of the three new refusals, and a take and a cancel refused for their signature, played from the use case to the words of the screen (review of #305).
 void main() {
   const name = 'Temple of Sats';
 
@@ -240,7 +245,7 @@ void main() {
     });
 
     test(
-      'a timed text: 1061 for another alias, 1060 more than 300 s away, 1048 without the alias or in milliseconds',
+      'a timed text: 1061 for another alias, 1060 more than 300 s away or in milliseconds, 1048 without the alias or for another action',
       () async {
         final key = unlockedPairOf(taker);
         int? code(String text) => scriptedSignatureRefusal(
@@ -271,4 +276,215 @@ void main() {
       },
     );
   });
+
+  group('a take and a cancel refused for their signature (review of #305)', () {
+    /// The words of the screen for [notice]'s refusal, in English.
+    Future<String> wordsOf(
+      WidgetTester tester,
+      String Function(BuildContext context) notice,
+    ) async {
+      late String words;
+      await tester.pumpWidget(
+        harness(
+          Builder(
+            builder: (context) {
+              words = notice(context);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      return words;
+    }
+
+    const clock =
+        "The time of this device is too far from Temple of Sats's. Turn on automatic time and try again.";
+    const newer = 'Temple of Sats asks for a newer version of Bull Market.';
+    const notSigned =
+        'The key of your robot could not sign this. Nothing was sent.';
+
+    /// What the screen says for each code: its words, or for 1048 none of the three.
+    void sayFor(int code, String words) {
+      final saying = switch (code) {
+        1060 => clock,
+        1059 || 1061 => newer,
+        _ => null,
+      };
+      for (final said in [clock, newer, notSigned]) {
+        expect(
+          words,
+          said == saying ? contains(said) : isNot(contains(said)),
+          reason: '$code',
+        );
+      }
+    }
+
+    ActionSignatureRefusal reasonOf(int code) => switch (code) {
+      1059 => ActionSignatureRefusal.missing,
+      1060 => ActionSignatureRefusal.clockSkew,
+      1061 => ActionSignatureRefusal.otherCoordinator,
+      _ => ActionSignatureRefusal.invalid,
+    };
+
+    for (final code in const [1059, 1060, 1061, 1048]) {
+      testWidgets(
+        'a take refused with $code: the take not made, the pending take closed, the screen\'s words of $code, nothing sent again',
+        (tester) async {
+          final (taken, takes, active) =
+              await tester.runAsync(() async {
+                final app = await TradeHarness.start();
+                app.coordinator.refuseNextTake(code);
+                final taken = await app.takeShown();
+                // Time passes: no read nor resolution sends the take again.
+                await app.elapse(const Duration(minutes: 5));
+                return (
+                  taken,
+                  app.coordinator.received
+                      .where((kind) => kind == ScriptedRequest.take)
+                      .length,
+                  await app.activeRecords(),
+                );
+              }) ??
+              fail('not run');
+          final notMade = switch (taken) {
+            Ok(value: final TakeNotMade notMade) => notMade,
+            final other => fail('$other'),
+          };
+          expect(
+            notMade.refusal,
+            isA<ActionSignatureRefused>().having(
+              (refused) => refused.reason,
+              'reason',
+              reasonOf(code),
+            ),
+          );
+          expect(notMade.record.closedAt, isNotNull);
+          expect(notMade.closeProblem, isNull);
+          expect(active, isEmpty);
+          expect(takes, 1);
+          sayFor(
+            code,
+            await wordsOf(
+              tester,
+              (context) => TakeWasNotMade(
+                notMade.refusal,
+              ).toText(context, coordinator: name),
+            ),
+          );
+        },
+      );
+
+      testWidgets(
+        'a cancel of a pre-take refused with $code: not done, the pre-take still held and the trade in progress, the screen\'s words of $code, nothing sent again',
+        (tester) async {
+          final (cancelled, cancels, held, active, record) =
+              await tester.runAsync(() async {
+                final app = await TradeHarness.start();
+                final record = TradeHarness.recordOf(await app.takeShown());
+                final run = app.watchOf(record);
+                await app.settle();
+                final seen = run.lastStatus.seen;
+                expect(seen.status, isA<WaitingForTakerBond>());
+                await run.subscription.cancel();
+                final transport = _RefusingCancel(app.coordinator, code);
+                final cancel = CancelTradeUsecase(
+                  CoordinatorClient(transport, clock: () => app.now),
+                  app.reader,
+                  app.limiter,
+                  app.locks,
+                  app.keyring,
+                );
+                final cancelled = await cancel.execute(record, seen);
+                // Time passes: nothing sends the cancel again.
+                await app.elapse(const Duration(minutes: 1));
+                return (
+                  cancelled,
+                  transport.cancels,
+                  TradeHarness.robotsOf(
+                    app.network,
+                  ).any(app.coordinator.holdsPreTake),
+                  await app.activeRecords(),
+                  record,
+                );
+              }) ??
+              fail('not run');
+          final notDone = switch (cancelled) {
+            Ok(value: final CancelNotDone notDone) => notDone,
+            final other => fail('$other'),
+          };
+          expect(
+            notDone.cause,
+            isA<ActionSignatureRefused>().having(
+              (refused) => refused.reason,
+              'reason',
+              reasonOf(code),
+            ),
+          );
+          expect(cancels, 1);
+          expect(held, isTrue);
+          expect(active.map((trade) => trade.orderId), [record.orderId]);
+          sayFor(
+            code,
+            await wordsOf(
+              tester,
+              (context) => CancelWasNotDone(
+                notDone.cause,
+              ).toText(context, coordinator: name),
+            ),
+          );
+        },
+      );
+    }
+  });
+}
+
+/// The scripted coordinator, whose cancels are refused for their signature with [code], as a coordinator running the fix refuses them: 1059 and 1048 by the coordinator itself, the signature taken out of the body or replaced by a text that is none; 1060 and 1061, which it gives only for a timed text (a make), answered as it answers them (`scriptedSignatureMessage`), the cancel not passed on.
+final class _RefusingCancel implements CoordinatorTransport {
+  final ScriptedCoordinator coordinator;
+  final int code;
+
+  /// How many cancels the app sent.
+  int cancels = 0;
+
+  _RefusingCancel(this.coordinator, this.code);
+
+  @override
+  Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
+    CoordinatorRequest request,
+  ) async {
+    final body = request.body;
+    final fields = request.method == CoordinatorHttpMethod.post && body != null
+        ? jsonDecode(utf8.decode(body))
+        : null;
+    if (fields is! Map<String, Object?> || fields['action'] != 'cancel') {
+      return coordinator.send(request);
+    }
+    cancels++;
+    if (code == 1060 || code == 1061) {
+      return Ok(
+        CoordinatorResponse(
+          statusCode: 400,
+          headers: const {'content-type': 'application/json'},
+          body: utf8.encode(
+            jsonEncode({
+              'error_code': code,
+              'bad_request': scriptedSignatureMessage(code),
+            }),
+          ),
+        ),
+      );
+    }
+    final changed = {...fields}..remove('signature');
+    if (code == 1048) changed['signature'] = 'not a signature';
+    return coordinator.send(
+      CoordinatorRequest(
+        method: request.method,
+        url: request.url,
+        headers: request.headers,
+        maxResponseBytes: request.maxResponseBytes,
+        body: Uint8List.fromList(utf8.encode(jsonEncode(changed))),
+        robot: request.robot,
+      ),
+    );
+  }
 }
