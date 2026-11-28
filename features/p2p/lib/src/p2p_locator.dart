@@ -435,7 +435,10 @@ final class P2pLocator {
     locator.registerLazySingleton<PreparedTakes>(PreparedTakes.new);
     // « Store your garage key » only for the external Garage Key, and its copy (#318).
     locator.registerFactory<TradeGarageKeyUsecase>(
-      () => TradeGarageKeyUsecase(locator(), locator()),
+      () => TradeGarageKeyUsecase(
+        locator(),
+        locator<TakeOrderUsecase>().externalRobotOf,
+      ),
     );
     locator.registerFactory<TakeOrderUsecase>(
       () => TakeOrderUsecase(
