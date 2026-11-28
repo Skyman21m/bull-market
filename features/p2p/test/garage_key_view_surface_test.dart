@@ -86,9 +86,10 @@ class GarageKeyView {}
   });
 
   test('the key becomes text only in the Text and in clipboard.copy', () {
+    // In the order of the file: `copy`, then `build`.
     expect(_reveals(_unit(File(path).readAsStringSync())), [
-      'Text(1)',
       'clipboard.copy(2)',
+      'Text(1)',
     ]);
   });
 
