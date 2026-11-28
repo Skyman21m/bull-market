@@ -11,12 +11,12 @@ enum TradeOrigin {
   /// Written as a pending take by the path of the take, before its request leaves, for a robot the robot layer reserved for a new trade.
   ///
   /// Only `TradeRecordRepository.recordPendingTake` writes it, and only the take use case calls that (#87).
-  /// It is a fact about the trade: a robot of a pasted key may finish an order it already holds, as a `recovered` trade, but never starts one (#79).
+  /// It is a fact about the trade, not a permission: since #292 a robot of the external (pasted) Garage Key takes as any other once reserved; a robot bound by « Select Host » after « Robots from elsewhere » never does, and may finish an order it already holds, as a `recovered` trade (#79).
   takenHere,
 
   /// Written as a pending make by the path of the make, before its request leaves, for a robot the robot layer reserved for a new trade (schema 8, #176).
   ///
-  /// Only `TradeRecordRepository.recordPendingMake` writes it, and only the make use case is to call that (#179); no file calls it yet.
+  /// Only `TradeRecordRepository.recordPendingMake` writes it, and only the make use case calls that (#179).
   /// A make is a [TradeRecord] only once confirmed with its order id (`TradeRecordRepository.confirmMake`): until then it is a [PendingMake], so that no user of a [TradeRecord] meets a trade without an order.
   madeHere,
 

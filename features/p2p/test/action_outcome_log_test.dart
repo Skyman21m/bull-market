@@ -1,5 +1,11 @@
+import 'dart:io';
+
+import 'package:analyzer/dart/analysis/utilities.dart' show parseString;
+import 'package:analyzer/dart/ast/ast.dart' as ast;
 import 'package:flutter/foundation.dart' show DebugPrintCallback, debugPrint;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/domain/trade/trade_edges.dart' show TradePosition;
+import 'package:p2p/src/domain/trade/trade_make.dart' show MakePendingReason;
 import 'package:p2p/src/domain/usecases/trade/action_outcome_log.dart';
 import 'package:robosats/robosats.dart';
 
@@ -167,18 +173,30 @@ void main() {
 
     test('answered: the issue and the cause, word for word', () {
       ActionOutcomeLog.answered(
-        'make',
-        'refused',
+        OutcomeAction.make,
+        OutcomeAnswer.refused,
         const OrderActionRefused(OrderRequestRefused(1038)),
       );
-      ActionOutcomeLog.answered('make', 'answered', null);
       ActionOutcomeLog.answered(
-        'take',
-        'pending',
+        OutcomeAction.make,
+        OutcomeAnswer.answered,
+        null,
+      );
+      ActionOutcomeLog.answered(
+        OutcomeAction.take,
+        OutcomeAnswer.pending,
         const OrderActionOutcomeUnknown(CoordinatorUnexpectedStatus(502)),
       );
-      ActionOutcomeLog.answered('take', 'answered OrderTakeStarted', null);
-      ActionOutcomeLog.answered('take', 'notSent', const _Leaky());
+      ActionOutcomeLog.answered(
+        OutcomeAction.take,
+        OutcomeAnswer.takeStarted,
+        null,
+      );
+      ActionOutcomeLog.answered(
+        OutcomeAction.take,
+        OutcomeAnswer.notSent,
+        const _Leaky(),
+      );
       expect(messages(), [
         'P2P make: refused (refused, OrderRequestRefused 1038)',
         'P2P make: answered (none)',
@@ -189,8 +207,11 @@ void main() {
     });
 
     test('notSent: the type of the refusal only', () {
-      ActionOutcomeLog.notSent('make', const _Refused(_Leaky()));
-      ActionOutcomeLog.notSent('take', const _Refused(OrderRequestRefused(7)));
+      ActionOutcomeLog.notSent(OutcomeAction.make, const _Refused(_Leaky()));
+      ActionOutcomeLog.notSent(
+        OutcomeAction.take,
+        const _Refused(OrderRequestRefused(7)),
+      );
       expect(messages(), [
         'P2P make: notSent (_Refused)',
         'P2P take: notSent (_Refused)',
@@ -198,13 +219,23 @@ void main() {
     });
 
     test('resolved: the issue and the reason, word for word', () {
-      ActionOutcomeLog.resolved('make', 'pending unread', 'orderUnread');
       ActionOutcomeLog.resolved(
-        'make',
-        'started',
-        'robotUnread ${ActionOutcomeLog.causeOf(const CoordinatorUnexpectedStatus(500))}',
+        OutcomeAction.make,
+        OutcomeResolution.pending,
+        OutcomeReason.orderUnread,
+        pending: MakePendingReason.unread,
       );
-      ActionOutcomeLog.resolved('take', 'notMade', 'public');
+      ActionOutcomeLog.resolved(
+        OutcomeAction.make,
+        OutcomeResolution.started,
+        OutcomeReason.robotUnread,
+        cause: const CoordinatorUnexpectedStatus(500),
+      );
+      ActionOutcomeLog.resolvedAt(
+        OutcomeAction.take,
+        OutcomeResolution.notMade,
+        TradePosition.public,
+      );
       expect(messages(), [
         'P2P make resolved: pending unread (orderUnread)',
         'P2P make resolved: started (robotUnread status 5xx)',
@@ -212,14 +243,21 @@ void main() {
       ]);
     });
 
-    test('resolvedOnce: once per action, issue and key in a run', () {
+    test('resolvedOnceAt: once per action, issue and key in a run', () {
       final first = Object();
       final second = Object();
-      ActionOutcomeLog.resolvedOnce('take', 'taker', 'bondStep', once: first);
-      ActionOutcomeLog.resolvedOnce('take', 'taker', 'bondStep', once: first);
-      ActionOutcomeLog.resolvedOnce('take', 'taker', 'chatting', once: first);
-      ActionOutcomeLog.resolvedOnce('take', 'taker', 'bondStep', once: second);
-      ActionOutcomeLog.resolvedOnce('take', 'notMade', 'public', once: first);
+      void once(OutcomeResolution issue, TradePosition position, Object key) =>
+          ActionOutcomeLog.resolvedOnceAt(
+            OutcomeAction.take,
+            issue,
+            position,
+            once: key,
+          );
+      once(OutcomeResolution.taker, TradePosition.bondStep, first);
+      once(OutcomeResolution.taker, TradePosition.bondStep, first);
+      once(OutcomeResolution.taker, TradePosition.chatting, first);
+      once(OutcomeResolution.taker, TradePosition.bondStep, second);
+      once(OutcomeResolution.notMade, TradePosition.public, first);
       expect(messages(), [
         'P2P take resolved: taker (bondStep)',
         'P2P take resolved: taker (bondStep)',
@@ -243,9 +281,17 @@ void main() {
         const OrderActionRefused(OrderRequestRefused(-4)),
       ];
       for (final cause in causes) {
-        ActionOutcomeLog.answered('make', 'pending', cause);
-        ActionOutcomeLog.answered('take', 'answered OrderNotTaken', cause);
-        ActionOutcomeLog.notSent('take', cause ?? const _Leaky());
+        ActionOutcomeLog.answered(
+          OutcomeAction.make,
+          OutcomeAnswer.pending,
+          cause,
+        );
+        ActionOutcomeLog.answered(
+          OutcomeAction.take,
+          OutcomeAnswer.notTaken,
+          cause,
+        );
+        ActionOutcomeLog.notSent(OutcomeAction.take, cause ?? const _Leaky());
       }
       final written = messages();
       expect(written, hasLength(causes.length * 3));
@@ -268,4 +314,144 @@ void main() {
       }
     });
   });
+
+  group('no caller can write a text of its own (review of #303, S2)', () {
+    // Tests run with the package directory as working directory.
+    const path = 'lib/src/domain/usecases/trade/action_outcome_log.dart';
+
+    test(
+      'no public method or constructor of the log or of its enums takes a String: every parameter is one of the listed types, an `Object` only where it is written by its type or not at all',
+      () {
+        final offences = _parameterOffences(File(path).readAsStringSync());
+        expect(offences.checked, containsAll(_publicMethods));
+        expect(offences.found, isEmpty);
+      },
+    );
+
+    test('the check sees a String, an untyped or an unlisted parameter', () {
+      for (final (source, offence) in [
+        (
+          'abstract final class L { static void resolved(String reason) {} }',
+          'L.resolved(reason: String)',
+        ),
+        (
+          'abstract final class L { static void resolved(reason) {} }',
+          'L.resolved(reason: untyped)',
+        ),
+        (
+          'abstract final class L { static void resolved({required String? reason}) {} }',
+          'L.resolved(reason: String?)',
+        ),
+        (
+          'abstract final class L { static void resolved(Object reason) {} }',
+          'L.resolved(reason: Object)',
+        ),
+        ('enum E { a; static E of(String text) => a; }', 'E.of(text: String)'),
+        ('abstract final class L { L.of(String text); }', 'L.of(text: String)'),
+      ]) {
+        expect(_parameterOffences(source).found, [offence], reason: source);
+      }
+    });
+
+    test(
+      'the words of every answer, resolution and reason are fixed words',
+      () {
+        for (final words in [
+          for (final answer in OutcomeAnswer.values) answer.words,
+          for (final resolution in OutcomeResolution.values) resolution.name,
+          for (final reason in OutcomeReason.values) reason.name,
+        ]) {
+          expect(words, matches(RegExp(r'^[A-Za-z]+(?: [A-Za-z]+)?$')));
+        }
+      },
+    );
+  });
+}
+
+/// The public methods of [ActionOutcomeLog] and of its enums that the scan must see, so that a rename does not empty it.
+const _publicMethods = {
+  'ActionOutcomeLog.answered',
+  'ActionOutcomeLog.notSent',
+  'ActionOutcomeLog.resolved',
+  'ActionOutcomeLog.resolvedAt',
+  'ActionOutcomeLog.resolvedOnceAt',
+  'ActionOutcomeLog.causeOf',
+  'OutcomeAnswer.ofTake',
+};
+
+/// The types a parameter of a public method of the log may have: the log's own enums and the app's, and the package's answer of a take, each written by a name of its own.
+const _allowedTypes = {
+  'OutcomeAction',
+  'OutcomeAnswer',
+  'OutcomeResolution',
+  'OutcomeReason',
+  'MakePendingReason',
+  'TradePosition',
+  'TakeOrderOutcome',
+};
+
+/// The parameters that may be an `Object`: a cause or a refusal, written by its type or [ActionOutcomeLog.causeOf]'s fixed label, and the key of a line said once, never written.
+const _objectParameters = {'cause', 'refusal', 'once'};
+
+/// Every public method and constructor of the classes and enums of [source], and each parameter of theirs that is not of an allowed type, as `<type>.<member>(<parameter>: <type>)`.
+({Set<String> checked, List<String> found}) _parameterOffences(String source) {
+  final unit = parseString(content: source).unit;
+  final checked = <String>{};
+  final found = <String>[];
+  for (final declaration in unit.declarations) {
+    final (owner, members) = switch (declaration) {
+      ast.ClassDeclaration(:final namePart, :final body) => (
+        namePart.typeName.lexeme,
+        switch (body) {
+          ast.BlockClassBody(:final members) => members.toList(),
+          _ => const <ast.ClassMember>[],
+        },
+      ),
+      ast.EnumDeclaration(:final namePart, :final body) => (
+        namePart.typeName.lexeme,
+        body.members.toList(),
+      ),
+      _ => (null, const <ast.ClassMember>[]),
+    };
+    if (owner == null) continue;
+    for (final member in members) {
+      final (name, parameters) = switch (member) {
+        ast.MethodDeclaration(:final name, :final parameters) => (
+          name.lexeme,
+          parameters,
+        ),
+        ast.ConstructorDeclaration(:final name, :final parameters) => (
+          name?.lexeme ?? '',
+          parameters,
+        ),
+        _ => (null, null),
+      };
+      // An enum's constructors are called by its own values only.
+      if (name == null ||
+          name.startsWith('_') ||
+          (member is ast.ConstructorDeclaration &&
+              declaration is ast.EnumDeclaration &&
+              member.factoryKeyword == null)) {
+        continue;
+      }
+      checked.add('$owner.$name');
+      for (final parameter in parameters?.parameters ?? const []) {
+        final plain = switch (parameter) {
+          ast.DefaultFormalParameter(:final parameter) => parameter,
+          _ => parameter,
+        };
+        final label = plain.name?.lexeme ?? '';
+        final type = switch (plain) {
+          ast.SimpleFormalParameter(:final type?) => type.toSource(),
+          _ => null,
+        };
+        final bare = type?.replaceAll('?', '');
+        final allowed =
+            _allowedTypes.contains(bare) ||
+            (bare == 'Object' && _objectParameters.contains(label));
+        if (!allowed) found.add('$owner.$name($label: ${type ?? 'untyped'})');
+      }
+    }
+  }
+  return (checked: checked, found: found);
 }

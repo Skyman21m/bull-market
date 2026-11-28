@@ -91,7 +91,7 @@ final class TakeOrderUsecase {
     Result<TakeOutcome, TakeRefusal> taken,
   ) {
     if (taken case Err(:final failure)) {
-      ActionOutcomeLog.notSent('take', failure);
+      ActionOutcomeLog.notSent(OutcomeAction.take, failure);
     }
     return taken;
   }
@@ -798,13 +798,12 @@ final class TakeOrderUsecase {
 
     // 5. What it gave.
     ActionOutcomeLog.answered(
-      'take',
+      OutcomeAction.take,
       switch (taken) {
-        Err() => 'notSent',
-        Ok(value: Err(failure: OrderActionRefused())) => 'refused',
-        Ok(value: Err()) => 'pending',
-        Ok(value: Ok(value: final outcome)) =>
-          'answered ${outcome.runtimeType}',
+        Err() => OutcomeAnswer.notSent,
+        Ok(value: Err(failure: OrderActionRefused())) => OutcomeAnswer.refused,
+        Ok(value: Err()) => OutcomeAnswer.pending,
+        Ok(value: Ok(value: final outcome)) => OutcomeAnswer.ofTake(outcome),
       },
       switch (taken) {
         Err(:final failure) => failure,

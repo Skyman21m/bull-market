@@ -711,13 +711,51 @@ final class TorCoordinatorTransport
     }
   }
 
-  /// A few random characters for a subscription id, as `Math.random().toString(36).substring(7)` gives the reference's: they tie nothing, but keep two subscriptions apart.
-  static String _subscriptionSuffix() => String.fromCharCodes([
-    for (var i = 0; i < 6; i++)
-      '0123456789abcdefghijklmnopqrstuvwxyz'.codeUnitAt(
-        _handshakeRandom.nextInt(36),
-      ),
-  ]);
+  /// A few random characters for a subscription id, as `Math.random().toString(36).substring(7)` gives the reference's (`RoboPool/index.ts:634`): they tie nothing, but keep two subscriptions apart. Their length is drawn from [subscriptionSuffixLengths], then each character from the same alphabet, all from a secure random source (#311), so that a relay cannot tell this client from the reference by the length of an id.
+  static String _subscriptionSuffix() {
+    var draw = _handshakeRandom.nextInt(subscriptionSuffixDraws);
+    var length = 1;
+    for (final weight in subscriptionSuffixLengths) {
+      if (draw < weight) break;
+      draw -= weight;
+      length++;
+    }
+    return String.fromCharCodes([
+      for (var i = 0; i < length; i++)
+        subscriptionSuffixAlphabet.codeUnitAt(
+          _handshakeRandom.nextInt(subscriptionSuffixAlphabet.length),
+        ),
+    ]);
+  }
+
+  /// The characters of a subscription id's suffix: the digits of base 36 that `toString(36)` writes.
+  @visibleForTesting
+  static const String subscriptionSuffixAlphabet =
+      '0123456789abcdefghijklmnopqrstuvwxyz';
+
+  /// How often `Math.random().toString(36).substring(7)` is 1, 2, … 11 characters long: the count of each length in 100,000,000 draws of Node 24.15.0 (V8), out of [subscriptionSuffixDraws] (#311). Its length varies because `toString(36)` writes the shortest digits that give the double back, about 10 or 11 after `0.` for most draws, more for the small ones, fewer when the shortest form ends early; an empty suffix (the draw 0, one chance in 2^52) is left out.
+  @visibleForTesting
+  static const List<int> subscriptionSuffixLengths = [
+    12,
+    557,
+    20150,
+    731077,
+    26307350,
+    70496882,
+    2380126,
+    61989,
+    1810,
+    46,
+    1,
+  ];
+
+  /// The sum of [subscriptionSuffixLengths].
+  @visibleForTesting
+  static const int subscriptionSuffixDraws = 100000000;
+
+  /// [_subscriptionSuffix], for tests.
+  @visibleForTesting
+  static String subscriptionSuffixForTesting() => _subscriptionSuffix();
 
   /// The places of the relay calls on a session of their own that are taken, and the calls waiting for one, for tests.
   @visibleForTesting

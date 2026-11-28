@@ -61,7 +61,7 @@ final class PendingMakesState {
   /// The trade a resolution confirmed, which the screen opens: set once per confirmation.
   final TradeRecord? started;
 
-  /// Why the last make closed by a resolution made no order, said once its line is gone; `null` when none was closed here.
+  /// Why the last make closed by a resolution made no order, said once its line is gone; `null` when none was closed here, or once the form sent a new make ([PendingMakesCubit.forgetClosed]).
   final MakeProblem? closed;
 
   /// The coordinator of [closed], its short alias.
@@ -209,6 +209,20 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
       case Err():
         _step(make, const PendingMakeNotSetAside());
     }
+  }
+
+  /// The form sends a new make: why the last make closed made no order ([PendingMakesState.closed]) is no longer said, so that it is never read as the new make's outcome (seen in a real trial). Nothing else changes: the pending makes, their steps, [PendingMakesState.started] and [PendingMakesState.ended] stay.
+  void forgetClosed() {
+    if (isClosed || state.closed == null) return;
+    emit(
+      PendingMakesState(
+        makes: state.makes,
+        unreadable: state.unreadable,
+        steps: state.steps,
+        started: state.started,
+        ended: state.ended,
+      ),
+    );
   }
 
   void _step(PendingMake make, PendingMakeStep? step) => emit(

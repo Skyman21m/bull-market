@@ -268,6 +268,48 @@ void main() {
       await pumpEventQueue();
       expect(cubit.state.blocksMaking, isTrue);
     });
+
+    test(
+      'a new make sent (`forgetClosed`): only why the closed make made no order goes; a make still pending, its step and the robot of the make that ended stay',
+      () async {
+        final other = PendingMake(
+          robot: RobotSlot(_slot.network, _slot.keyFingerprint, 4),
+          coordinatorAlias: 'temple',
+          coordinatorOnion: _onion,
+          role: TradeRole.buyer,
+          writtenAt: madeAt,
+          closedAt: null,
+        );
+        final makes = _Makes()
+          ..listed = [
+            ActivePendingMake(_make, neverSent: false),
+            ActivePendingMake(other, neverSent: false),
+          ]
+          ..resolution = (make) async => make == _make
+              ? MakeNotMade(make)
+              : MakePending(make, MakePendingReason.notRecognized);
+        final cubit = makes.cubit()..start();
+        addTearDown(cubit.close);
+        await pumpEventQueue();
+        await cubit.resolveAll();
+        makes.list.add(Ok([ActivePendingMake(other, neverSent: false)]));
+        await pumpEventQueue();
+        final before = cubit.state;
+        expect(before.closed, isA<MakeWasNotMade>());
+        expect(before.closedAlias, 'temple');
+        cubit.forgetClosed();
+        final after = cubit.state;
+        expect(after.closed, isNull);
+        expect(after.closedAlias, isNull);
+        expect(after.makes, same(before.makes));
+        expect(after.makes?.single.make, other);
+        expect(after.steps, before.steps);
+        expect(after.steps[other.robot], isA<PendingMakeLeftPending>());
+        expect(after.ended, _slot);
+        expect(after.unreadable, isFalse);
+        expect(after.blocksMaking, isTrue);
+      },
+    );
   });
 
   group('« Active trades »', () {
