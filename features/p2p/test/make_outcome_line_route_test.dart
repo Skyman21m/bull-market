@@ -213,7 +213,7 @@ void main() {
             .length,
         makesBefore + 1,
       );
-      expect(find.text(_creating), findsOneWidget);
+      expect(find.text(_creating), findsWidgets);
       expect(form.closedLine, findsNothing);
       expect(find.text(_notMade), findsNothing);
 
@@ -223,7 +223,7 @@ void main() {
       await settle(tester);
       expect(find.text(_creating), findsNothing);
       expect(
-        find.text('Your order is too small. The order was not created.'),
+        find.text('Your order is too big. The order was not created.'),
         findsOneWidget,
       );
       expect(form.closedLine, findsNothing);

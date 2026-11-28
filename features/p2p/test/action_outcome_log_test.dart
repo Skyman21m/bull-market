@@ -435,7 +435,8 @@ const _objectParameters = {'cause', 'refusal', 'once'};
         continue;
       }
       checked.add('$owner.$name');
-      for (final parameter in parameters?.parameters ?? const []) {
+      for (final parameter
+          in parameters?.parameters ?? const <ast.FormalParameter>[]) {
         final plain = switch (parameter) {
           ast.DefaultFormalParameter(:final parameter) => parameter,
           _ => parameter,

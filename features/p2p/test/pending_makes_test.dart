@@ -14,6 +14,7 @@ import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/active_trades_cubit.dart';
+import 'package:p2p/src/presentation/make_order_cubit.dart' show MakeWasNotMade;
 import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/trade/active_trades_sheet.dart';
 import 'package:p2p/src/ui/trade/pending_make_lines.dart';
