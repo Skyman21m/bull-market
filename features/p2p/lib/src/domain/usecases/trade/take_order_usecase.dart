@@ -225,6 +225,13 @@ final class TakeOrderUsecase {
   /// The robot was put on the coordinator, which keeps it as a robot without an order; its read of a public order left nothing there but its last activity: no take, no penalty (`api/views.py:226-299`, `robosats/middleware.py:95-96`, commit ff1998c).
   void abandon(PreparedTake prepared) => _prepared.release(prepared);
 
+  /// The robot of [prepared], without its token, while [prepared] is its order's current preparation and its robot was reserved from the external Garage Key; `null` otherwise. For the copy of « Back it up! » of « Store your garage key » (#318), which reads that key only once the wallet's re-authentication passed (`TradeGarageKeyUsecase.externalKeyOfTake`).
+  RobotSlot? externalRobotOf(PreparedTake prepared) =>
+      switch (_prepared.robotOf(prepared)) {
+        final reserved? when reserved.externalKey => reserved.robot.slot,
+        _ => null,
+      };
+
   /// Abandons whatever was prepared of [shown] on [network] (#119): for a screen that leaves an order whose preparation failed, which holds no [PreparedTake] to [abandon]. Nothing is sent.
   void abandonOrder(PublicOrder shown, {required RobosatsNetwork network}) =>
       _prepared.releaseOrder(network, shown.coordinator.shortAlias, shown.id);
@@ -335,6 +342,7 @@ final class TakeOrderUsecase {
       terms: terms,
       amount: amount,
       readAt: _reader.now(),
+      externalKey: reserved.externalKey,
       // Kept with the robot when it was reserved, never computed again (#251, § 4.2).
       freshRobot:
           _prepared.changedRobotFor(network, coordinator.shortAlias, shown.id)

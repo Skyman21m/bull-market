@@ -53,12 +53,22 @@ final class ReservedRobot {
   /// The reservation of that very robot, which `TradeRecordRepository.recordPendingTake` takes.
   final TradeReservation reservation;
 
-  const ReservedRobot._(this.robot, this.reservation);
+  /// Whether [robot] is of the external Garage Key, the key the vault keeps (drawn at random before #81, or imported), rather than of a key of the wallet's words: only then is « Store your garage key » shown before its take (#318, decided on 2026-11-28).
+  final bool externalKey;
 
-  /// [robot] with [reservation], or `null` when the reservation is not of that robot: the two always name the same robot.
-  static ReservedRobot? of(NetworkRobot robot, TradeReservation reservation) =>
-      robot.slot == reservation.robot
-      ? ReservedRobot._(robot, reservation)
+  const ReservedRobot._(
+    this.robot,
+    this.reservation, {
+    required this.externalKey,
+  });
+
+  /// [robot] with [reservation], or `null` when the reservation is not of that robot: the two always name the same robot. [externalKey] says whether the key the robot was derived from is the external Garage Key.
+  static ReservedRobot? of(
+    NetworkRobot robot,
+    TradeReservation reservation, {
+    required bool externalKey,
+  }) => robot.slot == reservation.robot
+      ? ReservedRobot._(robot, reservation, externalKey: externalKey)
       : null;
 
   @override

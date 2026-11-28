@@ -1400,7 +1400,11 @@
   },
   "p2pStoreKeyText": "Your garage key provides access to all your robot accounts. Store it safely. You can simply copy it into another application.",
   "@p2pStoreKeyText": {
-    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's. Text of the backup reminder shown before a take (`Dialogs/StoreToken.tsx`). The key itself is not shown there: it is shown only in the Garage, behind the PIN."
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's. Text of the backup reminder shown before a make or a take with the external Garage Key only (`Dialogs/StoreToken.tsx`, #318). The key itself is not shown there: its field is masked, and its copy asks the wallet's re-authentication first."
+  },
+  "p2pStoreKeyBackItUp": "Back it up!",
+  "@p2pStoreKeyBackItUp": {
+    "description": "The official client's text (`frontend/static/locales/en.json` and `fr.json` at commit ff1998c). Label of the masked field of the backup reminder, with its copy button (`Dialogs/StoreToken.tsx`, #318)."
   },
   "p2pCommonGoBack": "Go back",
   "@p2pCommonGoBack": {

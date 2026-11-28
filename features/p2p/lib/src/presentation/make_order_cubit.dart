@@ -44,6 +44,9 @@ typedef MakeOrder =
       required MakePriceSeen seen,
     });
 
+/// `TradeGarageKeyUsecase.makeUsesExternalKey`, which the locator gives the cubit (#318): whether a make on a network would take the external Garage Key.
+typedef MakeUsesExternalKey = Future<bool> Function(RobosatsNetwork network);
+
 /// `CheckMakePriceUsecase.execute`: the chosen coordinator's price compared with the wallet's.
 typedef CheckMakePrice =
     Future<MakePriceCheck> Function(
@@ -277,6 +280,9 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// The wallet's price check, when the wallet's port was lent; `null` shows no check.
   final CheckMakePrice? _checkPrice;
 
+  /// Whether the make would take the external Garage Key ([remindsGarageKey]); `null` for a renewal, and where the locator lends none.
+  final MakeUsesExternalKey? _usesExternalKey;
+
   /// The order made here this form renews (#185), and the read of its kept terms; both `null` for a creation.
   final TradeRecord? _renewing;
   final ReadRenewal? _readRenewal;
@@ -323,6 +329,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     required this._lottery,
     required this._now,
     this._checkPrice,
+    this._usesExternalKey,
   }) : _renewing = null,
        _readRenewal = null,
        _madeAsRenewal = null,
@@ -343,6 +350,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     required this._now,
     this._checkPrice,
   }) : _renewing = renewing,
+       _usesExternalKey = null,
        super(
          MakeOrderState(
            network: renewing.network,
@@ -611,6 +619,13 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
         Ok(:final value) => value,
         Err() => false,
       };
+
+  /// Whether « Store your garage key » is shown before this form's make (#318, decided on 2026-11-28): only when the key a make would take now is the external Garage Key, the key the vault keeps, which nothing else backs up; a key of the wallet's words comes back with the words, and the make is sent at once. Never for a renewal, which sends at once as the reference's (#185). Where no reading was lent (the form's own tests), shown as before #318.
+  Future<bool> remindsGarageKey() async {
+    if (state.renewing) return false;
+    final read = _usesExternalKey;
+    return read == null || await read(state.network);
+  }
 
   /// The network's last pending make is resolved or set aside (#182, functional review C1): a creation's form locked by a make whose outcome was unknown is free again, nothing sent; any other state is left as it is.
   ///

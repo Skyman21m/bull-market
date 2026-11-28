@@ -31,11 +31,12 @@ void main() {
       .where((file) => !file.path.contains('/generated/'))
       .toList();
 
-  // Every file whose name speaks of a Garage Key or a robot: the repository, its interface, the use cases, the cubits and the screens of the Garage.
+  // Every file whose name speaks of a Garage Key or a robot: the repository, its interface, the use cases, the cubits and the screens of the Garage; and « Store your garage key », whose copy hands the external key to the clipboard (#318).
   final keyFiles = [
     for (final file in libraries)
       if (RegExp('garage|robot').hasMatch(file.path.split('/').last) ||
-          file.path.contains('/garage/'))
+          file.path.contains('/garage/') ||
+          file.path.endsWith('/store_token_dialog.dart'))
         file.path,
   ];
 
@@ -69,6 +70,10 @@ void main() {
           'lib/src/ui/garage/robot_history_dialog.dart',
           // What closes the dialogs and the sheet of the panel with it (security review of step 6).
           'lib/src/ui/garage/closes_with_panel.dart',
+          // « Back it up! » of « Store your garage key » (#318): the key read after the re-authentication, and copied.
+          'lib/src/domain/usecases/trade/trade_garage_key_usecase.dart',
+          'lib/src/ui/widgets/garage_key_backup.dart',
+          'lib/src/ui/widgets/store_token_dialog.dart',
         ]),
       );
     });

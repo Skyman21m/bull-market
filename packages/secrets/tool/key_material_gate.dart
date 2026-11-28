@@ -1169,6 +1169,8 @@ const _garageKeyReaders = {
       'garageKey': 'GarageKey',
       'clipboard': 'GarageKeyClipboard',
       'build': 'Widget Function(BuildContext)',
+      // The copy without the text shown, for « Back it up! » of « Store your garage key » after the wallet's re-authentication (#318): to the clipboard helper only, nothing returned but whether the platform took it.
+      'copy': 'Future<bool> Function(GarageKeyClipboard, GarageKey)',
     },
   ),
 };

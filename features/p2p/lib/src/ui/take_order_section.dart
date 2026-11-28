@@ -21,6 +21,7 @@ import '../presentation/trade_l10n.dart';
 import 'order_details_screen.dart';
 import 'widgets/amount_row.dart';
 import 'widgets/detail_toggle.dart';
+import 'widgets/garage_key_backup.dart';
 import 'widgets/moved_tap_guard.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/order_detail_row.dart';
@@ -33,7 +34,7 @@ import 'widgets/word_fit_text.dart';
 ///
 /// - A range order first asks its amount: « Amount {{currencyCode}} », « Too low » / « Too high » under the field, « Take Order » disabled with « You must specify an amount first » until the amount fits, then « You will receive {{satoshis}} Sats (Approx) » for a sell order, whose taker buys, or « You will send {{satoshis}} Sats (Approx) » for a buy order, whose taker sells (`TakeButton.tsx:289-292`: the same figure, only the words change).
 /// - On press, the reference's order (#119, the owner's decision after the review of #133): « You do not have a Garage Key » without a key, else the take is prepared: the robot that will take the order reads it, while the button shows that it runs, a bar runs under it with a line that says each step (the order checked with the coordinator, the robot built, « Building your robot! » in the reference's words, the order read by the robot) and, after 30 s, that it still waits, as the robot panel of the Garage does.
-/// - Once the order is read, the order details show that read ([TakeOrderDetailsCard]: the maker's description and the fresh figures, which the reference shows in « Order description » with « Go back » / « Continue »), and « Take Order » gives way to « Continue » and « Go back »; « Continue » opens « Store your garage key », whose « Done » sends the take (its wait says its steps too) and whose « Go back », or a tap outside, abandons it as « Go back » does.
+/// - Once the order is read, the order details show that read ([TakeOrderDetailsCard]: the maker's description and the fresh figures, which the reference shows in « Order description » with « Go back » / « Continue »), and « Take Order » gives way to « Continue » and « Go back »; « Continue » sends the take (its wait says its steps too), at once for a robot of a key of the wallet's words, and for a robot of the external Garage Key through « Store your garage key » (#318), whose « Done » sends it and whose « Go back », or a tap outside, only closes it.
 /// - « The order changed. » says, from its start, that a confirmation found the order changed and reads it again: the read the user saw stays shown meanwhile, the rows that differ are marked when the new one arrives, and it waits for « Continue » and « Done » again, never confirmed by itself. When the take was sent, [onTaken] opens its trade, the read shown until then. It is said too, with no stop, while a read of an order priced in sats shows a premium moved from the one shown before « Take Order », the row « Price and premium » marked ([TakenPriceCheck.premiumMovedFrom], #270), so that the mark is not a colour only.
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
@@ -150,7 +151,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     }
   }
 
-  /// « Continue »: « Store your garage key », whose « Done » sends the take. Its « Go back », or a tap outside, only closes it, as the reference's does (`TakeButton.tsx:380-382`): the order as read stays on the page with its take prepared, and « Go back » of the page is what abandons it.
+  /// « Continue »: for a robot of the external Garage Key, « Store your garage key », whose « Done » sends the take; for a robot of a key of the wallet's words, the take at once (#318). The dialog's « Go back », or a tap outside, only closes it, as the reference's does (`TakeButton.tsx:380-382`): the order as read stays on the page with its take prepared, and « Go back » of the page is what abandons it.
   ///
   /// For a protected order, nothing opens while « Password » is empty; « Done » hands the cubit the hash of the password the field holds then (#245).
   ///
@@ -187,17 +188,21 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         }
       }
       if (!mounted) return;
-      final done = await StoreTokenDialog.show(context);
-      if (!mounted) return;
-      if (done) {
-        if (!_protected) {
-          unawaited(cubit.confirm());
-        } else if (OrderPassword.tryCreate(_password.text)
-            case final password?) {
-          unawaited(cubit.confirm(password: password));
-        } else {
-          setState(() => _passwordMissing = true);
-        }
+      // « Store your garage key » only when the robot of the take is of the external Garage Key, which nothing else backs up (#318, decided on 2026-11-28): with a key of the wallet's words, which comes back with the words, the take is sent at once.
+      final prepared = atPress.prepared;
+      if (prepared.externalKey) {
+        final done = await StoreTokenDialog.show(
+          context,
+          copy: GarageKeyBackupScope.of(context)?.ofTake(prepared),
+        );
+        if (!mounted || !done) return;
+      }
+      if (!_protected) {
+        unawaited(cubit.confirm());
+      } else if (OrderPassword.tryCreate(_password.text) case final password?) {
+        unawaited(cubit.confirm(password: password));
+      } else {
+        setState(() => _passwordMissing = true);
       }
     } finally {
       _asking = false;
@@ -262,7 +267,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
               // A tap aimed at what stood here before the comparison's line came or went is ignored for a moment (#249); « Continue » stays enabled and goes on at the next tap.
               MovedTapGuard(
                 key: TakeOrderSection.continueButton,
-                // Shown once the read the user waited for has come, where « Take Order » stood busy and took the taps meanwhile: no delay when it appears, nor when it is shown again from under a dialog (security review of #291, B1; #294). A tap repeated after the read can reach it at some sizes (320 × 640, text ×3), which only opens « Store your garage key » (second security pass of #291).
+                // Shown once the read the user waited for has come, where « Take Order » stood busy and took the taps meanwhile: no delay when it appears, nor when it is shown again from under a dialog (security review of #291, B1; #294). A tap repeated after the read can reach it at some sizes (320 × 640, text ×3; second security pass of #291), which opens « Store your garage key » for the external Garage Key and, since #318, sends the take for a key of the wallet's words: no money moves at that tap (the bond is paid at its own step; a take cancelled before the bond costs no money, the coordinator giving the taker's robot, used for that take only, a short wait, `PENALTY_TIMEOUT` of the reference).
                 armsWhenShown: false,
                 builder: (context, guard) => TradeButton(
                   label: l10n.p2pCommonContinue,

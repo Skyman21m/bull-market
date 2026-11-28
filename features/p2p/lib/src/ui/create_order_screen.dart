@@ -12,6 +12,7 @@ import '../domain/map_tiles.dart';
 import '../domain/matching_orders.dart';
 import '../domain/meeting_point.dart';
 import '../domain/option_search.dart';
+import '../domain/robot_binding.dart';
 import '../domain/trade/make_price_check.dart';
 import '../domain/trade/maker_form.dart';
 import '../domain/trade/trade_make.dart';
@@ -33,6 +34,7 @@ import 'widgets/add_payment_method_dialog.dart';
 import 'widgets/coordinator_avatar.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/filter_sheet.dart';
+import 'widgets/garage_key_backup.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
 import 'widgets/order_detail_row.dart';
@@ -107,6 +109,9 @@ class CreateOrderScreen extends StatefulWidget {
 }
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
+  /// The robots of the pending makes listed when this form's last make started (`MakeSending`): while it is sent, only they are listed above the form (#317).
+  Set<RobotSlot> _listedAtSend = const {};
+
   /// « Show tiles » of the meeting point's map and its acknowledgment, for the life of this form, as the reference's `F2fMapDialog` stays mounted in `MakerForm` (#246): a new form starts off.
   final _locationTiles = MapTilesChoice();
 
@@ -261,7 +266,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
   }
 
-  /// « Create order »: the request of the form as shown, then « You do not have a Garage Key » or « Store your garage key », whose « Done » sends it with the coordinator and the price check shown at the press.
+  /// « Create order »: the request of the form as shown, then « You do not have a Garage Key », or, for the external Garage Key only (#318), « Store your garage key », whose « Done » sends it with the coordinator and the price check shown at the press; with a key of the wallet's words it is sent at once.
   ///
   /// Limits and a price read more than a few minutes ago are read again first: when the form then shows another request or another price check (not only another red warning: a comparison gone « rate not checked » too, security review of #181, C2), nothing goes on and the user sees the fresh form, said by a line.
   Future<void> _press() async {
@@ -319,11 +324,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         return;
       }
       if (!mounted) return;
-      // A renewal sends at once, as the reference's (`TradeBox/index.tsx:146-200`): the page itself, with its summary, is what the user confirms (#185).
-      if (!cubit.state.renewing) {
-        final done = await StoreTokenDialog.show(context);
+      // « Store your garage key » only for the external Garage Key, which nothing else backs up (#318, decided on 2026-11-28): a key of the wallet's words comes back with the words, and the make is sent at once. A renewal sends at once too, as the reference's (`TradeBox/index.tsx:146-200`): the page itself, with its summary, is what the user confirms (#185).
+      if (await cubit.remindsGarageKey()) {
+        if (!mounted) return;
+        final done = await StoreTokenDialog.show(
+          context,
+          copy: GarageKeyBackupScope.of(context)?.ofMake(cubit.state.network),
+        );
         if (!mounted || !done) return;
       }
+      if (!mounted) return;
       unawaited(cubit.make(request, coordinator: coordinator, seen: seen));
     } finally {
       if (mounted) setState(() => _asking = false);
@@ -592,6 +602,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final renewing = state.renewing;
     final fieldsLocked = locked || renewing;
     final sending = state.progress is MakeSending;
+    // While this form sends its make, the pending make it records just before the request leaves is not listed above the form, without the orange line, « Retry » or « Set aside »: « Creating your order… » under the button says it (#317, seen in a real trial). The makes listed before it was sent, of an earlier attempt or of another screen, stay as they were, and its own shows as soon as it ends with an outcome unknown.
+    final listedAtSend = sending ? _listedAtSend : null;
+    final pendingListed =
+        pending.unreadable ||
+        (pending.makes ?? const <ActivePendingMake>[]).any(
+          (make) => listedAtSend?.contains(make.make.robot) ?? true,
+        );
     final coordinator = state.coordinator;
     final coordinatorName = coordinator == null
         ? ''
@@ -622,8 +639,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           listenWhen: (previous, current) =>
               current.progress is MakeSending &&
               previous.progress is! MakeSending,
-          listener: (context, _) =>
-              context.read<PendingMakesCubit>().forgetClosed(),
+          listener: (context, _) {
+            final pending = context.read<PendingMakesCubit>();
+            // The makes listed as this make starts: while it is sent, they stay above the form, and the one it records is not shown there (#317).
+            _listedAtSend = {
+              for (final make
+                  in pending.state.makes ?? const <ActivePendingMake>[])
+                make.make.robot,
+            };
+            pending.forgetClosed();
+          },
         ),
         // The last pending make of the network resolved or set aside: a form locked by an outcome unknown is free again (#182, functional review C1).
         BlocListener<PendingMakesCubit, PendingMakesState>(
@@ -732,13 +757,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           const Gap(BullSpacing.md),
                         ],
                         // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
-                        if (pending.unreadable ||
-                            (pending.makes?.isNotEmpty ?? false)) ...[
+                        if (pendingListed) ...[
                           _Line(
                             l10n.p2pMakePendingFirst,
                             color: colors.warning,
                           ),
-                          const PendingMakeLines(),
+                          PendingMakeLines(only: listedAtSend),
                           const Gap(BullSpacing.md),
                         ] else if (pending.closed != null) ...[
                           // The last pending make found not made: said once, the form free again (functional review C1).

@@ -11,7 +11,7 @@ import 'garage_key_clipboard.dart';
 ///
 /// The custody gate lets `GarageKey.revealBech32` be called in this class alone (`packages/secrets/tool/key_material_gate.dart`).
 /// The text is drawn in one [Text], kept out of the semantics tree, as the wallet keeps its recovery phrase out of it: a screen reader, or an accessibility service, hears « Garage Key » and the copy button, never the key.
-/// It goes nowhere else: not to a tooltip, a snack bar, a state, a log or a route, and to the clipboard only through [clipboard], which empties it after 30 seconds.
+/// It goes nowhere else: not to a tooltip, a snack bar, a state, a log or a route, and to the clipboard only through a [GarageKeyClipboard], which empties it after 30 seconds: from the copy button here, and from [copy], which « Back it up! » of « Store your garage key » calls without showing the key (#318).
 /// Show it only on a screen protected from capture, which the Garage is as a whole.
 class GarageKeyView extends StatelessWidget {
   final GarageKey garageKey;
@@ -22,6 +22,10 @@ class GarageKeyView extends StatelessWidget {
     required this.garageKey,
     required this.clipboard,
   });
+
+  /// Writes the `robo1…` form of [garageKey] to the clipboard through [clipboard], which empties it 30 seconds later, and shows nothing: the copy of the view's button, and of « Back it up! » of « Store your garage key » once the wallet's re-authentication passed (#318, decided on 2026-11-28); `false` when the platform refused it. The text goes nowhere else: it is not returned.
+  static Future<bool> copy(GarageKeyClipboard clipboard, GarageKey garageKey) =>
+      clipboard.copy(garageKey, garageKey.revealBech32());
 
   @override
   Widget build(BuildContext context) {
@@ -61,9 +65,7 @@ class GarageKeyView extends StatelessWidget {
                 ),
               ),
             ),
-            _CopyButton(
-              onCopy: () => clipboard.copy(garageKey, garageKey.revealBech32()),
-            ),
+            _CopyButton(onCopy: () => copy(clipboard, garageKey)),
           ],
         ),
       ),

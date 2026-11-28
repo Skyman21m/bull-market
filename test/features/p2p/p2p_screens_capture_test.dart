@@ -3100,6 +3100,176 @@ void main() {
     );
   }
 
+  // « Store your garage key » for the external Garage Key (#318), on a phone of 360 × 640 points, dark: the dialog with its masked field « Back it up! », then « Copied! » once the copy passed the re-authentication (the test's stand-in for the PIN screen) and wrote the key to a clipboard of the test. The key is key 0 of the public test phrase « abandon ×11 about » on mainnet, imported in the vault's slot, so the external Garage Key; it is never shown, and the clipboard is the test's. Nothing is taken, no money moves.
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of « Store your garage key » in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(720, 1280)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+        String? clipboard;
+        messenger.setMockMethodCallHandler(SystemChannels.platform, (
+          call,
+        ) async {
+          switch (call.method) {
+            case 'Clipboard.setData':
+              clipboard = (call.arguments as Map)['text'] as String?;
+            case 'Clipboard.getData':
+              return {'text': clipboard};
+          }
+          return null;
+        });
+        addTearDown(
+          () =>
+              messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        Future<void> waitFor(Finder finder) async {
+          for (var i = 0; i < 1200 && finder.evaluate().isEmpty; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 50)),
+            );
+            await tester.pump(const Duration(milliseconds: 200));
+          }
+          if (finder.evaluate().isEmpty) throw StateError('not shown: $finder');
+          await settle();
+        }
+
+        final l10n = lookupP2pLocalizations(locale);
+        final now = DateTime.utc(2026, 11, 14, 9);
+        final transport = _TradeTransport(now);
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        setUpP2pForTesting(
+          locator,
+          transport: transport,
+          torStates: () => tor.stream,
+          clock: () => now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          bolt11Decoder: transport,
+          robotKeys: _DatedRobotKeys(() => now),
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.mainnet,
+          ),
+        );
+        await settle();
+        final key = switch (GarageKey.parse(_abandonMainnetKey0)) {
+          Ok(:final value) => value,
+          Err() => throw StateError('not a key'),
+        };
+        await tester.runAsync(
+          () => Secrets(scratchDirectory: () async => '.').garageKeys().import(
+            slot: GarageKeySlot.mainnet,
+            bytes: key.revealBytes(),
+          ),
+        );
+        // The Garage opened once: the key the vault keeps is selected, the external Garage Key.
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
+        final coordinator = ScriptedCoordinator(
+          network: RobosatsNetwork.mainnet,
+          robots: [
+            for (var i = 0; i < 24; i++)
+              if (key.deriveIdentity(i) case Ok(:final value)) value,
+          ],
+          clock: () => now,
+        );
+        transport.temple = coordinator;
+        tor.add(P2pTorState.ready);
+        await settle();
+
+        // The order of Temple of Sats, « Take Order », its read, « Continue »: the dialog.
+        await tester.tap(find.text(l10n.p2pNavOffers));
+        await settle();
+        final row = find.text('100 EUR', findRichText: true);
+        await waitFor(row);
+        await tester.ensureVisible(row.first);
+        await settle();
+        await tester.tap(row.first);
+        await settle();
+        final take = find.text(l10n.p2pTakeOrder, skipOffstage: false);
+        await waitFor(take);
+        await tester.ensureVisible(take);
+        await settle();
+        await tester.tap(take);
+        await waitFor(find.text(l10n.p2pCommonContinue, skipOffstage: false));
+        await tester.ensureVisible(
+          find.text(l10n.p2pCommonContinue, skipOffstage: false),
+        );
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await waitFor(find.text(l10n.p2pStoreKeyBackItUp));
+        await capture('sauvegarder-cle-externe');
+
+        // The copy: the re-authentication passed, the key on the test's clipboard, « Copied! ».
+        await tester.tap(find.byIcon(Icons.copy));
+        await settle();
+        await tester.tap(find.text('PIN'));
+        await settle();
+        await waitFor(find.text(l10n.p2pCommonCopied));
+        if (clipboard != key.revealBech32()) {
+          throw StateError('the key was not copied');
+        }
+        await capture('sauvegarder-cle-copiee');
+
+        // Nothing taken: « Go back », the tree gone, the clipboard's clearing run.
+        await tester.tap(find.text(l10n.p2pCommonGoBack).last);
+        await settle();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(seconds: 3)),
+        );
+        await tester.pump(const Duration(minutes: 1));
+      },
+    );
+  }
+
   // The create form (#181), which no path of the tab opens before #182: built by the testing seam over the recorded coordinators' information and limits (temple, lake, freeport, bazaar and ammanaya on mainnet), the Bull wallet's price played by the test. Nothing is made, no robot exists, no money moves.
   for (final locale in const [Locale('fr'), Locale('en')]) {
     testWidgets(

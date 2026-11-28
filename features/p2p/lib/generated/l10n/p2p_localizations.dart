@@ -1703,11 +1703,17 @@ abstract class P2pLocalizations {
   /// **'Store your garage key'**
   String get p2pStoreKeyTitle;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's. Text of the backup reminder shown before a take (`Dialogs/StoreToken.tsx`). The key itself is not shown there: it is shown only in the Garage, behind the PIN.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's. Text of the backup reminder shown before a make or a take with the external Garage Key only (`Dialogs/StoreToken.tsx`, #318). The key itself is not shown there: its field is masked, and its copy asks the wallet's re-authentication first.
   ///
   /// In en, this message translates to:
   /// **'Your garage key provides access to all your robot accounts. Store it safely. You can simply copy it into another application.'**
   String get p2pStoreKeyText;
+
+  /// The official client's text (`frontend/static/locales/en.json` and `fr.json` at commit ff1998c). Label of the masked field of the backup reminder, with its copy button (`Dialogs/StoreToken.tsx`, #318).
+  ///
+  /// In en, this message translates to:
+  /// **'Back it up!'**
+  String get p2pStoreKeyBackItUp;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Button that closes a dialog without doing anything.
   ///

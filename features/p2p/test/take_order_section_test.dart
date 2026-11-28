@@ -1689,6 +1689,7 @@ void main() {
       terms: _read.terms,
       amount: _read.amount,
       readAt: _read.readAt,
+      externalKey: _read.externalKey,
       freshRobot: nickname,
     );
 
