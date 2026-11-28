@@ -276,7 +276,7 @@ void main() {
   );
 
   test(
-    'the suffix of a subscription id: the reference\'s lengths, from 1 to 11 characters, and its alphabet, drawn anew at every call (#311)',
+    'the suffix of a subscription id: the reference\'s lengths, from 1 to 11 characters, and its alphabet, the last character never 0, drawn anew at every call (#311)',
     () {
       const weights = TorCoordinatorTransport.subscriptionSuffixLengths;
       const total = TorCoordinatorTransport.subscriptionSuffixDraws;
@@ -286,6 +286,7 @@ void main() {
       const draws = 200000;
       final lengths = List.filled(weights.length + 1, 0);
       final characters = <String, int>{};
+      final lasts = <String, int>{};
       final seen = <String>{};
       var characterCount = 0;
       var sameAsLast = 0;
@@ -294,10 +295,13 @@ void main() {
         final suffix = TorCoordinatorTransport.subscriptionSuffixForTesting();
         expect(suffix, matches(RegExp(r'^[0-9a-z]{1,11}$')));
         lengths[suffix.length]++;
-        for (final character in suffix.split('')) {
+        for (final character
+            in suffix.substring(0, suffix.length - 1).split('')) {
           characters[character] = (characters[character] ?? 0) + 1;
           characterCount++;
         }
+        final end = suffix.substring(suffix.length - 1);
+        lasts[end] = (lasts[end] ?? 0) + 1;
         seen.add(suffix);
         if (suffix == last) sameAsLast++;
         last = suffix;
@@ -317,7 +321,7 @@ void main() {
       for (final length in [3, 4, 5, 6, 7, 8]) {
         expect(lengths[length], greaterThan(0), reason: 'length $length');
       }
-      // Every character of the alphabet, as often as the others.
+      // Before the last, every character of the alphabet, as often as the others.
       expect(characters.keys.toSet(), alphabet.split('').toSet());
       final each = characterCount / 36;
       for (final MapEntry(key: character, value: count) in characters.entries) {
@@ -325,6 +329,17 @@ void main() {
           (count - each).abs(),
           lessThanOrEqualTo(5 * sqrt(each)),
           reason: character,
+        );
+      }
+      // The last, never `0`, as the reference's shortest digits never end with it; the 35 others as often as each other.
+      expect(lasts['0'], isNull);
+      expect(lasts.keys.toSet(), alphabet.substring(1).split('').toSet());
+      final eachLast = draws / 35;
+      for (final MapEntry(key: character, value: count) in lasts.entries) {
+        expect(
+          (count - eachLast).abs(),
+          lessThanOrEqualTo(5 * sqrt(eachLast)),
+          reason: 'last $character',
         );
       }
       // Nothing stable from one call to the next.

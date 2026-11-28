@@ -711,7 +711,7 @@ final class TorCoordinatorTransport
     }
   }
 
-  /// A few random characters for a subscription id, as `Math.random().toString(36).substring(7)` gives the reference's (`RoboPool/index.ts:634`): they tie nothing, but keep two subscriptions apart. Their length is drawn from [subscriptionSuffixLengths], then each character from the same alphabet, all from a secure random source (#311), so that a relay cannot tell this client from the reference by the length of an id.
+  /// A few random characters for a subscription id, as `Math.random().toString(36).substring(7)` gives the reference's (`RoboPool/index.ts:634`): they tie nothing, but keep two subscriptions apart. Their length is drawn from [subscriptionSuffixLengths], then each character from the same alphabet, but the last never `0`, as the shortest digits `toString(36)` writes never end with `0`, all from a secure random source (#311), so that a relay cannot tell this client from the reference by the length of an id or its last character. The reference's characters are not quite uniform; these are.
   static String _subscriptionSuffix() {
     var draw = _handshakeRandom.nextInt(subscriptionSuffixDraws);
     var length = 1;
@@ -721,10 +721,14 @@ final class TorCoordinatorTransport
       length++;
     }
     return String.fromCharCodes([
-      for (var i = 0; i < length; i++)
+      for (var i = 0; i < length - 1; i++)
         subscriptionSuffixAlphabet.codeUnitAt(
           _handshakeRandom.nextInt(subscriptionSuffixAlphabet.length),
         ),
+      // The last one from `1` to `z`, never `0`.
+      subscriptionSuffixAlphabet.codeUnitAt(
+        1 + _handshakeRandom.nextInt(subscriptionSuffixAlphabet.length - 1),
+      ),
     ]);
   }
 
@@ -733,7 +737,7 @@ final class TorCoordinatorTransport
   static const String subscriptionSuffixAlphabet =
       '0123456789abcdefghijklmnopqrstuvwxyz';
 
-  /// How often `Math.random().toString(36).substring(7)` is 1, 2, … 11 characters long: the count of each length in 100,000,000 draws of Node 24.15.0 (V8), out of [subscriptionSuffixDraws] (#311). Its length varies because `toString(36)` writes the shortest digits that give the double back, about 10 or 11 after `0.` for most draws, more for the small ones, fewer when the shortest form ends early; an empty suffix (the draw 0, one chance in 2^52) is left out.
+  /// How often `Math.random().toString(36).substring(7)` is 1, 2, … 11 characters long: the count of each length in 100,000,000 draws of Node 24.15.0 (V8), out of [subscriptionSuffixDraws] (#311). Its length varies because `toString(36)` writes the shortest digits that give the double back, about 10 or 11 after `0.` for most draws, more for the small ones, fewer when the shortest form ends early; an empty suffix (about one draw in 10^8, whenever `toString(36)` writes five digits or fewer after `0.`) is left out.
   @visibleForTesting
   static const List<int> subscriptionSuffixLengths = [
     12,

@@ -328,30 +328,53 @@ void main() {
       },
     );
 
-    test('the check sees a String, an untyped or an unlisted parameter', () {
-      for (final (source, offence) in [
-        (
-          'abstract final class L { static void resolved(String reason) {} }',
-          'L.resolved(reason: String)',
-        ),
-        (
-          'abstract final class L { static void resolved(reason) {} }',
-          'L.resolved(reason: untyped)',
-        ),
-        (
-          'abstract final class L { static void resolved({required String? reason}) {} }',
-          'L.resolved(reason: String?)',
-        ),
-        (
-          'abstract final class L { static void resolved(Object reason) {} }',
-          'L.resolved(reason: Object)',
-        ),
-        ('enum E { a; static E of(String text) => a; }', 'E.of(text: String)'),
-        ('abstract final class L { L.of(String text); }', 'L.of(text: String)'),
-      ]) {
-        expect(_parameterOffences(source).found, [offence], reason: source);
-      }
-    });
+    test(
+      'the check sees a String, an untyped or an unlisted parameter, in a class, an enum, an extension, a mixin or a top-level function, and any other public declaration (review of the lot, R4)',
+      () {
+        for (final (source, offence) in [
+          (
+            'abstract final class L { static void resolved(String reason) {} }',
+            'L.resolved(reason: String)',
+          ),
+          (
+            'abstract final class L { static void resolved(reason) {} }',
+            'L.resolved(reason: untyped)',
+          ),
+          (
+            'abstract final class L { static void resolved({required String? reason}) {} }',
+            'L.resolved(reason: String?)',
+          ),
+          (
+            'abstract final class L { static void resolved(Object reason) {} }',
+            'L.resolved(reason: Object)',
+          ),
+          (
+            'enum E { a; static E of(String text) => a; }',
+            'E.of(text: String)',
+          ),
+          (
+            'abstract final class L { L.of(String text); }',
+            'L.of(text: String)',
+          ),
+          ('void say(String text) {}', '<top level>.say(text: String)'),
+          (
+            'extension Said on OutcomeAction { void say(String text) {} }',
+            'Said.say(text: String)',
+          ),
+          (
+            'extension on OutcomeAction { void say(String text) {} }',
+            '<extension>.say(text: String)',
+          ),
+          ('mixin Says { void say(String text) {} }', 'Says.say(text: String)'),
+          ('final say = (String text) => text;', 'say: unlisted declaration'),
+          ('typedef Say = void Function(String);', 'Say: unlisted declaration'),
+          ('extension type Said(String text) {}', 'unlisted declaration'),
+          ('void _said(String text) {}', null),
+        ]) {
+          expect(_parameterOffences(source).found, [?offence], reason: source);
+        }
+      },
+    );
 
     test(
       'the words of every answer, resolution and reason are fixed words',
@@ -393,11 +416,33 @@ const _allowedTypes = {
 /// The parameters that may be an `Object`: a cause or a refusal, written by its type or [ActionOutcomeLog.causeOf]'s fixed label, and the key of a line said once, never written.
 const _objectParameters = {'cause', 'refusal', 'once'};
 
-/// Every public method and constructor of the classes and enums of [source], and each parameter of theirs that is not of an allowed type, as `<type>.<member>(<parameter>: <type>)`.
+/// Every public method and constructor of the classes, enums, mixins and extensions of [source], and every public top-level function, with each parameter of theirs that is not of an allowed type, as `<type>.<member>(<parameter>: <type>)` (`<top level>` for a function); any other public declaration (a top-level variable, which could hold a function, a type alias) is an offence too, as `<name>: unlisted declaration`, and so is any extension type or other kind, public or not, as `unlisted declaration`.
 ({Set<String> checked, List<String> found}) _parameterOffences(String source) {
   final unit = parseString(content: source).unit;
   final checked = <String>{};
   final found = <String>[];
+
+  void check(String owner, String name, ast.FormalParameterList? parameters) {
+    checked.add('$owner.$name');
+    for (final parameter
+        in parameters?.parameters ?? const <ast.FormalParameter>[]) {
+      final plain = switch (parameter) {
+        ast.DefaultFormalParameter(:final parameter) => parameter,
+        _ => parameter,
+      };
+      final label = plain.name?.lexeme ?? '';
+      final type = switch (plain) {
+        ast.SimpleFormalParameter(:final type?) => type.toSource(),
+        _ => null,
+      };
+      final bare = type?.replaceAll('?', '');
+      final allowed =
+          _allowedTypes.contains(bare) ||
+          (bare == 'Object' && _objectParameters.contains(label));
+      if (!allowed) found.add('$owner.$name($label: ${type ?? 'untyped'})');
+    }
+  }
+
   for (final declaration in unit.declarations) {
     final (owner, members) = switch (declaration) {
       ast.ClassDeclaration(:final namePart, :final body) => (
@@ -411,9 +456,42 @@ const _objectParameters = {'cause', 'refusal', 'once'};
         namePart.typeName.lexeme,
         body.members.toList(),
       ),
+      ast.MixinDeclaration(:final name, :final body) => (
+        name.lexeme,
+        body.members.toList(),
+      ),
+      // An unnamed extension applies in this file only, but its members are checked all the same.
+      ast.ExtensionDeclaration(:final name, :final body) => (
+        name?.lexeme ?? '<extension>',
+        body.members.toList(),
+      ),
       _ => (null, const <ast.ClassMember>[]),
     };
-    if (owner == null) continue;
+    if (owner == null) {
+      switch (declaration) {
+        case ast.FunctionDeclaration(:final name, :final functionExpression)
+            when !name.lexeme.startsWith('_'):
+          check('<top level>', name.lexeme, functionExpression.parameters);
+        case ast.FunctionDeclaration():
+          break;
+        case ast.TopLevelVariableDeclaration(:final variables):
+          for (final variable in variables.variables) {
+            if (!variable.name.lexeme.startsWith('_')) {
+              found.add('${variable.name.lexeme}: unlisted declaration');
+            }
+          }
+        case ast.GenericTypeAlias(:final name) ||
+                ast.FunctionTypeAlias(:final name)
+            when !name.lexeme.startsWith('_'):
+          found.add('${name.lexeme}: unlisted declaration');
+        case ast.GenericTypeAlias() || ast.FunctionTypeAlias():
+          break;
+        // An extension type, or any other kind, public or not.
+        default:
+          found.add('unlisted declaration');
+      }
+      continue;
+    }
     for (final member in members) {
       final (name, parameters) = switch (member) {
         ast.MethodDeclaration(:final name, :final parameters) => (
@@ -434,24 +512,7 @@ const _objectParameters = {'cause', 'refusal', 'once'};
               member.factoryKeyword == null)) {
         continue;
       }
-      checked.add('$owner.$name');
-      for (final parameter
-          in parameters?.parameters ?? const <ast.FormalParameter>[]) {
-        final plain = switch (parameter) {
-          ast.DefaultFormalParameter(:final parameter) => parameter,
-          _ => parameter,
-        };
-        final label = plain.name?.lexeme ?? '';
-        final type = switch (plain) {
-          ast.SimpleFormalParameter(:final type?) => type.toSource(),
-          _ => null,
-        };
-        final bare = type?.replaceAll('?', '');
-        final allowed =
-            _allowedTypes.contains(bare) ||
-            (bare == 'Object' && _objectParameters.contains(label));
-        if (!allowed) found.add('$owner.$name($label: ${type ?? 'untyped'})');
-      }
+      check(owner, name, parameters);
     }
   }
   return (checked: checked, found: found);
