@@ -129,6 +129,60 @@ class GarageKeyView {}
       ['Text(1)'],
     );
   });
+
+  test(
+    'GarageKeyView.copy is called only by the view itself and by « Back it up! » after the re-authentication (security review of #320, C1)',
+    () {
+      expect(_copyCallers(_libraryFiles()), [
+        'lib/src/ui/widgets/store_token_dialog.dart _StoreTokenDialogState._copy after askReauthentication',
+      ]);
+    },
+  );
+
+  test(
+    'the check of the callers sees a call elsewhere, a tear-off, and a call before the re-authentication',
+    () {
+      expect(
+        _copyCallers({
+          'lib/src/ui/x.dart':
+              'f(c, k) => GarageKeyView.copy(c, k);\nfinal g = GarageKeyView.copy;',
+        }),
+        ['lib/src/ui/x.dart f', 'lib/src/ui/x.dart (top level)'],
+      );
+      expect(
+        _copyCallers({
+          'lib/src/ui/widgets/store_token_dialog.dart': '''
+class _StoreTokenDialogState {
+  Future<void> _copy(copy) async {
+    await GarageKeyView.copy(copy.clipboard, k);
+    if (!await askReauthentication(context, copy.reauthenticate) || !mounted) {
+      return;
+    }
+  }
+}
+''',
+        }),
+        [
+          'lib/src/ui/widgets/store_token_dialog.dart _StoreTokenDialogState._copy before askReauthentication',
+        ],
+      );
+      expect(
+        _copyCallers({
+          'lib/src/ui/widgets/store_token_dialog.dart': '''
+class _StoreTokenDialogState {
+  Future<void> _copy(copy) async {
+    await askReauthentication(context, copy.reauthenticate);
+    await GarageKeyView.copy(copy.clipboard, k);
+  }
+}
+''',
+        }),
+        [
+          'lib/src/ui/widgets/store_token_dialog.dart _StoreTokenDialogState._copy before askReauthentication',
+        ],
+      );
+    },
+  );
 }
 
 CompilationUnit _unit(String source) => parseString(content: source).unit;
@@ -204,5 +258,112 @@ final class _RevealVisitor extends RecursiveAstVisitor<void> {
         '${constructorName.toSource()}($position)',
       _ => 'other',
     };
+  }
+}
+
+/// The feature's libraries, generated files aside, by their path from the package.
+Map<String, String> _libraryFiles() => {
+  for (final file in Directory(
+    'lib',
+  ).listSync(recursive: true).whereType<File>())
+    if (file.path.endsWith('.dart') && !file.path.contains('/generated/'))
+      file.path: file.readAsStringSync(),
+};
+
+/// Every use of `GarageKeyView.copy` in [sources] but the view's own file, as `<path> <enclosing member>`, and, in `_StoreTokenDialogState._copy` of the dialog's file, whether it comes after the `if` that returns unless `askReauthentication` passed (#318).
+///
+/// A use is a call or a tear-off written `GarageKeyView.copy`, whatever the import prefix; any other text that names it (`GarageKeyView .copy` across a line) is caught by the plain search that follows.
+List<String> _copyCallers(Map<String, String> sources) {
+  final found = <String>[];
+  for (final MapEntry(key: path, value: source) in sources.entries) {
+    if (path.endsWith('lib/src/ui/widgets/garage_key_view.dart')) continue;
+    final unit = parseString(content: source, throwIfDiagnostics: false).unit;
+    final visitor = _CopyVisitor(path);
+    unit.accept(visitor);
+    found.addAll(visitor.found);
+    // Whatever the syntax tree did not show as a use, the text does.
+    final mentions = RegExp(
+      r'GarageKeyView\s*\.\s*copy\b',
+    ).allMatches(source).length;
+    if (mentions != visitor.found.length) found.add('$path text');
+  }
+  return found;
+}
+
+final class _CopyVisitor extends RecursiveAstVisitor<void> {
+  final String path;
+  final List<String> found = [];
+
+  _CopyVisitor(this.path);
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.methodName.name == 'copy' && _namesView(node.target?.toSource())) {
+      found.add(_where(node));
+    }
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (node.identifier.name == 'copy' && _namesView(node.prefix.name)) {
+      found.add(_where(node));
+    }
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    if (node.propertyName.name == 'copy' &&
+        _namesView(node.target?.toSource())) {
+      found.add(_where(node));
+    }
+    super.visitPropertyAccess(node);
+  }
+
+  static bool _namesView(String? target) =>
+      target == 'GarageKeyView' ||
+      (target?.endsWith('.GarageKeyView') ?? false);
+
+  String _where(AstNode node) {
+    final method = node.thisOrAncestorOfType<MethodDeclaration>();
+    final function = node.thisOrAncestorOfType<FunctionDeclaration>();
+    final owner = method?.thisOrAncestorOfType<ClassDeclaration>();
+    final member = switch ((owner, method, function)) {
+      (final owner?, final method?, _) =>
+        '${owner.namePart.typeName.lexeme}.${method.name.lexeme}',
+      (_, _, final function?) => function.name.lexeme,
+      _ => '(top level)',
+    };
+    if (path.endsWith('lib/src/ui/widgets/store_token_dialog.dart') &&
+        member == '_StoreTokenDialogState._copy' &&
+        method != null) {
+      return '$path $member ${_afterReauthentication(method, node) ? 'after' : 'before'} askReauthentication';
+    }
+    return '$path $member';
+  }
+
+  /// Whether, in [method], an `if` whose condition calls `askReauthentication` and whose branch returns ends before [use].
+  static bool _afterReauthentication(MethodDeclaration method, AstNode use) {
+    final guards = <IfStatement>[];
+    method.body.accept(_IfVisitor(guards));
+    return guards.any(
+      (guard) =>
+          guard.expression.toSource().contains('!await askReauthentication(') &&
+          guard.thenStatement.toSource().contains('return') &&
+          guard.end <= use.offset,
+    );
+  }
+}
+
+final class _IfVisitor extends RecursiveAstVisitor<void> {
+  final List<IfStatement> found;
+
+  _IfVisitor(this.found);
+
+  @override
+  void visitIfStatement(IfStatement node) {
+    found.add(node);
+    super.visitIfStatement(node);
   }
 }

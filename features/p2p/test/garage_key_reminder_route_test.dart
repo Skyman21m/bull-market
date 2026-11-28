@@ -226,11 +226,19 @@ final class _App {
       for (final element in find.byType(RichText).evaluate())
         (element.widget as RichText).text.toPlainText(),
     ];
-    final semantics = tester.binding.rootPipelineOwner.semanticsOwner;
-    return [
-      ...texts,
-      semantics?.rootSemanticsNode?.toStringDeep() ?? '',
-    ].join('\n');
+    // The semantics are on in every widget test (`testWidgets`, `semanticsEnabled`): an empty dump would check nothing, so the dialog's label must be in it (security review of #320, R5).
+    final semantics = switch (tester
+        .binding
+        .renderViews
+        .first
+        .owner
+        ?.semanticsOwner
+        ?.rootSemanticsNode) {
+      final root? => root.toStringDeep(),
+      null => '',
+    };
+    expect(semantics, contains('Back it up!'));
+    return [...texts, semantics].join('\n');
   }
 
   /// The copy of « Back it up! », then « test PIN ok » when [pass], else « test leave ».
@@ -504,6 +512,45 @@ void main() {
         await tester.pump(GarageKeyClipboard.clearAfter);
         await settle(tester);
         expect(app.clipboard.text, '');
+        expect(tester.takeException(), isNull);
+        await app.close();
+      },
+    );
+
+    testWidgets(
+      'the dialog gone while the re-authentication is asked, then the re-authentication passed: nothing copied, nothing sent (security review of #320, R1)',
+      (tester) async {
+        final app = await _App.start(tester, _Key.external);
+        await app.openForm();
+        await app.tap(app.inForm(find.text('Create order')));
+        await settle(tester);
+        expect(app.dialog, findsOneWidget);
+        await app.tap(app.copyButton);
+        await settle(tester);
+        expect(find.text('test PIN ok'), findsOneWidget);
+
+        // The dialog's route taken away under the re-authentication.
+        final dialog = tester.element(
+          find.byType(StoreTokenDialog, skipOffstage: false),
+        );
+        switch (ModalRoute.of(dialog)) {
+          case final route?:
+            Navigator.of(dialog).removeRoute(route);
+          case null:
+            fail('the dialog has no route');
+        }
+        await settle(tester);
+        expect(
+          find.byType(StoreTokenDialog, skipOffstage: false),
+          findsNothing,
+        );
+
+        await app.tap(find.text('test PIN ok'));
+        await settle(tester);
+        await settle(tester);
+        expect(app.gate.asked, 1);
+        expect(app.clipboard.text, isNull);
+        expect(app.makes, 0);
         expect(tester.takeException(), isNull);
         await app.close();
       },
