@@ -1004,6 +1004,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Votre clé de garage donne accès à tous vos comptes de robot. Conservez-la en lieu sûr. Vous pouvez simplement la copier dans une autre application.';
 
   @override
+  String get p2pStoreKeyBackItUp => 'Sauvegardez!';
+
+  @override
   String get p2pCommonGoBack => 'Retour';
 
   @override

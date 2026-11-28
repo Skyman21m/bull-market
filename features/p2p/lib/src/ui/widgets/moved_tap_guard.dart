@@ -16,7 +16,7 @@ typedef GuardedTap = VoidCallback? Function(VoidCallback? onTap);
 class MovedTapGuard extends StatefulWidget {
   final Widget Function(BuildContext context, GuardedTap guard) builder;
 
-  /// Whether its first measure starts the delay, a tap on the button just shown being ignored (security review of #291, B1), and whether a tap that reaches it again after something drawn over it hid it starts the delay too (#294); `false` for « Continue », which is shown only once the robot's read the user waited for has come, where « Take Order » stood busy and took the taps meanwhile: no double tap reaches it, while a tap repeated after the read can at some sizes (320 × 640, text ×3; second security pass of #291), which only opens « Store your garage key », no money moving at that tap.
+  /// Whether its first measure starts the delay, a tap on the button just shown being ignored (security review of #291, B1), and whether a tap that reaches it again after something drawn over it hid it starts the delay too (#294); `false` for « Continue », which is shown only once the robot's read the user waited for has come, where « Take Order » stood busy and took the taps meanwhile: no double tap reaches it, while a tap repeated after the read can at some sizes (320 × 640, text ×3; second security pass of #291), which opens « Store your garage key » for the external Garage Key and, since #318, sends the take for a key of the wallet's words, no money moving at that tap.
   final bool armsWhenShown;
 
   const MovedTapGuard({

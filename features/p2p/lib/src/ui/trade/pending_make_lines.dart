@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/robot_binding.dart';
 import '../../domain/trade/trade_make.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_text.dart';
@@ -18,7 +19,10 @@ import '../widgets/trade_dialog_body.dart';
 ///
 /// A make a resolution confirms is opened by the screen that holds the cubit (its `started`), not here.
 class PendingMakeLines extends StatelessWidget {
-  const PendingMakeLines({super.key});
+  /// When given, only the makes of these robots are listed: the create form, while it sends a make itself, lists the makes it saw listed when it sent it, and not its own, recorded as pending just before its request leaves (#317); `null` lists every make.
+  final Set<RobotSlot>? only;
+
+  const PendingMakeLines({super.key, this.only});
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +41,8 @@ class PendingMakeLines extends StatelessWidget {
             style: text.bodyMedium?.copyWith(color: colors.error),
           ),
         for (final make in state.makes ?? const <ActivePendingMake>[])
-          _Line(make: make.make, step: state.steps[make.make.robot]),
+          if (only?.contains(make.make.robot) ?? true)
+            _Line(make: make.make, step: state.steps[make.make.robot]),
         if (closed != null && closedAlias != null)
           Semantics(
             container: true,

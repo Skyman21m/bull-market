@@ -15,6 +15,7 @@ import 'domain/trade/trade_watch.dart';
 import 'domain/trade_record.dart';
 import 'domain/meeting_point.dart';
 import 'domain/usecases/open_map_tiles_usecase.dart';
+import 'domain/usecases/trade/trade_garage_key_usecase.dart';
 import 'p2p_locator.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
@@ -54,6 +55,7 @@ import 'ui/trade/host_rating_section.dart';
 import 'ui/trade/payout_panel.dart';
 import 'ui/trade/payout_wallet_section.dart';
 import 'ui/trade/trade_screen.dart';
+import 'ui/widgets/garage_key_backup.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
 /// What the page of an order needs: the order as the book listed it, and the network of its book.
@@ -188,7 +190,10 @@ final class P2pRouter {
         redirect: (context, state) =>
             state.extra is P2pOrderRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
-          final P2pOrderRouteArgs args => _orderPage(locator, args),
+          final P2pOrderRouteArgs args => GarageKeyBackupScope(
+            backup: _backupOf(locator, reauthenticate),
+            child: _orderPage(locator, args),
+          ),
           _ => const SizedBox.shrink(),
         },
       ),
@@ -199,9 +204,9 @@ final class P2pRouter {
         redirect: (context, state) =>
             state.extra is P2pUnlistedOrderRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
-          final P2pUnlistedOrderRouteArgs args => _unlistedOrderPage(
-            locator,
-            args,
+          final P2pUnlistedOrderRouteArgs args => GarageKeyBackupScope(
+            backup: _backupOf(locator, reauthenticate),
+            child: _unlistedOrderPage(locator, args),
           ),
           _ => const SizedBox.shrink(),
         },
@@ -212,7 +217,10 @@ final class P2pRouter {
         redirect: (context, state) =>
             state.extra is P2pTradeRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
-          final P2pTradeRouteArgs args => tradePage(locator, args),
+          final P2pTradeRouteArgs args => GarageKeyBackupScope(
+            backup: _backupOf(locator, reauthenticate),
+            child: tradePage(locator, args),
+          ),
           _ => const SizedBox.shrink(),
         },
       ),
@@ -223,12 +231,34 @@ final class P2pRouter {
         redirect: (context, state) =>
             state.extra is P2pCreateRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
-          final P2pCreateRouteArgs args => createPage(locator, args),
+          final P2pCreateRouteArgs args => GarageKeyBackupScope(
+            backup: _backupOf(locator, reauthenticate),
+            child: createPage(locator, args),
+          ),
           _ => const SizedBox.shrink(),
         },
       ),
     ],
   );
+
+  /// What « Back it up! » of « Store your garage key » needs on the pages that make or take (#318): the re-authentication the shell lends the Garage, the Garage's clipboard helper and the reads of the key a trade uses; `null` without that re-authentication, or where the feature has no Garage, and the copy is then disabled.
+  static GarageKeyBackup? _backupOf(
+    GetIt locator,
+    P2pReauthentication? reauthenticate,
+  ) {
+    if (reauthenticate == null ||
+        !locator.isRegistered<GarageKeyClipboard>() ||
+        !locator.isRegistered<TradeGarageKeyUsecase>()) {
+      return null;
+    }
+    final keys = locator<TradeGarageKeyUsecase>();
+    return GarageKeyBackup(
+      reauthenticate: reauthenticate,
+      clipboard: locator<GarageKeyClipboard>(),
+      ofMake: keys.externalKeyOfMake,
+      ofTake: keys.externalKeyOfTake,
+    );
+  }
 
   /// The page of a trade: its watch, its order's page, and, when the feature holds robots, its payout panel's cubit, each one per shown trade and closed with the page (which lets the robot's key go).
   @visibleForTesting

@@ -992,6 +992,9 @@ class P2pLocalizationsFi extends P2pLocalizations {
       'Your garage key provides access to all your robot accounts. Store it safely. You can simply copy it into another application.';
 
   @override
+  String get p2pStoreKeyBackItUp => 'Back it up!';
+
+  @override
   String get p2pCommonGoBack => 'Go back';
 
   @override

@@ -28,22 +28,25 @@ void main() {
     },
   );
 
-  test('copy hands the text to the clipboard helper and returns nothing else', () {
-    // Its body, as written: a text returned, kept or given elsewhere would show here.
-    final view = _classNamed(_unit(File(path).readAsStringSync()));
-    final copy = switch (view.body) {
-      BlockClassBody(:final members) =>
-        members.whereType<MethodDeclaration>().singleWhere(
-          (m) => m.name.lexeme == 'copy',
-        ),
-      _ => throw StateError('no body'),
-    };
+  test(
+    'copy hands the text to the clipboard helper and returns nothing else',
+    () {
+      // Its body, as written: a text returned, kept or given elsewhere would show here.
+      final view = _classNamed(_unit(File(path).readAsStringSync()));
+      final copy = switch (view.body) {
+        BlockClassBody(:final members) =>
+          members.whereType<MethodDeclaration>().singleWhere(
+            (m) => m.name.lexeme == 'copy',
+          ),
+        _ => throw StateError('no body'),
+      };
 
-    expect(
-      copy.body.toSource(),
-      '=> clipboard.copy(garageKey, garageKey.revealBech32());',
-    );
-  });
+      expect(
+        copy.body.toSource(),
+        '=> clipboard.copy(garageKey, garageKey.revealBech32());',
+      );
+    },
+  );
 
   test('the view imports exactly its libraries, and declares nothing else', () {
     // A `Text` or a `copy` of another library, through a `hide`, a new import or a declaration of this file, would keep the key: the names of the checks below are the ones of these libraries.

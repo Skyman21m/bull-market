@@ -65,9 +65,7 @@ class GarageKeyView extends StatelessWidget {
                 ),
               ),
             ),
-            _CopyButton(
-              onCopy: () => copy(clipboard, garageKey),
-            ),
+            _CopyButton(onCopy: () => copy(clipboard, garageKey)),
           ],
         ),
       ),

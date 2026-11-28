@@ -33,6 +33,9 @@ class TradeDialogBody extends StatelessWidget {
   /// Lines of the app said first, under the title, each in the colour of its [TradeDialogTone]: the alerts the screen shows behind the dialog (security review of #219, C2); empty for a dialog without them.
   final List<TradeDialogLine> alerts;
 
+  /// The reference's field under everything said, above the buttons (« Back it up! » of « Store your garage key », #318); `null` for a dialog without one.
+  final Widget? field;
+
   /// What the button that goes on does; `null` while it waits (« Wait ({{time}}) », `TradeBox/Dialogs/ConfirmUndoFiatSent.tsx`).
   final VoidCallback? onGo;
 
@@ -70,6 +73,7 @@ class TradeDialogBody extends StatelessWidget {
     this.note,
     this.lines = const [],
     this.alerts = const [],
+    this.field,
   });
 
   @override
@@ -155,6 +159,7 @@ class TradeDialogBody extends StatelessWidget {
             const Gap(BullSpacing.sm),
             _lineText(context, line),
           ],
+          if (field case final field?) ...[const Gap(BullSpacing.md), field],
           const Gap(BullSpacing.lg),
           TradeButton(
             label: backLabel,

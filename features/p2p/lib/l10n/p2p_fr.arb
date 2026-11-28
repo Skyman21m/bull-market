@@ -259,6 +259,7 @@
   "p2pTakeSpecifyAmountFirst": "Vous devez d'abord spécifier un montant",
   "p2pStoreKeyTitle": "Conservez votre clé de garage",
   "p2pStoreKeyText": "Votre clé de garage donne accès à tous vos comptes de robot. Conservez-la en lieu sûr. Vous pouvez simplement la copier dans une autre application.",
+  "p2pStoreKeyBackItUp": "Sauvegardez!",
   "p2pCommonGoBack": "Retour",
   "p2pCommonDone": "Fait",
   "p2pTakeCoordinatorUnreadable": "Impossible de joindre {coordinator}. L’ordre n’a pas été pris.",
