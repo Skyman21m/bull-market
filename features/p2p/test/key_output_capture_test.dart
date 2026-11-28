@@ -2,6 +2,7 @@ import 'package:bull_logger/bull_logger.dart';
 import 'package:bull_tor/tor.dart' show TorConnectFailure;
 import 'package:dio/dio.dart' show DioExceptionType;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart' show TradePosition;
 import 'package:p2p/src/domain/trade/trade_make.dart' show MakePendingReason;
 import 'package:p2p/src/domain/usecases/trade/action_outcome_log.dart';
@@ -52,25 +53,16 @@ void main() {
     const OrderActionRefused(OrderRequestRefused(null)),
   ];
 
-  /// The reasons `MakeOrderUsecase` gives to the resolution of a make.
-  final makeReasons = [
-    'notActive',
-    'noLongerListed',
-    'recordsUnread',
-    'termsUnread',
-    'noTerms',
-    'coordinatorNotListed',
-    'robot TradeKeyMissingFailure',
-    'answerOrder',
-    'robotUnread ${ActionOutcomeLog.causeOf(const CoordinatorUnexpectedStatus(500))}',
-    'robotUnread ${ActionOutcomeLog.causeOf(const OrderRequestRefused(1038))}',
-    'robotUnread ${ActionOutcomeLog.causeOf(const CoordinatorResponseMalformed('nickname'))}',
-    'robotUnread P2pStorageFailure',
-    'noOrderNamed',
-    'orderNamed',
-    'notTheMaker',
-    'cancelled',
-    'orderUnread',
+  /// The reasons `MakeOrderUsecase` gives to the resolution of a make, with the causes it writes after them.
+  final makeReasons = <(OutcomeReason, Object?)>[
+    for (final reason in OutcomeReason.values)
+      if (reason != OutcomeReason.robot && reason != OutcomeReason.robotUnread)
+        (reason, null),
+    (OutcomeReason.robot, const TradeKeyMissingFailure()),
+    (OutcomeReason.robotUnread, const CoordinatorUnexpectedStatus(500)),
+    (OutcomeReason.robotUnread, const OrderRequestRefused(1038)),
+    (OutcomeReason.robotUnread, const CoordinatorResponseMalformed('nickname')),
+    (OutcomeReason.robotUnread, const P2pStorageFailure()),
   ];
 
   /// Every line the code can write, written through the code that writes it where it is reachable ([ActionOutcomeLog]), and word for word for the transport's private helpers.
@@ -83,18 +75,23 @@ void main() {
     log.fine('P2P coordinator sessions closed (all)');
     log.fine('P2P coordinator sessions closed (one robot)');
     for (final cause in causes) {
-      for (final issue in ['notSent', 'refused', 'pending', 'answered']) {
-        ActionOutcomeLog.answered('make', issue, cause);
-      }
-      for (final issue in [
-        'notSent',
-        'refused',
-        'pending',
-        'answered OrderTakeStarted',
-        'answered OrderAlreadyTakenByThisRobot',
-        'answered OrderNotTaken',
+      for (final answer in [
+        OutcomeAnswer.notSent,
+        OutcomeAnswer.refused,
+        OutcomeAnswer.pending,
+        OutcomeAnswer.answered,
       ]) {
-        ActionOutcomeLog.answered('take', issue, cause);
+        ActionOutcomeLog.answered(OutcomeAction.make, answer, cause);
+      }
+      for (final answer in [
+        OutcomeAnswer.notSent,
+        OutcomeAnswer.refused,
+        OutcomeAnswer.pending,
+        OutcomeAnswer.takeStarted,
+        OutcomeAnswer.alreadyTaken,
+        OutcomeAnswer.notTaken,
+      ]) {
+        ActionOutcomeLog.answered(OutcomeAction.take, answer, cause);
       }
     }
     for (final refusal in [
@@ -113,20 +110,35 @@ void main() {
     ]) {
       log.fine('P2P take: notSent ($refusal)');
     }
-    for (final issue in [
-      'started',
-      'notMade',
-      'neverSent',
-      for (final reason in MakePendingReason.values) 'pending ${reason.name}',
-      'noLongerPending',
+    for (final (issue, pending) in [
+      (OutcomeResolution.started, null),
+      (OutcomeResolution.notMade, null),
+      (OutcomeResolution.neverSent, null),
+      for (final reason in MakePendingReason.values)
+        (OutcomeResolution.pending, reason),
+      (OutcomeResolution.noLongerPending, null),
     ]) {
-      for (final reason in makeReasons) {
-        ActionOutcomeLog.resolved('make', issue, reason);
+      for (final (reason, cause) in makeReasons) {
+        ActionOutcomeLog.resolved(
+          OutcomeAction.make,
+          issue,
+          reason,
+          pending: pending,
+          cause: cause,
+        );
       }
     }
     for (final position in TradePosition.values) {
-      ActionOutcomeLog.resolved('take', 'taker', position.name);
-      ActionOutcomeLog.resolved('take', 'notMade', position.name);
+      ActionOutcomeLog.resolvedAt(
+        OutcomeAction.take,
+        OutcomeResolution.taker,
+        position,
+      );
+      ActionOutcomeLog.resolvedAt(
+        OutcomeAction.take,
+        OutcomeResolution.notMade,
+        position,
+      );
     }
   }
 

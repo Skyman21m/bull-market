@@ -1,4 +1,4 @@
-/// The texts a robot clear-signs for the requests that change a state on a coordinator: since the fix of GHSA-22q8-9ghc-jg3h (RoboSats pull request 2955, head `0943c9748ac35f13319628aac5054f6dd50512ca`, not yet merged upstream on 2026-11-27), the bearer header is a read credential only, and every such request also carries, in its `signature` field, a cleartext signature by the robot's key of one of these texts.
+/// The texts a robot clear-signs for the requests that change a state on a coordinator: since the fix of GHSA-22q8-9ghc-jg3h (RoboSats pull request 2955, head `0943c9748ac35f13319628aac5054f6dd50512ca`, merged as is upstream on 2026-11-27, merge commit `946e9b2`, in no release on that date), the bearer header is a read credential only, and every such request also carries, in its `signature` field, a cleartext signature by the robot's key of one of these texts.
 ///
 /// Byte for byte the reference's `frontend/src/utils/actionSignature.ts` and what `api/utils.py` rebuilds (`validate_action_signature`, `validate_signed_action_timestamp`), at that head:
 ///

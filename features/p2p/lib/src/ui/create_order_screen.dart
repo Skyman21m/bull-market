@@ -617,6 +617,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             }
           },
         ),
+        // A new make sent: the line of the last make a resolution closed goes, so that it is never read as the new make's outcome (seen in a real trial); a press stopped before the make starts keeps it.
+        BlocListener<MakeOrderCubit, MakeOrderState>(
+          listenWhen: (previous, current) =>
+              current.progress is MakeSending &&
+              previous.progress is! MakeSending,
+          listener: (context, _) =>
+              context.read<PendingMakesCubit>().forgetClosed(),
+        ),
         // The last pending make of the network resolved or set aside: a form locked by an outcome unknown is free again (#182, functional review C1).
         BlocListener<PendingMakesCubit, PendingMakesState>(
           listenWhen: (previous, current) =>

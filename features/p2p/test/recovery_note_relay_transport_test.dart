@@ -274,6 +274,79 @@ void main() {
       expect(calls.ownSessionsForTesting, (inUse: 0, waiting: 0, open: 0));
     },
   );
+
+  test(
+    'the suffix of a subscription id: the reference\'s lengths, from 1 to 11 characters, and its alphabet, the last character never 0, drawn anew at every call (#311)',
+    () {
+      const weights = TorCoordinatorTransport.subscriptionSuffixLengths;
+      const total = TorCoordinatorTransport.subscriptionSuffixDraws;
+      const alphabet = TorCoordinatorTransport.subscriptionSuffixAlphabet;
+      expect(weights.fold<int>(0, (sum, weight) => sum + weight), total);
+      expect(alphabet.split('').toSet(), hasLength(36));
+      const draws = 200000;
+      final lengths = List.filled(weights.length + 1, 0);
+      final characters = <String, int>{};
+      final lasts = <String, int>{};
+      final seen = <String>{};
+      var characterCount = 0;
+      var sameAsLast = 0;
+      String? last;
+      for (var i = 0; i < draws; i++) {
+        final suffix = TorCoordinatorTransport.subscriptionSuffixForTesting();
+        expect(suffix, matches(RegExp(r'^[0-9a-z]{1,11}$')));
+        lengths[suffix.length]++;
+        for (final character
+            in suffix.substring(0, suffix.length - 1).split('')) {
+          characters[character] = (characters[character] ?? 0) + 1;
+          characterCount++;
+        }
+        final end = suffix.substring(suffix.length - 1);
+        lasts[end] = (lasts[end] ?? 0) + 1;
+        seen.add(suffix);
+        if (suffix == last) sameAsLast++;
+        last = suffix;
+      }
+      // Each length as often as in the reference, within five standard deviations.
+      for (var length = 1; length <= weights.length; length++) {
+        final share = weights[length - 1] / total;
+        final expected = draws * share;
+        final deviation = sqrt(draws * share * (1 - share));
+        expect(
+          (lengths[length] - expected).abs(),
+          lessThanOrEqualTo(5 * deviation + 1),
+          reason: 'length $length: ${lengths[length]}, about $expected',
+        );
+      }
+      // The common lengths are all drawn: no fixed length any more.
+      for (final length in [3, 4, 5, 6, 7, 8]) {
+        expect(lengths[length], greaterThan(0), reason: 'length $length');
+      }
+      // Before the last, every character of the alphabet, as often as the others.
+      expect(characters.keys.toSet(), alphabet.split('').toSet());
+      final each = characterCount / 36;
+      for (final MapEntry(key: character, value: count) in characters.entries) {
+        expect(
+          (count - each).abs(),
+          lessThanOrEqualTo(5 * sqrt(each)),
+          reason: character,
+        );
+      }
+      // The last, never `0`, as the reference's shortest digits never end with it; the 35 others as often as each other.
+      expect(lasts['0'], isNull);
+      expect(lasts.keys.toSet(), alphabet.substring(1).split('').toSet());
+      final eachLast = draws / 35;
+      for (final MapEntry(key: character, value: count) in lasts.entries) {
+        expect(
+          (count - eachLast).abs(),
+          lessThanOrEqualTo(5 * sqrt(eachLast)),
+          reason: 'last $character',
+        );
+      }
+      // Nothing stable from one call to the next.
+      expect(seen.length, greaterThan(draws * 0.99));
+      expect(sameAsLast, lessThan(10));
+    },
+  );
 }
 
 Future<void> _until(bool Function() done) async {

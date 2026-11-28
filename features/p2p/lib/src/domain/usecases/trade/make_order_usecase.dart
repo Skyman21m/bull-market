@@ -91,7 +91,7 @@ final class MakeOrderUsecase {
     );
     // A make refused before its request left: the support log says by which refusal, its type only.
     if (made case Err(:final failure)) {
-      ActionOutcomeLog.notSent('make', failure);
+      ActionOutcomeLog.notSent(OutcomeAction.make, failure);
     }
     return made;
   });
@@ -592,12 +592,13 @@ final class MakeOrderUsecase {
 
       // 5. What it gave.
       ActionOutcomeLog.answered(
-        'make',
+        OutcomeAction.make,
         switch (sent) {
-          Err() => 'notSent',
-          Ok(value: Err(failure: OrderActionRefused())) => 'refused',
-          Ok(value: Err()) => 'pending',
-          Ok(value: Ok()) => 'answered',
+          Err() => OutcomeAnswer.notSent,
+          Ok(value: Err(failure: OrderActionRefused())) =>
+            OutcomeAnswer.refused,
+          Ok(value: Err()) => OutcomeAnswer.pending,
+          Ok(value: Ok()) => OutcomeAnswer.answered,
         },
         switch (sent) {
           Err(:final failure) => failure,
@@ -629,18 +630,18 @@ final class MakeOrderUsecase {
 
   Future<MakeOutcome> _resolve(PendingMake make) async {
     if (!make.isActive) {
-      return _said(MakeNoLongerPending(make), 'notActive');
+      return _said(MakeNoLongerPending(make), OutcomeReason.notActive);
     }
     // The make as the records hold it now: one confirmed or closed since it was listed is not resolved again, and its robot not read.
     switch (await _records.watchPendingMakes(make.network).first) {
       case Ok(:final value) when value.any((m) => m.robot == make.robot):
         break;
       case Ok():
-        return _said(MakeNoLongerPending(make), 'noLongerListed');
+        return _said(MakeNoLongerPending(make), OutcomeReason.noLongerListed);
       case Err():
         return _said(
           MakePending(make, MakePendingReason.unread),
-          'recordsUnread',
+          OutcomeReason.recordsUnread,
         );
     }
     final MakerTermsRecord? record;
@@ -650,7 +651,7 @@ final class MakeOrderUsecase {
       case Err():
         return _said(
           MakePending(make, MakePendingReason.unread),
-          'termsUnread',
+          OutcomeReason.termsUnread,
         );
     }
     // The make sends its request only once its terms are written: without them it never left.
@@ -663,7 +664,7 @@ final class MakeOrderUsecase {
             Err() => false,
           },
         ),
-        'noTerms',
+        OutcomeReason.noTerms,
       );
     }
     final coordinator = _federation.byAlias(make.coordinatorAlias);
@@ -674,7 +675,7 @@ final class MakeOrderUsecase {
         record.network != make.network.name) {
       return _said(
         MakePending(make, MakePendingReason.unread),
-        'coordinatorNotListed',
+        OutcomeReason.coordinatorNotListed,
       );
     }
     final NetworkRobot robot;
@@ -684,7 +685,8 @@ final class MakeOrderUsecase {
       case Err(:final failure):
         return _said(
           MakePending(make, MakePendingReason.unread),
-          'robot ${failure.runtimeType}',
+          OutcomeReason.robot,
+          cause: failure,
         );
     }
     final requests = _limiter.open(robot.identity.sessionKey);
@@ -709,7 +711,7 @@ final class MakeOrderUsecase {
             when _isOurs(make, coordinator, candidate, order):
           return _said(
             await _confirm(make, robot, coordinator, order, times),
-            'answerOrder',
+            OutcomeReason.answerOrder,
           );
         case _:
           // Not shown as this robot's order, or not read: the robot says which order it made.
@@ -723,37 +725,42 @@ final class MakeOrderUsecase {
       case Ok(value: Err(:final failure)):
         return _said(
           MakePending(make, MakePendingReason.unread),
-          'robotUnread ${ActionOutcomeLog.causeOf(failure)}',
+          OutcomeReason.robotUnread,
+          cause: failure,
         );
       case Err(:final failure):
         return _said(
           MakePending(make, MakePendingReason.unread),
-          'robotUnread ${failure.runtimeType}',
+          OutcomeReason.robotUnread,
+          cause: failure,
         );
     }
     // Read after the make's request ended: a robot that names no order made none that this app could show.
     if (named == null) {
-      return _said(await _notMade(make, refusal: null), 'noOrderNamed');
+      return _said(
+        await _notMade(make, refusal: null),
+        OutcomeReason.noOrderNamed,
+      );
     }
     return switch (await _readMade(make, robot, coordinator, requests, named)) {
       _Read(:final order, :final times)
           when _isOurs(make, coordinator, named, order) =>
         _said(
           await _confirm(make, robot, coordinator, order, times),
-          'orderNamed',
+          OutcomeReason.orderNamed,
         ),
       _Read() => _said(
         MakePending(make, MakePendingReason.notRecognized),
-        'notTheMaker',
+        OutcomeReason.notTheMaker,
       ),
       // Error 1043 proves nothing about the maker, but leaves nothing to pay: no invoice was ever shown for this make.
       _Cancelled() => _said(
         await _notMade(make, refusal: const OrderCancelled()),
-        'cancelled',
+        OutcomeReason.cancelled,
       ),
       _NotRead() => _said(
         MakePending(make, MakePendingReason.unread),
-        'orderUnread',
+        OutcomeReason.orderUnread,
       ),
     };
   }
@@ -867,15 +874,28 @@ final class MakeOrderUsecase {
     );
   }
 
-  /// [outcome], once its line is in the support log ([ActionOutcomeLog.resolved]) with [reason], a fixed word.
-  static MakeOutcome _said(MakeOutcome outcome, String reason) {
-    ActionOutcomeLog.resolved('make', switch (outcome) {
-      MakeStarted() => 'started',
-      MakeNotMade() => 'notMade',
-      MakeNeverSent() => 'neverSent',
-      MakePending(:final reason) => 'pending ${reason.name}',
-      MakeNoLongerPending() => 'noLongerPending',
-    }, reason);
+  /// [outcome], once its line is in the support log ([ActionOutcomeLog.resolved]) with [reason], and [cause] after it when given (its type, or [ActionOutcomeLog.causeOf]'s fixed label).
+  static MakeOutcome _said(
+    MakeOutcome outcome,
+    OutcomeReason reason, {
+    Object? cause,
+  }) {
+    ActionOutcomeLog.resolved(
+      OutcomeAction.make,
+      switch (outcome) {
+        MakeStarted() => OutcomeResolution.started,
+        MakeNotMade() => OutcomeResolution.notMade,
+        MakeNeverSent() => OutcomeResolution.neverSent,
+        MakePending() => OutcomeResolution.pending,
+        MakeNoLongerPending() => OutcomeResolution.noLongerPending,
+      },
+      reason,
+      pending: switch (outcome) {
+        MakePending(:final reason) => reason,
+        _ => null,
+      },
+      cause: cause,
+    );
     return outcome;
   }
 

@@ -498,10 +498,10 @@ final class TradeReader {
     if (trade.record.confirmedAt == null &&
         trade.record.origin == TradeOrigin.takenHere &&
         taker) {
-      ActionOutcomeLog.resolvedOnce(
-        'take',
-        'taker',
-        step.trade.seen.status.position.name,
+      ActionOutcomeLog.resolvedOnceAt(
+        OutcomeAction.take,
+        OutcomeResolution.taker,
+        step.trade.seen.status.position,
         once: trade.record.robot,
       );
     }
@@ -513,10 +513,10 @@ final class TradeReader {
         step.trade.seen.status.trail.bondStepSeenAt == null &&
         step.trade.seen.status.isTerminal;
     if (!notMade || step.superseded) return step;
-    ActionOutcomeLog.resolved(
-      'take',
-      'notMade',
-      step.trade.seen.status.position.name,
+    ActionOutcomeLog.resolvedAt(
+      OutcomeAction.take,
+      OutcomeResolution.notMade,
+      step.trade.seen.status.position,
     );
     return TradeStep(
       step.trade,
